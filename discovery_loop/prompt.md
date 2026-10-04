@@ -67,8 +67,11 @@ that on your own behalf.
 
 **Run and analyse.** Give the person the run sheet and the measurement
 template, and wait for the filled run file; or, when the request declares the
-synthetic stand-in, `simulate-standin --standin <tcell|monocyte>`. Then send
-`analysis` an ANALYZE message.
+synthetic stand-in, `simulate-standin --standin <name>`. The names the CLI
+accepts are listed by `simulate-standin --help`; pick the one that matches the
+request's product (`ipsc_tcell` for an iPSC-derived T-lineage process,
+`tcell` for a CAR-T style one, `monocyte` for iPSC to monocyte, which is also
+the only one supporting max mode). Then send `analysis` an ANALYZE message.
 
 **Decide.** This is the part that is yours.
 
@@ -128,6 +131,20 @@ wet-lab protocol still needs a human approver, and the tools enforce that.
 | `complete_qc` | Get the missing tests run, or the missing limit set by QA. A new limit is a new loop. |
 | `protocol_succeeded` | Report it, and say plainly what is still outstanding: QA sign-off, confirmation runs, replicate count. |
 | `escalate_to_human` / `stop_budget` | Stop and write the final report. |
+
+**When the loop ends**, on any terminal decision, write the reasoning report:
+
+```
+report --loop-dir <loop> --out <loop>/reasoning_report.html [--pdf <loop>/reasoning_report.pdf]
+```
+
+It reads only what the loop already wrote and never reads a file whose name
+contains `truth`. It renders your reasoning, the alternatives you recorded in
+`considered`, your hypotheses and their basis, the tool results you cited, and
+the allowed set each decision was validated against — which is why those fields
+are worth writing properly as you go, rather than filling them in to pass
+validation. It also shows, beside your choice, what the deterministic policy
+would have done, so a reader can see where you departed from it and why.
 
 ## Rules
 

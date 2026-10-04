@@ -129,6 +129,25 @@ def cmd_loop_status(a):
     return 0
 
 
+def cmd_report(a):
+    """Write the reasoning report for one loop, or a comparative one for several.
+
+    Agents may run this: it only reads what the loop already wrote, and it never
+    reads a file whose name contains 'truth'.
+    """
+    from . import report as RP
+    dirs = a.loop_dir
+    if len(dirs) == 1:
+        html, pdf = RP.write_report(dirs[0], a.out, a.pdf, a.title)
+    else:
+        html, pdf = RP.write_comparative_report(dirs, a.out, a.pdf, a.title)
+    _print({'loops': [str(d) for d in dirs], 'html': str(html),
+            'pdf': str(pdf) if pdf else None,
+            'note': 'PDF needs a headless Chromium on PATH; the HTML prints to PDF from any '
+                    'browser when none is present.'})
+    return 0
+
+
 def cmd_demo(a):
     """Fixed offline loop on the synthetic fixtures (no LLM): it0 -> revise -> it1 -> complete_qc -> release tests -> success."""
     from analysis_agent.protocol_runner import simulate_protocol
@@ -257,10 +276,16 @@ def main(argv=None):
     p = sub.add_parser('simulate-standin', help='SYNTHETIC stand-in for the wet lab (analysis_agent simulator)')
     p.add_argument('--protocol', required=True); p.add_argument('--out', required=True)
     p.add_argument('--mode', choices=['minimal', 'max'], default='minimal'); p.add_argument('--seed', type=int, default=5, help='stand-in line biology is sampled from the seed')
-    p.add_argument('--standin', choices=['monocyte', 'tcell'], default='monocyte',
-                   help='which product the stand-in models; tcell is minimal mode only')
+    # Choices come from the registry, so a stand-in added there is reachable here.
+    # They were hard-coded, which silently hid ipsc_tcell from every agent that
+    # drives the loop through this CLI.
+    from standins import STANDINS
+    p.add_argument('--standin', choices=sorted(set(STANDINS) | {'monocyte'}), default='monocyte',
+                   help='which product the stand-in models; only monocyte supports max mode')
     p.add_argument('--scenario', default='clean',
-                   help='monocyte: clean|clonal|sensor_fault|stain_fault; tcell: clean|poor_viability|low_transduction')
+                   help='monocyte: clean|clonal|sensor_fault|stain_fault; '
+                        'tcell: clean|poor_viability|low_transduction; '
+                        'ipsc_tcell: clean|poor_viability|weak_commitment')
     p.add_argument('--truth', help='hidden genotype truth file (agents must not read it)')
     p.add_argument('--replicates', type=int, default=1); p.add_argument('--release-tests', action='store_true')
     p.add_argument('--run-id'); p.set_defaults(fn=cmd_simulate_standin)
@@ -271,6 +296,13 @@ def main(argv=None):
     p = sub.add_parser('decide'); p.add_argument('--analysis', required=True); p.add_argument('--protocol', required=True)
     p.add_argument('--request', required=True); p.add_argument('--loop-dir', required=True); p.set_defaults(fn=cmd_decide)
     p = sub.add_parser('loop-status'); p.add_argument('--loop-dir', required=True); p.set_defaults(fn=cmd_loop_status)
+    p = sub.add_parser('report', help='reasoning report for a loop: every decision with its '
+                                      'reasoning, the search moves, provenance and references')
+    p.add_argument('--loop-dir', action='append', required=True,
+                   help='loop directory; repeat it for a comparative report')
+    p.add_argument('--out', required=True, help='output .html path')
+    p.add_argument('--pdf', help='also print a PDF here (needs headless Chromium)')
+    p.add_argument('--title'); p.set_defaults(fn=cmd_report)
     p = sub.add_parser('autonomy', help='show the effective human-in-the-loop gates for a request')
     p.add_argument('--request', required=True); p.set_defaults(fn=cmd_autonomy)
     p = sub.add_parser('advise', help='what the orchestrator may choose for this analysis, and what the policy advises')
