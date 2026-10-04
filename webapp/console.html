@@ -4,676 +4,911 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BioSense Console</title>
-<meta name="description" content="Type a production question, watch the BioSense loop optimise a protocol against a synthetic stand-in reactor, and read why it made every choice.">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=Source+Sans+3:wght@400;600&display=swap">
+<meta name="description" content="Ask a cell-production question in plain language, watch the agents work it in real time, and read why every choice was made.">
+<link rel="icon" type="image/png" href="assets/biosense-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-/* Shares the tracker's tokens so the two pages read as one product. The two
-   series colours are validated for CVD separation and contrast in both modes. */
+/* ──────────────────────────────────────────────────────────────
+   BioSenseAI console.
+
+   Brand colours are sampled from the logo and the brand film:
+   logo green #169857, bright accent #3ddc84, sage #76be9d, ground #0a0e12.
+
+   The brand green is the INTERFACE accent — logo, buttons, focus, active
+   state. It is deliberately not a data-series colour: green beside the
+   warm hues a second series needs collides under deuteranopia, and the
+   charts already spend green on "kept / passed". Series colours are a
+   separate, validated set (blue / amber / violet) that clears colour-vision
+   separation and contrast against each mode's own glass surface.
+   ────────────────────────────────────────────────────────────── */
 :root{
-  --bg:#eef2f4; --panel:#fff; --panel-2:#e4eaed; --sunk:#f6f8f9;
-  --ink:#0f181d; --ink-2:#4a5a63; --ink-3:#78888f; --line:#ccd7dc; --line-2:#aebcc3;
-  --orch:#0a6a73; --orch-s:#d3e8ea; --lit:#1f6fa8; --lit-s:#d8e8f3;
-  --bio:#6c4b9c; --bio-s:#e5dcf2; --ana:#a8475f; --ana-s:#f6dde3;
-  --lab:#2b6540; --lab-s:#d9ebdf; --hum:#9a5b00; --hum-s:#f6e6cd;
-  --stop:#9d2f28; --stop-s:#f7dedb;
-  --s1:#1f6fa8; --s2:#a8475f;           /* series: validated light mode */
-  --display:"Chivo","Helvetica Neue",Arial,sans-serif;
-  --body:"Source Sans 3",-apple-system,BlinkMacSystemFont,sans-serif;
-  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme: light dark;
+
+  /* brand */
+  --brand:#169857; --brand-deep:#0f7a45; --brand-bright:#2bb96c; --sage:#76be9d;
+
+  /* surfaces — light */
+  --bg:#eef3f0; --bg-2:#e2ebe6;
+  --glass:rgba(255,255,255,.62); --glass-2:rgba(255,255,255,.44);
+  --glass-brd:rgba(255,255,255,.75); --glass-hi:rgba(255,255,255,.9);
+  --shadow:0 1px 2px rgba(10,30,20,.05), 0 8px 24px rgba(10,40,25,.07),
+           0 24px 60px rgba(10,40,25,.06);
+  --surface-solid:#f4f8f6;
+
+  /* ink */
+  --ink:#0d1a14; --ink-2:#44574e; --ink-3:#71847b; --line:rgba(13,26,20,.12);
+
+  /* data series — validated against #f4f8f6 */
+  --s1:#1f6fa8; --s2:#b4621f; --s3:#6b4ba8;
+  /* state */
+  --ok:#15723f; --bad:#a3291f; --warn:#8a5a00; --neutral:#6d7d76;
+
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --r:16px; --r-s:11px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0b1115; --panel:#141d22; --panel-2:#1c272d; --sunk:#101a1e;
-  --ink:#e8eff2; --ink-2:#a6b8c0; --ink-3:#7a8d96; --line:#273439; --line-2:#3b4f58;
-  --orch:#4cc6cf; --orch-s:#0e3338; --lit:#65b4e8; --lit-s:#112c3e;
-  --bio:#b89ae8; --bio-s:#251b39; --ana:#ea8fa4; --ana-s:#37161f;
-  --lab:#74c48f; --lab-s:#13301e; --hum:#e0a44f; --hum-s:#352610;
-  --stop:#ef8178; --stop-s:#371713;
-  --s1:#4292c9; --s2:#cf6b83;           /* series: validated dark mode */
-  color-scheme:dark;}}
+  --bg:#070b0e; --bg-2:#0c1216;
+  --glass:rgba(23,31,36,.58); --glass-2:rgba(30,40,46,.42);
+  --glass-brd:rgba(255,255,255,.1); --glass-hi:rgba(255,255,255,.16);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45),
+           0 30px 70px rgba(0,0,0,.4);
+  --surface-solid:#151a1e;
+  --brand:#2bb96c; --brand-bright:#3ddc84; --brand-deep:#1d9a57;
+  --ink:#e9f1ed; --ink-2:#a7b8b0; --ink-3:#7c8d86; --line:rgba(255,255,255,.1);
+  --s1:#4292c9; --s2:#bd7a3c; --s3:#9478cf;
+  --ok:#5fc98a; --bad:#ef8178; --warn:#e0b25c; --neutral:#8b9b94;
+}}
 :root[data-theme="dark"]{
-  --bg:#0b1115; --panel:#141d22; --panel-2:#1c272d; --sunk:#101a1e;
-  --ink:#e8eff2; --ink-2:#a6b8c0; --ink-3:#7a8d96; --line:#273439; --line-2:#3b4f58;
-  --orch:#4cc6cf; --orch-s:#0e3338; --lit:#65b4e8; --lit-s:#112c3e;
-  --bio:#b89ae8; --bio-s:#251b39; --ana:#ea8fa4; --ana-s:#37161f;
-  --lab:#74c48f; --lab-s:#13301e; --hum:#e0a44f; --hum-s:#352610;
-  --stop:#ef8178; --stop-s:#371713; --s1:#4292c9; --s2:#cf6b83; color-scheme:dark;}
+  --bg:#070b0e; --bg-2:#0c1216;
+  --glass:rgba(23,31,36,.58); --glass-2:rgba(30,40,46,.42);
+  --glass-brd:rgba(255,255,255,.1); --glass-hi:rgba(255,255,255,.16);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45),
+           0 30px 70px rgba(0,0,0,.4);
+  --surface-solid:#151a1e;
+  --brand:#2bb96c; --brand-bright:#3ddc84; --brand-deep:#1d9a57;
+  --ink:#e9f1ed; --ink-2:#a7b8b0; --ink-3:#7c8d86; --line:rgba(255,255,255,.1);
+  --s1:#4292c9; --s2:#bd7a3c; --s3:#9478cf;
+  --ok:#5fc98a; --bad:#ef8178; --warn:#e0b25c; --neutral:#8b9b94;
+}
+
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;margin:0;
-  -webkit-font-smoothing:antialiased}
-.app{max-width:1280px;margin:0 auto;padding:0 16px 56px}
-h1,h2,h3,h4{font-family:var(--display);margin:0;letter-spacing:-.015em}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; font-family:var(--sans); font-size:17px; line-height:1.6;
+  color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased;
+  min-height:100vh; position:relative; overflow-x:hidden;
+}
+/* The ground: brand gradient wash plus the node field from the brand film. */
+body::before{
+  content:""; position:fixed; inset:0; z-index:-2; pointer-events:none;
+  background:
+    radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--brand) 22%, transparent), transparent 62%),
+    radial-gradient(900px 560px at 94% 4%, color-mix(in srgb, var(--sage) 20%, transparent), transparent 58%),
+    radial-gradient(760px 520px at 60% 100%, color-mix(in srgb, var(--brand-deep) 14%, transparent), transparent 60%),
+    linear-gradient(170deg, var(--bg) 0%, var(--bg-2) 100%);
+}
+body::after{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.5;
+  background-image:
+    radial-gradient(currentColor 1px, transparent 1.4px),
+    linear-gradient(to right, currentColor 1px, transparent 1px),
+    linear-gradient(to bottom, currentColor 1px, transparent 1px);
+  background-size:38px 38px, 152px 152px, 152px 152px;
+  color:color-mix(in srgb, var(--ink) 9%, transparent);
+  mask-image:radial-gradient(ellipse 110% 85% at 50% 0%, #000 35%, transparent 78%);
+}
+
+.wrap{max-width:1360px;margin:0 auto;padding:0 20px 72px}
+h1,h2,h3,h4{margin:0;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+a{color:var(--brand);text-decoration:none;font-weight:500}
+a:hover{text-decoration:underline}
 .mono{font-family:var(--mono)} .tnum{font-variant-numeric:tabular-nums}
-a{color:var(--lit)}
-.bar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line);
-  padding:13px 0;margin-bottom:18px;display:flex;align-items:center;gap:13px;flex-wrap:wrap}
-.brand{display:flex;align-items:baseline;gap:9px;min-width:0}
-.brand h1{font-size:1.08rem;font-weight:800}
-.brand .tag{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.mut{color:var(--ink-2)} .dim{color:var(--ink-3)}
+.ok{color:var(--ok);font-weight:600} .bad{color:var(--bad);font-weight:600}
+.warnc{color:var(--warn);font-weight:600}
+
+/* eyebrow label, straight from the brand film */
+.eyebrow{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+/* ── glass ───────────────────────────────────────────────── */
+.glass{
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(22px) saturate(165%);
+  backdrop-filter:blur(22px) saturate(165%);
+  border:1px solid var(--glass-brd);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+  position:relative;
+}
+/* top highlight: the thing that makes glass read as glass */
+.glass::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg, var(--glass-hi), transparent 42%);
+  opacity:.5;mix-blend-mode:overlay;
+}
+@supports not (backdrop-filter:blur(2px)){
+  .glass{background:var(--surface-solid)}
+}
+
+/* ── header ──────────────────────────────────────────────── */
+.bar{position:sticky;top:0;z-index:40;margin:0 -20px 26px;padding:12px 20px;
+  background:color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
+  backdrop-filter:blur(18px) saturate(160%);
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.brand img{height:38px;width:38px;display:block;
+  filter:drop-shadow(0 2px 7px color-mix(in srgb, var(--brand) 42%, transparent))}
+.brand .nm{font-size:19px;font-weight:800;letter-spacing:-.025em;line-height:1}
+.brand .nm span{color:var(--brand)}
+.brand .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);margin-top:3px}
 .spacer{flex:1 1 auto}
-.pill{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.05em;
-  text-transform:uppercase;padding:5px 10px;border-radius:100px;display:inline-flex;
-  align-items:center;gap:7px;white-space:nowrap}
-.pill .led{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
-.pill.run{background:var(--orch-s);color:var(--orch)} .pill.ok{background:var(--lab-s);color:var(--lab)}
-.pill.warn{background:var(--hum-s);color:var(--hum)} .pill.bad{background:var(--stop-s);color:var(--stop)}
-.pill.idle{background:var(--panel-2);color:var(--ink-3)}
-.live .led{animation:blink 1.4s ease-in-out infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
-@media (prefers-reduced-motion:reduce){.live .led{animation:none}}
-button.btn{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:7px 11px;
-  border-radius:8px;border:1px solid var(--line-2);background:var(--panel);color:var(--ink);
-  cursor:pointer}
-button.btn:hover:not(:disabled){border-color:var(--orch);color:var(--orch)}
-button.btn:focus-visible{outline:2px solid var(--orch);outline-offset:2px}
-button.btn:disabled{opacity:.5;cursor:not-allowed}
-button.go{background:var(--orch);border-color:var(--orch);color:#fff;font-size:12.5px;padding:9px 16px}
-button.go:hover:not(:disabled){background:var(--ink);border-color:var(--ink);color:#fff}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;min-width:0}
-.ptitle{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--ink-3);padding:12px 15px 9px;display:flex;
-  justify-content:space-between;gap:10px;align-items:center}
-.ptitle .hint{text-transform:none;letter-spacing:0;font-weight:400}
-.pbody{padding:0 15px 15px}
-.stack{display:flex;flex-direction:column;gap:14px;min-width:0}
-.cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
-@media (max-width:60rem){.cols{grid-template-columns:1fr}}
-.note{background:var(--hum-s);color:var(--hum);border:1px solid currentColor;border-radius:10px;
-  padding:10px 13px;font-size:12.5px;line-height:1.5}
-.note b{font-weight:600}
-textarea{width:100%;min-height:92px;resize:vertical;font-family:var(--body);font-size:14px;
-  line-height:1.5;padding:11px 12px;border-radius:10px;border:1px solid var(--line-2);
-  background:var(--sunk);color:var(--ink)}
-textarea:focus-visible{outline:2px solid var(--orch);outline-offset:1px}
-.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:10px}
-.ex{font-family:var(--mono);font-size:11px;color:var(--lit);background:none;border:0;
-  padding:0;cursor:pointer;text-align:left;text-decoration:underline}
-.ex:hover{color:var(--orch)}
-dl.kv{display:grid;grid-template-columns:minmax(7rem,auto) 1fr;gap:3px 12px;margin:0;font-size:12.5px}
-dl.kv dt{color:var(--ink-3);font-family:var(--mono);font-size:11px}
-dl.kv dd{margin:0}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-th,td{text-align:left;padding:5px 7px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600}
-td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
-.feed{max-height:26rem;overflow:auto;font-size:12.5px}
-.ev{display:grid;grid-template-columns:3.1rem 1fr;gap:9px;padding:6px 0;
+
+.pill{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;padding:7px 13px;border-radius:999px;
+  display:inline-flex;align-items:center;gap:8px;white-space:nowrap;
+  border:1px solid currentColor;background:color-mix(in srgb, currentColor 11%, transparent)}
+.pill .led{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;
+  box-shadow:0 0 0 0 currentColor}
+.pill.idle{color:var(--ink-3)} .pill.run{color:var(--brand)}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)}
+.live .led{animation:pulse 1.7s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,currentColor 70%,transparent)}
+  70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+button{font-family:inherit}
+.btn{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.04em;
+  padding:9px 14px;border-radius:10px;border:1px solid var(--line);
+  background:var(--glass-2);color:var(--ink);cursor:pointer;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  transition:border-color .16s, color .16s, transform .16s}
+.btn:hover{border-color:var(--brand);color:var(--brand);transform:translateY(-1px)}
+.btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn.go{background:linear-gradient(135deg,var(--brand),var(--brand-deep));
+  border-color:transparent;color:#fff;font-size:14px;padding:13px 26px;
+  letter-spacing:.02em;
+  box-shadow:0 2px 10px color-mix(in srgb,var(--brand) 38%,transparent),
+             0 10px 28px color-mix(in srgb,var(--brand) 22%,transparent)}
+.btn.go:hover:not(:disabled){filter:brightness(1.08);color:#fff;
+  box-shadow:0 4px 16px color-mix(in srgb,var(--brand) 48%,transparent),
+             0 14px 36px color-mix(in srgb,var(--brand) 28%,transparent)}
+
+/* ── hero + ask ──────────────────────────────────────────── */
+/* The input is the primary control, so it carries the largest type on the
+   page. Headline copy was removed: it sold the tool to someone already using it. */
+.ask textarea{font-size:19px;min-height:132px}
+.ask .head{margin-bottom:12px}
+.flags{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+.flag{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;padding:6px 11px;border-radius:999px;color:var(--warn);
+  border:1px solid color-mix(in srgb,var(--warn) 42%,transparent);
+  background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.flag.as-btn{cursor:pointer;color:var(--ink-2);border-color:var(--line);background:transparent}
+.flag.as-btn:hover{color:var(--brand);border-color:var(--brand)}
+.notice{margin:13px 0 0;padding:14px 17px;border-radius:var(--r-s);font-size:14.5px;
+  line-height:1.55;max-width:72ch;color:var(--ink-2);
+  border:1px solid color-mix(in srgb,var(--warn) 32%,transparent);
+  background:color-mix(in srgb,var(--warn) 7%,transparent)}
+
+.cols{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;
+  align-items:start;margin-top:4px}
+@media (max-width:62rem){.cols{grid-template-columns:1fr}}
+.stack{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+.card{padding:20px 22px}
+.card > .head{display:flex;justify-content:space-between;align-items:baseline;
+  gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.card h3{font-size:16.5px}
+.card .hint{font-size:13.5px;color:var(--ink-3);font-weight:400;letter-spacing:0}
+
+textarea{width:100%;min-height:118px;resize:vertical;font-family:var(--sans);
+  font-size:17px;line-height:1.55;padding:15px 17px;border-radius:13px;
+  border:1px solid var(--line);background:var(--glass-2);color:var(--ink);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  transition:border-color .16s, box-shadow .16s}
+textarea::placeholder{color:var(--ink-3)}
+textarea:focus{outline:none;border-color:var(--brand);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 17%,transparent)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+.chip{font-family:var(--mono);font-size:12px;padding:7px 13px;border-radius:999px;
+  border:1px dashed var(--line);background:transparent;color:var(--ink-2);
+  cursor:pointer;transition:all .16s}
+.chip:hover{border-style:solid;border-color:var(--brand);color:var(--brand)}
+
+/* ── agentic flow ────────────────────────────────────────── */
+.flow{position:relative;min-height:116px;padding:16px 18px;overflow:hidden}
+.flow .lane{display:flex;gap:11px;flex-wrap:wrap;align-items:flex-start}
+.fchip{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;
+  border-radius:12px;border:1px solid var(--glass-brd);background:var(--glass-2);
+  -webkit-backdrop-filter:blur(14px) saturate(150%);
+  backdrop-filter:blur(14px) saturate(150%);
+  max-width:330px;animation:chipIn .42s cubic-bezier(.2,.9,.3,1) both}
+.fchip.out{animation:chipOut .55s ease-in forwards}
+@keyframes chipIn{from{opacity:0;transform:translateY(12px) scale(.96);filter:blur(5px)}
+  to{opacity:1;transform:none;filter:none}}
+@keyframes chipOut{to{opacity:0;transform:translateY(-14px) scale(.97);filter:blur(5px)}}
+.fchip .dot{width:9px;height:9px;border-radius:50%;flex:none;margin-top:6px;
+  box-shadow:0 0 0 4px color-mix(in srgb,currentColor 18%,transparent)}
+.fchip .who{font-family:var(--mono);font-size:10.5px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;line-height:1.5}
+.fchip .what{font-size:14px;color:var(--ink);line-height:1.45;margin-top:1px}
+@media (prefers-reduced-motion:reduce){
+  .fchip{animation:none}.fchip.out{animation:none;opacity:0}
+}
+
+/* ── stat tiles ──────────────────────────────────────────── */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px}
+.tile{padding:17px 19px;border-radius:13px;border:1px solid var(--line);
+  background:var(--glass-2);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.tile .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-3)}
+.tile .v{font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.12;
+  margin-top:6px;font-variant-numeric:tabular-nums}
+.tile .n{font-size:13.5px;color:var(--ink-2);margin-top:3px}
+
+/* ── plain-language read ─────────────────────────────────── */
+.read{font-size:17px;line-height:1.65}
+.read p{margin:0 0 11px}
+.read p:last-child{margin-bottom:0}
+.read .big{font-size:19.5px;font-weight:600;letter-spacing:-.015em}
+.read ul{margin:9px 0;padding-left:20px}
+.read li{margin:5px 0}
+.read .qt{border-left:3px solid var(--brand);padding:9px 0 9px 15px;
+  margin:12px 0;color:var(--ink-2);font-size:16px}
+.export{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+.export .btn{justify-content:center;text-align:center;text-decoration:none}
+.export .note{font-size:13px;color:var(--ink-3);line-height:1.45}
+
+/* ── feed ────────────────────────────────────────────────── */
+.feed{max-height:27rem;overflow:auto;font-size:14.5px;
+  scrollbar-width:thin}
+.ev{display:grid;grid-template-columns:3.4rem 1fr;gap:11px;padding:9px 0;
   border-bottom:1px solid var(--line)}
 .ev:last-child{border-bottom:0}
-.ev .t{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);padding-top:2px;
+.ev .t{font-family:var(--mono);font-size:11px;color:var(--ink-3);padding-top:3px;
   font-variant-numeric:tabular-nums}
-.ev .k{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.05em;
-  text-transform:uppercase;padding:1px 6px;border-radius:5px;display:inline-block;
-  margin-right:6px;white-space:nowrap}
-.k-analysis{background:var(--ana-s);color:var(--ana)}
-.k-decision{background:var(--orch-s);color:var(--orch)}
-.k-revision{background:var(--hum-s);color:var(--hum)}
-.k-bioinformatics{background:var(--bio-s);color:var(--bio)}
-.k-evidence,.k-brief{background:var(--lit-s);color:var(--lit)}
-.k-run,.k-approved,.k-protocol{background:var(--lab-s);color:var(--lab)}
-.k-refusal,.k-error{background:var(--stop-s);color:var(--stop)}
-.k-terminal,.k-done,.k-report{background:var(--orch-s);color:var(--orch)}
-.k-other{background:var(--panel-2);color:var(--ink-3)}
-.ev .d{min-width:0;overflow-wrap:anywhere}
-.mut{color:var(--ink-2)} .dim{color:var(--ink-3)}
-.ok{color:var(--lab);font-weight:600} .bad{color:var(--stop);font-weight:600}
-.warnc{color:var(--hum);font-weight:600}
+.ev .d{min-width:0;overflow-wrap:anywhere;line-height:1.5}
+.k{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;padding:2px 8px;border-radius:6px;display:inline-block;
+  margin-right:7px;white-space:nowrap;border:1px solid currentColor;
+  background:color-mix(in srgb,currentColor 12%,transparent)}
+
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:left;padding:8px 9px;border-bottom:1px solid var(--line);
+  vertical-align:top}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+
 figure{margin:0}
-figcaption{font-size:11.5px;color:var(--ink-3);margin-top:7px;line-height:1.5}
+figcaption{font-size:13.5px;color:var(--ink-3);margin-top:10px;line-height:1.55}
 svg.chart{width:100%;height:auto;display:block;overflow:visible}
+svg.chart text{font-family:var(--mono);font-size:10px;fill:var(--ink-3)}
 .grid line{stroke:var(--line);stroke-width:1}
-.axis text{fill:var(--ink-3);font-family:var(--mono);font-size:9.5px}
-.axis line,.axis path{stroke:var(--line-2);stroke-width:1}
-.serie{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.serie{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
 .target{stroke:var(--ink-3);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin:2px 0 8px}
-.legend span{display:inline-flex;align-items:center;gap:6px}
-.swatch{width:11px;height:11px;border-radius:3px;flex:none}
-.tipbox{position:fixed;pointer-events:none;z-index:50;background:var(--panel);
-  border:1px solid var(--line-2);border-radius:9px;padding:8px 10px;font-size:12px;
-  box-shadow:0 6px 20px rgba(0,0,0,.14);max-width:16rem;opacity:0;transition:opacity .09s}
-.tipbox.on{opacity:1}
-.tipbox h4{font-size:12px;margin-bottom:4px}
-.tipbox .r{display:flex;justify-content:space-between;gap:12px}
-ul.tight{margin:5px 0;padding-left:1.1rem} ul.tight li{margin:2px 0}
-details{margin-top:8px} summary{cursor:pointer;font-family:var(--mono);font-size:11px;
-  color:var(--lit)} summary:hover{color:var(--orch)}
-.err{background:var(--stop-s);color:var(--stop);border:1px solid currentColor;
-  border-radius:10px;padding:10px 13px;font-size:12.5px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin:0 0 11px;
+  color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.sw{width:12px;height:12px;border-radius:4px;flex:none;display:inline-block}
+
+.tip{position:fixed;pointer-events:none;z-index:60;padding:11px 14px;
+  border-radius:11px;font-size:14px;max-width:17rem;opacity:0;
+  transition:opacity .1s;background:var(--glass);
+  -webkit-backdrop-filter:blur(20px) saturate(170%);
+  backdrop-filter:blur(20px) saturate(170%);
+  border:1px solid var(--glass-brd);box-shadow:var(--shadow)}
+.tip.on{opacity:1}
+.tip h4{font-size:13.5px;margin-bottom:6px}
+.tip .r{display:flex;justify-content:space-between;gap:16px;line-height:1.7}
+
+.err{padding:13px 16px;border-radius:var(--r-s);font-size:15px;
+  border:1px solid color-mix(in srgb,var(--bad) 42%,transparent);
+  background:color-mix(in srgb,var(--bad) 10%,transparent);color:var(--ink)}
+details{margin-top:12px}
+summary{cursor:pointer;font-family:var(--mono);font-size:12.5px;color:var(--brand)}
+summary:hover{text-decoration:underline}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-.hero{display:flex;gap:22px;flex-wrap:wrap;margin:2px 0 4px}
-.hero div{min-width:7rem}
-.hero .v{font-family:var(--display);font-size:1.45rem;font-weight:800;
-  font-variant-numeric:tabular-nums;line-height:1.1}
-.hero .l{font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--ink-3)}
+ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
+
+/* Narrow screens: keep the sticky header to one row. Left to wrap it took
+   119px of an 844px viewport, which is a lot of a phone screen to spend on
+   chrome that is pinned the whole way down the page. */
+@media (max-width:30rem){
+  .bar{gap:9px;padding:9px 20px}
+  .brand img{height:32px;width:32px}
+  .brand .nm{font-size:17px}
+  .brand .sub{display:none}
+  #clock{display:none}
+  .pill{font-size:10px;padding:5px 9px;letter-spacing:.04em}
+  .bar .btn{font-size:11px;padding:7px 10px}
+  .hero h1{letter-spacing:-.03em}
+  .card{padding:17px 17px}
+}
 </style>
 </head>
-<body data-palette="#1f6fa8,#a8475f">
-<div class="app">
+<body>
+<div class="wrap">
 
-<div class="bar">
+<header class="bar">
   <div class="brand">
-    <h1>BioSense Console</h1>
-    <span class="tag">prompt &rarr; loop &rarr; reasoning report</span>
+    <img src="assets/biosense-mark.png" alt="">
+    <div>
+      <div class="nm">BioSense<span>AI</span></div>
+      <div class="sub">Agentic orchestration</div>
+    </div>
   </div>
   <div class="spacer"></div>
-  <span class="pill idle" id="status"><span class="led"></span><span id="statusText">idle</span></span>
-  <span class="mono dim tnum" id="clock"></span>
-  <a class="btn" href="/index.html" style="text-decoration:none">Agent tracker</a>
-</div>
+  <span class="pill idle" id="status"><span class="led"></span><span id="statusText">ready</span></span>
+  <span class="mono dim tnum" id="clock" style="min-width:4.2rem;text-align:right"></span>
+  <button class="btn" id="theme" title="Switch light / dark">Theme</button>
+  <a class="btn" href="/index.html">Tracker</a>
+</header>
 
-<div class="note" role="note">
-  <b>Synthetic stand-in reactor.</b> Runs started here never touch a bioreactor and never call a
-  model. The protocol designer, the optimiser and the decisions are deterministic code; the
-  reactor is a phenomenological stand-in whose per-arm behaviour was invented for software
-  testing. Read a parameter the search recovers as evidence that the search works &mdash; not as a
-  finding about any gene or any cell. Nothing here is clinical or manufacturing guidance.
-</div>
 
-<div class="cols" style="margin-top:14px">
+
+<div class="cols">
   <div class="stack">
 
-    <section class="panel">
-      <div class="ptitle">Ask <span class="hint">one question; the loop fills in the rest and tells you what it assumed</span></div>
-      <div class="pbody">
-        <label class="sr" for="prompt">Your production question</label>
-        <textarea id="prompt" spellcheck="false" placeholder="Optimise the conditions for growing wild-type T cells from iPSC, and compare with a BACH2 knockout that must still be expanded."></textarea>
-        <div class="row">
-          <button class="btn go" id="run">Run the loop</button>
-          <button class="btn" id="check">Show what it understood</button>
-          <span class="dim mono" id="len"></span>
+    <section class="glass card ask">
+      <div class="head">
+        <h3>Production question</h3>
+        <div class="flags">
+          <span class="flag">Synthetic stand-in</span>
+          <button class="flag as-btn" id="why" aria-expanded="false">Why &rsaquo;</button>
         </div>
-        <div class="row" style="gap:16px">
-          <button class="ex" data-ex="Please optimize the condition for growing wild type Tcell from ipsc, please output the best protocol. Compare this with what happens when a Tcell with knockout of Bach2 is required to be expanded.">the BACH2 comparison</button>
-          <button class="ex" data-ex="Reach 30 cells per input cell of CD3+ T cells from iPSC by day 45, wild type only.">wild type only, day 45</button>
-          <button class="ex" data-ex="Expand CAR-T cells to 12 per input T cell at day 10 with an EXH1 knockout arm.">CAR-T, day 10</button>
-        </div>
-        <div id="parseOut"></div>
       </div>
+      <div class="notice" id="caveat" hidden role="note">
+        Runs here never touch a bioreactor and never call a model. The designer, the
+        optimiser and the decisions are deterministic code; the reactor is a stand-in whose
+        per-arm behaviour was invented for software testing. Every protocol value is a
+        design choice, not a published number. Limitations and references are in the report.
+      </div>
+      <label class="sr" for="prompt">Your production question</label>
+      <textarea id="prompt" spellcheck="false" placeholder="Optimise the conditions for growing wild-type T cells from iPSC, and compare with a BACH2 knockout that must still be expanded."></textarea>
+      <div class="row">
+        <button class="btn go" id="run">Run the loop</button>
+        <button class="btn" id="check">Assumptions</button>
+        <span class="dim mono tnum" id="len"></span>
+      </div>
+      <div class="chips">
+        <button class="chip" data-ex="Please optimize the condition for growing wild type Tcell from ipsc, please output the best protocol. Compare this with what happens when a Tcell with knockout of Bach2 is required to be expanded.">BACH2 comparison</button>
+        <button class="chip" data-ex="Reach 30 cells per input cell of CD3+ T cells from iPSC by day 45, wild type only.">Wild type · day 45</button>
+        <button class="chip" data-ex="Expand CAR-T cells to 12 per input T cell at day 10 with an EXH1 knockout arm.">CAR-T · day 10</button>
+      </div>
+      <div id="parseOut"></div>
     </section>
 
-    <section class="panel" id="chartPanel" hidden>
-      <div class="ptitle">Search trajectory <span class="hint">the request's own target metric, per arm, per iteration</span></div>
-      <div class="pbody">
-        <figure>
-          <div class="legend" id="legend"></div>
-          <div id="chart"></div>
-          <figcaption id="chartCap"></figcaption>
-        </figure>
-        <details>
-          <summary>Show as a table</summary>
-          <div id="chartTable"></div>
-        </details>
-      </div>
+    <section class="glass flow" id="flowPanel" hidden aria-live="polite" aria-label="Agent activity">
+      <div class="eyebrow" style="margin-bottom:11px">Agents working</div>
+      <div class="lane" id="flow"></div>
     </section>
 
-    <section class="panel" id="resultPanel" hidden>
-      <div class="ptitle">Where it ended <span class="hint" id="resultHint"></span></div>
-      <div class="pbody">
-        <div class="hero" id="hero"></div>
-        <div id="result"></div>
-      </div>
+    <section class="glass card" id="readPanel" hidden>
+      <div class="head"><h3>Result</h3>
+        </div>
+      <div class="read" id="read"></div>
+    </section>
+
+    <section class="glass card" id="chartPanel" hidden>
+      <div class="head"><h3>Search trajectory</h3>
+        <span class="hint">per arm, per iteration</span></div>
+      <figure>
+        <div class="legend" id="legend"></div>
+        <div id="chart"></div>
+        <figcaption id="chartCap"></figcaption>
+      </figure>
+      <details><summary>Show as a table</summary><div id="chartTable"></div></details>
     </section>
 
   </div>
 
   <div class="stack">
-    <section class="panel">
-      <div class="ptitle">Live <span class="hint" id="evCount"></span></div>
-      <div class="pbody">
-        <div class="feed" id="feed" aria-live="polite" aria-relevant="additions">
-          <p class="dim">Nothing running. Type a question and press <b>Run the loop</b>.</p>
-        </div>
+    <section class="glass card" id="tilePanel" hidden>
+      <div class="head"><h3>Outcome</h3><span class="hint" id="tileHint"></span></div>
+      <div class="tiles" id="tiles"></div>
+      <div id="result" style="margin-top:15px"></div>
+    </section>
+
+    <section class="glass card">
+      <div class="head"><h3>Record</h3><span class="hint" id="evCount"></span></div>
+      <div class="feed" id="feed">
+        <p class="dim">Nothing running yet. Type a question and press <b>Run the loop</b>.</p>
       </div>
     </section>
 
-    <section class="panel" id="findPanel" hidden>
-      <div class="ptitle">What the search established</div>
-      <div class="pbody"><div id="findings"></div></div>
-    </section>
-
-    <section class="panel">
-      <div class="ptitle">Loops on disk <span class="hint">read-only</span></div>
-      <div class="pbody"><div id="loops" class="dim">loading&hellip;</div></div>
+    <section class="glass card">
+      <div class="head"><h3>Earlier runs</h3><span class="hint">read-only</span></div>
+      <div id="loops" class="dim">loading…</div>
     </section>
   </div>
 </div>
 
-<div class="tipbox" id="tip" role="status"></div>
+<div class="tip" id="tip" role="status"></div>
 </div>
 
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
-const el = (t, c, txt) => { const n = document.createElement(t); if (c) n.className = c;
-  if (txt != null) n.textContent = txt; return n; };
-const esc = s => String(s == null ? '' : s);
-const fmt = (v, nd = 2) => (typeof v === 'number' && isFinite(v))
-  ? (Math.abs(v) >= 1e6 ? v.toExponential(2) : v.toFixed(nd).replace(/\.?0+$/, '')) : '—';
-const SERIES = ['var(--s1)', 'var(--s2)', 'var(--bio)', 'var(--hum)'];
+const el = (t,c,x)=>{const n=document.createElement(t);if(c)n.className=c;
+  if(x!=null)n.textContent=x;return n;};
+const fmt=(v,nd=2)=>(typeof v==='number'&&isFinite(v))
+  ?(Math.abs(v)>=1e6?v.toExponential(2):(+v.toFixed(nd)).toString()):'—';
+const SERIES=['var(--s1)','var(--s2)','var(--s3)'];
 
-let es = null, runId = null, t0 = 0, timer = null;
-const state = { arms: [], obs: [], target: null, metric: '', findings: [], summary: null };
+/* theme ---------------------------------------------------- */
+(function(){
+  let saved=null; try{saved=localStorage.getItem('bs-theme');}catch(_){}
+  if(saved)document.documentElement.setAttribute('data-theme',saved);
+  $('#theme').addEventListener('click',()=>{
+    const cur=document.documentElement.getAttribute('data-theme')
+      || (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+    const next=cur==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',next);
+    try{localStorage.setItem('bs-theme',next);}catch(_){}
+    if(state.obs.length)drawChart();
+  });
+})();
 
-function setStatus(kind, text, live) {
-  const p = $('#status');
-  p.className = 'pill ' + kind + (live ? ' live' : '');
-  $('#statusText').textContent = text;
+/* which agent owns which event ----------------------------- */
+const AGENT={
+  evidence:['Literature agent','var(--s1)'],
+  protocol:['Protocol designer','var(--brand)'],
+  approved:['Approval gate','var(--brand)'],
+  run:['Bioreactor stand-in','var(--s3)'],
+  analysis:['Analysis agent','var(--s2)'],
+  bioinformatics:['Bioinformatics agent','var(--s3)'],
+  envelope:['Decision envelope','var(--neutral)'],
+  decision:['Orchestrator','var(--brand)'],
+  brief:['Orchestrator','var(--brand)'],
+  revision:['Optimiser','var(--s2)'],
+  terminal:['Orchestrator','var(--ok)'],
+  report:['Reporter','var(--ok)'],
+  refusal:['Refused','var(--bad)'],
+  error:['Error','var(--bad)'],
+  loop_init:['Loop','var(--brand)'],
+  accepted:['Loop','var(--brand)'],
+  note:['Loop','var(--warn)'],
+  done:['Loop','var(--ok)'],
+};
+const state={arms:[],obs:[],target:null,findings:[],summary:null,colors:{}};
+
+/* agentic flow -------------------------------------------------
+   The engine finishes a 25-iteration run in about a second, so the
+   events arrive as one burst. Rendering them straight through gives a
+   flicker and an empty panel. They are queued instead and released at a
+   readable pace, so the panel narrates the run even though the run is
+   already over. Low-value kinds are dropped first when the queue runs
+   long, so the narration keeps up without lying about the order. */
+const FLOW_MS=430, FLOW_MAX=5, FLOW_LIFE=4200;
+const flowQ=[]; let flowTimer=null, flowIdle=null;
+const FLOW_DROPPABLE=new Set(['envelope','protocol','approved','brief','run']);
+
+function queueFlow(kind,text){
+  flowQ.push({kind,text});
+  // Running behind: shed the least informative items rather than the newest.
+  while(flowQ.length>14){
+    const i=flowQ.findIndex(x=>FLOW_DROPPABLE.has(x.kind));
+    flowQ.splice(i<0?0:i,1);
+  }
+  if(!flowTimer)flowTimer=setInterval(drainFlow,FLOW_MS);
+  drainFlow();
 }
-function tick() {
-  $('#clock').textContent = t0 ? ((Date.now() - t0) / 1000).toFixed(1) + 's' : '';
+function drainFlow(){
+  const item=flowQ.shift();
+  if(!item){
+    if(flowTimer){clearInterval(flowTimer);flowTimer=null;}
+    scheduleFlowHide();
+    return;
+  }
+  flowChip(item.kind,item.text);
+}
+function scheduleFlowHide(){
+  // Short debounce only: the panel is hidden as soon as the last chip has gone
+  // and nothing is queued. Waiting a chip-lifetime left an empty glass box on
+  // screen for several seconds after the run, which reads as a broken panel.
+  clearTimeout(flowIdle);
+  flowIdle=setTimeout(()=>{
+    if(!flowQ.length&&!flowTimer&&!$('#flow').children.length)$('#flowPanel').hidden=true;
+  },260);
 }
 
-/* ── events ─────────────────────────────────────────────── */
-const KINDS = new Set(['analysis','decision','revision','bioinformatics','evidence','brief','run',
-  'approved','protocol','refusal','error','terminal','done','report','loop_init','envelope',
-  'accepted','note']);
+function flowChip(kind,text){
+  const [who,col]=AGENT[kind]||['Loop','var(--neutral)'];
+  $('#flowPanel').hidden=false;
+  const lane=$('#flow');
+  const c=el('div','fchip'); c.style.color=col;
+  const d=el('span','dot'); d.style.background=col; c.appendChild(d);
+  const b=el('div');
+  const w=el('div','who',who); w.style.color=col; b.appendChild(w);
+  b.appendChild(el('div','what',text));
+  c.appendChild(b); lane.appendChild(c);
+  setTimeout(()=>{
+    c.classList.add('out');
+    setTimeout(()=>{ if(c.parentNode)c.remove(); scheduleFlowHide(); },560);
+  },FLOW_LIFE);
+  while(lane.children.length>FLOW_MAX) lane.firstElementChild.remove();
+}
 
-function describe(e) {
-  const d = el('div', 'd');
-  const k = el('span', 'k k-' + (KINDS.has(e.kind) ? e.kind : 'other'), e.kind.replace(/_/g, ' '));
-  d.appendChild(k);
-  const add = (s, cls) => { const sp = el('span', cls || null, s); d.appendChild(sp);
-    d.appendChild(document.createTextNode(' ')); };
-  switch (e.kind) {
-    case 'loop_init': add(e.question || '', 'mut'); if (e.target) add('· ' + e.target, 'dim'); break;
-    case 'accepted': add('request ' + e.request_id + ' · ' + e.standin + ' stand-in', 'mut');
-      if (e.assumed) add('· ' + e.assumed + ' defaults assumed', 'dim'); break;
-    case 'evidence': add(e.claims + ' directional claims from ' + e.sources + ' publications', 'mut');
-      add('· no numeric value is attributed to any of them', 'dim'); break;
-    case 'protocol': add('it' + e.iteration + ' ' + e.protocol_id, 'mut');
-      add('· ' + e.design_choices + ' design choices, ' + e.gaps + ' gaps', 'dim'); break;
-    case 'approved': add('it' + e.iteration + ' · ' + e.acknowledged + ' design choices acknowledged', 'dim'); break;
-    case 'run': add(e.label || e.run_id, 'dim'); break;
-    case 'analysis': {
-      add('it' + e.iteration, 'dim');
-      add(e.verdict, e.verdict === 'SUCCESS' ? 'ok' : e.verdict === 'FAILED' ? 'bad' : 'warnc');
-      (e.arms || []).forEach(a => add(a.arm_id + ' ' + fmt(a.observed) +
-        (a.status === 'MET' ? ' ✓' : ' ✗') + (a.qc_fail && a.qc_fail.length ? ' QC!' : ''),
-        a.status === 'MET' ? 'ok' : 'mut'));
-      break; }
-    case 'bioinformatics':
-      add((e.found || []).join(', ') + ' · ' + (e.levers || []).length + ' levers implicated', 'mut');
-      if ((e.not_found || []).length) add('· not found: ' + e.not_found.join(', '), 'warnc');
-      break;
-    case 'decision': add(e.type, 'mut'); add('· ' + e.status + ' · by ' + e.authored_by, 'dim'); break;
+/* one-line description of an event ------------------------- */
+function say(e){
+  switch(e.kind){
+    case 'loop_init': return e.question||'loop started';
+    case 'accepted': return `request ${e.request_id} · ${e.standin} stand-in`
+      + (e.assumed?` · ${e.assumed} defaults assumed`:'');
+    case 'evidence': return `${e.claims} directional claims from ${e.sources} publications`;
+    case 'protocol': return `iteration ${e.iteration} · ${e.design_choices} design choices, `
+      + `${e.gaps} gaps`;
+    case 'approved': return `iteration ${e.iteration} · ${e.acknowledged} design choices acknowledged`;
+    case 'run': return e.label||e.run_id;
+    case 'analysis': return `${e.verdict} — `+(e.arms||[]).map(a=>
+      `${a.arm_id} ${fmt(a.observed)}${a.status==='MET'?' ✓':' ✗'}`).join(' · ');
+    case 'bioinformatics': return `${(e.found||[]).join(', ')||'nothing found'} · `
+      + `${(e.levers||[]).length} levers implicated`;
+    case 'envelope': return `may choose: ${(e.allowed||[]).join(', ')}`;
+    case 'decision': return `${e.type} · ${e.status} · by ${e.authored_by}`;
+    case 'brief': return (e.failed||[]).join('; ')||'revision brief written';
     case 'revision': {
-      add('→ it' + e.iteration, 'dim');
-      (e.reverts || []).forEach(r => add('revert ' + r.factor + ' → ' + fmt(r.revert_to) +
-        ' (' + r.why + ')', 'warnc'));
-      (e.moves || []).forEach(m => add(m.factor + ' ' + fmt(m.from) + '→' + fmt(m.to) +
-        (m.arm_id ? ' [' + m.arm_id + ']' : ' [all]'), 'mut'));
-      if (!(e.moves || []).length && !(e.reverts || []).length) add('nothing to move', 'dim');
-      break; }
-    case 'brief': add((e.failed || []).join('; '), 'dim'); break;
-    case 'refusal': case 'error':
-      add(esc(e.step) + ': ' + esc(e.detail), 'bad'); break;
-    case 'terminal': add(e.type, 'ok'); add('· ' + esc(e.reason).slice(0, 180), 'dim'); break;
-    case 'report': add('reasoning report written', 'ok'); break;
-    case 'done': add('terminal ' + e.terminal + ' · ' + e.iterations_used + '/' +
-      e.max_iterations + ' iterations', 'mut'); break;
-    case 'note': add(esc(e.detail), 'warnc'); break;
-    default: add(JSON.stringify(e).slice(0, 170), 'dim');
+      const mv=(e.moves||[]).map(m=>`${m.factor} ${fmt(m.from)}→${fmt(m.to)}`
+        +(m.arm_id?` [${m.arm_id}]`:'')).join('; ');
+      const rv=(e.reverts||[]).map(r=>`revert ${r.factor} (${r.why})`).join('; ');
+      return [rv,mv].filter(Boolean).join(' · ')||'nothing left to move';
+    }
+    case 'terminal': return `${e.type}`;
+    case 'report': return 'reasoning report written';
+    case 'refusal': case 'error': return `${e.step||''}: ${e.detail||''}`;
+    case 'note': return e.detail||'';
+    case 'done': return `${e.terminal} · ${e.iterations_used}/${e.max_iterations} iterations`;
+    default: return JSON.stringify(e).slice(0,150);
   }
-  return d;
 }
 
-function pushEvent(e) {
-  const feed = $('#feed');
-  if (feed.firstElementChild && feed.firstElementChild.tagName === 'P') feed.textContent = '';
-  const row = el('div', 'ev');
-  row.appendChild(el('div', 't', (e.t != null ? e.t.toFixed(1) + 's' : '')));
-  row.appendChild(describe(e));
-  feed.appendChild(row);
-  feed.scrollTop = feed.scrollHeight;
-  $('#evCount').textContent = feed.querySelectorAll('.ev').length + ' events';
+function pushEvent(e){
+  const feed=$('#feed');
+  if(feed.firstElementChild&&feed.firstElementChild.tagName==='P')feed.textContent='';
+  const row=el('div','ev');
+  row.appendChild(el('div','t',e.t!=null?e.t.toFixed(1)+'s':''));
+  const d=el('div','d');
+  const [who,col]=AGENT[e.kind]||['','var(--neutral)'];
+  const tag=el('span','k',e.kind.replace(/_/g,' ')); tag.style.color=col;
+  d.appendChild(tag); d.appendChild(document.createTextNode(say(e)));
+  row.appendChild(d); feed.appendChild(row);
+  feed.scrollTop=feed.scrollHeight;
+  $('#evCount').textContent=feed.querySelectorAll('.ev').length+' events';
 
-  if (e.kind === 'loop_init') {
-    state.arms = e.arms || []; state.obs = []; state.findings = [];
-    const m = /([a-z_]+) >= ([0-9.]+)/.exec(e.target || '');
-    if (m) { state.metric = m[1]; state.target = parseFloat(m[2]); }
+  // The envelope line is in the full record below; it adds nothing as a chip.
+  if(e.kind!=='envelope') queueFlow(e.kind,say(e));
+
+  if(e.kind==='loop_init'){
+    state.arms=e.arms||[]; state.obs=[]; state.findings=[];
+    state.colors={}; state.arms.forEach((a,i)=>state.colors[a]=SERIES[i%SERIES.length]);
+    const m=/([a-z_]+) >= ([0-9.]+)/.exec(e.target||'');
+    if(m){state.target=parseFloat(m[2]);}
   }
-  if (e.kind === 'analysis') {
-    const row2 = { iteration: e.iteration, arms: {} };
-    (e.arms || []).forEach(a => { row2.arms[a.arm_id] = a.observed; });
-    state.obs = state.obs.filter(o => o.iteration !== e.iteration).concat([row2])
-      .sort((a, b) => a.iteration - b.iteration);
+  if(e.kind==='analysis'){
+    const r={iteration:e.iteration,arms:{}};
+    (e.arms||[]).forEach(a=>r.arms[a.arm_id]=a.observed);
+    state.obs=state.obs.filter(o=>o.iteration!==e.iteration).concat([r])
+      .sort((a,b)=>a.iteration-b.iteration);
     drawChart();
   }
-  if (e.kind === 'revision' && (e.findings || []).length) {
-    state.findings = e.findings; renderFindings();
-  }
-  if (e.kind === 'done') { state.summary = e; }
+  if(e.kind==='revision'&&(e.findings||[]).length){state.findings=e.findings;renderFindings();}
+  if(e.kind==='done')state.summary=e;
 }
 
-/* ── chart ──────────────────────────────────────────────── */
-function drawChart() {
-  if (state.obs.length < 1 || !state.arms.length) return;
-  $('#chartPanel').hidden = false;
-  const W = 640, H = 260, m = { t: 14, r: 56, b: 30, l: 46 };
-  const iw = W - m.l - m.r, ih = H - m.t - m.b;
-  const xs = state.obs.map(o => o.iteration);
-  const xmin = Math.min(...xs), xmax = Math.max(Math.max(...xs), xmin + 1);
-  let vals = [];
-  state.obs.forEach(o => state.arms.forEach(a => {
-    if (typeof o.arms[a] === 'number') vals.push(o.arms[a]); }));
-  if (state.target) vals.push(state.target);
-  const ymax = Math.max(...vals) * 1.1 || 1, ymin = 0;
-  const X = v => m.l + (v - xmin) / (xmax - xmin) * iw;
-  const Y = v => m.t + ih - (v - ymin) / (ymax - ymin) * ih;
+/* chart ---------------------------------------------------- */
+function drawChart(){
+  if(!state.obs.length||!state.arms.length)return;
+  $('#chartPanel').hidden=false;
+  const W=660,H=268,m={t:16,r:80,b:36,l:52};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b;
+  const xs=state.obs.map(o=>o.iteration);
+  const x0=Math.min(...xs), x1=Math.max(Math.max(...xs),x0+1);
+  let vals=[]; state.obs.forEach(o=>state.arms.forEach(a=>{
+    if(typeof o.arms[a]==='number')vals.push(o.arms[a]);}));
+  if(state.target)vals.push(state.target);
+  const ymax=(Math.max(...vals)||1)*1.14;
+  const X=v=>m.l+(v-x0)/(x1-x0)*iw, Y=v=>m.t+ih-(v/ymax)*ih;
+  const ns='http://www.w3.org/2000/svg';
+  const mk=(t,at)=>{const n=document.createElementNS(ns,t);
+    for(const k in at)n.setAttribute(k,at[k]);return n;};
+  const svg=mk('svg',{class:'chart',viewBox:`0 0 ${W} ${H}`,role:'img',
+    'aria-label':`Target metric per iteration for ${state.arms.join(' and ')}`});
 
-  const ticksY = 4, ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('class', 'chart');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', `Target metric per iteration for ${state.arms.join(' and ')}`);
-  const mk = (t, at) => { const n = document.createElementNS(ns, t);
-    for (const k in at) n.setAttribute(k, at[k]); return n; };
-
-  const g = mk('g', { class: 'grid' });
-  for (let i = 0; i <= ticksY; i++) {
-    const y = m.t + ih - i / ticksY * ih;
-    g.appendChild(mk('line', { x1: m.l, x2: m.l + iw, y1: y, y2: y }));
-  }
+  const g=mk('g',{class:'grid'});
+  const nT=4;
+  for(let i=0;i<=nT;i++){const y=m.t+ih-i/nT*ih;
+    g.appendChild(mk('line',{x1:m.l,x2:m.l+iw,y1:y,y2:y}));}
   svg.appendChild(g);
+  for(let i=0;i<=nT;i++){const v=i/nT*ymax,y=m.t+ih-i/nT*ih;
+    const t=mk('text',{x:m.l-9,y:y+3.5,'text-anchor':'end'});
+    t.textContent=Math.round(v); svg.appendChild(t);}
+  const step=Math.max(1,Math.ceil((x1-x0)/8));
+  for(let v=x0;v<=x1;v+=step){const t=mk('text',{x:X(v),y:H-m.b+16,'text-anchor':'middle'});
+    t.textContent=v; svg.appendChild(t);}
+  const xl=mk('text',{x:m.l+iw/2,y:H-3,'text-anchor':'middle'});
+  xl.textContent='iteration'; svg.appendChild(xl);
 
-  const ax = mk('g', { class: 'axis' });
-  for (let i = 0; i <= ticksY; i++) {
-    const v = ymin + i / ticksY * (ymax - ymin), y = m.t + ih - i / ticksY * ih;
-    const tx = mk('text', { x: m.l - 7, y: y + 3, 'text-anchor': 'end' });
-    tx.textContent = fmt(v, 0); ax.appendChild(tx);
+  if(state.target){
+    svg.appendChild(mk('line',{class:'target',x1:m.l,x2:m.l+iw,
+      y1:Y(state.target),y2:Y(state.target)}));
+    const t=mk('text',{x:m.l+5,y:Y(state.target)-8});
+    t.textContent='target '+Math.round(state.target); svg.appendChild(t);
   }
-  const step = Math.max(1, Math.ceil((xmax - xmin) / 8));
-  for (let v = xmin; v <= xmax; v += step) {
-    const tx = mk('text', { x: X(v), y: H - m.b + 15, 'text-anchor': 'middle' });
-    tx.textContent = v; ax.appendChild(tx);
-  }
-  const xl = mk('text', { x: m.l + iw / 2, y: H - 2, 'text-anchor': 'middle' });
-  xl.textContent = 'iteration'; ax.appendChild(xl);
-  svg.appendChild(ax);
-
-  if (state.target) {
-    svg.appendChild(mk('line', { class: 'target', x1: m.l, x2: m.l + iw,
-      y1: Y(state.target), y2: Y(state.target) }));
-    // Left end of the rule: the right end is where the series labels sit.
-    const tl = mk('text', { x: m.l + 4, y: Y(state.target) - 6 });
-    tl.setAttribute('fill', 'var(--ink-3)');
-    tl.setAttribute('font-family', 'var(--mono)'); tl.setAttribute('font-size', '9.5');
-    tl.textContent = 'target ' + fmt(state.target, 0); svg.appendChild(tl);
-  }
-  // Dot every point only while there are few enough to read. Past that the line
-  // carries the shape and the hover crosshair carries the values.
-  const dots = state.obs.length <= 12;
-
-  state.arms.forEach((arm, i) => {
-    const pts = state.obs.filter(o => typeof o.arms[arm] === 'number')
-      .map(o => [X(o.iteration), Y(o.arms[arm])]);
-    if (!pts.length) return;
-    const col = SERIES[i % SERIES.length];
-    svg.appendChild(mk('path', { class: 'serie', stroke: col,
-      d: pts.map((p, j) => (j ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ') }));
-    if (dots) pts.forEach(p => {
-      const c = mk('circle', { cx: p[0], cy: p[1], r: 4, fill: col });
-      c.setAttribute('stroke', 'var(--panel)'); c.setAttribute('stroke-width', '2');
-      svg.appendChild(c);
-    });
-    // Direct label at the last point: identity is never colour alone.
-    const last = pts[pts.length - 1];
-    const lb = mk('text', { x: last[0] + 6, y: last[1] + (i % 2 ? 13 : -6) });
-    lb.setAttribute('fill', col); lb.setAttribute('font-family', 'var(--mono)');
-    lb.setAttribute('font-size', '10'); lb.setAttribute('font-weight', '600');
-    lb.textContent = arm; svg.appendChild(lb);
+  const dots=state.obs.length<=12;
+  state.arms.forEach((arm,i)=>{
+    const col=state.colors[arm]||SERIES[i%SERIES.length];
+    const pts=state.obs.filter(o=>typeof o.arms[arm]==='number')
+      .map(o=>[X(o.iteration),Y(o.arms[arm])]);
+    if(!pts.length)return;
+    svg.appendChild(mk('path',{class:'serie',stroke:col,
+      d:pts.map((p,j)=>(j?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')}));
+    if(dots)pts.forEach(p=>{const c=mk('circle',{cx:p[0],cy:p[1],r:4.5,fill:col});
+      c.setAttribute('stroke','var(--bg)');c.setAttribute('stroke-width','2.5');
+      svg.appendChild(c);});
+    const last=pts[pts.length-1];
+    const lb=mk('text',{x:last[0]+8,y:last[1]+(i%2?14:-7)});
+    lb.setAttribute('style','fill:'+col+';font-weight:600;font-size:11px');
+    lb.textContent=arm; svg.appendChild(lb);
   });
 
-  // Crosshair + tooltip over the plot.
-  const hit = mk('rect', { x: m.l, y: m.t, width: iw, height: ih, fill: 'transparent' });
-  const cross = mk('line', { class: 'target', y1: m.t, y2: m.t + ih, x1: m.l, x2: m.l });
-  cross.setAttribute('stroke-dasharray', '2 3');
-  cross.setAttribute('visibility', 'hidden');
-  svg.appendChild(cross); svg.appendChild(hit);
-  const tip = $('#tip');
-  hit.addEventListener('pointermove', ev => {
-    const r = svg.getBoundingClientRect();
-    const vx = (ev.clientX - r.left) / r.width * W;
-    const it = Math.round(xmin + (vx - m.l) / iw * (xmax - xmin));
-    const o = state.obs.reduce((best, c) =>
-      Math.abs(c.iteration - it) < Math.abs(best.iteration - it) ? c : best, state.obs[0]);
-    cross.setAttribute('x1', X(o.iteration)); cross.setAttribute('x2', X(o.iteration));
-    cross.setAttribute('visibility', 'visible');
-    tip.innerHTML = '';
-    tip.appendChild(el('h4', null, 'iteration ' + o.iteration));
-    state.arms.forEach((a, i) => {
-      const r2 = el('div', 'r');
-      const lft = el('span'); lft.appendChild(Object.assign(el('span', 'swatch'),
-        { style: 'background:' + SERIES[i % SERIES.length] + ';display:inline-block;margin-right:5px' }));
-      lft.appendChild(document.createTextNode(a));
-      r2.appendChild(lft);
-      r2.appendChild(el('span', 'mono tnum', fmt(o.arms[a])));
-      tip.appendChild(r2);
+  const cross=mk('line',{class:'target',y1:m.t,y2:m.t+ih,x1:m.l,x2:m.l});
+  cross.setAttribute('stroke-dasharray','2 3');
+  cross.setAttribute('visibility','hidden');
+  svg.appendChild(cross);
+  const hit=mk('rect',{x:m.l,y:m.t,width:iw,height:ih,fill:'transparent'});
+  svg.appendChild(hit);
+  const tip=$('#tip');
+  hit.addEventListener('pointermove',ev=>{
+    const r=svg.getBoundingClientRect();
+    const vx=(ev.clientX-r.left)/r.width*W;
+    const it=Math.round(x0+(vx-m.l)/iw*(x1-x0));
+    const o=state.obs.reduce((b,c)=>Math.abs(c.iteration-it)<Math.abs(b.iteration-it)?c:b,
+      state.obs[0]);
+    cross.setAttribute('x1',X(o.iteration));cross.setAttribute('x2',X(o.iteration));
+    cross.setAttribute('visibility','visible');
+    tip.textContent='';
+    tip.appendChild(el('h4',null,'iteration '+o.iteration));
+    state.arms.forEach((a,i)=>{
+      const row=el('div','r'); const lf=el('span');
+      const sw=el('i','sw'); sw.style.background=state.colors[a]||SERIES[i%3];
+      sw.style.marginRight='7px'; lf.appendChild(sw);
+      lf.appendChild(document.createTextNode(a));
+      row.appendChild(lf); row.appendChild(el('span','mono tnum',fmt(o.arms[a])));
+      tip.appendChild(row);
     });
     tip.classList.add('on');
-    tip.style.left = Math.min(ev.clientX + 13, innerWidth - 240) + 'px';
-    tip.style.top = (ev.clientY + 13) + 'px';
+    tip.style.left=Math.min(ev.clientX+15,innerWidth-270)+'px';
+    tip.style.top=(ev.clientY+15)+'px';
   });
-  hit.addEventListener('pointerleave', () => {
-    tip.classList.remove('on'); cross.setAttribute('visibility', 'hidden');
-  });
+  hit.addEventListener('pointerleave',()=>{tip.classList.remove('on');
+    cross.setAttribute('visibility','hidden');});
 
-  $('#chart').textContent = ''; $('#chart').appendChild(svg);
-  $('#chartCap').textContent = 'Each point is one stand-in run. The optimiser moves one lever per '
-    + 'arm per iteration and reverts any move that does not beat that arm’s best reading, so '
-    + 'the line can step back. Dashed line is the target the request asked for.';
+  $('#chart').textContent=''; $('#chart').appendChild(svg);
+  $('#chartCap').textContent='One point per run. A move that does not beat an arm’s best '
+    +'is reverted, so a line can step back. Dashed rule is your target.';
 
-  const t = el('table');
-  const th = el('tr'); th.appendChild(el('th', 'n', 'Iteration'));
-  state.arms.forEach(a => th.appendChild(el('th', 'n', a)));
-  t.appendChild(el('thead')).appendChild(th);
-  const tb = el('tbody');
-  state.obs.forEach(o => {
-    const tr = el('tr'); tr.appendChild(el('td', 'n', o.iteration));
-    state.arms.forEach(a => tr.appendChild(el('td', 'n tnum', fmt(o.arms[a]))));
-    tb.appendChild(tr);
-  });
-  t.appendChild(tb);
-  $('#chartTable').textContent = ''; $('#chartTable').appendChild(t);
+  const t=el('table'); const hr=el('tr'); hr.appendChild(el('th','n','Iteration'));
+  state.arms.forEach(a=>hr.appendChild(el('th','n',a)));
+  t.appendChild(el('thead')).appendChild(hr);
+  const tb=el('tbody');
+  state.obs.forEach(o=>{const r=el('tr'); r.appendChild(el('td','n tnum',o.iteration));
+    state.arms.forEach(a=>r.appendChild(el('td','n tnum',fmt(o.arms[a])))); tb.appendChild(r);});
+  t.appendChild(tb); $('#chartTable').textContent=''; $('#chartTable').appendChild(t);
 
-  const lg = $('#legend'); lg.textContent = '';
-  state.arms.forEach((a, i) => {
-    const s = el('span');
-    const sw = el('span', 'swatch'); sw.style.background = SERIES[i % SERIES.length];
-    s.appendChild(sw); s.appendChild(document.createTextNode(a));
-    lg.appendChild(s);
-  });
+  const lg=$('#legend'); lg.textContent='';
+  state.arms.forEach((a,i)=>{const s=el('span');
+    const sw=el('i','sw'); sw.style.background=state.colors[a]||SERIES[i%3];
+    s.appendChild(sw); s.appendChild(document.createTextNode(a)); lg.appendChild(s);});
 }
 
-function renderFindings() {
-  if (!state.findings.length) return;
-  $('#findPanel').hidden = false;
-  const ul = el('ul', 'tight');
-  state.findings.forEach(f => ul.appendChild(el('li', 'mut', f)));
-  $('#findings').textContent = ''; $('#findings').appendChild(ul);
+function renderFindings(){
+  // Findings surface inside the Result card; they had their own panel too, which
+  // printed the same sentence twice on one screen.
 }
 
-function renderResult(snap) {
-  const s = snap.summary || {};
-  $('#resultPanel').hidden = false;
-  $('#resultHint').textContent = (s.terminal || snap.status) + ' · ' +
-    (s.iterations_used != null ? s.iterations_used + '/' + s.max_iterations + ' iterations' : '');
-  const hero = $('#hero'); hero.textContent = '';
-  Object.entries(s.best || {}).forEach(([arm, b]) => {
-    const d = el('div');
-    const v = el('div', 'v', fmt(b.observed));
-    v.style.color = b.status === 'MET' ? 'var(--lab)' : 'var(--stop)';
+/* the result in as few words as possible ------------------- */
+function interpret(snap){
+  const s=snap.summary||{}; const best=s.best||{};
+  const arms=Object.entries(best);
+  const missed=arms.filter(([,v])=>v.status!=='MET').map(([k])=>k);
+  const r=$('#read'); r.textContent='';
+  const TERM={
+    protocol_succeeded:'Every arm reached the target. QC passed.',
+    stop_budget:'Budget ran out before every arm got there.',
+    search_exhausted:'The search ran out of levers it could move.',
+    complete_qc:'Target met, QC record incomplete.',
+    escalate_to_human:'Raised for a person to settle.',
+    refused:'The loop declined to start.',
+    error:'The run hit an error.',
+  };
+  const head=el('p','big',TERM[s.terminal]||String(s.terminal||'').replace(/_/g,' '));
+  r.appendChild(head);
+  if(missed.length) r.appendChild(el('p','mut',`${missed.join(' and ')} did not reach it.`));
+  // The one thing worth reading: a parameter no shared recipe could satisfy.
+  state.findings.forEach(f=>{
+    const q=el('div','qt'); q.textContent=f; r.appendChild(q);
+  });
+  $('#readPanel').hidden=false;
+}
+
+function renderResult(snap){
+  const s=snap.summary||{};
+  $('#tilePanel').hidden=false;
+  $('#tileHint').textContent=(s.terminal||snap.status||'').replace(/_/g,' ');
+  const tiles=$('#tiles'); tiles.textContent='';
+  Object.entries(s.best||{}).forEach(([arm,b])=>{
+    const d=el('div','tile');
+    d.appendChild(el('div','k',arm));
+    const v=el('div','v',fmt(b.observed));
+    v.style.color=b.status==='MET'?'var(--ok)':'var(--bad)';
     d.appendChild(v);
-    d.appendChild(el('div', 'l', arm + ' · ' + (b.status === 'MET' ? 'met' : 'not met')));
-    hero.appendChild(d);
+    d.appendChild(el('div','n',(b.status==='MET'?'target met':'target not met')
+      +' · iteration '+b.iteration));
+    tiles.appendChild(d);
   });
-  const out = $('#result'); out.textContent = '';
-  const dl = el('dl', 'kv');
-  const put = (k, v) => { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); };
-  put('ended in', s.terminal || snap.status);
-  put('loop', snap.loop_dir);
-  if (s.best) {
-    Object.entries(s.best).forEach(([arm, b]) =>
-      put(arm, fmt(b.observed) + ' at iteration ' + b.iteration + ' (' + b.protocol_id + ')'));
+  if(s.iterations_used!=null){
+    const d=el('div','tile');
+    d.appendChild(el('div','k','Iterations'));
+    d.appendChild(el('div','v',s.iterations_used+'/'+s.max_iterations));
+    d.appendChild(el('div','n','only revisions cost one'));
+    tiles.appendChild(d);
   }
-  out.appendChild(dl);
-  if ((s.refusals || []).length) {
-    out.appendChild(el('h4', null, 'Refusals'));
-    const ul = el('ul', 'tight');
-    s.refusals.forEach(r => ul.appendChild(el('li', 'warnc',
-      (r.step || '') + ': ' + (r.error || r.status || ''))));
+  const out=$('#result'); out.textContent='';
+  if((s.refusals||[]).length){
+    out.appendChild(el('h4',null,'Refusals'));
+    const ul=el('ul','tight');
+    s.refusals.forEach(x=>ul.appendChild(el('li','warnc',
+      (x.step||'')+': '+(x.error||x.status||''))));
     out.appendChild(ul);
   }
-  const row = el('div', 'row');
-  const a = el('a', 'btn', 'Open the reasoning report');
-  a.href = '/api/runs/' + snap.run_id + '/report'; a.target = '_blank';
-  a.style.textDecoration = 'none';
-  row.appendChild(a);
-  out.appendChild(row);
-  out.appendChild(el('p', 'dim', 'The report lists every decision with its reasoning, the '
-    + 'alternatives it refused and why, every search move and whether it survived, the provenance '
-    + 'of each protocol quantity, and the references behind each lever.'));
+  // The screen carries the answer; the report carries the justification.
+  const ex=el('div','export');
+  const a=el('a','btn go','Export full report');
+  a.href='/api/runs/'+snap.run_id+'/report'; a.target='_blank'; a.rel='noopener';
+  ex.appendChild(a);
+  ex.appendChild(el('div','note','Every decision and its reasoning, the search moves, '
+    +'the provenance of each value, and the references with DOIs.'));
+  out.appendChild(ex);
+  interpret(snap);
 }
 
-/* ── parse preview ──────────────────────────────────────── */
-async function preview() {
-  const prompt = $('#prompt').value.trim();
-  if (!prompt) return;
-  $('#parseOut').textContent = '';
-  try {
-    const r = await fetch('/api/parse', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'parse failed');
-    const box = el('div');
-    box.appendChild(el('h4', null, 'Read from your question'));
-    const t1 = el('table'); const tb1 = el('tbody');
-    d.provenance.read_from_prompt.forEach(p => {
-      const tr = el('tr');
-      tr.appendChild(el('td', 'mono', p.field));
-      tr.appendChild(el('td', null, JSON.stringify(p.value)));
-      tr.appendChild(el('td', 'dim', p.matched_phrase ? '“' + p.matched_phrase + '”' : ''));
-      tb1.appendChild(tr);
-    });
-    t1.appendChild(tb1); box.appendChild(t1);
-    box.appendChild(el('h4', null, 'Assumed, because your question did not say'));
-    box.appendChild(el('p', 'dim', 'Each of these changes what the loop treats as success.'));
-    const t2 = el('table'); const tb2 = el('tbody');
-    d.provenance.assumed.forEach(p => {
-      const tr = el('tr');
-      tr.appendChild(el('td', 'mono', p.field));
-      tr.appendChild(el('td', 'tnum', JSON.stringify(p.value)));
-      tr.appendChild(el('td', 'dim', p.basis || ''));
-      tb2.appendChild(tr);
-    });
-    t2.appendChild(tb2); box.appendChild(t2);
+/* parse preview -------------------------------------------- */
+async function preview(){
+  const prompt=$('#prompt').value.trim(); if(!prompt)return;
+  $('#parseOut').textContent='';
+  try{
+    const r=await fetch('/api/parse',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'could not read that');
+    const box=el('div'); box.style.marginTop='18px';
+    const mkT=(title,rows,withBasis)=>{
+      box.appendChild(Object.assign(el('div','eyebrow',title),
+        {style:'margin:16px 0 7px'}));
+      const t=el('table'); const tb=el('tbody');
+      rows.forEach(p=>{const tr=el('tr');
+        tr.appendChild(el('td','mono',p.field));
+        tr.appendChild(el('td',null,JSON.stringify(p.value)));
+        tr.appendChild(el('td','dim',withBasis?(p.basis||''):
+          (p.matched_phrase?'“'+p.matched_phrase+'”':'')));
+        tb.appendChild(tr);});
+      t.appendChild(tb); box.appendChild(t);
+    };
+    mkT('Read from your question',d.provenance.read_from_prompt,false);
+    mkT('Assumed — each of these changes what counts as success',
+        d.provenance.assumed,true);
     $('#parseOut').appendChild(box);
-  } catch (e) {
-    const b = el('div', 'err', String(e.message || e));
-    $('#parseOut').appendChild(b);
+  }catch(e){ $('#parseOut').appendChild(el('div','err',String(e.message||e))); }
+}
+
+/* run ------------------------------------------------------ */
+let es=null,t0=0,timer=null;
+function setStatus(k,t,live){ $('#status').className='pill '+k+(live?' live':'');
+  $('#statusText').textContent=t; }
+function tick(){ $('#clock').textContent=t0?((Date.now()-t0)/1000).toFixed(1)+'s':''; }
+
+async function start(){
+  const prompt=$('#prompt').value.trim();
+  if(prompt.length<10){ $('#parseOut').textContent='';
+    $('#parseOut').appendChild(el('div','err','Write at least 10 characters.')); return; }
+  $('#run').disabled=true; $('#check').disabled=true;
+  $('#feed').textContent=''; $('#parseOut').textContent='';
+  ['chartPanel','tilePanel','readPanel'].forEach(i=>$('#'+i).hidden=true);
+  state.obs=[];state.findings=[];state.summary=null;
+  flowQ.length=0; $('#flow').textContent=''; $('#flowPanel').hidden=true;
+  setStatus('run','starting',true);
+  try{
+    const r=await fetch('/api/runs',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'could not start');
+    t0=Date.now(); timer=setInterval(tick,100);
+    setStatus('run','running',true); listen(d.run_id);
+  }catch(e){
+    setStatus('bad','refused');
+    $('#parseOut').appendChild(el('div','err',String(e.message||e)));
+    $('#run').disabled=false; $('#check').disabled=false;
   }
 }
 
-/* ── run ────────────────────────────────────────────────── */
-async function start() {
-  const prompt = $('#prompt').value.trim();
-  if (prompt.length < 10) { $('#parseOut').textContent = '';
-    $('#parseOut').appendChild(el('div', 'err', 'Write at least 10 characters.')); return; }
-  $('#run').disabled = true; $('#check').disabled = true;
-  $('#feed').textContent = ''; $('#parseOut').textContent = '';
-  $('#chartPanel').hidden = true; $('#resultPanel').hidden = true; $('#findPanel').hidden = true;
-  state.obs = []; state.findings = []; state.summary = null;
-  setStatus('run', 'starting', true);
-  try {
-    const r = await fetch('/api/runs', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'could not start');
-    runId = d.run_id; t0 = Date.now();
-    timer = setInterval(tick, 100);
-    setStatus('run', 'running', true);
-    listen(d.run_id);
-  } catch (e) {
-    setStatus('bad', 'refused');
-    $('#parseOut').appendChild(el('div', 'err', String(e.message || e)));
-    $('#run').disabled = false; $('#check').disabled = false;
-  }
+function finish(snap){
+  clearInterval(timer); tick();
+  const term=(snap.summary||{}).terminal||snap.status;
+  setStatus(term==='protocol_succeeded'?'ok'
+    :(snap.status==='refused'||snap.status==='error')?'bad':'warn',
+    (term||'done').replace(/_/g,' '));
+  renderResult(snap); renderFindings(); loadLoops();
+  $('#run').disabled=false; $('#check').disabled=false;
 }
 
-function listen(id) {
-  if (es) es.close();
-  es = new EventSource('/api/runs/' + id + '/events');
-  es.onmessage = ev => { try { pushEvent(JSON.parse(ev.data)); } catch (_) {} };
-  es.addEventListener('closed', ev => {
-    es.close(); es = null; clearInterval(timer); tick();
-    let d = {}; try { d = JSON.parse(ev.data); } catch (_) {}
-    const term = (d.summary || {}).terminal || d.status;
-    setStatus(term === 'protocol_succeeded' ? 'ok'
-      : (d.status === 'refused' || d.status === 'error') ? 'bad' : 'warn', term || 'done');
-    fetch('/api/runs/' + id + '?after=999999').then(r => r.json())
-      .then(snap => { renderResult(snap); renderFindings(); loadLoops(); })
-      .catch(() => {});
-    $('#run').disabled = false; $('#check').disabled = false;
+function listen(id){
+  if(es)es.close();
+  es=new EventSource('/api/runs/'+id+'/events');
+  es.onmessage=ev=>{ try{pushEvent(JSON.parse(ev.data));}catch(_){} };
+  es.addEventListener('closed',()=>{
+    es.close(); es=null;
+    fetch('/api/runs/'+id+'?after=999999').then(r=>r.json()).then(finish).catch(()=>{});
   });
-  es.onerror = () => {
-    // The stream ends when the run does; a poll settles whether it finished.
-    fetch('/api/runs/' + id + '?after=999999').then(r => r.json()).then(snap => {
-      if (snap.status !== 'running' && snap.status !== 'queued') {
-        if (es) { es.close(); es = null; }
-        clearInterval(timer); tick();
-        setStatus(snap.status === 'done' ? 'ok' : 'bad', snap.status);
-        renderResult(snap); $('#run').disabled = false; $('#check').disabled = false;
+  es.onerror=()=>{
+    fetch('/api/runs/'+id+'?after=999999').then(r=>r.json()).then(snap=>{
+      if(snap.status!=='running'&&snap.status!=='queued'){
+        if(es){es.close();es=null;} finish(snap);
       }
-    }).catch(() => {});
+    }).catch(()=>{});
   };
 }
 
-async function loadLoops() {
-  try {
-    const r = await fetch('/api/loops');
-    const d = await r.json();
-    const box = $('#loops'); box.textContent = '';
-    if (!d.length) { box.className = 'dim'; box.textContent = 'No loops on disk yet.'; return; }
-    box.className = '';
-    const t = el('table');
-    const th = el('tr');
-    ['Loop', 'Verdicts', 'Iter', 'Report'].forEach((h, i) =>
-      th.appendChild(el('th', i === 2 ? 'n' : null, h)));
-    t.appendChild(el('thead')).appendChild(th);
-    const tb = el('tbody');
-    d.slice(0, 12).forEach(l => {
-      const tr = el('tr');
-      tr.appendChild(el('td', 'mono', l.dir));
-      const v = (l.verdicts || []);
-      tr.appendChild(el('td', 'dim', v.length ? v[v.length - 1] : '—'));
-      tr.appendChild(el('td', 'n tnum', l.iterations_used + '/' + l.max_iterations));
-      const td = el('td');
-      const a = el('a', null, 'open'); a.href = '/api/loops/' + l.dir + '/report';
-      a.target = '_blank'; td.appendChild(a);
-      tr.appendChild(td);
-      tb.appendChild(tr);
+async function loadLoops(){
+  try{
+    const d=await (await fetch('/api/loops')).json();
+    const box=$('#loops'); box.textContent='';
+    if(!d.length){box.className='dim';box.textContent='No runs on disk yet.';return;}
+    box.className='';
+    const t=el('table'); const hr=el('tr');
+    ['Run','Verdict','Iter','Report'].forEach((h,i)=>
+      hr.appendChild(el('th',i===2?'n':null,h)));
+    t.appendChild(el('thead')).appendChild(hr);
+    const tb=el('tbody');
+    d.slice(0,10).forEach(l=>{
+      const tr=el('tr');
+      tr.appendChild(el('td','mono',l.dir.replace(/^app-/,'')));
+      const v=l.verdicts||[];
+      tr.appendChild(el('td','dim',v.length?v[v.length-1]:'—'));
+      tr.appendChild(el('td','n tnum',l.iterations_used+'/'+l.max_iterations));
+      const td=el('td'); const a=el('a',null,'open');
+      a.href='/api/loops/'+l.dir+'/report'; a.target='_blank';
+      td.appendChild(a); tr.appendChild(td); tb.appendChild(tr);
     });
-    t.appendChild(tb);
-    box.appendChild(t);
-  } catch (_) { $('#loops').textContent = 'could not list loops'; }
+    t.appendChild(tb); box.appendChild(t);
+  }catch(_){ $('#loops').textContent='could not list runs'; }
 }
 
-$('#run').addEventListener('click', start);
-$('#check').addEventListener('click', preview);
-$('#prompt').addEventListener('input', () => {
-  const n = $('#prompt').value.length;
-  $('#len').textContent = n ? n + '/2000' : '';
+$('#why').addEventListener('click',()=>{
+  const n=$('#caveat'), open=n.hidden;
+  n.hidden=!open; $('#why').setAttribute('aria-expanded',String(open));
+  $('#why').innerHTML=open?'Why &lsaquo;':'Why &rsaquo;';
 });
-document.querySelectorAll('.ex').forEach(b => b.addEventListener('click', () => {
-  $('#prompt').value = b.dataset.ex;
-  $('#prompt').dispatchEvent(new Event('input'));
-  $('#prompt').focus();
+$('#run').addEventListener('click',start);
+$('#check').addEventListener('click',preview);
+$('#prompt').addEventListener('input',()=>{
+  const n=$('#prompt').value.length; $('#len').textContent=n?n+' / 2000':'';
+});
+document.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{
+  $('#prompt').value=b.dataset.ex;
+  $('#prompt').dispatchEvent(new Event('input')); $('#prompt').focus();
 }));
-$('#prompt').addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); start(); }
+$('#prompt').addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();start();}
 });
 loadLoops();
 </script>
