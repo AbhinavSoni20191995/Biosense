@@ -227,5 +227,5 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 ---
 
 <div align="center">
-<sub>Not clinical or manufacturing guidance. Apache-2.0.</sub>
+<sub>Not clinical or manufacturing guidance. MIT licensed.</sub>
 </div>
