@@ -1,0 +1,30 @@
+# BioSense-AI discovery loop: coordinator + literature, biosimulator and outcome
+# specialists. Launch from the repo root after `uv sync --locked`:
+#   omnigent run discovery_loop
+# Each sub-agent is a directory under agents/ with its own config.yaml.
+spec_version: 1
+name: biosense_discovery_loop
+description: >-
+  Coordinates literature evidence -> scenario -> toy-model simulation ->
+  outcome evaluation -> typed next action, and dispatches that action.
+instructions: prompt.md
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+async: true
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: auto
+    write_paths:
+      - ./runs
+    cwd_allow_hidden:
+      - .venv
+    allow_network: false
+tools:
+  agents:
+    - literature
+    - biosimulator
+    - outcome

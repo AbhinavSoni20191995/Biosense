@@ -12,4 +12,9 @@ jobs:
           version: "0.12.19"
           python-version: "3.12"
       - run: uv sync --locked
-      - run: uv run --frozen python -m unittest -v
+      - name: Literature tool tests
+        run: uv run --frozen python -m unittest test_agent_tools -v
+      - name: Biosimulator/outcome package tests
+        run: uv run --frozen python -m unittest discover -s tests -t . -v
+      - name: Offline synthetic campaign smoke run
+        run: uv run --frozen python -m biosense.cli campaign --config examples/campaign.synthetic.json --out runs/ci-demo

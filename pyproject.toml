@@ -1,9 +1,13 @@
 [project]
-name = "biosense-literature-agent"
+name = "biosense-ai"
 version = "0.1.0"
-description = "Evidence extraction tools for an Omnigent iPSC literature agent"
+description = "Omnigent agents for iPSC literature evidence, toy biosimulation and outcome evaluation"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "jsonschema>=4.26.0",
+    "numpy>=2.5.3",
+    "scipy>=1.18.1",
+]
 
 [tool.uv]
 package = false

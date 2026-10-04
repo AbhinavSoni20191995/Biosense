@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/next-action-v1.0",
+  "title": "Typed next action; a preserved recommendation, never automatic physical actuation",
+  "type": "object",
+  "required": ["type", "reason", "numerical_basis", "supporting_run_ids", "alternatives", "remaining_budget"],
+  "properties": {
+    "type": {"enum": ["run_experiment", "request_evidence", "request_calibration", "stop_target", "stop_budget", "stop_invalid_model"]},
+    "reason": {"type": "string", "minLength": 1},
+    "numerical_basis": {"type": "object"},
+    "supporting_run_ids": {"type": "array", "items": {"type": "string"}},
+    "alternatives": {"type": "array", "minItems": 1,
+                     "items": {"type": "object", "required": ["type", "reason"]}},
+    "remaining_budget": {"type": "object", "required": ["runs", "rounds"]},
+    "evidence_refs": {"type": "object", "required": ["claim_ids", "assumption_ids"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "run_experiment"}}},
+     "then": {"required": ["experiments", "expected_learning", "cost_estimate"],
+              "properties": {"experiments": {"type": "array", "minItems": 1,
+                                             "items": {"$ref": "https://example.org/biosense/experiment-v1.0"}}}}},
+    {"if": {"properties": {"type": {"const": "request_evidence"}}},
+     "then": {"required": ["missing_parameter_ids", "context", "suggested_queries"],
+              "properties": {"missing_parameter_ids": {"type": "array", "minItems": 1}}}},
+    {"if": {"properties": {"type": {"const": "request_calibration"}}},
+     "then": {"required": ["calibration_request"]}}
+  ]
+}

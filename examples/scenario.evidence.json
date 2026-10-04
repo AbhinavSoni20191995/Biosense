@@ -1,0 +1,349 @@
+{
+  "schema_version": "1.0",
+  "scenario_id": "scenario-laco-evidence-001",
+  "mode": "evidence_based",
+  "label": "EVIDENCE-BASED: model predictions conditional on cited evidence, derivations and model assumptions",
+  "upstream": {
+    "request_id": "cardiac-001",
+    "handoff_schema_version": "0.1",
+    "handoff_sha256": "52ee7f47aa876bf709c3e0383ba2d90381453aead8e7ed820a9131c028c27a98",
+    "selection_id": "sel-laco-evidence-001",
+    "selection_sha256": "886c926efbff27dd5b3b91327a468278763523fcca4d86863a278a7f21a2d07f",
+    "assumption_set_id": null,
+    "assumptions_sha256": "19aa31a2371acaf9acfeae13da9855d84135b9700d16833dfb16af425c12149f"
+  },
+  "protocol_id": "Laco2020_FR202_integrated",
+  "model_id": "compartment_growth_v1",
+  "model_contract": {
+    "model_id": "compartment_growth_v1",
+    "status": "phenomenological demonstration; not biologically validated",
+    "state": [
+      "R",
+      "C",
+      "O",
+      "D"
+    ],
+    "time_unit": "h",
+    "population_unit": "cells",
+    "stage_order": [
+      "ipsc_expansion",
+      "cardiac_differentiation"
+    ],
+    "structural_zeros": {
+      "ipsc_expansion": [
+        "k_C",
+        "k_O"
+      ]
+    },
+    "required_inputs": [
+      "cardiac_differentiation.delta_C",
+      "cardiac_differentiation.delta_O",
+      "cardiac_differentiation.delta_R",
+      "cardiac_differentiation.k_C",
+      "cardiac_differentiation.k_O",
+      "cardiac_differentiation.mu_C",
+      "cardiac_differentiation.mu_O",
+      "cardiac_differentiation.mu_R",
+      "global.K",
+      "initial.C",
+      "initial.D",
+      "initial.O",
+      "initial.R",
+      "ipsc_expansion.delta_C",
+      "ipsc_expansion.delta_O",
+      "ipsc_expansion.delta_R",
+      "ipsc_expansion.mu_C",
+      "ipsc_expansion.mu_O",
+      "ipsc_expansion.mu_R",
+      "schedule.cardiac_differentiation.duration",
+      "schedule.ipsc_expansion.duration"
+    ],
+    "equations": [
+      "f(N) = max(0, 1 - N/K), N = R + C + O",
+      "dR/dt = [mu_R f(N) - delta_R - k_C - k_O] R",
+      "dC/dt = k_C R + [mu_C f(N) - delta_C] C",
+      "dO/dt = k_O R + [mu_O f(N) - delta_O] O",
+      "dD/dt = delta_R R + delta_C C + delta_O O"
+    ],
+    "not_modeled": [
+      "reagent dose-response (e.g. CHIR99021)",
+      "Wnt signaling timing",
+      "metabolism / nutrients",
+      "oxygen transport",
+      "aggregate geometry",
+      "purification",
+      "recovery",
+      "marker expression",
+      "maturity / electrophysiology",
+      "dead-cell removal"
+    ]
+  },
+  "context": {
+    "species": "human",
+    "cell_origin": "iPSC",
+    "target_cell": "cardiomyocyte",
+    "cell_line": "FR202",
+    "culture_format": "stirred_tank_microcarrier",
+    "target_subtype": "unspecified"
+  },
+  "time_unit": "h",
+  "population_unit": "cells",
+  "stage_schedule": [
+    {
+      "stage": "ipsc_expansion",
+      "duration": 120.0,
+      "unit": "h",
+      "input_id": "schedule.ipsc_expansion.duration",
+      "time_origin": "stage_start"
+    },
+    {
+      "stage": "cardiac_differentiation",
+      "duration": 216.0,
+      "unit": "h",
+      "input_id": "schedule.cardiac_differentiation.duration",
+      "time_origin": "stage_start"
+    }
+  ],
+  "initial_state": {
+    "R": null,
+    "C": null,
+    "O": null,
+    "D": null
+  },
+  "parameters": [
+    {
+      "id": "schedule.cardiac_differentiation.duration",
+      "meaning": "Reference duration of cardiac_differentiation measured from that stage start",
+      "population": null,
+      "stage": "cardiac_differentiation",
+      "unit": "h",
+      "original_value": 9,
+      "original_unit": "day",
+      "value": 216.0,
+      "provenance_type": "reported",
+      "source_claim_ids": [
+        "differentiation_duration"
+      ],
+      "assumption_ids": [],
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "RPMI/B27 without insulin",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "uncertainty": null,
+      "applicability": "Reported for protocol Laco2020_FR202_integrated; transfer to other lines/formats is unvalidated",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": false
+    },
+    {
+      "id": "schedule.ipsc_expansion.duration",
+      "meaning": "Reference duration of ipsc_expansion measured from that stage start",
+      "population": null,
+      "stage": "ipsc_expansion",
+      "unit": "h",
+      "original_value": 5,
+      "original_unit": "day",
+      "value": 120.0,
+      "provenance_type": "reported",
+      "source_claim_ids": [
+        "expansion_duration"
+      ],
+      "assumption_ids": [],
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "mTeSR1",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "uncertainty": null,
+      "applicability": "Reported for protocol Laco2020_FR202_integrated; transfer to other lines/formats is unvalidated",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": false
+    }
+  ],
+  "interventions": [],
+  "unsupported_controls": [
+    {
+      "claim_id": "CHIR_methods",
+      "stage": "cardiac_differentiation",
+      "parameter": "CHIR99021_concentration",
+      "value": 10,
+      "unit": "uM",
+      "conflict_claim_ids": [
+        "CHIR_methods",
+        "CHIR_results"
+      ],
+      "conflict_status": "unresolved",
+      "reason": "compartment_growth_v1 has no response function for this control; changing it has no simulated effect"
+    },
+    {
+      "claim_id": "CHIR_results",
+      "stage": "cardiac_differentiation",
+      "parameter": "CHIR99021_concentration",
+      "value": 12,
+      "unit": "uM",
+      "conflict_claim_ids": [
+        "CHIR_methods",
+        "CHIR_results"
+      ],
+      "conflict_status": "unresolved",
+      "reason": "compartment_growth_v1 has no response function for this control; changing it has no simulated effect"
+    }
+  ],
+  "unmapped_protocol_claims": [],
+  "assumption_manifest": [],
+  "synthetic_inputs": [],
+  "gaps": [
+    {
+      "gap_id": "gap-000",
+      "model_input": "cardiac_differentiation.delta_C",
+      "reason": "missing",
+      "literature_parameter_id": "cardiac_differentiation:delta_C",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (cardiomyocyte AND differentiation) AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-001",
+      "model_input": "cardiac_differentiation.delta_O",
+      "reason": "missing",
+      "literature_parameter_id": "cardiac_differentiation:delta_O",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (cardiomyocyte AND differentiation) AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-002",
+      "model_input": "cardiac_differentiation.delta_R",
+      "reason": "missing",
+      "literature_parameter_id": "cardiac_differentiation:delta_R",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (cardiomyocyte AND differentiation) AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-003",
+      "model_input": "cardiac_differentiation.k_C",
+      "reason": "missing",
+      "literature_parameter_id": "cardiac_differentiation:differentiation_transition_rate",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (cardiomyocyte AND differentiation) AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-004",
+      "model_input": "cardiac_differentiation.k_O",
+      "reason": "missing",
+      "literature_parameter_id": "cardiac_differentiation:k_O",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (cardiomyocyte AND differentiation) AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-005",
+      "model_input": "cardiac_differentiation.mu_C",
+      "reason": "missing",
+      "literature_parameter_id": "cardiac_differentiation:mu_C",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (cardiomyocyte AND differentiation) AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-006",
+      "model_input": "cardiac_differentiation.mu_O",
+      "reason": "missing",
+      "literature_parameter_id": "cardiac_differentiation:mu_O",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (cardiomyocyte AND differentiation) AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-007",
+      "model_input": "cardiac_differentiation.mu_R",
+      "reason": "missing",
+      "literature_parameter_id": "cardiac_differentiation:mu_R",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (cardiomyocyte AND differentiation) AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-008",
+      "model_input": "global.K",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:carrying_capacity",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (bioreactor OR suspension OR microcarrier) AND (\"maximum cell density\" OR \"carrying capacity\")"
+    },
+    {
+      "gap_id": "gap-009",
+      "model_input": "initial.C",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:initial_cardiomyocyte_count",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (\"seeding density\" OR \"inoculation density\") AND (\"working volume\")"
+    },
+    {
+      "gap_id": "gap-010",
+      "model_input": "initial.D",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:initial_dead_cell_count",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (\"seeding density\" OR \"inoculation density\") AND (\"working volume\")"
+    },
+    {
+      "gap_id": "gap-011",
+      "model_input": "initial.O",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:initial_off_target_cell_count",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (\"seeding density\" OR \"inoculation density\") AND (\"working volume\")"
+    },
+    {
+      "gap_id": "gap-012",
+      "model_input": "initial.R",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:initial_cell_density",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (\"seeding density\" OR \"inoculation density\") AND (\"working volume\")"
+    },
+    {
+      "gap_id": "gap-013",
+      "model_input": "ipsc_expansion.delta_C",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:delta_C",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-014",
+      "model_input": "ipsc_expansion.delta_O",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:delta_O",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-015",
+      "model_input": "ipsc_expansion.delta_R",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:delta_R",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-016",
+      "model_input": "ipsc_expansion.mu_C",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:mu_C",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-017",
+      "model_input": "ipsc_expansion.mu_O",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:mu_O",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    },
+    {
+      "gap_id": "gap-018",
+      "model_input": "ipsc_expansion.mu_R",
+      "reason": "missing",
+      "literature_parameter_id": "ipsc_expansion:maximum_growth_rate",
+      "suggested_query": "(hiPSC OR \"human induced pluripotent stem cell\") AND (expansion OR proliferation OR \"population doubling\") AND (kinetic OR \"growth rate\" OR \"death rate\" OR \"transition rate\" OR \"mathematical model\")"
+    }
+  ],
+  "errors": [],
+  "validation": {
+    "numerically_complete": false,
+    "biologically_calibrated": false,
+    "status": "blocked",
+    "note": "Numerical completeness is not biological validation; no input has been calibrated against measured trajectories."
+  }
+}

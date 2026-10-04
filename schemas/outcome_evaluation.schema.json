@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/outcome-evaluation-v1.0",
+  "title": "OutcomeEvaluation 1.0 with exactly one typed next action",
+  "type": "object",
+  "required": ["schema_version", "evaluation_id", "campaign_id", "mode", "label", "scenario_id", "objective_id",
+               "objective", "constraint_ids", "result_ids", "baseline_run_id", "result_sha256", "run_metrics",
+               "comparison", "uncertainty", "scientific_interpretation", "claim_limitations", "budget", "next_action"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "mode": {"enum": ["synthetic_demo", "evidence_based"]},
+    "objective": {"$ref": "https://example.org/biosense/objective-v1.0"},
+    "comparison": {"type": "object", "required": ["status", "ranking_rule", "feasibility", "ranking",
+                                                  "best_run_id", "paired_comparisons", "pareto_table"],
+                   "properties": {"status": {"enum": ["feasible_found", "infeasible", "no_valid_runs"]}}},
+    "uncertainty": {"type": "object", "required": ["n_draws", "semantics"]},
+    "claim_limitations": {"type": "array", "minItems": 1},
+    "next_action": {"$ref": "https://example.org/biosense/next-action-v1.0"}
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/simulation-scenario-v1.0",
+  "title": "SimulationScenario 1.0: explicit model inputs with provenance",
+  "type": "object",
+  "required": ["schema_version", "scenario_id", "mode", "label", "upstream", "protocol_id", "model_id",
+               "model_contract", "context", "time_unit", "population_unit", "stage_schedule", "initial_state",
+               "parameters", "interventions", "unsupported_controls", "assumption_manifest", "synthetic_inputs",
+               "gaps", "errors", "validation"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "scenario_id": {"type": "string", "minLength": 1},
+    "mode": {"enum": ["synthetic_demo", "evidence_based"]},
+    "label": {"type": "string", "minLength": 1},
+    "upstream": {
+      "type": "object",
+      "required": ["request_id", "handoff_schema_version", "handoff_sha256"],
+      "properties": {
+        "request_id": {"type": "string"},
+        "handoff_schema_version": {"const": "0.1"},
+        "handoff_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "protocol_id": {"type": ["string", "null"]},
+    "model_id": {"type": "string"},
+    "model_contract": {"type": "object", "required": ["model_id", "state", "required_inputs", "equations"]},
+    "context": {"type": "object", "required": ["species", "cell_origin", "target_cell", "target_subtype"]},
+    "time_unit": {"const": "h"},
+    "population_unit": {"const": "cells"},
+    "stage_schedule": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stage", "duration", "unit", "input_id", "time_origin"],
+        "properties": {"duration": {"type": ["number", "null"]}, "unit": {"const": "h"}}
+      }
+    },
+    "initial_state": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
+    "interventions": {"type": "array", "maxItems": 0},
+    "unsupported_controls": {
+      "type": "array",
+      "items": {"type": "object", "required": ["claim_id", "parameter", "conflict_status", "reason"]}
+    },
+    "assumption_manifest": {
+      "type": "array",
+      "items": {"type": "object", "required": ["id", "model_input", "provenance_type", "value", "unit"]}
+    },
+    "synthetic_inputs": {"type": "array", "items": {"type": "string"}},
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gap_id", "model_input", "reason", "literature_parameter_id", "suggested_query"],
+        "properties": {"reason": {"enum": ["missing", "ambiguous", "invalid_source", "out_of_bounds"]}}
+      }
+    },
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "validation": {
+      "type": "object",
+      "required": ["numerically_complete", "biologically_calibrated", "status"],
+      "properties": {
+        "numerically_complete": {"type": "boolean"},
+        "biologically_calibrated": {"type": "boolean"},
+        "status": {"enum": ["runnable", "blocked"]}
+      }
+    }
+  },
+  "$defs": {
+    "parameter": {
+      "type": "object",
+      "required": ["id", "meaning", "population", "stage", "unit", "value", "original_value", "original_unit",
+                   "provenance_type", "source_claim_ids", "assumption_ids", "context", "uncertainty",
+                   "applicability", "transformation", "resolution", "depends_on_synthetic"],
+      "properties": {
+        "id": {"type": "string"},
+        "value": {"type": "number"},
+        "unit": {"type": "string"},
+        "provenance_type": {"enum": ["reported", "derived", "fitted", "synthetic_assumption"]},
+        "source_claim_ids": {"type": "array", "items": {"type": "string"}},
+        "assumption_ids": {"type": "array", "items": {"type": "string"}},
+        "depends_on_synthetic": {"type": "boolean"}
+      }
+    }
+  }
+}

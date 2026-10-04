@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "objective_id": "obj-yield-at-purity-001",
+  "label": "DEMO thresholds chosen by the user for a toy-model campaign; not clinical or manufacturing requirements",
+  "maximize": "target_cell_yield",
+  "constraints": [
+    {"id": "con-purity", "metric": "target_purity", "op": ">=", "value": 0.75, "note": "modeled C/(R+C+O), not marker positivity"},
+    {"id": "con-time", "metric": "culture_time_h", "op": "<=", "value": 336}
+  ],
+  "target": null,
+  "total_culture_time_h": 336
+}

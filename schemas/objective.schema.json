@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/objective-v1.0",
+  "title": "Campaign objective; thresholds are user/demo settings, not manufacturing requirements",
+  "type": "object",
+  "required": ["schema_version", "objective_id", "label", "maximize", "constraints", "target", "total_culture_time_h"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "objective_id": {"type": "string"},
+    "label": {"type": "string"},
+    "maximize": {"enum": ["target_cell_yield", "target_purity", "total_viable_cells", "target_yield_per_initial_cell"]},
+    "constraints": {"type": "array", "items": {"$ref": "#/$defs/condition"}},
+    "target": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/condition"}]},
+    "total_culture_time_h": {"type": "number", "exclusiveMinimum": 0}
+  },
+  "$defs": {
+    "condition": {
+      "type": "object",
+      "required": ["id", "metric", "op", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "metric": {"enum": ["target_cell_yield", "target_purity", "total_viable_cells", "viability_proxy",
+                            "target_yield_per_initial_cell", "culture_time_h"]},
+        "op": {"enum": [">=", "<="]},
+        "value": {"type": "number"},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}

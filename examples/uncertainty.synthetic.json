@@ -1,0 +1,13 @@
+{
+  "ensemble_id": "ens-synth-01",
+  "label": "SYNTHETIC ranges around the toy values; not measured variability",
+  "seed": 20261004,
+  "n_draws": 16,
+  "correlation": "independent uniform draws (modeling choice; correlations unknown)",
+  "parameters": {
+    "ipsc_expansion.mu_R": {"distribution": "uniform", "low": 0.025, "high": 0.045, "unit": "1/h"},
+    "cardiac_differentiation.k_C": {"distribution": "uniform", "low": 0.010, "high": 0.020, "unit": "1/h"},
+    "cardiac_differentiation.k_O": {"distribution": "uniform", "low": 0.002, "high": 0.005, "unit": "1/h"},
+    "cardiac_differentiation.mu_O": {"distribution": "uniform", "low": 0.008, "high": 0.016, "unit": "1/h"}
+  }
+}

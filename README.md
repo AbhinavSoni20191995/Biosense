@@ -1,4 +1,13 @@
-# BioSense-AI iPSC literature agent: first development package
+# BioSense-AI iPSC discovery loop: literature, biosimulator and outcome agents
+
+Three Omnigent specialists and a coordinator form a computational discovery
+loop: literature evidence -> explicit scenario -> toy-model simulation ->
+outcome evaluation -> typed next action (run another experiment, request
+evidence, request calibration, or stop). The biosimulator and outcome agents
+are documented in [docs/BIOSIMULATOR.md](docs/BIOSIMULATOR.md); launch the
+whole loop with `omnigent run discovery_loop`. The rest of this README covers
+the literature agent.
+
 
 This specialist agent turns a constrained literature question into candidate,
 evidence-backed simulator inputs. The example is human iPSC expansion followed

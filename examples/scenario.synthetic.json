@@ -1,0 +1,846 @@
+{
+  "schema_version": "1.0",
+  "scenario_id": "scenario-laco-synthetic-001",
+  "mode": "synthetic_demo",
+  "label": "SYNTHETIC DEMO: toy-model behaviour only; not biological evidence or validated cell production",
+  "upstream": {
+    "request_id": "cardiac-001",
+    "handoff_schema_version": "0.1",
+    "handoff_sha256": "52ee7f47aa876bf709c3e0383ba2d90381453aead8e7ed820a9131c028c27a98",
+    "selection_id": "sel-laco-synthetic-001",
+    "selection_sha256": "47899955ee3c97d888675138cb00c3afda6aaa7d58a99688c514ebf9fb189fc3",
+    "assumption_set_id": "synthetic-compartment-v1",
+    "assumptions_sha256": "7b09aa7892ac940f550c0ed97e92cb29becfbe01dbb3ba320c7455d064fd2483"
+  },
+  "protocol_id": "Laco2020_FR202_integrated",
+  "model_id": "compartment_growth_v1",
+  "model_contract": {
+    "model_id": "compartment_growth_v1",
+    "status": "phenomenological demonstration; not biologically validated",
+    "state": [
+      "R",
+      "C",
+      "O",
+      "D"
+    ],
+    "time_unit": "h",
+    "population_unit": "cells",
+    "stage_order": [
+      "ipsc_expansion",
+      "cardiac_differentiation"
+    ],
+    "structural_zeros": {
+      "ipsc_expansion": [
+        "k_C",
+        "k_O"
+      ]
+    },
+    "required_inputs": [
+      "cardiac_differentiation.delta_C",
+      "cardiac_differentiation.delta_O",
+      "cardiac_differentiation.delta_R",
+      "cardiac_differentiation.k_C",
+      "cardiac_differentiation.k_O",
+      "cardiac_differentiation.mu_C",
+      "cardiac_differentiation.mu_O",
+      "cardiac_differentiation.mu_R",
+      "global.K",
+      "initial.C",
+      "initial.D",
+      "initial.O",
+      "initial.R",
+      "ipsc_expansion.delta_C",
+      "ipsc_expansion.delta_O",
+      "ipsc_expansion.delta_R",
+      "ipsc_expansion.mu_C",
+      "ipsc_expansion.mu_O",
+      "ipsc_expansion.mu_R",
+      "schedule.cardiac_differentiation.duration",
+      "schedule.ipsc_expansion.duration"
+    ],
+    "equations": [
+      "f(N) = max(0, 1 - N/K), N = R + C + O",
+      "dR/dt = [mu_R f(N) - delta_R - k_C - k_O] R",
+      "dC/dt = k_C R + [mu_C f(N) - delta_C] C",
+      "dO/dt = k_O R + [mu_O f(N) - delta_O] O",
+      "dD/dt = delta_R R + delta_C C + delta_O O"
+    ],
+    "not_modeled": [
+      "reagent dose-response (e.g. CHIR99021)",
+      "Wnt signaling timing",
+      "metabolism / nutrients",
+      "oxygen transport",
+      "aggregate geometry",
+      "purification",
+      "recovery",
+      "marker expression",
+      "maturity / electrophysiology",
+      "dead-cell removal"
+    ]
+  },
+  "context": {
+    "species": "human",
+    "cell_origin": "iPSC",
+    "target_cell": "cardiomyocyte",
+    "cell_line": "FR202",
+    "culture_format": "stirred_tank_microcarrier",
+    "target_subtype": "unspecified"
+  },
+  "time_unit": "h",
+  "population_unit": "cells",
+  "stage_schedule": [
+    {
+      "stage": "ipsc_expansion",
+      "duration": 120.0,
+      "unit": "h",
+      "input_id": "schedule.ipsc_expansion.duration",
+      "time_origin": "stage_start"
+    },
+    {
+      "stage": "cardiac_differentiation",
+      "duration": 216.0,
+      "unit": "h",
+      "input_id": "schedule.cardiac_differentiation.duration",
+      "time_origin": "stage_start"
+    }
+  ],
+  "initial_state": {
+    "R": 12000000.0,
+    "C": 0.0,
+    "O": 0.0,
+    "D": 0.0
+  },
+  "parameters": [
+    {
+      "id": "cardiac_differentiation.delta_C",
+      "meaning": "Per-capita death rate of C (moves cells to D)",
+      "population": "C",
+      "stage": "cardiac_differentiation",
+      "unit": "1/h",
+      "original_value": 0.001,
+      "original_unit": "1/h",
+      "value": 0.001,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-dif-dC"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "cardiac_differentiation.delta_O",
+      "meaning": "Per-capita death rate of O (moves cells to D)",
+      "population": "O",
+      "stage": "cardiac_differentiation",
+      "unit": "1/h",
+      "original_value": 0.002,
+      "original_unit": "1/h",
+      "value": 0.002,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-dif-dO"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "cardiac_differentiation.delta_R",
+      "meaning": "Per-capita death rate of R (moves cells to D)",
+      "population": "R",
+      "stage": "cardiac_differentiation",
+      "unit": "1/h",
+      "original_value": 0.004,
+      "original_unit": "1/h",
+      "value": 0.004,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-dif-dR"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "cardiac_differentiation.k_C",
+      "meaning": "Per-capita conversion rate R -> C (NOT identifiable from endpoint marker positivity)",
+      "population": "R",
+      "stage": "cardiac_differentiation",
+      "unit": "1/h",
+      "original_value": 0.015,
+      "original_unit": "1/h",
+      "value": 0.015,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-dif-kC"
+      ],
+      "context": null,
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.01,
+        "high": 0.02,
+        "unit": "1/h"
+      },
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "cardiac_differentiation.k_O",
+      "meaning": "Per-capita conversion rate R -> O",
+      "population": "R",
+      "stage": "cardiac_differentiation",
+      "unit": "1/h",
+      "original_value": 0.003,
+      "original_unit": "1/h",
+      "value": 0.003,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-dif-kO"
+      ],
+      "context": null,
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.002,
+        "high": 0.005,
+        "unit": "1/h"
+      },
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "cardiac_differentiation.mu_C",
+      "meaning": "Per-capita growth rate of modeled target cells C at low density",
+      "population": "C",
+      "stage": "cardiac_differentiation",
+      "unit": "1/h",
+      "original_value": 0.0,
+      "original_unit": "1/h",
+      "value": 0.0,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-dif-muC"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "cardiac_differentiation.mu_O",
+      "meaning": "Per-capita growth rate of modeled off-target cells O at low density",
+      "population": "O",
+      "stage": "cardiac_differentiation",
+      "unit": "1/h",
+      "original_value": 0.012,
+      "original_unit": "1/h",
+      "value": 0.012,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-dif-muO"
+      ],
+      "context": null,
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.008,
+        "high": 0.016,
+        "unit": "1/h"
+      },
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "cardiac_differentiation.mu_R",
+      "meaning": "Per-capita growth rate of R at low density (logistic, suppressed as N approaches K)",
+      "population": "R",
+      "stage": "cardiac_differentiation",
+      "unit": "1/h",
+      "original_value": 0.01,
+      "original_unit": "1/h",
+      "value": 0.01,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-dif-muR"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "global.K",
+      "meaning": "Modeled carrying capacity in viable cells (not automatically a maximum observed count)",
+      "population": "R+C+O",
+      "stage": "all",
+      "unit": "cells",
+      "original_value": 300000000.0,
+      "original_unit": "cells",
+      "value": 300000000.0,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-K"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "initial.C",
+      "meaning": "Cell count of compartment C at the start of ipsc_expansion",
+      "population": "C",
+      "stage": "ipsc_expansion",
+      "unit": "cells",
+      "original_value": 0,
+      "original_unit": "cells",
+      "value": 0.0,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-C0"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "initial.D",
+      "meaning": "Cell count of compartment D at the start of ipsc_expansion",
+      "population": "D",
+      "stage": "ipsc_expansion",
+      "unit": "cells",
+      "original_value": 0,
+      "original_unit": "cells",
+      "value": 0.0,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-D0"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "initial.O",
+      "meaning": "Cell count of compartment O at the start of ipsc_expansion",
+      "population": "O",
+      "stage": "ipsc_expansion",
+      "unit": "cells",
+      "original_value": 0,
+      "original_unit": "cells",
+      "value": 0.0,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-O0"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "initial.R",
+      "meaning": "Cell count of compartment R at the start of ipsc_expansion",
+      "population": "R",
+      "stage": "ipsc_expansion",
+      "unit": "cells",
+      "original_value": 12000000.0,
+      "original_unit": "cells",
+      "value": 12000000.0,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-R0"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "ipsc_expansion.delta_C",
+      "meaning": "Per-capita death rate of C (moves cells to D)",
+      "population": "C",
+      "stage": "ipsc_expansion",
+      "unit": "1/h",
+      "original_value": 0.001,
+      "original_unit": "1/h",
+      "value": 0.001,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-exp-dC"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "ipsc_expansion.delta_O",
+      "meaning": "Per-capita death rate of O (moves cells to D)",
+      "population": "O",
+      "stage": "ipsc_expansion",
+      "unit": "1/h",
+      "original_value": 0.002,
+      "original_unit": "1/h",
+      "value": 0.002,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-exp-dO"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "ipsc_expansion.delta_R",
+      "meaning": "Per-capita death rate of R (moves cells to D)",
+      "population": "R",
+      "stage": "ipsc_expansion",
+      "unit": "1/h",
+      "original_value": 0.002,
+      "original_unit": "1/h",
+      "value": 0.002,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-exp-dR"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "ipsc_expansion.mu_C",
+      "meaning": "Per-capita growth rate of modeled target cells C at low density",
+      "population": "C",
+      "stage": "ipsc_expansion",
+      "unit": "1/h",
+      "original_value": 0.0,
+      "original_unit": "1/h",
+      "value": 0.0,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-exp-muC"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "ipsc_expansion.mu_O",
+      "meaning": "Per-capita growth rate of modeled off-target cells O at low density",
+      "population": "O",
+      "stage": "ipsc_expansion",
+      "unit": "1/h",
+      "original_value": 0.01,
+      "original_unit": "1/h",
+      "value": 0.01,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-exp-muO"
+      ],
+      "context": null,
+      "uncertainty": null,
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "ipsc_expansion.mu_R",
+      "meaning": "Per-capita growth rate of R at low density (logistic, suppressed as N approaches K)",
+      "population": "R",
+      "stage": "ipsc_expansion",
+      "unit": "1/h",
+      "original_value": 0.035,
+      "original_unit": "1/h",
+      "value": 0.035,
+      "provenance_type": "synthetic_assumption",
+      "source_claim_ids": [],
+      "assumption_ids": [
+        "A-exp-muR"
+      ],
+      "context": null,
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.025,
+        "high": 0.045,
+        "unit": "1/h"
+      },
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": true
+    },
+    {
+      "id": "schedule.cardiac_differentiation.duration",
+      "meaning": "Reference duration of cardiac_differentiation measured from that stage start",
+      "population": null,
+      "stage": "cardiac_differentiation",
+      "unit": "h",
+      "original_value": 9,
+      "original_unit": "day",
+      "value": 216.0,
+      "provenance_type": "reported",
+      "source_claim_ids": [
+        "differentiation_duration"
+      ],
+      "assumption_ids": [],
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "RPMI/B27 without insulin",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "uncertainty": null,
+      "applicability": "Reported for protocol Laco2020_FR202_integrated; transfer to other lines/formats is unvalidated",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": false
+    },
+    {
+      "id": "schedule.ipsc_expansion.duration",
+      "meaning": "Reference duration of ipsc_expansion measured from that stage start",
+      "population": null,
+      "stage": "ipsc_expansion",
+      "unit": "h",
+      "original_value": 5,
+      "original_unit": "day",
+      "value": 120.0,
+      "provenance_type": "reported",
+      "source_claim_ids": [
+        "expansion_duration"
+      ],
+      "assumption_ids": [],
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "mTeSR1",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "uncertainty": null,
+      "applicability": "Reported for protocol Laco2020_FR202_integrated; transfer to other lines/formats is unvalidated",
+      "transformation": null,
+      "resolution": null,
+      "depends_on_synthetic": false
+    }
+  ],
+  "interventions": [],
+  "unsupported_controls": [
+    {
+      "claim_id": "CHIR_methods",
+      "stage": "cardiac_differentiation",
+      "parameter": "CHIR99021_concentration",
+      "value": 10,
+      "unit": "uM",
+      "conflict_claim_ids": [
+        "CHIR_methods",
+        "CHIR_results"
+      ],
+      "conflict_status": "unresolved",
+      "reason": "compartment_growth_v1 has no response function for this control; changing it has no simulated effect"
+    },
+    {
+      "claim_id": "CHIR_results",
+      "stage": "cardiac_differentiation",
+      "parameter": "CHIR99021_concentration",
+      "value": 12,
+      "unit": "uM",
+      "conflict_claim_ids": [
+        "CHIR_methods",
+        "CHIR_results"
+      ],
+      "conflict_status": "unresolved",
+      "reason": "compartment_growth_v1 has no response function for this control; changing it has no simulated effect"
+    }
+  ],
+  "unmapped_protocol_claims": [],
+  "assumption_manifest": [
+    {
+      "id": "A-dif-dC",
+      "model_input": "cardiac_differentiation.delta_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.001,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": null
+    },
+    {
+      "id": "A-dif-dO",
+      "model_input": "cardiac_differentiation.delta_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.002,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": null
+    },
+    {
+      "id": "A-dif-dR",
+      "model_input": "cardiac_differentiation.delta_R",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.004,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": null
+    },
+    {
+      "id": "A-dif-kC",
+      "model_input": "cardiac_differentiation.k_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.015,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model; endpoint purity cannot identify this rate",
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.01,
+        "high": 0.02,
+        "unit": "1/h"
+      }
+    },
+    {
+      "id": "A-dif-kO",
+      "model_input": "cardiac_differentiation.k_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.003,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.002,
+        "high": 0.005,
+        "unit": "1/h"
+      }
+    },
+    {
+      "id": "A-dif-muC",
+      "model_input": "cardiac_differentiation.mu_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.0,
+      "unit": "1/h",
+      "rationale": "Declared simplification: modeled target cells do not proliferate",
+      "uncertainty": null
+    },
+    {
+      "id": "A-dif-muO",
+      "model_input": "cardiac_differentiation.mu_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.012,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.008,
+        "high": 0.016,
+        "unit": "1/h"
+      }
+    },
+    {
+      "id": "A-dif-muR",
+      "model_input": "cardiac_differentiation.mu_R",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.01,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": null
+    },
+    {
+      "id": "A-K",
+      "model_input": "global.K",
+      "provenance_type": "synthetic_assumption",
+      "value": 300000000.0,
+      "unit": "cells",
+      "rationale": "SYNTHETIC modeled capacity of a ~100 mL vessel; not an observed maximum",
+      "uncertainty": null
+    },
+    {
+      "id": "A-C0",
+      "model_input": "initial.C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0,
+      "unit": "cells",
+      "rationale": "Declared: no target cells before differentiation",
+      "uncertainty": null
+    },
+    {
+      "id": "A-D0",
+      "model_input": "initial.D",
+      "provenance_type": "synthetic_assumption",
+      "value": 0,
+      "unit": "cells",
+      "rationale": "Declared: dead-cell accounting starts at zero",
+      "uncertainty": null
+    },
+    {
+      "id": "A-O0",
+      "model_input": "initial.O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0,
+      "unit": "cells",
+      "rationale": "Declared: no off-target cells at expansion start",
+      "uncertainty": null
+    },
+    {
+      "id": "A-R0",
+      "model_input": "initial.R",
+      "provenance_type": "synthetic_assumption",
+      "value": 12000000.0,
+      "unit": "cells",
+      "rationale": "SYNTHETIC starting count (order of 1.2e5 cells/mL in 100 mL); not compiled evidence",
+      "uncertainty": null
+    },
+    {
+      "id": "A-exp-dC",
+      "model_input": "ipsc_expansion.delta_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.001,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": null
+    },
+    {
+      "id": "A-exp-dO",
+      "model_input": "ipsc_expansion.delta_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.002,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": null
+    },
+    {
+      "id": "A-exp-dR",
+      "model_input": "ipsc_expansion.delta_R",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.002,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": null
+    },
+    {
+      "id": "A-exp-muC",
+      "model_input": "ipsc_expansion.mu_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.0,
+      "unit": "1/h",
+      "rationale": "Declared simplification: modeled target cells do not proliferate",
+      "uncertainty": null
+    },
+    {
+      "id": "A-exp-muO",
+      "model_input": "ipsc_expansion.mu_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.01,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "uncertainty": null
+    },
+    {
+      "id": "A-exp-muR",
+      "model_input": "ipsc_expansion.mu_R",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.035,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model (~20 h doubling at low density)",
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.025,
+        "high": 0.045,
+        "unit": "1/h"
+      }
+    }
+  ],
+  "synthetic_inputs": [
+    "cardiac_differentiation.delta_C",
+    "cardiac_differentiation.delta_O",
+    "cardiac_differentiation.delta_R",
+    "cardiac_differentiation.k_C",
+    "cardiac_differentiation.k_O",
+    "cardiac_differentiation.mu_C",
+    "cardiac_differentiation.mu_O",
+    "cardiac_differentiation.mu_R",
+    "global.K",
+    "initial.C",
+    "initial.D",
+    "initial.O",
+    "initial.R",
+    "ipsc_expansion.delta_C",
+    "ipsc_expansion.delta_O",
+    "ipsc_expansion.delta_R",
+    "ipsc_expansion.mu_C",
+    "ipsc_expansion.mu_O",
+    "ipsc_expansion.mu_R"
+  ],
+  "gaps": [],
+  "errors": [],
+  "validation": {
+    "numerically_complete": true,
+    "biologically_calibrated": false,
+    "status": "runnable",
+    "note": "Numerical completeness is not biological validation; no input has been calibrated against measured trajectories."
+  }
+}

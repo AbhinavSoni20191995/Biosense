@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "exp-baseline-literature-reference",
+  "scenario_id": "scenario-laco-evidence-001",
+  "label": "Literature reference allocation: 5 d expansion + 9 d differentiation (Laco 2020 stage durations)",
+  "role": "baseline",
+  "stage_durations_h": {"ipsc_expansion": 120.0, "cardiac_differentiation": 216.0},
+  "harvest": "end_of_schedule",
+  "parameter_draw_id": "nominal",
+  "parameter_overrides": {}
+}
