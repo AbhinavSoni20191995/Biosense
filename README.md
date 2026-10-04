@@ -1,231 +1,204 @@
-# BioSense-AI cell production discovery loop
+<div align="center">
 
-A person states an aim and constraints once. From there a reasoning
-**orchestrator** agent runs a closed loop:
+<img src="webapp/assets/biosense-logo.png" alt="BioSenseAI" width="300">
 
-- **literature agent** — Europe PMC search, cited claim extraction, and a
-  bioreactor protocol (seeding, growth factors with doses and exposure windows,
-  stage timing, per-genotype adjustments, predicted genotype effects);
-- **bioinformatics agent** — what annotation sets record about a gene
-  perturbation, which protocol parameters it implicates, and which questions
-  cannot be settled in this machine at all;
-- **human approval** — always required before a real bioreactor run;
-- **bioreactor** — people run it, or a clearly-labelled synthetic stand-in;
-- **analysis agent** — target, QC, data integrity, engineered arm vs control,
-  and why it failed;
-- **the orchestrator decides** — revise the protocol, gather more evidence, ask
-  the person a question the machine cannot answer, re-measure, complete QC,
-  escalate, or stop — inside an envelope the tools enforce.
+### Ask a cell-production question in plain language.
+### Watch agents work it. Read why every choice was made.
 
-How much the person stays in the loop is one setting (`full`, `checkpoints`,
-`autonomous`), and a wet-lab run always needs a named human approver regardless.
+<a href="docs/RUN_ON_YOUR_PC.md"><b>Run it on your PC</b></a> ·
+<a href="docs/IPSC_TCELL_EXAMPLE.md"><b>Worked example</b></a> ·
+<a href="reports/"><b>Example reports</b></a> ·
+<a href="deploy/README.md"><b>Hosting</b></a>
 
-## Ask it something
+</div>
 
-Step-by-step setup for your own machine, Windows included:
-[docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md). The short version, once
-[uv](https://docs.astral.sh/uv/) is installed:
+---
+
+## The problem
+
+Optimising how a cell product is grown is a loop: read the literature, design a
+protocol, run it, read the result, change one thing, run it again. Each turn of
+that loop takes days of bench time, and the reasoning behind each change usually
+lives in someone's head or a lab notebook.
+
+Language models are good at the reading and the reasoning. They are **not** good
+at being trusted with the arithmetic, the pass/fail calls, or the authority to
+spend a week of someone's cells. So this project splits those jobs apart.
+
+## The idea, in one picture
+
+**The agent chooses. Separate, deterministic code decides what it is allowed to
+choose — and refuses the rest.**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/loop-dark.svg">
+  <img alt="The orchestrator agent reads the analysis and proposes one action. A decision envelope made of deterministic code checks that action against what the verdict permits, and refuses anything outside it. Protocols go through a named human approver before any wet-lab run, and the analysis that feeds the next decision is computed, never written by a model." src="docs/assets/loop-light.svg" width="100%">
+</picture>
+
+Everything a model writes is a **proposal**. Everything that counts as a fact —
+the verdict, the QC calls, the metrics, the comparison between arms — is
+computed. If the agent proposes something the verdict does not permit, the
+envelope refuses it and says why.
+
+| The model does | The code does |
+|---|---|
+| Reads papers, extracts cited claims | Computes every metric and verdict |
+| Forms a hypothesis about why a run failed | Decides which actions the verdict permits |
+| Chooses one action and explains it | Refuses anything outside that set |
+| Writes the brief for the next protocol | Enforces that only a revision costs an iteration |
+
+---
+
+## Try it in three commands
+
+Install [uv](https://docs.astral.sh/uv/) (it fetches Python for you), then:
 
 ```bash
-uv sync --locked
+git clone https://github.com/AbhinavSoni20191995/Biosense.git
+cd Biosense && uv sync --locked
 uv run --frozen python -m biosense.production.app --runs runs --static webapp
 ```
 
-Then open <http://127.0.0.1:8000> and type a question. The console parses it into
-a request, **shows you what it assumed before it runs anything**, streams the
-loop live, and writes a reasoning report at the end. It runs against a synthetic
-stand-in only, calls no model and holds no credentials; the code refuses
-anything else. Hosting: [deploy/README.md](deploy/README.md).
+Open **<http://127.0.0.1:8000>** and type a question.
 
-The read-only dashboard is still a separate server with no ability to start
-work — that split is deliberate and is described in the same file.
+> No API key. No internet after install. Nothing calls a model. A full
+> 25-iteration run finishes in about **1.5 seconds**.
 
-## The worked example
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/console-dark.png">
+  <img alt="The BioSense console: a question box, the result as large numbers per arm, a search-trajectory chart, and an export button for the full report." src="docs/assets/console-light.png" width="100%">
+</picture>
 
-```bash
-uv run --frozen python scripts/run_ipsc_tcell_example.py --out reports
-```
+While it runs, the agents announce what they are doing:
 
-Wild-type T cells from iPSC, then the same target with an isogenic **BACH2**
-knockout that also has to be expanded. The control reaches the target in **3
-iterations**; adding the knockout takes **25**, because the search establishes
-from measurements that IL-7 cannot be set to one value that suits both
-genotypes, and splits it per arm. Committed reports are in
-[`reports/`](reports) as HTML and PDF; the write-up, including everything the
-run does *not* show, is in
-[docs/IPSC_TCELL_EXAMPLE.md](docs/IPSC_TCELL_EXAMPLE.md).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/agents-dark.png">
+  <img alt="Transient cards naming each agent as it works: the analysis agent reporting a verdict, the orchestrator committing a decision, the reporter writing the report." src="docs/assets/agents-light.png" width="100%">
+</picture>
 
-## Why it did what it did
+Full setup, including Windows → **[docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md)**
 
-Every loop can produce a reasoning report: each decision with its reasoning, the
-alternatives the envelope refused and why, the hypotheses and their basis, every
-search move and whether it survived, the provenance of every protocol quantity,
-and the references behind each lever with their DOIs.
+---
 
-```bash
-uv run --frozen python -m biosense.production.report \
-  --loop-dir runs/my-loop --out report.html --pdf report.pdf
-```
+## A worked result
 
-Pass `--loop-dir` more than once for a comparative report. A decision authored by
-the deterministic policy is labelled as such, and the report never presents a
-rule as a model's reasoning.
+Two questions, one run each:
 
-- Production loop: [docs/PRODUCTION_LOOP.md](docs/PRODUCTION_LOOP.md). Offline
-  end-to-end demos, no model required:
-  `uv run --frozen python -m biosense.production.cli demo-cart --out runs/cart-demo`
-  (agent-driven CAR-T fixture, with bioinformatics and a human consult) and
-  `... demo --out runs/mono-demo` (iPSC → monocyte).
-- Max-mode instruments and the monocyte stand-in:
-  [analysis_agent/README.md](analysis_agent/README.md).
-- Bioinformatics knowledge sets: [bioinfo_knowledge/README.md](bioinfo_knowledge/README.md).
-  `tcell_curated_genes.json` holds BACH2 annotations with real citations, split
-  into what the cited papers report and what is a transfer to this cell type.
-- Earlier cardiac toy-model campaign: [docs/BIOSIMULATOR.md](docs/BIOSIMULATOR.md).
-- Launch the agents with `omnigent run discovery_loop`.
+1. *Optimise wild-type T cells grown from iPSC.*
+2. *Now do it with a **BACH2 knockout** that must reach the same target.*
 
-The rest of this README covers the literature agent's evidence workflow.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/trajectory-dark.png">
+  <img alt="Two lines climbing toward a dashed target line at 25. The wild-type line starts near 20 and reaches the target quickly; the knockout line starts near 7 and takes far longer, with visible steps backwards where moves were reverted." src="docs/assets/trajectory-light.png" width="100%">
+</picture>
 
+| | Arms | Iterations used | Outcome |
+|---|---|---|---|
+| Wild type alone | WT | **3** of 30 | 25.7 — target met |
+| With the knockout | WT + BACH2 KO | **25** of 30 | 25.7 and 26.0 — both met |
 
-This specialist agent turns a constrained literature question into candidate,
-evidence-backed simulator inputs. The example is human iPSC expansion followed
-by cardiomyocyte differentiation. It is not a complete autonomous application:
-Omnigent supplies the LLM/harness; this package supplies its prompt and executable
-retrieval/validation tools. Live Omnigent orchestration has not been tested here.
+The number to look at is **3 against 25**. Adding one knocked-out arm multiplied
+the search eightfold, and the loop says why in its own words:
 
-## What is included
+> IL-7 cannot be set to one shared value: moving it 16 → 25.6 ng/mL improved
+> BACH2_KO and degraded WT. The arms are being given separate values of this
+> parameter from here on.
 
-- `agent_prompt.md`: ready-to-use instructions for the specialist.
-- `request.example.json`: editable input and proposed simulator requirements.
-- `agent_tools.py`: search, open-access full-text retrieval, unit conversion,
-  provenance checks, conflict detection, constraint checks and handoff assembly.
-- `output.schema.json`: machine-readable handoff contract (JSON Schema).
-- `example.extraction.json`: manually checked extraction from a real paper.
-- `example.handoff.json`: compiler output for that extraction. This is an example
-  integration run, not a comprehensive automated literature review.
-- `test_agent_tools.py`: synthetic regression tests for rejection and unit cases.
+That is the finding: **no single shared recipe could serve both genotypes.** The
+search established it from measurements rather than assuming it, then split the
+parameter per arm. The knockout ended up needing more IL-7 at every stage and a
+weaker TCR stimulus.
 
-## Start with the input
+Reports, committed and readable without running anything →
+**[`reports/`](reports/)** · the full write-up, including everything this does
+*not* show → **[docs/IPSC_TCELL_EXAMPLE.md](docs/IPSC_TCELL_EXAMPLE.md)**
 
-An iPSC is an induced pluripotent stem cell: the starting cell population.
-A cardiomyocyte is a heart-muscle cell: the target of differentiation. Expansion
-in this example refers to increasing the starting iPSC population; differentiation
-refers to conversion toward the target. Keep any proliferation during later
-stages separately labeled.
+---
 
-Set the objective, species, source/target cell, allowed sources, search budget,
-hard constraints and simulator's required parameters. Null culture format/cell
-line means unknown, not unrestricted transferability. Ask the simulator developer
-to confirm required parameter names, units, meaning and model equations.
-The defaults are illustrative requirements; they may not fit your simulator.
+## Every run explains itself
 
-"Dimensions" can mean two different things: variables such as temperature or
-reagent concentration, and physical dimensions/units such as time or amount per
-volume. The output needs both. Also distinguish controllable variables from
-constants in the model and measurable outcomes.
+The console shows the answer. The exported report carries the justification:
 
-| Category | Examples | Simulator use |
-|---|---|---|
-| Initial conditions | Cell density, initial nutrient concentration | Starting state |
-| Operating conditions | Temperature, pH, oxygen, medium identity | Fixed settings or candidate controls |
-| Schedules | Reagent timing, medium exchanges, stage duration | Time-dependent inputs |
-| Geometry | Vessel working volume, area, aggregate size metric | Context or model geometry |
-| Kinetic constants | Growth, death, nutrient uptake, state transitions | Equations; often need fitting |
-| Outcomes | Final cell count, marker-positive fraction, viability | Calibration/validation observations |
+- **every decision** — its reasoning, the alternatives the envelope refused and
+  *why each was refused*, the hypotheses raised and the basis for each;
+- **every search move** — what it changed, for which arm, what happened, and
+  whether it survived or was reverted;
+- **every quantity** in the protocol with its provenance, so the line between a
+  cited value and a chosen one is visible at a glance;
+- **references** with DOIs, what each was used for, and whether its full text was
+  ever actually retrieved.
 
-An outcome is not automatically a kinetic constant. A reported recipe is not
-automatically an optimized recipe. A range tested in a paper is not necessarily
-a validated optimization domain. Percent marker positivity is not potency or
-cardiomyocyte-subtype purity.
+A decision made by deterministic code is labelled as such. The report never
+presents a rule as a model's reasoning.
 
-## Retrieval and extraction workflow
+---
 
-1. Search Europe PMC, using separate query families for each stage and model
-   parameter. PubMed metadata helps find papers; full text and supplements are
-   needed for settings. Publisher protocols and supplied PDFs can supplement
-   evidence after lawful access. This Python backend currently implements Europe
-   PMC only; other sources require adapters. It does not scrape Google Scholar.
-2. Read primary Methods, Results, tables and timelines. Preserve independent
-   protocols by cell line, medium, format and arm. Do not combine 2D monolayer,
-   suspension aggregate and microcarrier settings into one recipe.
-3. The Omnigent LLM extracts claim JSON according to the prompt. The supplied
-   example was checked manually. The tools do not automatically understand all
-   biology or discover numerical parameters without the LLM.
-4. Compile candidate evidence; reject unsupported passages, keep constraints
-   and conflicts visible, report gaps. Search failure is different from absence
-   of published evidence. Unsupported/missing values are never invented.
-5. Review applicability and choose a coherent protocol. Map approved claims to
-   the simulator. `selected_parameters` is initially empty and readiness false:
-   a sentence-match check alone cannot approve a biological parameter.
+## What this is **not**
 
-## Run the tools (Python 3.12 via uv, stdlib only)
+An evaluator should know the limits before the features.
+
+- **The bioreactor is a synthetic stand-in.** It is a phenomenological model, not
+  a digital twin. No number this produces is a measurement of any real cell.
+- **The stand-in was built to reward the levers the annotations suggest.** That
+  is what makes the demonstration legible, and exactly what makes it worthless as
+  biology. A real experiment could reward the opposite.
+- **No protocol value is attributed to a publication.** The citations support the
+  *direction* of a lever; every number is a design choice. The reports show that
+  count rather than hiding it.
+- **The cited BACH2 work is in peripheral and engineered T cells**, not
+  iPSC-derived ones. The knowledge set separates what a paper reports
+  (`local_annotation`) from a transfer to this cell type (`inference`).
+- **One replicate per arm.** Every between-arm difference is directional only.
+- **A loop that reaches a target has not produced a validated process.**
+  Confirmation runs, replicate design and human QA sign-off are all outside it.
+- **Live model-driven orchestration has not been run yet.** The deterministic
+  path is fully exercised; the Omnigent path is set up and validated but a first
+  live session remains a genuine test.
+
+---
+
+## Safety properties, enforced in code
+
+Not conventions — things the software refuses to do:
+
+| Rule | Where |
+|---|---|
+| A wet-lab run always needs a **named human approver**, whatever the autonomy mode says | `production/autonomy.py` |
+| The web app refuses any request that is not a synthetic stand-in | `production/engine.py` |
+| Agents never read the stand-in's hidden answers; no server ever serves a file named `truth` | `production/serve.py`, `report.py` |
+| A gap in a protocol blocks the wet lab | `production/protocol.py` |
+| Targets and QC limits can never be changed after results are seen | `production/orchestrator.py` |
+| An unannotated gene returns `found: false` with the public queries to run — never a guessed effect | `bioinformatics/tools.py` |
 
 ```bash
-uv sync --locked
-uv run --frozen python -m unittest -v
-uv run --frozen python agent_tools.py search '(hiPSC OR "induced pluripotent stem cell") AND cardiomyocyte AND (bioreactor OR expansion)' --page-size 5 --out runs/search.json
-uv run --frozen python agent_tools.py fetch PMC7076930 --out runs/source.json
-uv run --frozen python agent_tools.py compile --request request.example.json --extraction example.extraction.json --sources runs/source.json --out runs/handoff.json
+uv run --frozen python -m unittest     # 233 tests
+bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 
-Research outputs go under `runs/` (git-ignored). Omnigent setup and launch:
-see [OMNIGENT_SETUP.md](OMNIGENT_SETUP.md).
+---
 
-Fetch requires internet access to www.ebi.ac.uk. Full texts are restricted to
-what the Europe PMC open-access endpoint provides. Preserve source licenses and
-respect service limits. Article supplements are not fetched by this version;
-their presence is flagged. API metadata article-status checks are preliminary,
-not a complete retraction/correction database audit.
+## Where things are
 
-In Omnigent, configure a specialist with `agent_prompt.md` and expose the Python
-functions listed there as tools, using the current official agent configuration
-schema. Alternatively, the harness can run the CLI. Set read-only access to
-evidence and write access only to research outputs; cap searches/full-text
-requests and model spend. The search budget is currently prompt-enforced, not a
-hard backend counter. Add a supervisor counter before unattended use.
+| Path | What it holds |
+|---|---|
+| [`webapp/console.html`](webapp/console.html) | the console you see above |
+| [`biosense/production/`](biosense/production/) | the loop: designer, optimiser, analysis, envelope, reports |
+| [`standins/`](standins/) | synthetic stand-in reactors |
+| [`discovery_loop/`](discovery_loop/) | the Omnigent agent bundle for the live, model-driven path |
+| [`bioinfo_knowledge/`](bioinfo_knowledge/) | gene annotations, each with its own confidence and citation |
+| [`reports/`](reports/) | the committed example reports, HTML and PDF |
+| [`docs/`](docs/) | setup, the worked example, the production loop in depth |
 
-This package is not a tested Omnigent YAML deployment. The official project
-documents Python-function tools and specialist/sub-agent definitions:
-https://github.com/omnigent-ai/omnigent
+**Deeper reading:** [the production loop](docs/PRODUCTION_LOOP.md) ·
+[the worked example](docs/IPSC_TCELL_EXAMPLE.md) ·
+[running it yourself](docs/RUN_ON_YOUR_PC.md) ·
+[the literature agent](docs/LITERATURE_AGENT.md) ·
+[bioinformatics knowledge sets](bioinfo_knowledge/README.md) ·
+[max-mode instruments](analysis_agent/README.md) ·
+[hosting](deploy/README.md) · [Omnigent setup](OMNIGENT_SETUP.md)
 
-## Example that exposes a real extraction problem
+---
 
-Laco et al. (2020), DOI 10.1186/s13287-020-01618-6, PMCID PMC7076930, describes an
-integrated FR202 microcarrier process. The extracted phase durations are 5 days
-for starting-iPSC expansion and 9 days for differentiation. Methods reports
-10 uM CHIR99021; Results reports 12 uM in the bioreactor description. Keep both
-and request clarification. Do not interpret the discrepancy as a recommended
-10-12 uM interval. The example contains only four claims, so its missing-input
-list is a partial-extraction gap list, not proof that the paper lacks those data.
-
-Source: https://link.springer.com/article/10.1186/s13287-020-01618-6
-
-The example's short excerpts are matched against live-retrieved paragraphs.
-Full article text is not redistributed in this package. The source's cell line,
-medium, culture format and time origin must remain attached to each datum.
-
-## Useful next extension
-
-Add numeric intervals with an explicit type (tested doses, observed spread,
-standard deviation, confidence interval, or proposed prior), intervention
-objects with verified time origins, and dimensional units through a dedicated
-library. Add automated numeric transcription checks and semantic review. Add
-source adapters and supplement retrieval. Decide the model contract with the
-simulator author before selecting any parameter set.
-
-A production-ready handoff must distinguish:
-reported values; derived estimates with formula and parent observations;
-model assumptions; user-imposed bounds; and reviewed simulator selections.
-The first version deliberately compiles directly reported scalar claims only.
-
-Official source/API documentation:
-https://europepmc.org/RestfulWebService
-https://pmc.ncbi.nlm.nih.gov/tools/textmining/
-
-## Validation completed on 2026-10-04
-
-Live Europe PMC search and open-access XML retrieval succeeded. Four manually
-extracted claims were matched to the retrieved source; the concentration
-discrepancy was flagged. All 12 synthetic regression tests passed. Autonomous
-LLM extraction, semantic accuracy across many papers, formal JSON Schema
-validation, and live Omnigent configuration have not yet been evaluated.
+<div align="center">
+<sub>Not clinical or manufacturing guidance. Apache-2.0.</sub>
+</div>
