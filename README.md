@@ -20,6 +20,52 @@ A person states an aim and constraints once. From there a reasoning
 How much the person stays in the loop is one setting (`full`, `checkpoints`,
 `autonomous`), and a wet-lab run always needs a named human approver regardless.
 
+## Ask it something
+
+```bash
+uv run --frozen python -m biosense.production.app --runs runs --static webapp
+```
+
+Then open <http://127.0.0.1:8000> and type a question. The console parses it into
+a request, **shows you what it assumed before it runs anything**, streams the
+loop live, and writes a reasoning report at the end. It runs against a synthetic
+stand-in only, calls no model and holds no credentials; the code refuses
+anything else. Hosting: [deploy/README.md](deploy/README.md).
+
+The read-only dashboard is still a separate server with no ability to start
+work — that split is deliberate and is described in the same file.
+
+## The worked example
+
+```bash
+uv run --frozen python scripts/run_ipsc_tcell_example.py --out reports
+```
+
+Wild-type T cells from iPSC, then the same target with an isogenic **BACH2**
+knockout that also has to be expanded. The control reaches the target in **3
+iterations**; adding the knockout takes **25**, because the search establishes
+from measurements that IL-7 cannot be set to one value that suits both
+genotypes, and splits it per arm. Committed reports are in
+[`reports/`](reports) as HTML and PDF; the write-up, including everything the
+run does *not* show, is in
+[docs/IPSC_TCELL_EXAMPLE.md](docs/IPSC_TCELL_EXAMPLE.md).
+
+## Why it did what it did
+
+Every loop can produce a reasoning report: each decision with its reasoning, the
+alternatives the envelope refused and why, the hypotheses and their basis, every
+search move and whether it survived, the provenance of every protocol quantity,
+and the references behind each lever with their DOIs.
+
+```bash
+uv run --frozen python -m biosense.production.report \
+  --loop-dir runs/my-loop --out report.html --pdf report.pdf
+```
+
+Pass `--loop-dir` more than once for a comparative report. A decision authored by
+the deterministic policy is labelled as such, and the report never presents a
+rule as a model's reasoning.
+
 - Production loop: [docs/PRODUCTION_LOOP.md](docs/PRODUCTION_LOOP.md). Offline
   end-to-end demos, no model required:
   `uv run --frozen python -m biosense.production.cli demo-cart --out runs/cart-demo`
@@ -28,6 +74,8 @@ How much the person stays in the loop is one setting (`full`, `checkpoints`,
 - Max-mode instruments and the monocyte stand-in:
   [analysis_agent/README.md](analysis_agent/README.md).
 - Bioinformatics knowledge sets: [bioinfo_knowledge/README.md](bioinfo_knowledge/README.md).
+  `tcell_curated_genes.json` holds BACH2 annotations with real citations, split
+  into what the cited papers report and what is a transfer to this cell type.
 - Earlier cardiac toy-model campaign: [docs/BIOSIMULATOR.md](docs/BIOSIMULATOR.md).
 - Launch the agents with `omnigent run discovery_loop`.
 

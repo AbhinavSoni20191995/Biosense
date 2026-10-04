@@ -703,14 +703,28 @@ def build_comparative_report(loop_dirs, title='Comparative reasoning report', in
                         '<p class="mut">No per-arm deviation: one shared schedule served every '
                         'arm in this loop.</p></div>')
             continue
-        rows = ''.join(
-            f'<tr><td>{_e(a["arm_id"])}</td><td class="mono">{_e(a["step_id"])}</td>'
-            f'<td class="n">{_num((a.get("quantity") or {}).get("value")) if a.get("quantity") else _e(a.get("day_shift"))}</td>'
-            f'<td>{_e((a.get("quantity") or {}).get("unit") or "day shift")}</td></tr>'
-            for a in adj)
+        steps = {s['step_id']: (st, s) for st in p['stages'] for s in st['steps']}
+        rows = []
+        for a in adj:
+            st, s = steps.get(a['step_id'], (None, None))
+            factor = (s or {}).get('factor') or (s or {}).get('action') or a['step_id']
+            stage = (st or {}).get('stage_id', '')
+            base = ((s or {}).get('quantity') or {}).get('value')
+            if a.get('quantity'):
+                val, unit = a['quantity'].get('value'), a['quantity'].get('unit')
+            else:
+                val, unit = a.get('day_shift'), 'day shift'
+            rows.append(f'<tr><td>{_e(a["arm_id"])}</td><td><b>{_e(factor)}</b></td>'
+                        f'<td class="mut">{_e(stage)}</td>'
+                        f'<td class="n">{_num(base)}</td><td class="n">{_num(val)}</td>'
+                        f'<td>{_e(unit)}</td></tr>')
         body.append(f'<div class="card"><h3><code>{_e(l["loop_id"])}</code></h3>'
-                    '<table><thead><tr><th>Arm</th><th>Step</th><th class="n">Value</th>'
-                    f'<th>Unit</th></tr></thead><tbody>{rows}</tbody></table></div>')
+                    '<table><thead><tr><th>Arm</th><th>Parameter</th><th>Stage</th>'
+                    '<th class="n">Shared value</th><th class="n">This arm</th><th>Unit</th>'
+                    f'</tr></thead><tbody>{"".join(rows)}</tbody></table>'
+                    '<p class="mut">"Shared value" is what the base protocol runs for every other '
+                    'arm. A row here is a parameter the search could not satisfy with one value '
+                    'across genotypes.</p></div>')
 
     # Provenance comparison
     body.append('<h2>Evidence standing of each final protocol</h2>')
@@ -725,8 +739,10 @@ def build_comparative_report(loop_dirs, title='Comparative reasoning report', in
     body.append('<table><thead><tr><th>Loop</th><th class="n">Reported</th><th class="n">Adapted</th>'
                 '<th class="n">Design choice</th><th class="n">Gap</th></tr></thead>'
                 f'<tbody>{"".join(rows)}</tbody></table>')
-    body.append('<p class="mut">' + _e(PROV_NOTE['reported']) + ' ' + _e(PROV_NOTE['adapted'])
-                + ' ' + _e(PROV_NOTE['design_choice']) + '</p>')
+    body.append('<p class="mut">'
+                + ' '.join(f'<b>{_e(PROV_LABEL[k])}:</b> {_e(PROV_NOTE[k])}'
+                           for k in ('reported', 'adapted', 'design_choice', 'gap'))
+                + '</p>')
 
     # Shared references
     body.append('<h2>References used across these loops</h2>')

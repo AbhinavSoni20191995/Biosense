@@ -1,28 +1,66 @@
 # Hosting BioSense-AI
 
-Two different things get hosted, and keeping them apart is the whole design:
+Three different things can be hosted, and keeping them apart is the whole design.
 
-| | What it is | Needs model credentials | Safe behind a public URL |
-|---|---|---|---|
-| **Dashboard** | `biosense.production.serve` + `webapp/` — a read-only view of the JSON a loop has written | no | yes, with the caveats below |
-| **Loop runtime** | `omnigent run discovery_loop` — the orchestrator and its specialists | yes | only behind authentication |
+| | What it is | Holds model credentials | Can start work | Safe behind a public URL |
+|---|---|---|---|---|
+| **Console** | `biosense.production.app` + `webapp/console.html` — type a question, watch a loop, read its reasoning report | no | yes, **synthetic stand-in only** | yes, with the caveats below |
+| **Dashboard** | `biosense.production.serve` + `webapp/index.html` — a strictly read-only view of what a loop has written | no | no | yes |
+| **Loop runtime** | `omnigent run discovery_loop` — the orchestrator and its specialists | **yes** | yes, for real | **only behind authentication** |
 
-The dashboard cannot start work, approve a protocol, commit a decision or answer
-a consult. Those stay CLI acts with a named person behind them, which is what
-makes a public dashboard reasonable in the first place.
+The console starts work, so it has a different threat model from the dashboard.
+That is why it is a separate server rather than a few extra routes on
+`serve.py`: the read-only guarantees of the dashboard stay intact and provable.
 
-## Verified here, and not
+## Why hosting the console is reasonable
 
-Verified on 2026-10-04: `biosense.production.serve` serves `/api/loops`,
-`/api/loops/<id>`, `/healthz` and the tracker page; it refuses path traversal,
-refuses any file whose name contains `truth`, and skips malformed or oversized
-files instead of failing. `tests/test_serve.py` covers all of that.
+Not by policy, but because the code refuses:
 
-Not verified here: the Dockerfile has never been built — this machine has no
-container runtime — and no Railway deploy has been run. Treat both as a starting
-recipe, not a tested artifact.
+- **It cannot reach a bioreactor.** `engine.preflight` refuses any request whose
+  `bioreactor_source` is not `synthetic_standin`, and `prompt.parse` sets that
+  field itself, so there is no text a visitor can type that reaches a wet-lab
+  path. A wet-lab run always needs a named human approver regardless of mode,
+  and the engine refuses to self-approve when the gates require one.
+- **It cannot pretend a person approved anything.** The approver string every
+  app run records says in words that no human approved it and that no wet-lab
+  run is authorised.
+- **It cannot read the stand-in's hidden answers.** No handler serves a file
+  whose name contains `truth`, and the report generator will not read one
+  either. The file ships inside the image and is still unreachable over HTTP.
+- **It cannot spend money.** Nothing on this path calls a model. There are no
+  model credentials in the image.
+- **It cannot be made to run forever.** Concurrency, queue depth, prompt length,
+  events per run and the time a finished run's events are kept are all capped in
+  `biosense/production/app.py`.
 
-## Dashboard on Railway
+What it still is: a public URL that runs CPU work on demand. Put it behind
+whatever rate limiting your platform offers, and treat `MAX_CONCURRENT` as the
+real cost control.
+
+## Verified, and not
+
+Verified on 2026-10-04, in this repository:
+
+- `deploy/Dockerfile` **builds**, and the image **runs** under a non-root user.
+  (The previous note here said the Dockerfile had never been built. It had not,
+  and building it found two real faults: `agent_tools.py` and
+  `output.schema.json` live at the repository root and are reached from inside
+  the package, so the image started and then failed on the first request. Both
+  are now copied.)
+- A full prompt-driven run inside the container: 214 events, terminal
+  `protocol_succeeded`, both arms meeting the target, reasoning report served.
+- Artifacts survive `docker restart` on a mounted volume, and the report for a
+  loop written before the restart is still served afterwards.
+- Path traversal, `/standin_truth.synthetic.json` and an unknown run id all
+  return 404 from inside the container.
+- `tests/test_app_loop.py` covers the same refusals against a live server on a
+  loopback port, so they are regression-tested rather than checked once.
+
+Not verified here: no Railway deploy has been run from this repository. The
+commands below follow Railway's documented flow and the image they build is the
+one that was tested, but the deploy itself is untested.
+
+## Console on Railway
 
 ```bash
 railway init
@@ -32,22 +70,55 @@ railway volume add --mount-path /data
 
 Railway sets `$PORT` and the image binds `0.0.0.0`. Two things matter:
 
-1. **The volume.** Railway's container filesystem is ephemeral; without a volume
-   mounted at `/data`, every redeploy discards the loop artifacts. `RUNS_DIR`
-   defaults to `/data/runs`.
-2. **Getting artifacts in.** The image contains no loops. Either run the loop in
-   a second service that writes to the same volume, or push from wherever the
-   loop runs:
-   ```bash
-   rsync -a --delete runs/loop-20261004-0930/ <host>:/data/runs/loop-20261004-0930/
-   ```
-   A loop directory is append-mostly JSON, so a plain sync is enough; the
-   dashboard polls every 4 seconds and picks up new decisions as they land.
+1. **The volume.** Railway's container filesystem is ephemeral. Without a volume
+   at `/data`, every redeploy discards the loop artifacts and the reports
+   written beside them. `RUNS_DIR` defaults to `/data/runs`.
+2. **What the console writes is what the dashboard reads.** They share the same
+   `runs/` layout, so pointing both at one volume gives you a console that
+   starts runs and a dashboard that only ever reads them.
 
-The published artifact version of the tracker cannot fetch a `localhost` API —
-a browser blocks an HTTPS page calling plain HTTP. That is why the page is served
-from the same origin as the API. Opened as a file or as a published artifact, the
-fetch fails quietly and the recorded CAR-T replay stands.
+To bring in loops produced elsewhere — a real session on a lab machine, say —
+sync the directory in:
+
+```bash
+rsync -a --delete runs/loop-20261004-0930/ <host>:/data/runs/loop-20261004-0930/
+```
+
+A loop directory is append-mostly JSON, so a plain sync is enough.
+
+### Why Railway and not Databricks
+
+Both were on the table. Railway, for this piece, because:
+
+- The thing being hosted is a small, stateless HTTP service with one volume.
+  Railway's unit of deployment is exactly that; the image here is 
+  self-contained and needs no workspace, no cluster and no catalog.
+- It needs no credentials at all, which is the property that makes a public URL
+  defensible. A managed Databricks workspace is the wrong shape for a service
+  whose main security claim is that it holds nothing.
+- Anyone can reproduce it: `docker build` and `docker run` locally are the same
+  path, and both were exercised here.
+
+Databricks is the better host for the **loop runtime** rather than the console,
+and for the same reasons in reverse: it is where governed data, credentials and
+scheduled jobs already live, and Omnigent has a documented quickstart there
+(<https://docs.databricks.com/aws/en/omnigent/quickstart>). If your evidence and
+your people are already in a Databricks workspace, run the agents there and host
+the console separately — the loop's own artifacts are the integration surface
+between them.
+
+## Dashboard only
+
+If you want the read-only view with no ability to start work at all, run the
+other server against the same volume:
+
+```bash
+uv run --frozen python -m biosense.production.serve \
+  --runs /data/runs --static webapp --host 0.0.0.0 --port "$PORT"
+```
+
+It serves `webapp/index.html` at `/`. The console image serves
+`webapp/console.html` at `/` and keeps the tracker at `/index.html`.
 
 ## Loop runtime in a container
 
@@ -88,4 +159,5 @@ Four things to settle before this is worth deploying:
   Do not rely on a live session surviving.
 
 For a lab, the honest split is: run the loop where the data and the people are,
-host the dashboard. The loop's own artifacts are the integration surface.
+host the console and the dashboard. The loop's own artifacts are the integration
+surface.

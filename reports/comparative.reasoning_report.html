@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wild type against a BACH2 knockout: iPSC to T lineage</title>
+<meta name="description" content="Two BioSense optimisation loops compared: outcomes, the per-arm conditions each search established, evidence standing and references.">
+<style>
+:root{--bg:#fbfbfa;--fg:#1a1a18;--mut:#5c5c56;--line:#dcdcd6;--card:#fff;
+--ok:#1f6f43;--bad:#9b2226;--warn:#8a5a00;--info:#1b4e7a;--accent:#30343f;
+--design:#8a5a00;--reported:#1f6f43;--adapted:#1b4e7a;--gap:#9b2226;}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#16171a;--fg:#e9e9e4;--mut:#a3a39c;--line:#2e3034;--card:#1d1f23;
+--ok:#6cc48d;--bad:#f08a8a;--warn:#e0b25c;--info:#78b4e0;--accent:#c9ccd4;
+--design:#e0b25c;--reported:#6cc48d;--adapted:#78b4e0;--gap:#f08a8a;}}
+:root[data-theme="dark"]{--bg:#16171a;--fg:#e9e9e4;--mut:#a3a39c;--line:#2e3034;
+--card:#1d1f23;--ok:#6cc48d;--bad:#f08a8a;--warn:#e0b25c;--info:#78b4e0;
+--accent:#c9ccd4;--design:#e0b25c;--reported:#6cc48d;--adapted:#78b4e0;--gap:#f08a8a;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 ui-sans-serif,system-ui,
+-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+.wrap{max-width:62rem;margin:0 auto;padding:2.5rem 16px 5rem}
+h1{font-size:1.9rem;line-height:1.25;margin:0 0 .3rem}
+h2{font-size:1.3rem;margin:2.6rem 0 .8rem;padding-bottom:.35rem;border-bottom:2px solid var(--line)}
+h3{font-size:1.05rem;margin:1.6rem 0 .5rem}
+h4{font-size:.95rem;margin:1.1rem 0 .35rem;color:var(--mut)}
+p,li{margin:.5rem 0}
+.sub{color:var(--mut);margin:0 0 1.2rem}
+.banner{border:1px solid var(--warn);border-left:5px solid var(--warn);background:var(--card);
+padding:.9rem 1.1rem;border-radius:6px;margin:1.2rem 0}
+.banner b{color:var(--warn)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;
+padding:1rem 1.2rem;margin:.9rem 0}
+.card.dec{border-left:4px solid var(--info)}
+.card.rev{border-left:4px solid var(--design)}
+table{width:100%;border-collapse:collapse;margin:.7rem 0;font-size:.9rem}
+th,td{text-align:left;padding:.45rem .55rem;border-bottom:1px solid var(--line);
+vertical-align:top}
+th{font-weight:600;color:var(--mut);font-size:.8rem;text-transform:uppercase;letter-spacing:.03em}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86em}
+.tag{display:inline-block;padding:.08rem .45rem;border-radius:4px;font-size:.74rem;
+font-weight:600;border:1px solid currentColor;white-space:nowrap}
+.t-reported{color:var(--reported)}.t-adapted{color:var(--adapted)}
+.t-design_choice{color:var(--design)}.t-gap{color:var(--gap)}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+.warn{color:var(--warn);font-weight:600}.mut{color:var(--mut)}
+.kv{display:grid;grid-template-columns:minmax(9rem,auto) 1fr;gap:.2rem .9rem;font-size:.9rem}
+.kv dt{color:var(--mut)}.kv dd{margin:0}
+ul.tight{margin:.3rem 0;padding-left:1.2rem}
+ul.tight li{margin:.2rem 0}
+.why{border-left:3px solid var(--line);padding-left:.9rem;margin:.6rem 0;color:var(--fg)}
+blockquote{margin:.6rem 0;padding:.6rem .9rem;background:var(--bg);border:1px solid var(--line);
+border-radius:6px;font-size:.92rem}
+.toc{columns:2;column-gap:2rem;font-size:.92rem}
+@media (max-width:40rem){.toc{columns:1}.kv{grid-template-columns:1fr}}
+.foot{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);
+color:var(--mut);font-size:.85rem}
+@media print{body{background:#fff;color:#000}.card{break-inside:avoid}
+h2{break-after:avoid}table{break-inside:auto}tr{break-inside:avoid}}
+</style></head>
+<body><div class="wrap"><h1>Wild type against a BACH2 knockout: iPSC to T lineage</h1><p class="sub">2 loops compared &middot; <code>example-ipsc-tcell-wt</code> &middot; <code>example-ipsc-tcell-bach2</code></p><div class="banner"><b>Synthetic stand-in reactor.</b> Every number below is the output of a phenomenological stand-in whose per-arm behaviour was invented for software testing. The comparison demonstrates that the loop can find that two genotypes need different conditions. It is not evidence that they do.</div><div class="card">
+<h3>What this comparison answers</h3>
+<p>The first loop asks what a wild-type iPSC-derived T-lineage process reaches on its own, and
+what the best schedule the search can find for it looks like. The second asks the same of a line
+carrying a BACH2 knockout that must still be expanded to the same target, alongside its own
+isogenic control.</p>
+<p>The result worth reading is not either arm's number. It is <b>whether one shared schedule can
+serve both genotypes</b>. Where the search finds that it cannot, it says so explicitly and splits
+that parameter per arm, and the split is listed below.</p>
+<h3>What it does not answer</h3>
+<p>The reactor is a synthetic stand-in whose per-arm behaviour was invented. It was built so that
+the levers the curated BACH2 annotation suggests are the ones that pay off, which is what makes
+the demonstration legible and also what makes it worthless as biology. The curated annotations
+separate what a cited paper reports from a transfer to this cell type, and the cited BACH2 work
+is in mouse and human peripheral or engineered T cells, not in an iPSC-derived differentiation.
+No numeric value in either protocol is attributed to any publication, because no full text was
+retrieved.</p>
+</div><h2>Outcomes side by side</h2><table><thead><tr><th>Loop</th><th>Verdict</th><th>Ended in</th><th class="n">Iterations</th><th>Best per arm</th><th class="n">Decisions</th></tr></thead><tbody><tr><td><code>example-ipsc-tcell-wt</code></td><td>SUCCESS</td><td>protocol_succeeded</td><td class="n">3/30</td><td>WT 25.718 (met)</td><td class="n">4</td></tr><tr><td><code>example-ipsc-tcell-bach2</code></td><td>SUCCESS</td><td>protocol_succeeded</td><td class="n">25/30</td><td>BACH2_KO 25.954 (met), WT 25.744 (met)</td><td class="n">27</td></tr></tbody></table><h2>What each search established</h2><div class="card"><h3><code>example-ipsc-tcell-wt</code></h3><p class="mut">The search recorded no cross-arm finding.</p></div><div class="card"><h3><code>example-ipsc-tcell-bach2</code></h3><ul class="tight"><li>IL-7 cannot be set to one shared value: moving it 16 -&gt; 25.6 ng/mL improved BACH2_KO and degraded WT. The arms are being given separate values of this parameter from here on.</li></ul></div><h2>Where the arms ended up</h2><p>The rows below are the per-arm deviations each loop established. A parameter that appears here is one the search could not satisfy with a single shared value across genotypes.</p><div class="card"><h3><code>example-ipsc-tcell-wt</code></h3><p class="mut">No per-arm deviation: one shared schedule served every arm in this loop.</p></div><div class="card"><h3><code>example-ipsc-tcell-bach2</code></h3><table><thead><tr><th>Arm</th><th>Parameter</th><th>Stage</th><th class="n">Shared value</th><th class="n">This arm</th><th>Unit</th></tr></thead><tbody><tr><td>BACH2_KO</td><td><b>IL-15</b></td><td class="mut">expansion</td><td class="n">16</td><td class="n">14.08</td><td>ng/mL</td></tr><tr><td>BACH2_KO</td><td><b>IL-7</b></td><td class="mut">expansion</td><td class="n">16</td><td class="n">25.6</td><td>ng/mL</td></tr><tr><td>BACH2_KO</td><td><b>anti-CD3</b></td><td class="mut">maturation</td><td class="n">13.31</td><td class="n">11.713</td><td>ng/mL</td></tr><tr><td>BACH2_KO</td><td><b>IL-7</b></td><td class="mut">maturation</td><td class="n">10</td><td class="n">25.6</td><td>ng/mL</td></tr><tr><td>BACH2_KO</td><td><b>SCF</b></td><td class="mut">maturation</td><td class="n">50</td><td class="n">80</td><td>ng/mL</td></tr><tr><td>BACH2_KO</td><td><b>DLL4</b></td><td class="mut">t_commitment</td><td class="n">500</td><td class="n">800</td><td>ng/mL</td></tr><tr><td>BACH2_KO</td><td><b>IL-7</b></td><td class="mut">t_commitment</td><td class="n">10</td><td class="n">16</td><td>ng/mL</td></tr></tbody></table><p class="mut">"Shared value" is what the base protocol runs for every other arm. A row here is a parameter the search could not satisfy with one value across genotypes.</p></div><h2>Evidence standing of each final protocol</h2><table><thead><tr><th>Loop</th><th class="n">Reported</th><th class="n">Adapted</th><th class="n">Design choice</th><th class="n">Gap</th></tr></thead><tbody><tr><td><code>example-ipsc-tcell-wt</code></td><td class="n">0</td><td class="n">0</td><td class="n">29</td><td class="n">0</td></tr><tr><td><code>example-ipsc-tcell-bach2</code></td><td class="n">0</td><td class="n">0</td><td class="n">36</td><td class="n">0</td></tr></tbody></table><p class="mut"><b>Reported:</b> The value equals a cited claim. <b>Adapted:</b> Transferred or converted from cited claims, with a rationale. <b>Design choice:</b> Chosen without direct evidence. Needs human approval and carries no citation. <b>Gap (no value):</b> No value. Blocks a wet-lab run.</p><h2>References used across these loops</h2><h3>Publications</h3><ol class="tight"><li><p>Fine-tuning BACH2 dosage balances stemness and effector function to enhance antitumor T cell therapy. Nat Immunol. 2025. <a href="https://doi.org/10.1038/s41590-025-02389-z">10.1038/s41590-025-02389-z</a><br><span class="warn">full text not retrieved</span></p><p class="mut">Used for:</p><ul class="tight"><li>claim L05 (bach2_dosage_effect)</li></ul></li><li><p>Michaels YS, Edgar JM, Major MC, et al. DLL4 and VCAM1 enhance the emergence of T cell-competent hematopoietic progenitors from human pluripotent stem cells. Sci Adv. 2022;8(34):eabn5522. <a href="https://doi.org/10.1126/sciadv.abn5522">10.1126/sciadv.abn5522</a> &middot; PMC PMC9401626<br><span class="warn">full text not retrieved</span></p><p class="mut">Used for:</p><ul class="tight"><li>claim L01 (notch_ligand_requirement)</li><li>claim L02 (stage_order)</li></ul></li><li><p>Roychoudhuri R, Clever D, Li P, et al. BACH2 regulates CD8+ T cell differentiation by controlling access of AP-1 factors to enhancers. Nat Immunol. 2016;17(7):851-860. <a href="https://doi.org/10.1038/ni.3441">10.1038/ni.3441</a> &middot; PMC PMC4918801<br><span class="warn">full text not retrieved</span></p><p class="mut">Used for:</p><ul class="tight"><li>claim L03 (bach2_terminal_differentiation)</li></ul></li><li><p>Tsukumo S, Unno M, Muto A, et al. Bach2 maintains T cells in a naive state by suppressing effector memory-related genes. Proc Natl Acad Sci USA. 2013;110(26):10735-10740. <a href="https://doi.org/10.1073/pnas.1306691110">10.1073/pnas.1306691110</a> &middot; PMC PMC3696756<br><span class="warn">full text not retrieved</span></p><p class="mut">Used for:</p><ul class="tight"><li>claim L04 (bach2_naive_maintenance)</li></ul></li></ol><h3>Annotation sources</h3><p class="mut">Each annotation carries its own confidence. <code>local_annotation</code> restates what a cited paper reports; <code>inference</code> is a transfer to this cell type or readout that no cited paper measures; <code>synthetic_fixture</code> is invented for software testing.</p><ol class="tight"><li><p>Roychoudhuri et al. 2013, Nature 498:506-510, doi:10.1038/nature12199 (PMID 23728300) - reference key roychoudhuri2013 [tcell_curated_genes]</p><ul class="tight"><li>BACH2 knockout: increase target_marker_pct [local_annotation]</li></ul></li><li><p>Roychoudhuri et al. 2016, Nat Immunol 17:851-860, doi:10.1038/ni.3441 (PMID 27158840) - reference key roychoudhuri2016 [tcell_curated_genes]</p><ul class="tight"><li>BACH2 knockout: increase growth_rate_per_h [local_annotation]</li></ul></li><li><p>Transfer by the curator from roychoudhuri2016 (doi:10.1038/ni.3441) and bach2_dosage_2025 (doi:10.1038/s41590-025-02389-z) to an iPSC-derived expansion readout. No cited paper measures this. [tcell_curated_genes]</p><ul class="tight"><li>BACH2 knockout: decrease target_cells_per_input_cell [inference]</li></ul></li><li><p>Tsukumo et al. 2013, PNAS 110:10735-10740, doi:10.1073/pnas.1306691110 (PMID 23754397) - reference key tsukumo2013 [tcell_curated_genes]</p><ul class="tight"><li>BACH2 knockout: decrease target_marker_pct [local_annotation]</li></ul></li></ol><h2>Limitations of the comparison</h2><ul class="tight"><li>The arms were compared inside a synthetic stand-in whose per-arm knobs were invented. The stand-in was built so that the levers the annotation suggests are the ones that pay off, which is what makes the demonstration legible and also what makes it worthless as biology.</li><li>One replicate per arm. Every difference is directional only.</li><li>The curated gene annotations distinguish what a cited paper reports from a transfer to this cell type. Only the former rests on a publication, and the cited work is in peripheral or engineered T cells, not in an iPSC-derived differentiation.</li><li>A parameter the search split per arm is a statement about this stand-in's response surface, not about the genotype.</li></ul><div class="foot">Generated by <code>biosense.production.report</code>. Not clinical or manufacturing guidance.</div></div></body></html>
