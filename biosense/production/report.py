@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -69,9 +70,20 @@ def _e(x):
 
 
 def _num(x, nd=3):
+    """A number for display.
+
+    Trailing zeros are stripped only when a decimal point is present. Stripping
+    them unconditionally turns 10 into 1 and 500 into 5 whenever `nd` is 0, which
+    is exactly the case axis ticks use.
+    """
     if isinstance(x, bool) or not isinstance(x, (int, float)):
         return _e(x)
-    return f'{x:,.{nd}f}'.rstrip('0').rstrip('.') if abs(x) < 1e6 else f'{x:.3e}'
+    if not math.isfinite(x):
+        return _e(x)
+    if abs(x) >= 1e6:
+        return f'{x:.3e}'
+    out = f'{x:,.{nd}f}'
+    return out.rstrip('0').rstrip('.') if '.' in out else out
 
 
 def _pct(x):
@@ -240,9 +252,476 @@ border-radius:6px;font-size:.92rem}
 @media (max-width:40rem){.toc{columns:1}.kv{grid-template-columns:1fr}}
 .foot{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);
 color:var(--mut);font-size:.85rem}
+
+/* ── charts ──────────────────────────────────────────────
+   Inline SVG with no script, so a chart reads the same in the HTML and in the
+   printed PDF. Series colours are validated for CVD separation and contrast
+   against both surfaces; a third arm is the last that gets its own hue, and
+   beyond that the chart falls back to small multiples. */
+:root{--s1:#1f6fa8;--s2:#a8475f;--s3:#6b6b00;
+--good:#1f6f43;--bad:#9b2226;--neutral:#78787a;}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--s1:#4292c9;--s2:#cf6b83;--s3:#a89040;
+--good:#6cc48d;--bad:#f08a8a;--neutral:#8e8e92;}}
+:root[data-theme="dark"]{--s1:#4292c9;--s2:#cf6b83;--s3:#a89040;
+--good:#6cc48d;--bad:#f08a8a;--neutral:#8e8e92;}
+figure{margin:1.1rem 0}
+figcaption{font-size:.82rem;color:var(--mut);margin-top:.5rem;line-height:1.5}
+svg.chart{width:100%;height:auto;display:block;overflow:visible}
+svg.chart text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+font-size:9.5px;fill:var(--mut)}
+svg.chart text.lbl{font-weight:600;font-size:10px}
+svg.chart .grid{stroke:var(--line);stroke-width:1}
+svg.chart .ax{stroke:var(--line);stroke-width:1}
+svg.chart .rule{stroke:var(--mut);stroke-width:1.4;stroke-dasharray:5 4;fill:none}
+svg.chart .ln{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+svg.chart .bar{stroke:var(--card);stroke-width:2}
+.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:.8rem;margin:.1rem 0 .5rem;
+color:var(--mut)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:3px;flex:none;display:inline-block}
+.smul{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1.1rem}
+@media (max-width:40rem){.smul{grid-template-columns:1fr}}
 @media print{body{background:#fff;color:#000}.card{break-inside:avoid}
-h2{break-after:avoid}table{break-inside:auto}tr{break-inside:avoid}}
+h2{break-after:avoid}table{break-inside:auto}tr{break-inside:avoid}
+figure{break-inside:avoid}}
 """
+
+
+# ── charts ──────────────────────────────────────────────────
+#
+# Every chart here is inline SVG built in Python, with no script, because the
+# report is read as a printed PDF as often as a page and a chart that needs
+# JavaScript is a blank box there. Colours come from CSS variables so the same
+# markup is correct in light and dark mode.
+
+SERIES_VARS = ('var(--s1)', 'var(--s2)', 'var(--s3)')
+OUTCOME_STYLE = {
+    'better': ('var(--good)', 'kept — beat the arm’s best'),
+    'worse': ('var(--bad)', 'reverted — fell below it'),
+    'conflict': ('var(--warn)', 'split per arm — helped one, hurt another'),
+    'flat': ('var(--neutral)', 'no material change — direction abandoned'),
+}
+PROV_COLOR = {'reported': 'var(--reported)', 'adapted': 'var(--adapted)',
+              'design_choice': 'var(--design)', 'gap': 'var(--gap)'}
+
+
+def _ticks(lo, hi, n=4):
+    """Round-ish tick values spanning [lo, hi]."""
+    if hi <= lo:
+        hi = lo + 1
+    raw = (hi - lo) / n
+    mag = 10 ** math.floor(math.log10(raw)) if raw > 0 else 1
+    step = next((m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw), 10 * mag)
+    start = math.floor(lo / step) * step
+    out, v = [], start
+    while v <= hi + step * 0.5:
+        if v >= lo - step * 0.5:
+            out.append(round(v, 10))
+        v += step
+    return out
+
+
+def arm_order(loop, present=None):
+    """Arms in a stable order: the wild-type control first, then alphabetical.
+
+    Colour must follow the entity, not its position in a list. Ordering by
+    `sorted()` alone makes WT the first series in a loop that has only WT and the
+    second in a loop that also has BACH2_KO, so the same arm changes colour
+    between two panels of the same comparison.
+    """
+    p = final_protocol(loop) or {}
+    declared = p.get('genotype_arms') or []
+    wild = [a['arm_id'] for a in declared if a.get('genotype') == 'wild_type']
+    rest = sorted(a['arm_id'] for a in declared if a.get('genotype') != 'wild_type')
+    order = wild + rest
+    if present is not None:
+        order = [a for a in order if a in present] + sorted(set(present) - set(order))
+    return order
+
+
+def _arm_colors(arms):
+    """arm_id -> colour, assigned once so every chart agrees."""
+    return {a: SERIES_VARS[i % len(SERIES_VARS)] for i, a in enumerate(arms)}
+
+
+def _fig(svg, caption, legend_html=''):
+    return f'<figure>{legend_html}{svg}<figcaption>{caption}</figcaption></figure>'
+
+
+def _legend(items):
+    """items: [(colour, label)]. Identity is never colour alone, so this always ships."""
+    return ('<div class="legend">' + ''.join(
+        f'<span><i class="sw" style="background:{c}"></i>{_e(l)}</span>' for c, l in items)
+        + '</div>')
+
+
+def chart_trajectory(loop, width=680, height=250, colors=None):
+    """The headline: the request's own target metric per arm, per iteration."""
+    s = loop.get('search') or {}
+    obs = s.get('observations') or []
+    if len(obs) < 2:
+        return ''
+    present = {a for o in obs for a in o['arms']}
+    arms = arm_order(loop, present)
+    if not arms:
+        return ''
+    colors = colors or _arm_colors(arms)
+    target = None
+    a = final_analysis(loop)
+    if a and a['arms']:
+        target = a['arms'][0]['target'].get('required')
+    m = {'t': 12, 'r': 74, 'b': 32, 'l': 50}
+    iw, ih = width - m['l'] - m['r'], height - m['t'] - m['b']
+    xs = [o['iteration'] for o in obs]
+    x0, x1 = min(xs), max(max(xs), min(xs) + 1)
+    vals = [v for o in obs for v in o['arms'].values() if isinstance(v, (int, float))]
+    if target:
+        vals.append(target)
+    ymax = max(vals) * 1.12 if vals else 1
+    X = lambda v: m['l'] + (v - x0) / (x1 - x0) * iw
+    Y = lambda v: m['t'] + ih - (v / ymax) * ih if ymax else m['t'] + ih
+
+    p = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+         f'aria-label="Target metric per iteration for {_e(", ".join(arms))}">']
+    for t in _ticks(0, ymax):
+        y = Y(t)
+        p.append(f'<line class="grid" x1="{m["l"]}" x2="{m["l"] + iw}" y1="{y:.1f}" y2="{y:.1f}"/>')
+        p.append(f'<text x="{m["l"] - 7}" y="{y + 3:.1f}" text-anchor="end">{_num(t, 0)}</text>')
+    step = max(1, math.ceil((x1 - x0) / 9))
+    for v in range(int(x0), int(x1) + 1, step):
+        p.append(f'<text x="{X(v):.1f}" y="{height - m["b"] + 14}" '
+                 f'text-anchor="middle">{v}</text>')
+    p.append(f'<text x="{m["l"] + iw / 2:.1f}" y="{height - 3}" text-anchor="middle">'
+             f'iteration</text>')
+    if target:
+        p.append(f'<line class="rule" x1="{m["l"]}" x2="{m["l"] + iw}" '
+                 f'y1="{Y(target):.1f}" y2="{Y(target):.1f}"/>')
+        p.append(f'<text x="{m["l"] + 4}" y="{Y(target) - 6:.1f}">target {_num(target, 0)}</text>')
+    dots = len(obs) <= 12
+    for i, arm in enumerate(arms):
+        col = colors[arm]
+        pts = [(X(o['iteration']), Y(o['arms'][arm])) for o in obs
+               if isinstance(o['arms'].get(arm), (int, float))]
+        if not pts:
+            continue
+        d = ' '.join(('L' if j else 'M') + f'{x:.1f} {y:.1f}' for j, (x, y) in enumerate(pts))
+        p.append(f'<path class="ln" stroke="{col}" d="{d}"/>')
+        if dots:
+            for x, y in pts:
+                p.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="{col}" '
+                         f'stroke="var(--card)" stroke-width="2"/>')
+        lx, ly = pts[-1]
+        p.append(f'<text class="lbl" x="{lx + 7:.1f}" y="{ly + (13 if i % 2 else -6):.1f}" '
+                 f'style="fill:{col}">{_e(arm)}</text>')
+    p.append('</svg>')
+    return _fig(''.join(p),
+                'One point per stand-in run. The optimiser moves one lever per arm per iteration '
+                'and reverts any move that does not beat that arm’s best reading, which is why a '
+                'line can step back and then recover. The dashed rule is the target the request '
+                'asked for.',
+                _legend([(colors[a], a) for a in arms]))
+
+
+def chart_arms_vs_target(analysis, width=680, colors=None):
+    """Where each arm finished against what was asked for."""
+    if not analysis or not analysis.get('arms'):
+        return ''
+    rows = [(a['arm_id'], a['target']['observed_mean'], a['target']['required'],
+             a['target']['status']) for a in analysis['arms']]
+    colors = colors or _arm_colors([r[0] for r in rows])
+    req = rows[0][2]
+    hi = max([r[1] for r in rows] + [req]) * 1.15
+    # Top margin leaves room for the target label above the rule; at 10 it sat on
+    # the viewBox edge and was clipped wherever the figure is cropped.
+    bh, gap, m = 22, 14, {'t': 24, 'r': 78, 'b': 26, 'l': 92}
+    height = m['t'] + m['b'] + len(rows) * (bh + gap)
+    iw = width - m['l'] - m['r']
+    X = lambda v: m['l'] + (v / hi) * iw
+    p = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+         f'aria-label="Final value per arm against the target">']
+    for t in _ticks(0, hi):
+        p.append(f'<line class="grid" x1="{X(t):.1f}" x2="{X(t):.1f}" y1="{m["t"]}" '
+                 f'y2="{height - m["b"]}"/>')
+        p.append(f'<text x="{X(t):.1f}" y="{height - m["b"] + 14}" text-anchor="middle">'
+                 f'{_num(t, 0)}</text>')
+    for i, (arm, got, need, status) in enumerate(rows):
+        y = m['t'] + i * (bh + gap)
+        col = colors.get(arm, SERIES_VARS[i % len(SERIES_VARS)])
+        p.append(f'<rect class="bar" x="{m["l"]}" y="{y}" width="{max(X(got) - m["l"], 1):.1f}" '
+                 f'height="{bh}" rx="3" fill="{col}"/>')
+        p.append(f'<text class="lbl" x="{m["l"] - 8}" y="{y + bh / 2 + 3.5:.0f}" '
+                 f'text-anchor="end">{_e(arm)}</text>')
+        mark = '✓ met' if status == 'MET' else '✗ not met'
+        p.append(f'<text x="{X(got) + 7:.1f}" y="{y + bh / 2 + 3.5:.0f}" '
+                 f'style="fill:{"var(--ok)" if status == "MET" else "var(--bad)"}">'
+                 f'{_num(got)} {mark}</text>')
+    p.append(f'<line class="rule" x1="{X(req):.1f}" x2="{X(req):.1f}" y1="{m["t"] - 4}" '
+             f'y2="{height - m["b"]}"/>')
+    p.append(f'<text x="{X(req):.1f}" y="{m["t"] - 9}" text-anchor="middle">'
+             f'target {_num(req, 0)}</text>')
+    p.append('</svg>')
+    metric = analysis['arms'][0]['target']['metric']
+    unit = analysis['arms'][0]['target'].get('unit', '')
+    return _fig(''.join(p), f'Final {_e(metric)} per arm, in {_e(unit)}, against the required '
+                            f'value. Bars are the best configuration each arm ended on.')
+
+
+def chart_outcomes(loop, width=680):
+    """What happened to every move the search made: the accept/reject record."""
+    hist = ((loop.get('search') or {}).get('scored')) or []
+    if not hist:
+        return ''
+    counts = {}
+    for h in hist:
+        counts[h['outcome']] = counts.get(h['outcome'], 0) + 1
+    order = [k for k in ('better', 'worse', 'conflict', 'flat') if counts.get(k)]
+    total = sum(counts[k] for k in order)
+    if not total:
+        return ''
+    height, m = 56, {'t': 8, 'r': 8, 'b': 22, 'l': 8}
+    iw = width - m['l'] - m['r']
+    p = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+         f'aria-label="Outcome of every search move">']
+    x = m['l']
+    for k in order:
+        w = counts[k] / total * iw
+        col = OUTCOME_STYLE[k][0]
+        p.append(f'<rect class="bar" x="{x:.1f}" y="{m["t"]}" width="{max(w, 1):.1f}" '
+                 f'height="26" rx="3" fill="{col}"/>')
+        if w > 34:
+            p.append(f'<text class="lbl" x="{x + w / 2:.1f}" y="{m["t"] + 17}" '
+                     f'text-anchor="middle" style="fill:var(--card)">{counts[k]}</text>')
+        x += w
+    p.append(f'<text x="{m["l"]}" y="{height - 6}">{total} moves scored</text>')
+    p.append('</svg>')
+    return _fig(''.join(p),
+                'Every move the search made, by what the next run said about it. A reverted move '
+                'is not a failure of the search — it is the search refusing to keep a change that '
+                'did not pay, which is what stops it drifting away from a good configuration.',
+                _legend([(OUTCOME_STYLE[k][0], f'{OUTCOME_STYLE[k][1]} ({counts[k]})')
+                         for k in order]))
+
+
+def chart_levers(loop, width=680, max_levers=14):
+    """Which parameters the search explored, and how far from their starting value.
+
+    Every lever is drawn on one dimensionless axis — value divided by that
+    lever's own baseline — because the levers carry different units and a shared
+    absolute axis would be meaningless. 1.0 is where the protocol started.
+    """
+    levers = ((loop.get('search') or {}).get('levers')) or {}
+    # One factor appears in several stages, so the factor name alone does not
+    # identify a lever. Resolve each step back to its stage.
+    fp = final_protocol(loop) or {}
+    stage_of = {st_step['step_id']: st['stage_id']
+                for st in fp.get('stages', []) for st_step in st['steps']}
+    rows = []
+    for key, rec in levers.items():
+        tried = [t['value'] for t in (rec.get('tried') or []) if isinstance(t.get('value'),
+                                                                           (int, float))]
+        base = rec.get('baseline')
+        if not tried or not isinstance(base, (int, float)) or base == 0:
+            continue
+        best = (rec.get('best') or {}).get('value')
+        stage = stage_of.get(rec.get('step_id'))
+        rows.append({'label': f'{rec.get("factor")}'
+                              + (f' · {stage}' if stage else '')
+                              + (f' [{rec["arm_id"]}]' if rec.get('arm_id') else ''),
+                     'step': rec.get('step_id'), 'ratios': [t / base for t in tried],
+                     'best': (best / base) if isinstance(best, (int, float)) else None,
+                     'unit': rec.get('unit'), 'base': base})
+    if not rows:
+        return ''
+    rows.sort(key=lambda r: -len(r['ratios']))
+    more = max(0, len(rows) - max_levers)
+    rows = rows[:max_levers]
+    lo = min([min(r['ratios']) for r in rows] + [1.0])
+    hi = max([max(r['ratios']) for r in rows] + [1.0])
+    lo, hi = min(lo, 0.9) * 0.95, max(hi, 1.1) * 1.05
+    rh, m = 20, {'t': 22, 'r': 54, 'b': 26, 'l': 232}
+    height = m['t'] + m['b'] + len(rows) * rh
+    iw = width - m['l'] - m['r']
+    X = lambda v: m['l'] + (v - lo) / (hi - lo) * iw
+    p = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+         f'aria-label="Values tried per lever, relative to its starting value">']
+    for t in _ticks(lo, hi):
+        if t <= 0:
+            continue
+        p.append(f'<line class="grid" x1="{X(t):.1f}" x2="{X(t):.1f}" y1="{m["t"] - 6}" '
+                 f'y2="{height - m["b"]}"/>')
+        p.append(f'<text x="{X(t):.1f}" y="{height - m["b"] + 14}" text-anchor="middle">'
+                 f'{_num(t, 2)}×</text>')
+    p.append(f'<line class="rule" x1="{X(1.0):.1f}" x2="{X(1.0):.1f}" y1="{m["t"] - 6}" '
+             f'y2="{height - m["b"]}"/>')
+    p.append(f'<text x="{X(1.0):.1f}" y="{m["t"] - 10}" text-anchor="middle">as designed</text>')
+    for i, r in enumerate(rows):
+        y = m['t'] + i * rh + rh / 2
+        p.append(f'<line class="ax" x1="{m["l"]}" x2="{m["l"] + iw}" y1="{y:.1f}" y2="{y:.1f}" '
+                 f'opacity="0.45"/>')
+        p.append(f'<text x="{m["l"] - 8}" y="{y + 3.5:.1f}" text-anchor="end">'
+                 f'{_e(r["label"])}</text>')
+        for v in r['ratios']:
+            p.append(f'<circle cx="{X(v):.1f}" cy="{y:.1f}" r="3.4" fill="var(--mut)" '
+                     f'opacity="0.55"/>')
+        if r['best'] is not None:
+            p.append(f'<circle cx="{X(r["best"]):.1f}" cy="{y:.1f}" r="5.4" fill="var(--good)" '
+                     f'stroke="var(--card)" stroke-width="2"/>')
+            p.append(f'<text x="{m["l"] + iw + 6}" y="{y + 3.5:.1f}" style="fill:var(--good)">'
+                     f'{_num(r["best"] * r["base"])}</text>')
+    p.append('</svg>')
+    cap = ('Each row is one lever, with every value the search tried on it, as a multiple of what '
+           'the designed protocol started with. A shared absolute axis would be meaningless '
+           'because the levers carry different units. The filled marker is the value that gave '
+           'that lever its best reading, printed in its own units on the right.')
+    if more:
+        cap += f' {more} further lever(s) with fewer attempts are not drawn; the table below has all of them.'
+    return _fig(''.join(p), cap,
+                _legend([('var(--mut)', 'a value tried'), ('var(--good)', 'best value found')]))
+
+
+def chart_provenance(protocol, width=680):
+    """How much of the protocol rests on a citation, and how much on a choice."""
+    if not protocol:
+        return ''
+    counts = provenance_counts(protocol)
+    order = [k for k in ('reported', 'adapted', 'design_choice', 'gap') if counts.get(k)]
+    total = sum(counts[k] for k in order)
+    if not total:
+        return ''
+    height, m = 56, {'t': 8, 'r': 8, 'b': 22, 'l': 8}
+    iw = width - m['l'] - m['r']
+    p = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+         f'aria-label="Provenance of every quantity in the final protocol">']
+    x = m['l']
+    for k in order:
+        w = counts[k] / total * iw
+        p.append(f'<rect class="bar" x="{x:.1f}" y="{m["t"]}" width="{max(w, 1):.1f}" '
+                 f'height="26" rx="3" fill="{PROV_COLOR[k]}"/>')
+        if w > 34:
+            p.append(f'<text class="lbl" x="{x + w / 2:.1f}" y="{m["t"] + 17}" '
+                     f'text-anchor="middle" style="fill:var(--card)">{counts[k]}</text>')
+        x += w
+    p.append(f'<text x="{m["l"]}" y="{height - 6}">{total} quantities</text>')
+    p.append('</svg>')
+    return _fig(''.join(p),
+                'Every quantity in the final protocol by where its value came from. A bar that is '
+                'entirely design choice means nothing in the recipe is attributable to a '
+                'publication, which is a statement about the evidence available, not about the '
+                'recipe being wrong.',
+                _legend([(PROV_COLOR[k], f'{PROV_LABEL[k]} ({counts[k]})') for k in order]))
+
+
+def chart_small_multiples(loops, width=330, height=190):
+    """One trajectory panel per loop, on a shared y scale so they can be compared."""
+    panels, allv = [], []
+    for l in loops:
+        obs = ((l.get('search') or {}).get('observations')) or []
+        allv += [v for o in obs for v in o['arms'].values() if isinstance(v, (int, float))]
+    if not allv:
+        return ''
+    target = None
+    for l in loops:
+        a = final_analysis(l)
+        if a and a['arms']:
+            target = a['arms'][0]['target'].get('required')
+            break
+    ymax = max(allv + ([target] if target else [])) * 1.12
+    # One colour map across every panel, so an arm keeps its colour throughout.
+    union = []
+    for l in loops:
+        for a in arm_order(l, {x for o in ((l.get('search') or {}).get('observations')) or []
+                               for x in o['arms']}):
+            if a not in union:
+                union.append(a)
+    colors = _arm_colors(union)
+    for l in loops:
+        obs = ((l.get('search') or {}).get('observations')) or []
+        if len(obs) < 2:
+            continue
+        arms = arm_order(l, {a for o in obs for a in o['arms']})
+        m = {'t': 10, 'r': 58, 'b': 28, 'l': 42}
+        iw, ih = width - m['l'] - m['r'], height - m['t'] - m['b']
+        xs = [o['iteration'] for o in obs]
+        x0, x1 = min(xs), max(max(xs), min(xs) + 1)
+        X = lambda v: m['l'] + (v - x0) / (x1 - x0) * iw
+        Y = lambda v: m['t'] + ih - (v / ymax) * ih
+        p = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+             f'aria-label="Trajectory for {_e(l["dir"].name)}">']
+        for t in _ticks(0, ymax, 3):
+            p.append(f'<line class="grid" x1="{m["l"]}" x2="{m["l"] + iw}" y1="{Y(t):.1f}" '
+                     f'y2="{Y(t):.1f}"/>')
+            p.append(f'<text x="{m["l"] - 6}" y="{Y(t) + 3:.1f}" text-anchor="end">'
+                     f'{_num(t, 0)}</text>')
+        if target:
+            p.append(f'<line class="rule" x1="{m["l"]}" x2="{m["l"] + iw}" y1="{Y(target):.1f}" '
+                     f'y2="{Y(target):.1f}"/>')
+        for i, arm in enumerate(arms):
+            col = colors[arm]
+            pts = [(X(o['iteration']), Y(o['arms'][arm])) for o in obs
+                   if isinstance(o['arms'].get(arm), (int, float))]
+            if not pts:
+                continue
+            d = ' '.join(('L' if j else 'M') + f'{x:.1f} {y:.1f}'
+                         for j, (x, y) in enumerate(pts))
+            p.append(f'<path class="ln" stroke="{col}" d="{d}"/>')
+            lx, ly = pts[-1]
+            p.append(f'<text class="lbl" x="{lx + 6:.1f}" y="{ly + (12 if i % 2 else -5):.1f}" '
+                     f'style="fill:{col}">{_e(arm)}</text>')
+        p.append(f'<text x="{m["l"] + iw / 2:.1f}" y="{height - 3}" text-anchor="middle">'
+                 f'{len(obs) - 1} revisions</text>')
+        p.append('</svg>')
+        panels.append(f'<div><h4>{_e(l["dir"].name)}</h4>{"".join(p)}</div>')
+    if not panels:
+        return ''
+    return _fig(f'<div class="smul">{"".join(panels)}</div>',
+                'The same axis in both panels, so the panels can be compared directly. Separate '
+                'panels rather than one overlay because the loops ran different arms; a single '
+                'plot would imply they share a run.')
+
+
+def chart_iterations(loops, width=680):
+    """How long each loop took to get where it got."""
+    rows = []
+    for l in loops:
+        s = l.get('summary') or {}
+        used = s.get('iterations_used')
+        if used is None:
+            continue
+        rows.append((l['dir'].name, used, s.get('max_iterations') or used,
+                     s.get('terminal')))
+    if not rows:
+        return ''
+    hi = max(r[2] for r in rows)
+    bh, gap, m = 22, 14, {'t': 10, 'r': 150, 'b': 26, 'l': 180}
+    height = m['t'] + m['b'] + len(rows) * (bh + gap)
+    iw = width - m['l'] - m['r']
+    X = lambda v: m['l'] + (v / hi) * iw
+    p = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+         f'aria-label="Iterations used by each loop">']
+    for t in _ticks(0, hi):
+        p.append(f'<line class="grid" x1="{X(t):.1f}" x2="{X(t):.1f}" y1="{m["t"]}" '
+                 f'y2="{height - m["b"]}"/>')
+        p.append(f'<text x="{X(t):.1f}" y="{height - m["b"] + 14}" text-anchor="middle">'
+                 f'{_num(t, 0)}</text>')
+    for i, (name, used, budget, terminal) in enumerate(rows):
+        y = m['t'] + i * (bh + gap)
+        p.append(f'<rect x="{m["l"]}" y="{y}" width="{max(X(budget) - m["l"], 1):.1f}" '
+                 f'height="{bh}" rx="3" fill="var(--line)"/>')
+        p.append(f'<rect class="bar" x="{m["l"]}" y="{y}" '
+                 f'width="{max(X(used) - m["l"], 1):.1f}" height="{bh}" rx="3" '
+                 f'fill="{SERIES_VARS[i % len(SERIES_VARS)]}"/>')
+        p.append(f'<text class="lbl" x="{m["l"] - 8}" y="{y + bh / 2 + 3.5:.0f}" '
+                 f'text-anchor="end">{_e(name)}</text>')
+        p.append(f'<text x="{m["l"] + iw + 6}" y="{y + bh / 2 + 3.5:.0f}">'
+                 f'{used} of {budget} · {_e(terminal)}</text>')
+    p.append(f'<text x="{m["l"] + iw / 2:.1f}" y="{height - 3}" text-anchor="middle">'
+             f'iterations spent</text>')
+    p.append('</svg>')
+    return _fig(''.join(p),
+                'Iterations each loop spent, against the budget its request allowed. The pale bar '
+                'is the budget. Only a protocol revision spends an iteration; gathering evidence '
+                'and closing QC do not.')
 
 
 def _page(title, body, description=''):
@@ -533,6 +1012,7 @@ def build_report(loop_dir, title=None):
     title = title or f'Reasoning report: {loop["loop_id"]}'
     terminal = summary.get('terminal') or (state['iterations'][-1]['decision_type']
                                            if state.get('iterations') else 'unknown')
+    arm_colors = _arm_colors(arm_order(loop, {x['arm_id'] for x in (a or {}).get('arms', [])}))
     authors = sorted({d.get('authored_by') for d in loop['decisions']})
     body = [f'<h1>{_e(title)}</h1>']
     body.append(f'<p class="sub">Loop <code>{_e(loop["loop_id"])}</code> &middot; request '
@@ -575,6 +1055,7 @@ def build_report(loop_dir, title=None):
     if a:
         body.append(f'<p>Final verdict <b>{_e(a["verdict"]["status"])}</b>: '
                     f'{_e(a["verdict"]["summary"])}</p>')
+        body.append(chart_arms_vs_target(a, colors=arm_colors))
         body.append(_arm_table(a))
     if summary.get('best'):
         rows = ''.join(f'<tr><td>{_e(k)}</td><td class="n">{_num(v.get("observed"))}</td>'
@@ -596,6 +1077,9 @@ def build_report(loop_dir, title=None):
                 'lever per arm per iteration, scores it against that arm\'s best reading so far, '
                 'and reverts anything that does not beat it. It has no model of the process and '
                 'cannot see interactions between levers.</p>')
+    body.append(chart_trajectory(loop, colors=arm_colors))
+    body.append(chart_outcomes(loop))
+    body.append(chart_levers(loop))
     body.append(_search_section(loop))
     body.append('<h3>Change log, iteration by iteration</h3>')
     body.append(_moves_section(loop))
@@ -628,6 +1112,7 @@ def build_report(loop_dir, title=None):
                     'accept/reject rule is the best it found. Read the provenance column before '
                     'reading any number: a design choice is a value the loop chose, not a value '
                     'anyone measured.</p>')
+        body.append(chart_provenance(p))
         body.append(_protocol_section(p))
     else:
         body.append('<p class="mut">No protocol was approved.</p>')
@@ -648,12 +1133,24 @@ def build_report(loop_dir, title=None):
 
 # ── comparative report ──────────────────────────────────────
 
-def build_comparative_report(loop_dirs, title='Comparative reasoning report', intro=None):
-    """Two or more loops side by side: the question that asks 'and what if instead'."""
+def build_comparative_report(loop_dirs, title='Comparative reasoning report', intro=None,
+                             report_links=None):
+    """Two or more loops side by side: the question that asks 'and what if instead'.
+
+    `report_links` maps a loop directory name to the href of its own full report,
+    so a reader who wants the decision-by-decision record can reach it. Without
+    it the comparison stands alone.
+    """
     loops = [load_loop(d) for d in loop_dirs]
+    links = dict(report_links or {})
     body = [f'<h1>{_e(title)}</h1>']
     body.append(f'<p class="sub">{len(loops)} loops compared &middot; '
                 + ' &middot; '.join(f'<code>{_e(l["loop_id"])}</code>' for l in loops) + '</p>')
+    if links:
+        body.append('<p class="sub">Full decision-by-decision report for each: '
+                    + ' &middot; '.join(
+                        f'<a href="{_e(links[l["dir"].name])}">{_e(l["dir"].name)}</a>'
+                        for l in loops if l['dir'].name in links) + '</p>')
     body.append('<div class="banner"><b>Synthetic stand-in reactor.</b> Every number below is the '
                 'output of a phenomenological stand-in whose per-arm behaviour was invented for '
                 'software testing. The comparison demonstrates that the loop can find that two '
@@ -680,6 +1177,9 @@ def build_comparative_report(loop_dirs, title='Comparative reasoning report', in
     body.append('<table><thead><tr><th>Loop</th><th>Verdict</th><th>Ended in</th>'
                 '<th class="n">Iterations</th><th>Best per arm</th><th class="n">Decisions</th>'
                 f'</tr></thead><tbody>{"".join(rows)}</tbody></table>')
+    body.append(chart_iterations(loops))
+    body.append('<h3>How each search moved</h3>')
+    body.append(chart_small_multiples(loops))
 
     # What each search established
     body.append('<h2>What each search established</h2>')
@@ -719,7 +1219,9 @@ def build_comparative_report(loop_dirs, title='Comparative reasoning report', in
                         f'<td class="mut">{_e(stage)}</td>'
                         f'<td class="n">{_num(base)}</td><td class="n">{_num(val)}</td>'
                         f'<td>{_e(unit)}</td></tr>')
-        body.append(f'<div class="card"><h3><code>{_e(l["loop_id"])}</code></h3>'
+        link = (f' <a href="{_e(links[l["dir"].name])}">full report</a>'
+                if l['dir'].name in links else '')
+        body.append(f'<div class="card"><h3><code>{_e(l["loop_id"])}</code>{link}</h3>'
                     '<table><thead><tr><th>Arm</th><th>Parameter</th><th>Stage</th>'
                     '<th class="n">Shared value</th><th class="n">This arm</th><th>Unit</th>'
                     f'</tr></thead><tbody>{"".join(rows)}</tbody></table>'
@@ -740,6 +1242,10 @@ def build_comparative_report(loop_dirs, title='Comparative reasoning report', in
     body.append('<table><thead><tr><th>Loop</th><th class="n">Reported</th><th class="n">Adapted</th>'
                 '<th class="n">Design choice</th><th class="n">Gap</th></tr></thead>'
                 f'<tbody>{"".join(rows)}</tbody></table>')
+    for l in loops:
+        fp = final_protocol(l)
+        if fp:
+            body.append(f'<h4>{_e(l["dir"].name)}</h4>' + chart_provenance(fp))
     body.append('<p class="mut">'
                 + ' '.join(f'<b>{_e(PROV_LABEL[k])}:</b> {_e(PROV_NOTE[k])}'
                            for k in ('reported', 'adapted', 'design_choice', 'gap'))
@@ -875,11 +1381,13 @@ def write_report(loop_dir, out_html, out_pdf=None, title=None):
     return out_html, pdf
 
 
-def write_comparative_report(loop_dirs, out_html, out_pdf=None, title=None, intro=None):
+def write_comparative_report(loop_dirs, out_html, out_pdf=None, title=None, intro=None,
+                             report_links=None):
     out_html = Path(out_html)
     out_html.parent.mkdir(parents=True, exist_ok=True)
     out_html.write_text(
-        build_comparative_report(loop_dirs, title or 'Comparative reasoning report', intro),
+        build_comparative_report(loop_dirs, title or 'Comparative reasoning report', intro,
+                                 report_links),
         encoding='utf-8')
     pdf = write_pdf(out_html, out_pdf) if out_pdf else None
     return out_html, pdf

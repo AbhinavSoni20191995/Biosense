@@ -53,9 +53,10 @@ RUN mkdir -p /data/runs
 
 # A non-root user: this process accepts input from the internet and starts work.
 # It needs a writable home and cache directory, because uv initialises its cache
-# even with --no-sync and fails to start without one.
+# even with --no-sync and fails to start without one. uid 1000 because Hugging
+# Face Spaces mounts its storage for that uid; nothing else depends on the number.
 ENV UV_CACHE_DIR=/home/biosense/.cache/uv
-RUN useradd --system --uid 10001 --create-home --home-dir /home/biosense biosense \
+RUN useradd --uid 1000 --create-home --home-dir /home/biosense biosense \
  && mkdir -p "$UV_CACHE_DIR" \
  && chown -R biosense /data /app /home/biosense
 USER biosense

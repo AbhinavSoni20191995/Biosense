@@ -184,11 +184,13 @@ def observed(report):
 
 def new_state():
     """The search's memory. The engine persists this beside the loop artifacts."""
-    return {'schema': 'biosense.revise.search_state/2',
+    return {'schema': 'biosense.revise.search_state/3',
             'observations': [],      # [{iteration, arms: {arm_id: metric}}]
             'best': {},              # arm_id -> {metric, iteration}: the best reading so far
             'levers': {},            # key -> lever record
             'last_moves': [],        # the moves that produced the current protocol
+            'scored': [],            # every move's verdict, kept so a report can show the
+                                     # accept/reject history rather than only the end state
             'findings': [],          # human-readable search findings, e.g. arm conflicts
             'note': 'Memory of a deterministic coordinate search. Metric values are the request\'s '
                     'own target metric per arm, taken from the analysis reports. Because every move '
@@ -243,6 +245,7 @@ def score_last_moves(state, report, iteration):
     """
     now = observed(report)
     best = state.setdefault('best', {})
+    history = state.setdefault('scored', [])
     verdicts, reverts, conflicts = [], [], []
     for mv in state.get('last_moves', []):
         intended = [mv['arm_id']] if mv['arm_id'] else sorted(now)
@@ -299,6 +302,12 @@ def score_last_moves(state, report, iteration):
             # No material change either way: stop stepping this direction, it is flat.
             rec['exhausted'] = sorted(set(rec['exhausted']) | {sign})
             verdicts.append({**mv, 'outcome': 'flat', 'deltas': deltas})
+    for v in verdicts:
+        history.append({'iteration': iteration, 'factor': v['factor'], 'arm_id': v['arm_id'],
+                        'step_id': v['step_id'], 'kind': v['kind'], 'unit': v['unit'],
+                        'from': v['from'], 'to': v['to'], 'direction': v['direction'],
+                        'origin': v.get('origin'), 'outcome': v['outcome'],
+                        'deltas': v['deltas']})
     return verdicts, reverts, conflicts
 
 

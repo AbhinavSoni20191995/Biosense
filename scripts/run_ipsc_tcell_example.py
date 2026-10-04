@@ -113,7 +113,9 @@ def main(argv=None):
         dirs, out / 'comparative.reasoning_report.html',
         out / 'comparative.reasoning_report.pdf',
         title='Wild type against a BACH2 knockout: iPSC to T lineage',
-        intro=INTRO)
+        intro=INTRO,
+        report_links={d.name: f'{n}.reasoning_report.html'
+                      for (n, _, _), d in zip(LOOPS, dirs)})
     print(f'\ncomparative -> {html}' + (f' and {pdf}' if pdf else ''), flush=True)
 
     print('\n=== summary ===')

@@ -500,3 +500,87 @@ class AppServerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ChartTests(EndToEndTests):
+    """The report's charts, and the two display bugs that hid real numbers."""
+
+    def test_number_formatter_keeps_significant_zeros(self):
+        """rstrip('0') on a string with no decimal point eats the value.
+
+        This turned axis ticks 10, 20, 30 into 1, 2, 3, which is worse than no
+        chart: it reads as a plausible scale.
+        """
+        self.assertEqual(['0', '10', '20', '30', '100', '500'],
+                         [RP._num(v, 0) for v in (0, 10, 20, 30, 100, 500)])
+        self.assertEqual('500', RP._num(500))
+        self.assertEqual('25.6', RP._num(25.6))
+        self.assertEqual('0.119', RP._num(0.119))
+
+    def test_chart_text_colours_survive_the_stylesheet(self):
+        """A stylesheet `fill` beats a presentation attribute on <text>.
+
+        Every coloured label was being rendered in the muted ink, so series
+        labels and in-bar counts lost their meaning. Inline style wins instead.
+        """
+        h = RP.build_report(self.loop)
+        self.assertNotRegex(h, r'<text[^>]*\sfill="',
+                            'a text fill attribute would be overridden by svg.chart text{fill:...}')
+        self.assertIn('style="fill:var(--s1)', h)
+
+    def test_every_chart_renders_for_a_finished_loop(self):
+        loop = RP.load_loop(self.loop)
+        a, p = RP.final_analysis(loop), RP.final_protocol(loop)
+        for name, out in (('trajectory', RP.chart_trajectory(loop)),
+                          ('arms_vs_target', RP.chart_arms_vs_target(a)),
+                          ('outcomes', RP.chart_outcomes(loop)),
+                          ('levers', RP.chart_levers(loop)),
+                          ('provenance', RP.chart_provenance(p))):
+            self.assertIn('<svg class="chart"', out, f'{name} produced no chart')
+            self.assertIn('<figcaption>', out, f'{name} has no caption')
+            self.assertIn('aria-label=', out, f'{name} has no accessible label')
+
+    def test_charts_degrade_to_nothing_rather_than_breaking(self):
+        empty = {'dir': Path('x'), 'search': {}, 'stages': [], 'decisions': [], 'state': {}}
+        self.assertEqual('', RP.chart_trajectory(empty))
+        self.assertEqual('', RP.chart_outcomes(empty))
+        self.assertEqual('', RP.chart_levers(empty))
+        self.assertEqual('', RP.chart_arms_vs_target(None))
+        self.assertEqual('', RP.chart_provenance(None))
+
+    def test_an_arm_keeps_one_colour_across_every_chart(self):
+        """Colour follows the entity, never its position in a sorted list."""
+        loop = RP.load_loop(self.loop)
+        order = RP.arm_order(loop)
+        self.assertEqual('WT', order[0], 'the wild-type control leads the order')
+        colors = RP._arm_colors(order)
+        traj = RP.chart_trajectory(loop, colors=colors)
+        bars = RP.chart_arms_vs_target(RP.final_analysis(loop), colors=colors)
+        for arm, col in colors.items():
+            self.assertIn(f'style="fill:{col}"', traj, f'{arm} missing from the trajectory')
+            self.assertIn(col, bars, f'{arm} colour differs in the bar chart')
+
+    def test_wild_type_leads_even_when_it_sorts_second(self):
+        loop = RP.load_loop(self.loop)
+        self.assertLess(RP.arm_order(loop).index('WT'), RP.arm_order(loop).index('BACH2_KO'),
+                        'BACH2_KO sorts first alphabetically; the control must still lead')
+
+    def test_search_state_records_every_move_outcome(self):
+        hist = (RP.load_loop(self.loop)['search'] or {}).get('scored') or []
+        self.assertTrue(hist, 'the search did not record its accept/reject history')
+        self.assertTrue({h['outcome'] for h in hist} <= {'better', 'worse', 'conflict', 'flat'})
+        self.assertTrue(any(h['outcome'] == 'worse' for h in hist),
+                        'this fixture reverts moves, so some outcome must be "worse"')
+
+    def test_comparative_report_charts_both_loops_on_one_scale(self):
+        second = self.tmp / 'chart-loop2'
+        req2 = json.loads(json.dumps(self.req))
+        req2['request_id'] = 'chart-second'
+        req2['genotype_arms'] = [a for a in req2['genotype_arms'] if a['arm_id'] == 'WT']
+        req2['loop_budget'] = {'max_iterations': 3}
+        EN.run_loop(req2, second, standin='ipsc_tcell', truth=self.truth)
+        h = RP.build_comparative_report([self.loop, second])
+        self.assertIn('Trajectory for', h)
+        self.assertIn('Iterations used by each loop', h)
+        # WT appears in both loops and must carry the same colour in both panels.
+        self.assertEqual(1, len({m for m in ('var(--s1)',) if f'style="fill:{m}"' in h}))
