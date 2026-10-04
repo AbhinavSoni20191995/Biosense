@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/bioinformatics-report-v2.0",
+  "title": "BioinformaticsReport 2.0: computational evidence about a gene or perturbation",
+  "description": "Deterministic output of the bioinformatics tools. Every statement carries its knowledge source and confidence. A gene with no annotation returns not_found with the live-lookup plan rather than a guess.",
+  "type": "object",
+  "required": ["schema_version", "report_id", "created_at", "request", "knowledge_sets", "genes",
+               "lever_suggestions", "untestable_here", "limitations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "report_id": {"type": "string"},
+    "loop_id": {"type": ["string", "null"]},
+    "iteration": {"type": ["integer", "null"]},
+    "created_at": {"type": "string"},
+    "request": {
+      "type": "object",
+      "required": ["genes", "perturbation"],
+      "properties": {
+        "genes": {"type": "array", "items": {"type": "string"}},
+        "perturbation": {"type": "string"},
+        "cell_type": {"type": ["string", "null"]},
+        "asked_by": {"type": ["string", "null"]},
+        "question": {"type": ["string", "null"]}
+      }
+    },
+    "knowledge_sets": {
+      "type": "array",
+      "items": {"type": "object", "required": ["knowledge_set_id", "label", "live"],
+                "properties": {"knowledge_set_id": {"type": "string"}, "label": {"type": "string"},
+                               "live": {"type": "boolean"}, "retrieved_at": {"type": ["string", "null"]}}}
+    },
+    "genes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "found", "effects"],
+        "properties": {
+          "symbol": {"type": "string"},
+          "found": {"type": "boolean"},
+          "status": {"type": ["string", "null"], "description": "e.g. synthetic_placeholder, live_annotation"},
+          "description": {"type": ["string", "null"]},
+          "aliases": {"type": "array", "items": {"type": "string"}},
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["perturbation", "affected_process", "direction", "readout_metric", "confidence", "source"],
+              "properties": {
+                "perturbation": {"type": "string"},
+                "affected_process": {"type": "string"},
+                "direction": {"enum": ["increase", "decrease", "earlier", "later", "no_change", "unknown"]},
+                "readout_metric": {"type": "string"},
+                "conditions": {"type": ["string", "null"], "description": "When the effect applies, e.g. only under prolonged stimulation"},
+                "mechanism": {"type": ["string", "null"]},
+                "confidence": {"enum": ["synthetic_fixture", "local_annotation", "live_annotation", "inference", "unknown"]},
+                "source": {"type": "string"}
+              }
+            }
+          },
+          "measurable_readouts": {"type": "array", "items": {"type": "string"}},
+          "live_lookup_plan": {
+            "type": ["array", "null"],
+            "description": "Present when the gene is not in any loaded knowledge set: the exact public queries to run when live lookups are permitted",
+            "items": {"type": "object", "required": ["source", "url"],
+                      "properties": {"source": {"type": "string"}, "url": {"type": "string"},
+                                     "returns": {"type": "string"}}}
+          }
+        }
+      }
+    },
+    "lever_suggestions": {
+      "type": "array",
+      "description": "Protocol parameters the annotated effects implicate. Suggestions only: the literature agent still needs evidence to change a value.",
+      "items": {"type": "object", "required": ["parameter", "direction", "basis", "confidence"],
+                "properties": {"parameter": {"type": "string"},
+                               "direction": {"enum": ["increase", "decrease", "shorten", "extend", "earlier", "later", "revisit"]},
+                               "arm_scope": {"type": ["string", "null"]},
+                               "basis": {"type": "string"},
+                               "confidence": {"type": "string"}}}
+    },
+    "untestable_here": {
+      "type": "array",
+      "description": "Assays that would resolve a hypothesis but cannot run in this machine. These become human consults.",
+      "items": {"type": "object", "required": ["assay", "why_not_feasible", "what_it_would_resolve"],
+                "properties": {"assay": {"type": "string"}, "why_not_feasible": {"type": "string"},
+                               "what_it_would_resolve": {"type": "string"}}}
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

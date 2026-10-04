@@ -1,0 +1,592 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/production-protocol-v2.0",
+  "title": "ProductionProtocol 2.0: literature-agent output for a bioreactor run",
+  "description": "A staged cell-production protocol (seeding, media, growth factors with concentration and timing windows, passaging, harvest) plus genotype arms, predicted genotype effects and per-arm adjustments. Every quantity carries provenance. The protocol is a proposal for human review; it never actuates equipment.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "protocol_id",
+    "request_id",
+    "iteration",
+    "title",
+    "day_origin",
+    "evidence",
+    "insights",
+    "culture_system",
+    "stages",
+    "genotype_arms",
+    "genotype_effects",
+    "arm_adjustments",
+    "measurement_plan",
+    "open_questions",
+    "limitations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "protocol_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "parent_protocol_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision_brief_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The orchestrator brief this revision answers"
+    },
+    "changes_from_parent": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "step_id",
+          "change",
+          "addresses"
+        ],
+        "properties": {
+          "step_id": {
+            "type": "string"
+          },
+          "change": {
+            "type": "string"
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Hypothesis or failed-criterion IDs from the revision brief"
+          },
+          "claim_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "title": {
+      "type": "string"
+    },
+    "label": {
+      "type": "string",
+      "description": "e.g. SYNTHETIC FIXTURE for test data"
+    },
+    "day_origin": {
+      "type": "string",
+      "description": "Single time origin for every day in this protocol"
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "handoff_paths"
+      ],
+      "properties": {
+        "handoff_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_protocol_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Literature protocol IDs this design draws on"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "insights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "insight_id",
+          "statement",
+          "claim_ids",
+          "evidence_level"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "insight_id": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "claim_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_level": {
+            "$ref": "#/$defs/evidence_level"
+          },
+          "relevance": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "culture_system": {
+      "type": "object",
+      "required": [
+        "format",
+        "vessel",
+        "working_volume",
+        "parameters"
+      ],
+      "properties": {
+        "format": {
+          "type": "string"
+        },
+        "vessel": {
+          "type": "string"
+        },
+        "working_volume": {
+          "$ref": "#/$defs/quantity"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Operating setpoints, e.g. agitation_rpm, dissolved_oxygen, temperature, feed_fraction",
+          "additionalProperties": {
+            "$ref": "#/$defs/quantity"
+          }
+        }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "stage_id",
+          "name",
+          "start_day",
+          "end_day",
+          "medium",
+          "steps"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "stage_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{1,63}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "start_day": {
+            "type": "number",
+            "minimum": 0
+          },
+          "end_day": {
+            "type": "number",
+            "minimum": 0
+          },
+          "medium": {
+            "$ref": "#/$defs/quantity"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/step"
+            }
+          }
+        }
+      }
+    },
+    "genotype_arms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://example.org/biosense/production-request-v2.0#/$defs/arm"
+      }
+    },
+    "genotype_effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "effect_id",
+          "arm_id",
+          "gene",
+          "affected_quantity",
+          "readout_metric",
+          "predicted_direction",
+          "mechanism",
+          "claim_ids",
+          "evidence_level"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "effect_id": {
+            "type": "string"
+          },
+          "arm_id": {
+            "type": "string"
+          },
+          "gene": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "affected_quantity": {
+            "type": "string",
+            "description": "e.g. 'M-CSF requirement during myeloid stage', 'onset of monocyte release'"
+          },
+          "readout_metric": {
+            "$ref": "#/$defs/readout_metric"
+          },
+          "predicted_direction": {
+            "enum": [
+              "increase",
+              "decrease",
+              "earlier",
+              "later",
+              "no_change",
+              "unknown"
+            ]
+          },
+          "predicted_magnitude": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/quantity"
+              }
+            ]
+          },
+          "mechanism": {
+            "type": "string"
+          },
+          "claim_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_level": {
+            "$ref": "#/$defs/evidence_level"
+          }
+        }
+      }
+    },
+    "arm_adjustments": {
+      "type": "array",
+      "description": "How a genotype arm deviates from the base protocol (e.g. KO arm gets more M-CSF, or a factor 2 days later)",
+      "items": {
+        "type": "object",
+        "required": [
+          "adjustment_id",
+          "arm_id",
+          "step_id",
+          "rationale",
+          "effect_ids"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "adjustment_id": {
+            "type": "string"
+          },
+          "arm_id": {
+            "type": "string"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "quantity": {
+            "$ref": "#/$defs/quantity"
+          },
+          "day_shift": {
+            "type": "number",
+            "description": "Days added to the step's day/end_day for this arm"
+          },
+          "omit": {
+            "type": "boolean"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "effect_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "measurement_plan": {
+      "type": "object",
+      "required": [
+        "mode",
+        "sampling_days",
+        "harvest_day"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "minimal",
+            "max"
+          ]
+        },
+        "sampling_days": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "harvest_day": {
+          "type": "number"
+        },
+        "qc_tests_planned": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "replicates_per_arm": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "expected_outcomes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "arm_id",
+          "metric",
+          "quantity"
+        ],
+        "properties": {
+          "arm_id": {
+            "type": "string"
+          },
+          "metric": {
+            "$ref": "#/$defs/readout_metric"
+          },
+          "quantity": {
+            "$ref": "#/$defs/quantity"
+          }
+        }
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "approval": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Written only by protocol-approve after a named human reviewed design choices and gaps",
+      "required": [
+        "approved_by",
+        "approved_at",
+        "protocol_sha256",
+        "acknowledged_design_choices"
+      ],
+      "properties": {
+        "approved_by": {
+          "type": "string"
+        },
+        "approved_at": {
+          "type": "string"
+        },
+        "protocol_sha256": {
+          "type": "string"
+        },
+        "acknowledged_design_choices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "evidence_level": {
+      "enum": [
+        "direct_same_cell_type",
+        "direct_related_cell_type",
+        "mechanistic_inference",
+        "none"
+      ],
+      "description": "direct_* need claim_ids; mechanistic_inference and none are hypotheses to test, not evidence"
+    },
+    "readout_metric": {
+      "enum": [
+        "target_cells_total",
+        "target_cells_per_input_cell",
+        "target_marker_pct",
+        "viability_pct",
+        "residual_pluripotency_pct",
+        "viable_cells_total",
+        "harvest_onset_day",
+        "growth_rate_per_h",
+        "doubling_time_h",
+        "lactate_per_glucose"
+      ]
+    },
+    "quantity": {
+      "type": "object",
+      "required": [
+        "value",
+        "unit",
+        "provenance",
+        "claim_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": [
+            "number",
+            "string",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        },
+        "provenance": {
+          "enum": [
+            "reported",
+            "adapted",
+            "design_choice",
+            "gap"
+          ],
+          "description": "reported = value equals a cited claim; adapted = transferred/converted from cited claims with rationale; design_choice = proposed without direct evidence, needs human approval; gap = no value, blocks the wet lab"
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "step_id",
+        "day",
+        "action",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "day": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_day": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Exposure window end for factors; null = until stage end or next removal"
+        },
+        "action": {
+          "enum": [
+            "seed",
+            "add_factor",
+            "remove_factor",
+            "medium_exchange",
+            "feed",
+            "passage",
+            "set_parameter",
+            "start_harvest",
+            "harvest",
+            "sample",
+            "other"
+          ]
+        },
+        "factor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Growth factor / small molecule / reagent name"
+        },
+        "quantity": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/quantity"
+            }
+          ],
+          "description": "Amount for seed/add_factor/set_parameter; null for actions without an amount"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

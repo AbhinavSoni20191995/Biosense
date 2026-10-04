@@ -1,0 +1,89 @@
+{
+  "schema_version": "2.0",
+  "request_id": "cart-d10-001",
+  "question": "Increase the number of CAR+ T cells we get per input T cell by day 10, and tell me how an EXH1-knockout line has to be handled differently from the unedited control.",
+  "product": {
+    "species": "human",
+    "cell_origin": "peripheral blood T cell",
+    "target_cell": "CAR-T cell",
+    "target_subtype": null,
+    "target_marker": "CAR",
+    "cell_line": null,
+    "culture_format": null,
+    "intended_use": "process_development"
+  },
+  "desired_output": {
+    "metric": "target_cells_per_input_cell",
+    "op": ">=",
+    "value": 12,
+    "unit": "cells/input_cell",
+    "at_day": 10,
+    "day_tolerance": 1,
+    "day_origin": "T cell seeding and activation",
+    "basis": "DEMO target set by the user for this synthetic fixture; not a literature or regulatory value"
+  },
+  "qc_profile": "cart_research",
+  "qc_overrides": [
+    {
+      "id": "qc-endotoxin",
+      "value": 0.5,
+      "basis": "DEMO limit for this synthetic fixture. A real limit is derived from dose and route per USP <85> and is a QA decision."
+    }
+  ],
+  "genotype_arms": [
+    {
+      "arm_id": "WT",
+      "genotype": "wild_type",
+      "gene": null,
+      "modification": null,
+      "zygosity": "not_applicable",
+      "line_id": "SYNTH-D01",
+      "description": "Unedited donor T cells"
+    },
+    {
+      "arm_id": "EXH1_KO",
+      "genotype": "knockout",
+      "gene": "EXH1",
+      "modification": "CRISPR-Cas9 frameshift (placeholder gene name for this synthetic fixture)",
+      "zygosity": "homozygous",
+      "line_id": "SYNTH-D01-EXH1-KO",
+      "description": "Isogenic knockout of a placeholder exhaustion-associated gene"
+    }
+  ],
+  "current_protocol": null,
+  "measurement_mode": "minimal",
+  "constraints": {
+    "max_culture_days": 14,
+    "equipment": [
+      "rocking_bag"
+    ],
+    "notes": "Closed rocking-bag process; no open handling after activation."
+  },
+  "allowed_sources": [
+    "Europe PMC",
+    "PubMed",
+    "primary publisher",
+    "user-supplied papers"
+  ],
+  "search_budget": {
+    "max_searches": 6,
+    "max_full_texts": 8
+  },
+  "loop_budget": {
+    "max_iterations": 4
+  },
+  "human_in_the_loop": {
+    "mode": "checkpoints",
+    "consults": "high_value",
+    "max_info_actions_per_iteration": 4,
+    "notify": "Tell me when a decision commits and whenever a consult is raised."
+  },
+  "bioreactor_source": "synthetic_standin",
+  "bioinformatics": {
+    "allowed": true,
+    "knowledge_sets": [
+      "synthetic_fixture_genes"
+    ],
+    "live_lookups": false
+  }
+}

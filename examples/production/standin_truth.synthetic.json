@@ -1,0 +1,11 @@
+{
+  "label": "HIDDEN TRUTH for the synthetic stand-in only. Agents must never read this file.",
+  "arms": {
+    "GENEX_KO": {
+      "factor_optima": {
+        "mcsf": 80.0
+      },
+      "genotype_diff_ratio": 0.9
+    }
+  }
+}

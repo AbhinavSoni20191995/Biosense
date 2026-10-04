@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/bioreactor-run-v2.0",
+  "title": "BioreactorRun 2.0: measurements returned from a real (or synthetic stand-in) bioreactor run",
+  "description": "minimal mode = harvest counts, viability and marker purity per arm (optional time points and release tests). max mode = minimal plus the integrated-machine time course (M1-M5 modules of analysis_agent), release QC tests and optional prior runs of the same line for drift checks.",
+  "type": "object",
+  "required": ["schema_version", "run_id", "protocol_id", "protocol_sha256", "mode", "source", "arms"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+    "protocol_id": {"type": "string"},
+    "protocol_sha256": {"type": "string"},
+    "mode": {"enum": ["minimal", "max"]},
+    "source": {"enum": ["wet_lab", "synthetic_standin"], "description": "synthetic_standin results are workflow demonstrations, never biological evidence"},
+    "label": {"type": "string"},
+    "operator": {"type": ["string", "null"]},
+    "started_at": {"type": ["string", "null"]},
+    "notes": {"type": "string"},
+    "arms": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/arm_record"}}
+  },
+  "$defs": {
+    "arm_record": {
+      "type": "object",
+      "required": ["arm_id", "replicate", "input_cells", "harvest", "deviations"],
+      "additionalProperties": false,
+      "properties": {
+        "arm_id": {"type": "string"},
+        "replicate": {"type": "integer", "minimum": 1},
+        "line_id": {"type": ["string", "null"]},
+        "passage_number": {"type": ["integer", "null"]},
+        "input_cells": {"type": "number", "exclusiveMinimum": 0, "description": "Viable iPSCs seeded at day 0 (cells)"},
+        "deviations": {
+          "type": "array",
+          "description": "Every departure from the protocol as executed (day, what, why)",
+          "items": {"type": "object", "required": ["day", "description"],
+                    "properties": {"day": {"type": "number"}, "step_id": {"type": ["string", "null"]}, "description": {"type": "string"}}}
+        },
+        "timepoints": {"type": "array", "items": {"$ref": "#/$defs/timepoint"}},
+        "harvest": {"$ref": "#/$defs/harvest"},
+        "qc_tests": {"$ref": "#/$defs/qc_tests"},
+        "observations": {
+          "type": "array",
+          "description": "max mode: daily integrated-machine observations in analysis_agent Observation format",
+          "items": {"type": "object", "required": ["day", "stage", "vcd_e6_per_ml", "viability_pct", "glucose_mM", "lactate_mM"]}
+        },
+        "setpoints": {"type": "object", "description": "max mode: executed setpoints (analysis_agent Setpoints keys) for process attribution"},
+        "outcome": {"type": "object", "description": "max mode: analysis_agent outcome block (final_vcd_e6_per_ml, final_viability_pct, harvest_yield_per_input_ipsc, ...)"},
+        "history": {"type": "array", "description": "max mode: prior runs of the same line, oldest first, analysis_agent RunRecord format", "items": {"type": "object"}}
+      }
+    },
+    "timepoint": {
+      "type": "object",
+      "required": ["day"],
+      "properties": {
+        "day": {"type": "number", "minimum": 0},
+        "viable_cells_total": {"type": "number", "minimum": 0},
+        "viability_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "target_marker_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "residual_pluripotency_pct": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "harvest": {
+      "type": "object",
+      "required": ["day", "viable_cells_total", "viability_pct", "target_marker_pct"],
+      "additionalProperties": false,
+      "properties": {
+        "day": {"type": "number", "minimum": 0},
+        "viable_cells_total": {"type": "number", "minimum": 0},
+        "viability_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "target_marker_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "marker_method": {"type": "string", "description": "e.g. 'flow cytometry CD14-PE', 'M3e no-wash panel'"},
+        "residual_pluripotency_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+        "residual_pluripotency_marker": {"type": ["string", "null"]},
+        "harvest_onset_day": {"type": ["number", "null"], "description": "First day target cells were harvestable (continuous-release processes)"},
+        "additional_markers_pct": {"type": "object", "additionalProperties": {"type": "number"}}
+      }
+    },
+    "qc_tests": {
+      "type": "object",
+      "description": "Release tests. Omitted = not tested (reported as NOT_TESTED, never assumed to pass).",
+      "properties": {
+        "sterility": {"enum": ["no_growth", "growth_detected"]},
+        "mycoplasma": {"enum": ["not_detected", "detected"]},
+        "endotoxin_EU_per_mL": {"type": "number", "minimum": 0},
+        "karyotype": {"enum": ["normal", "abnormal"]},
+        "karyotype_detail": {"type": "string"},
+        "potency_assay": {"type": "object", "additionalProperties": {"type": "number"}}
+      }
+    }
+  }
+}

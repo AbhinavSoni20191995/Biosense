@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "campaign_id": "demo-stage-allocation-001",
+  "label": "SYNTHETIC DEMO campaign: allocate a fixed 336 h between expansion and differentiation",
+  "scenario": "scenario.synthetic.json",
+  "objective": "objective.json",
+  "baseline_experiment": "baseline.json",
+  "uncertainty": "uncertainty.synthetic.json",
+  "design": {
+    "dimension": "stage_allocation",
+    "total_culture_time_h": 336,
+    "min_stage_h": {"ipsc_expansion": 24, "cardiac_differentiation": 96},
+    "initial_expansion_h": [72, 168],
+    "resolution_h": 6
+  },
+  "budget": {"max_runs": 10, "max_rounds": 5}
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/simulation-result-v1.0",
+  "title": "SimulationResult 1.0 (immutable). Blocked/failed results carry no endpoint state.",
+  "type": "object",
+  "required": ["schema_version", "run_id", "scenario_id", "experiment_id", "mode", "status", "model_id",
+               "parameter_draw_id", "stage_schedule", "hashes", "solver", "evidence_refs", "cost_accounting",
+               "warnings", "errors", "parameter_manifest", "event_log", "solver_checks", "trajectory", "endpoint_state"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "status": {"enum": ["completed", "blocked", "failed"]},
+    "mode": {"enum": ["synthetic_demo", "evidence_based"]},
+    "hashes": {"type": "object", "required": ["scenario_sha256", "experiment_sha256", "code_sha256", "solver_sha256"]},
+    "evidence_refs": {"type": "object", "required": ["claim_ids", "assumption_ids"]},
+    "trajectory": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "required": ["columns", "n_rows", "path"]}
+      ]
+    },
+    "endpoint_state": {"type": ["object", "null"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "completed"}}},
+      "then": {"properties": {"endpoint_state": {"type": "object"}, "trajectory": {"type": "object"},
+                              "solver_checks": {"type": "object"}}},
+      "else": {"properties": {"endpoint_state": {"type": "null"}, "trajectory": {"type": "null"}}}
+    }
+  ]
+}

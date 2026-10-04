@@ -1,0 +1,22 @@
+spec_version: 1
+name: analysis
+description: >-
+  Analysis specialist: checks a returned bioreactor run against the requested
+  output and the QC profile (minimal or max mode), runs the integrated-machine
+  integrity checks of analysis_agent in max mode, compares engineered arms with
+  wild type, and explains why a protocol did or did not work.
+instructions: prompt.md
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: auto
+    write_paths:
+      - ./runs
+    cwd_allow_hidden:
+      - .venv
+    allow_network: false

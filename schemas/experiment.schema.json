@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/experiment-v1.0",
+  "title": "Computational experiment specification (no physical actuation)",
+  "type": "object",
+  "required": ["schema_version", "experiment_id", "scenario_id", "label", "role", "stage_durations_h",
+               "harvest", "parameter_draw_id", "parameter_overrides"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "experiment_id": {"type": "string", "minLength": 1},
+    "scenario_id": {"type": "string", "minLength": 1},
+    "label": {"type": "string"},
+    "role": {"enum": ["baseline", "candidate"]},
+    "stage_durations_h": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "number"}},
+    "harvest": {"const": "end_of_schedule"},
+    "parameter_draw_id": {"type": "string"},
+    "parameter_overrides": {"type": "object", "additionalProperties": {"type": "number"}}
+  }
+}

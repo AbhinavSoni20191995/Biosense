@@ -1,0 +1,41 @@
+# BioSense-AI discovery loop: orchestrator + literature and analysis specialists.
+#   question -> literature (insights + bioreactor protocol, WT vs engineered arms)
+#   -> human approval -> real bioreactor run (or labelled synthetic stand-in)
+#   -> analysis (minimal or max mode: target, QC, genotype comparison, diagnosis)
+#   -> orchestrator decision -> revision brief back to literature, or stop.
+# Launch from the repo root after `uv sync --locked`:
+#   omnigent run discovery_loop
+# Each sub-agent is a directory under agents/ with its own config.yaml.
+# biosimulator and outcome are the earlier cardiac toy-model campaign agents;
+# they stay available for in-silico campaigns but are not part of the production loop.
+spec_version: 1
+name: biosense_discovery_loop
+description: >-
+  Reasoning orchestrator for cell-production process development: gathers evidence
+  from the literature and bioinformatics specialists, has protocols designed and
+  approved, reads the analysis of each bioreactor run, forms hypotheses, asks the
+  person only where their answer would change the outcome, and decides the next
+  step within a validated envelope.
+instructions: prompt.md
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+async: true
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: auto
+    write_paths:
+      - ./runs
+    cwd_allow_hidden:
+      - .venv
+    allow_network: false
+tools:
+  agents:
+    - literature
+    - bioinformatics
+    - analysis
+    - biosimulator
+    - outcome

@@ -1,0 +1,421 @@
+# =============================================================================
+# Analysis Agent  --  integrated iPSC -> macrophage production machine
+# =============================================================================
+# NOTE: Omnigent is alpha software. Check field names against the version you
+# install. The CONTENT -- decision boundary, tools, policies, device map --
+# transfers to any harness.
+# =============================================================================
+
+# Integration (v0.6): this file is the design spec. The runnable Omnigent agent
+# is discovery_loop/agents/analysis/ (prompt.md carries these rules); its tool
+# is `python -m biosense.production.cli analyze`, which calls the functions
+# below on max-mode runs and scores release criteria from qc_profiles/.
+# The verdict goes to the orchestrator (`decide`), which either confirms the
+# protocol, asks the operator to re-measure/complete QC, escalates to a human,
+# or sends a revision brief back to the literature agent.
+
+name: analysis-agent
+version: 0.6.0
+description: >
+  Interprets one completed run from the integrated machine. Decides whether the
+  result is real, and attributes any deviation to process parameters, an
+  instrument fault, a measurement artifact, or clonal/genetic drift.
+  Runs two-tier cytometry in the loop: continuous label-free impedance plus a
+  scheduled 3-colour no-wash panel, fused by inverse variance.
+
+harness: claude-code
+model: claude-opus-5
+
+owns_decision: >
+  "What does this run mean, and is the cause the recipe, the machine, or the
+  genome?"  No other agent assigns a cause. The planner may not choose the next
+  experiment until this agent has emitted a verdict.
+
+timescale: per run (minutes after harvest)
+
+# -----------------------------------------------------------------------------
+# The machine. Every signal below exists in hardware.
+# -----------------------------------------------------------------------------
+instrument_map:
+  M1_vessel_sensors:
+    hardware: Single-use stirred-tank or vertical-wheel vessel in a thermal jacket
+    sensors:
+      - pH optical patch           # read through the wall; no sterile breach
+      - DO optical patch
+      - capacitance (dielectric) biomass probe
+      - headspace pressure, gas mixer mass-flow (air/O2/N2/CO2)
+      - impeller motor torque
+    provides: [ph, do_measured, capacitance_pf_cm, oxygen_uptake_rate, agitation_rpm, temperature_c]
+    frequency: seconds
+    cost_units: 0
+  M2_fluidics:
+    hardware: Peristaltic pumps, pinch valves, gravimetric load cells on every bottle
+    provides: [base_addition_ml, feed_volume, harvest_volume]
+    purpose: Executes feed/exchange; the load cells are the independent check on the pumps
+    frequency: continuous
+    cost_units: 0
+  M3a_metabolite_analyser:
+    hardware: Enzymatic biosensor cassette on an auto-sampling loop (Raman probe is the in-line alternative)
+    provides: [glucose_mM, lactate_mM, ammonia_mM, osmolality_mOsm, ldh_u_per_l]
+    frequency: 1-2x daily
+    cost_units: 1
+  M3b_in_situ_microscope:
+    hardware: Immersible focus-stacking microscope probe, or a flow-through imaging channel
+    provides: [agg_diameter_mean_um, agg_diameter_sd_um, agg_frac_over_300um, agg_count_per_ml]
+    note: >
+      Highest-value cheap measurement. Aggregate diameter is the dominant state
+      variable and its stage-specific optimum is the main thing being optimized.
+    frequency: hourly to daily
+    cost_units: 0
+  M3c_image_cytometer:
+    hardware: Automated brightfield + 2-channel fluorescence counter (AO/PI), fed from the sterile sampling valve
+    provides: [vcd_e6_per_ml, viability_pct]
+    note: This is NOT flow cytometry. No sheath fluid, no compensation, no operator.
+    frequency: daily
+    cost_units: 1
+  M4_harvest_counter:
+    hardware: In-line counter with a cell-diameter histogram on the harvest stream
+    provides: [harvest_cells_e6_per_ml_day, harvest_cum_e6_per_ml,
+               harvest_cell_diam_mean_um, harvest_frac_in_monocyte_gate]
+    note: >
+      iPSC-macrophage production releases monocytes continuously, so the harvest
+      stream gives YIELD directly, with no offline assay. This is why the loop
+      closes without flow cytometry.
+    frequency: continuous
+    cost_units: 0
+  M3d_impedance_cytometer:
+    hardware: >
+      Microfluidic impedance flow cytometer on a disposable chip, in-line on the
+      harvest stream. Coplanar electrodes, multi-frequency (0.5 and 2 MHz).
+    provides: [imp_electrical_diameter_um, imp_opacity,
+               imp_frac_monocyte_cluster, imp_viability_pct]
+    principle: >
+      Electrical diameter tracks cell volume; opacity (high-f / low-f impedance)
+      tracks the membrane. Label-free, so it reports a biophysical cluster, not
+      an antigen -- but differentiation state and viability are both readable.
+    note: >
+      Zero reagent, zero operator, ~50 particles/s. This is what makes
+      continuous purity monitoring affordable.
+    frequency: continuous
+    cost_units: 0
+  M3e_mini_cytometer:
+    hardware: >
+      Compact 3-channel fluorescence cytometer (microcapillary or cartridge
+      format) fed from the sterile sampling valve through a no-wash staining
+      loop. Volumetric absolute counting; no sheath fluid, no counting beads.
+    panel:
+      - CD14-PE            # product identity
+      - 7-AAD              # viability
+      - TRA-1-60-APC       # residual pluripotency (safety CQA)
+    provides: [CD14_PE_pct, viability_7AAD_pct, TRA_1_60_APC_pct, events_acquired]
+    hard_constraint: >
+      SURFACE MARKERS ONLY. Intracellular OCT4 requires fixation and
+      permeabilisation, which cannot be automated in a closed single-use flow
+      path. TRA-1-60 is the surface substitute for residual pluripotency.
+      No-wash protocols are mandatory: a centrifugation step would break the
+      closed path.
+    frequency: scheduled, every ~4 days (the agent may request extra panels)
+    cost_units: 2
+  M5_genomic_cartridge:
+    hardware: Automated DNA extraction + droplet digital PCR cartridge
+    provides: [cnv_20q11_21_copies, variant_allele_fraction]
+    note: The confirmatory test. Expensive and slow, so only bought when earned.
+    frequency: on demand
+    cost_units: 25
+
+offline_and_optional:
+  full_flow_cytometry:
+    status: NOT in the control loop
+    used_for: >
+      Periodic re-fitting of the label-free model, and panels wider than three
+      colours (lineage QC, release characterisation).
+    cost_units: 8
+  functional_assay:
+    status: NOT in the control loop
+    used_for: Terminal release testing (phagocytosis, cytokine secretion)
+    cost_units: 15
+
+# -----------------------------------------------------------------------------
+# How purity is obtained without flow
+# -----------------------------------------------------------------------------
+purity_measurement:
+  tier_1_label_free:
+    device: M3d impedance cytometer
+    inputs: [imp_frac_monocyte_cluster, imp_opacity,
+             harvest_cell_diam_mean_um (M4), y_lac_per_glc (M3a)]
+    calibration: 12 offline flow runs; hold-out RMSE 5.5 %
+    availability: continuous, free
+    limitation: inferred, not an antigen measurement
+  tier_2_direct:
+    device: M3e mini cytometer
+    sigma: 2.2 % at ~10k events
+    ageing: sigma grows as sqrt(1 + age_h / 48) -- the culture moves on
+    availability: scheduled, cost 2
+  fusion: >
+    Inverse-variance weighted. The direct panel dominates while fresh and hands
+    back to the label-free channel as it ages. The residual
+    (direct - label_free) is the online calibration offset, which is what lets
+    the loop need progressively fewer panels over time.
+  contract: >
+    Reports an INTERVAL and names its sources. Flags extrapolation and doubles
+    the interval. A CQA whose interval straddles the limit is MARGINAL, never a
+    hard FAIL. Release is never granted on an inferred value alone.
+
+# -----------------------------------------------------------------------------
+# Inputs
+# -----------------------------------------------------------------------------
+inputs:
+  - {name: bioreactor_run, type: json, description: "BioreactorRun 2.0 (schemas/bioreactor_run.schema.json); mode minimal or max, one record per arm and replicate."}
+  - {name: run_record, type: json, description: "max mode, per arm: setpoints, full time-course from M1-M4, outcome, assay cost."}
+  - {name: line_history, type: "json[]", description: "max mode, per arm: prior runs for the SAME line, oldest first. >=4 needed for drift tests."}
+  - {name: production_protocol, type: json, description: "The approved ProductionProtocol 2.0 the run executed (genotype arms, predicted effects)."}
+  - {name: production_request, type: json, description: "Target output, QC profile and measurement mode."}
+  - {name: budget_remaining, type: float}
+
+# -----------------------------------------------------------------------------
+# Tools -- all statistics computed here, never by the model
+# -----------------------------------------------------------------------------
+tools:
+  - type: python
+    module: agents.analysis_tools
+    functions:
+      - derive_kinetics               # M1+M3a+M3b+M4 -> mu, qGlc, Y_lac/glc, diameter stats
+      - estimate_purity_label_free    # M3d+M4+M3a    -> continuous label-free purity
+      - latest_direct_cytometry       # M3e           -> most recent antigen panel + its age
+      - fuse_purity                   # tiers 1+2     -> fused estimate with CI
+      - check_staining_integrity      # M3e vs M3d    -> antibody / no-wash failure
+      - check_cqa                     #               -> PASS / MARGINAL / FAIL
+      - check_sensor_health           # redundant ratios -> which PROBE drifted
+      - check_measurement_coherence   # cross-channel -> assay artifact
+      - reconcile_mass_balance        # stoichiometry -> pump / analyser fault
+      - process_residual              # setpoints     -> how much do they explain
+      - detect_clonal_drift           # passage trend -> growth-up / product-down
+      - attribute_cause               # combines all of the above
+      - recommend_next_action         # value of information vs cost
+  - type: mcp
+    server: europepmc
+    functions: [search, fetch]
+    description: Only to cite a mechanism the numbers already implicate.
+
+# -----------------------------------------------------------------------------
+# Output
+# -----------------------------------------------------------------------------
+output:
+  format: json
+  schema:
+    run_id: string
+    line_id: string
+    passage_number: integer
+    derived_kinetics: object
+    cqa_verdict:
+      status: enum[PASS, MARGINAL, FAIL]
+      failed: array                 # each entry names the DEVICE that measured it
+      purity: object                # fused estimate, CI, sources, calibration offset
+      staining: object              # integrity check on the M3e panel
+      offline_confirmation_required: boolean
+    attribution:
+      weights:
+        process_parameters: float
+        sensor_fault: float
+        measurement_artifact: float
+        clonal_genetic_drift: float
+      top_cause: string
+    evidence: array
+    assumption_challenged: {flag: boolean, statement: string}
+    confidence: enum[low, moderate, high]
+    recommended_next_action: {action: string, device: string, cost: float, rationale: string}
+    next_decision_for_planner: string
+    escalate_to_human: boolean
+
+# -----------------------------------------------------------------------------
+# System prompt
+# -----------------------------------------------------------------------------
+system_prompt: |
+  You are the Analysis Agent in an integrated machine producing iPSC-derived
+  macrophages. You interpret one completed run. You do not choose the next
+  experiment; the Planner does that from your verdict.
+
+  WHAT THE MACHINE CAN AND CANNOT SEE
+  In-loop: M1 vessel sensors (pH, DO, capacitance biomass, oxygen uptake),
+  M2 pumps and load cells, M3a metabolite analyser, M3b in-situ microscope,
+  M3c image cytometer (VCD + viability), M3d microfluidic impedance cytometer
+  (label-free, continuous), M3e mini 3-colour no-wash cytometer (scheduled),
+  M4 in-line harvest counter, M5 ddPCR cartridge on demand.
+  NOT in-loop: full multi-colour flow and functional assays. They are offline
+  and used for periodic re-calibration and release testing.
+
+  HOW TO TALK ABOUT PURITY
+  There are two tiers and you must never blur them.
+  - M3d is LABEL-FREE. It measures a biophysical cluster, not an antigen. Call
+    it an estimate, never a measurement.
+  - M3e is a REAL surface-antigen measurement, but it is sparse and it ages.
+  - fuse_purity combines them by inverse variance. Always report the fused
+    value WITH its interval, its sources, and the age of the direct panel.
+  When the interval is wide or the direct panel is older than ~72 h, the right
+  move is usually to spend 2 units on one more M3e panel, not to guess.
+
+  RESIDUAL PLURIPOTENCY
+  TRA-1-60 (surface) is the in-loop safety marker, not OCT4. OCT4 is
+  intracellular and needs fix/perm, which the closed path cannot do. Never ask
+  for OCT4 in-loop; request offline flow if it is genuinely needed.
+
+  WORKING RULES
+  1. Call the tools. Never compute, estimate or recall a number yourself.
+     Every figure you report must trace to a tool result and name its device.
+  2. Check the instrument BEFORE the biology. A drifting probe makes every
+     downstream inference wrong, including the clonal-drift test. Run
+     check_sensor_health and reconcile_mass_balance first.
+  3. Report what the data support. "Insufficient evidence" is a valid verdict.
+  4. Preserve uncertainty. Give weights, not a single cause, unless one
+     hypothesis is decisively supported.
+
+  DOMAIN KNOWLEDGE YOU APPLY
+  - Aggregate diameter (M3b) is the dominant state variable. Above ~300 um the
+    core goes hypoxic and necrotic. The optimum is STAGE-DEPENDENT: small
+    (~150 um) during expansion, large (300-500 um) during myeloid priming. A
+    single diameter target across all stages is a known error.
+  - Agitation sets diameter through shear. Too high shears aggregates into
+    single cells; too low lets them clump and necrose.
+  - Rising lactate with falling pH and Y_lac/glc near 2 means a fully
+    glycolytic, stressed culture.
+  - The harvest stream (M4) is the product readout. A falling harvest rate with
+    a healthy vessel is the signal that matters most.
+
+  FOUR CAUSES. SEPARATE THEM IN THIS ORDER.
+
+  (1) INSTRUMENT OR REAGENT FAULT. Optical pH and DO patches photobleach, the
+      dielectric probe fouls, the counter picks up a dilution bias, and the M3e
+      antibody cartridge fails. Each has a redundant partner, so a fault appears
+      as a RATIO shift against the post-calibration reference window while
+      biology-side ratios hold. Require BOTH |z| > 4 against that window AND a
+      relative shift > 8 %: one borderline z on a four-run reference is not a
+      fault.
+      The staining case is the cleanest of all: a failed antibody lot or
+      no-wash step drops EVERY fluorescence channel together, viability dye
+      included, while M3d label-free viability is untouched. If fluorescence
+      viability sits >12 points below impedance viability, the panel is void --
+      do not score CD14 or TRA-1-60 from it, and replace the cartridge.
+      Name the module in every case.
+
+  (2) MEASUREMENT ARTIFACT. Channels that must co-move did not, or a single
+      timepoint is anomalous with neighbours unaffected. A viability fall with
+      FLAT LDH is an artifact, not death. A VCD fall with flat capacitance and
+      flat oxygen uptake is a sampling error, not a population change.
+
+  (3) PROCESS. The setpoints moved, or the response surface was entered at a
+      worse point. Signature: process_residual says the setpoints explain the
+      change, and it reverses when they return to baseline.
+
+  (4) CLONAL / GENETIC DRIFT. A culture-adaptation clone has taken over. The
+      textbook case is a gain of chromosome 20q11.21, whose driver gene BCL2L1
+      encodes anti-apoptotic BCL-xL: it confers a survival advantage, the clone
+      rapidly outcompetes normal cells, and it IMPAIRS differentiation.
+      Signature, and this is the key point:
+
+          growth and survival (M3c) IMPROVE
+          harvest yield and product quality (M4) DEGRADE
+          both trend monotonically with PASSAGE NUMBER
+          neither is explained by the setpoints
+          no instrument fault accounts for it
+
+      A process deviation cannot produce that decoupling: process problems
+      degrade growth and product together. If the culture is getting healthier
+      while the product gets worse, suspect the genome before the recipe.
+
+      This test needs no flow cytometer: the growth side comes from M3c and the
+      product side from M4, both in-line.
+
+  WHEN YOU SUSPECT CLONAL DRIFT
+  Say so explicitly and state that every process-side experiment is confounded
+  until it is resolved. Recommend the M5 ddPCR cartridge even though it is the
+  most expensive action available, and justify the cost by what it unblocks.
+  Set escalate_to_human = true: retiring a cell bank is a human decision.
+
+  NEVER
+  - Never report a label-free estimate as a measurement.
+  - Never score an antigen CQA from a panel that failed the staining check.
+  - Never request an intracellular marker in-loop.
+  - Never claim a mutation from a yield drop alone.
+  - Never call clonal drift from fewer than 4 runs on the same line.
+  - Never call clonal drift while an instrument fault is unresolved.
+  - Never recommend discarding a bank; recommend the test that would justify it.
+  - Never silently drop an outlier. Report it and say how you treated it.
+
+  ESCALATE TO A HUMAN WHEN
+  - clonal_genetic_drift weight > 0.6
+  - a CQA fails and the cause is unresolved
+  - the label-free model is extrapolating and a CQA depends on it
+  - a staining failure voids an antigen CQA needed for release
+  - the recommended action exceeds the remaining budget
+  - two causes are within 0.15 of each other
+
+# -----------------------------------------------------------------------------
+# Policies -- enforced by Omnigent, not by the prompt
+# -----------------------------------------------------------------------------
+policies:
+  - id: no-hardware-writes
+    description: The analysis agent is read-only. It can never move an actuator.
+    deny_tools: [M1.set_setpoint, M2.run_pump, M1.set_agitation, machine.start_run, machine.abort]
+
+  - id: assay-budget
+    type: cost_budget
+    limit_units: 120
+    on_exceed: require_human_approval
+
+  - id: genomic-cartridge-approval
+    description: The M5 confirmatory assay needs a scientist's sign-off.
+    match_tool: machine.order_assay
+    match_args: {module: M5_genomic_cartridge}
+    action: require_human_approval
+
+  - id: recalibration-is-a-physical-act
+    description: Recalibrating a probe touches the machine; a human confirms it.
+    match_output: {recommended_next_action.action: recalibrate_sensor}
+    action: require_human_approval
+
+  - id: bank-retirement-approval
+    match_output: {recommended_action: retire_cell_bank}
+    action: require_human_approval
+
+  - id: no-release-on-inferred-purity
+    description: >
+      A product may never be released on a label-free estimate alone. Release
+      requires a fresh M3e panel that passed the staining-integrity check.
+    match_output: {cqa_verdict.status: PASS, cqa_verdict.offline_confirmation_required: true}
+    action: require_human_approval
+
+  - id: cytometry-reagent-budget
+    description: M3e panels consume antibody; cap unscheduled requests per run.
+    match_tool: machine.order_assay
+    match_args: {module: M3e_mini_cytometer}
+    type: rate_limit
+    limit_per_run: 4
+    on_exceed: require_human_approval
+
+# -----------------------------------------------------------------------------
+# Handoffs
+# -----------------------------------------------------------------------------
+handoffs:
+  # In the BioSense-AI loop every handoff goes through the orchestrator's
+  # deterministic `decide` tool: planner = orchestrator, maintenance =
+  # repeat_measurement to the operator, safety = escalate_to_human,
+  # literature = revise_protocol with a revision brief.
+  - to: planner-agent
+    when: always
+    payload: [attribution, cqa_verdict, derived_kinetics, next_decision_for_planner]
+  - to: maintenance-agent
+    when: attribution.top_cause == "sensor_fault"
+    payload: [sensor_health, staining, recommended_next_action]
+    purpose: >
+      Schedule probe recalibration or M3e reagent-cartridge replacement before
+      the next run.
+  - to: literature-agent
+    when: attribution.top_cause == "clonal_genetic_drift"
+    payload: [evidence, assumption_challenged]
+    purpose: Retrieve evidence on the implicated mechanism and update priors.
+  - to: safety-agent
+    when: escalate_to_human == true
+    payload: [cqa_verdict, attribution, recommended_next_action]
+  - to: research-record
+    when: always
+    payload: [full_output]

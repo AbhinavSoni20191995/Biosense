@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/human-consult-v2.0",
+  "title": "HumanConsult 2.0: the orchestrator asking a person for something the machine cannot measure",
+  "description": "Raised when a decision would be materially better with knowledge this loop cannot generate: an assay the machine cannot run, an unpublished in-house result, or a judgement call. It always states what happens if nobody answers, so the loop never silently stalls.",
+  "type": "object",
+  "required": ["schema_version", "consult_id", "loop_id", "iteration", "created_at", "raised_by",
+               "question", "why_it_matters", "blocking", "fallback", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "consult_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+    "loop_id": {"type": "string"},
+    "iteration": {"type": "integer", "minimum": 0},
+    "analysis_id": {"type": ["string", "null"]},
+    "created_at": {"type": "string"},
+    "raised_by": {"enum": ["orchestrator_agent", "analysis", "bioinformatics", "literature", "policy"]},
+    "urgency": {"enum": ["low", "normal", "high"], "default": "normal"},
+    "question": {"type": "string", "minLength": 10, "description": "Written for a person, answerable in a few sentences or a number"},
+    "why_it_matters": {"type": "string", "description": "Which hypothesis or failed criterion this bears on"},
+    "hypothesis_ids": {"type": "array", "items": {"type": "string"}},
+    "experiment_requested": {
+      "type": ["object", "null"],
+      "required": ["assay", "feasible_in_this_machine", "why_not_feasible"],
+      "additionalProperties": false,
+      "properties": {
+        "assay": {"type": "string"},
+        "feasible_in_this_machine": {"const": false},
+        "why_not_feasible": {"type": "string", "description": "The physical or process reason, e.g. fixation steps break the closed path"},
+        "what_it_would_resolve": {"type": "string"},
+        "rough_effort": {"type": ["string", "null"]}
+      }
+    },
+    "expected_gain": {
+      "type": "object",
+      "description": "Honest, qualitative statement of what an answer buys. No invented probabilities.",
+      "properties": {
+        "statement": {"type": "string"},
+        "affects": {"type": "array", "items": {"type": "string"}, "description": "Protocol steps or parameters an answer would change"},
+        "confidence_without_answer": {"enum": ["low", "moderate", "high"]}
+      }
+    },
+    "blocking": {"type": "boolean", "description": "true = the loop waits; false = the fallback runs and the consult stays open"},
+    "fallback": {
+      "type": "object",
+      "required": ["action", "consequence"],
+      "properties": {
+        "action": {"type": "string", "description": "What the orchestrator will do if nobody answers"},
+        "consequence": {"type": "string", "description": "What is lost or left uncertain by taking the fallback"}
+      }
+    },
+    "options": {
+      "type": "array",
+      "description": "Concrete choices offered to the person, so answering is a selection rather than an essay",
+      "items": {"type": "object", "required": ["label", "implication"],
+                "properties": {"label": {"type": "string"}, "implication": {"type": "string"}}}
+    },
+    "status": {"enum": ["open", "answered", "declined", "expired"]},
+    "answer": {
+      "type": ["object", "null"],
+      "required": ["answered_by", "answered_at", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "answered_by": {"type": "string"},
+        "answered_at": {"type": "string"},
+        "content": {"type": "string"},
+        "chosen_option": {"type": ["string", "null"]},
+        "evidence_status": {
+          "enum": ["unpublished_in_house_result", "published_but_unretrieved", "expert_judgement", "declined"],
+          "description": "What kind of knowledge this is. Only unpublished_in_house_result and published_but_unretrieved may become a cited protocol value; expert_judgement stays a design choice."
+        },
+        "citable_as": {"enum": ["reported", "adapted", "design_choice"],
+                       "description": "Provenance the literature agent may give a value derived from this answer"}
+      }
+    }
+  }
+}

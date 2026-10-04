@@ -1,0 +1,21 @@
+spec_version: 1
+name: biosimulator
+description: >-
+  Biosimulator specialist: assembles a provenance-tracked scenario from the
+  literature handoff, proposes stage-allocation experiments and runs the
+  deterministic compartment model inside a budgeted campaign.
+instructions: prompt.md
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: auto
+    write_paths:
+      - ./runs
+    cwd_allow_hidden:
+      - .venv
+    allow_network: false

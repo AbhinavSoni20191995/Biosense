@@ -1,0 +1,311 @@
+{
+  "label": "SYNTHETIC FIXTURE extraction (initial research)",
+  "claims": [
+    {
+      "id": "c01",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "initial_cell_density",
+      "stage": "ipsc_expansion",
+      "role": "initial_condition",
+      "value": 500000,
+      "unit": "cells/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "expansion medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0001",
+        "quote": "seeded as single cells at 5 x 10^5 cells/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c02",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "duration",
+      "stage": "ipsc_expansion",
+      "role": "schedule",
+      "value": 4,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "expansion medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0001",
+        "quote": "expanded as aggregates for 4 days"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c03",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "agitation",
+      "stage": "ipsc_expansion",
+      "role": "operating_condition",
+      "value": 60,
+      "unit": "rpm",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "expansion medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0001",
+        "quote": "for 4 days at 60 rpm"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c04",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "dissolved_oxygen",
+      "stage": "ipsc_expansion",
+      "role": "operating_condition",
+      "value": 20,
+      "unit": "%air_saturation",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "expansion medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0001",
+        "quote": "20% air saturation"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c05",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "duration",
+      "stage": "mesoderm_induction",
+      "role": "schedule",
+      "value": 3,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "defined medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0002",
+        "quote": "Mesoderm was induced for 3 days"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c06",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "BMP4_concentration",
+      "stage": "mesoderm_induction",
+      "role": "operating_condition",
+      "value": 25,
+      "unit": "ng/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "defined medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0002",
+        "quote": "BMP4 at 25 ng/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c07",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "VEGF_concentration",
+      "stage": "mesoderm_induction",
+      "role": "operating_condition",
+      "value": 50,
+      "unit": "ng/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "defined medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0002",
+        "quote": "VEGF at 50 ng/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c08",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "duration",
+      "stage": "hematopoietic_specification",
+      "role": "schedule",
+      "value": 4,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "defined medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0003",
+        "quote": "Hematopoietic specification lasted 4 days"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c09",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "duration",
+      "stage": "myeloid_production",
+      "role": "schedule",
+      "value": 14,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "defined medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0004",
+        "quote": "Myeloid production ran for 14 days"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c10",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "M-CSF_concentration",
+      "stage": "myeloid_production",
+      "role": "operating_condition",
+      "value": 50,
+      "unit": "ng/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "defined medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0004",
+        "quote": "M-CSF at 50 ng/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c11",
+      "protocol_id": "SYNTH_mono_STR",
+      "parameter": "IL-3_concentration",
+      "stage": "myeloid_production",
+      "role": "operating_condition",
+      "value": 25,
+      "unit": "ng/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "monocyte",
+        "cell_line": "SYNTH-L01",
+        "culture_format": "stirred_tank_aggregate",
+        "medium": "defined medium",
+        "time_origin": "iPSC seeding (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-MONO-001",
+        "paragraph_id": "p0004",
+        "quote": "IL-3 at 25 ng/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    }
+  ],
+  "search_log": [
+    {
+      "query": "SYNTHETIC: (iPSC OR hiPSC) AND monocyte AND (bioreactor OR stirred)",
+      "date": "2026-10-04",
+      "hits": 1,
+      "note": "fixture"
+    }
+  ],
+  "search_complete": false
+}

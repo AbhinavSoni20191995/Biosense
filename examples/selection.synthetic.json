@@ -1,0 +1,15 @@
+{
+  "selection_id": "sel-laco-synthetic-001",
+  "scenario_id": "scenario-laco-synthetic-001",
+  "mode": "synthetic_demo",
+  "model_id": "compartment_growth_v1",
+  "protocol_id": "Laco2020_FR202_integrated",
+  "target_subtype": "unspecified",
+  "rationale": "Only reported stage durations are taken from the literature handoff. Every kinetic rate, the capacity and the initial counts come from the separately declared synthetic assumption file.",
+  "claim_selections": [
+    {"model_input": "schedule.ipsc_expansion.duration", "claim_id": "expansion_duration", "condition_signature": "phase_duration"},
+    {"model_input": "schedule.cardiac_differentiation.duration", "claim_id": "differentiation_duration", "condition_signature": "phase_duration"}
+  ],
+  "derived_inputs": [],
+  "conflict_resolutions": []
+}

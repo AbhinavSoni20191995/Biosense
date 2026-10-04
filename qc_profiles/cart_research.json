@@ -1,0 +1,20 @@
+{
+  "profile_id": "cart_research",
+  "version": "1.0",
+  "label": "CAR-T style product QC (research / process development). Demo defaults must be confirmed by your QA team; this is not a release specification.",
+  "inherits": "generic_ipsc_derived_product",
+  "criteria": [
+    {"id": "qc-identity-purity", "metric": "target_marker_pct", "op": ">=", "value": 20.0, "unit": "%",
+     "category": "identity_purity", "severity": "release", "modes": ["minimal", "max"],
+     "value_status": "demo_default",
+     "basis": "Demo default for the transduced (CAR+) fraction of the product. Real limits are product- and assay-specific and are set by QA."},
+    {"id": "qc-residual-pluripotency", "metric": "residual_pluripotency_pct", "op": "<=", "value": null, "unit": "%",
+     "category": "safety", "severity": "release", "modes": [],
+     "value_status": "not_applicable",
+     "basis": "Not applicable: the starting material is peripheral blood T cells, so there is no pluripotent population to score. An empty modes list marks a criterion that does not apply to this product."},
+    {"id": "qc-karyotype", "metric": "karyotype", "op": "==", "value": "normal", "unit": "text",
+     "category": "genetic_stability", "severity": "safety", "modes": ["minimal", "max"],
+     "value_status": "regulatory_guidance",
+     "basis": "Genomic integrity of a vector-modified product. For an integrating vector this is where vector copy number and integration-site analysis are reported; the limit and method are set by QA."}
+  ]
+}

@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/production-request-v2.0",
+  "title": "ProductionRequest 2.0: the question given to the literature agent",
+  "description": "A production question (e.g. 'increase monocyte output at day 25'), the measurable target, the QC profile, the genotype arms to compare and the measurement mode the bioreactor will report in.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "request_id",
+    "question",
+    "product",
+    "desired_output",
+    "qc_profile",
+    "genotype_arms",
+    "measurement_mode",
+    "search_budget"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "question": {
+      "type": "string",
+      "minLength": 10
+    },
+    "product": {
+      "type": "object",
+      "required": [
+        "species",
+        "cell_origin",
+        "target_cell",
+        "target_marker"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "species": {
+          "type": "string"
+        },
+        "cell_origin": {
+          "type": "string"
+        },
+        "target_cell": {
+          "type": "string"
+        },
+        "target_subtype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_marker": {
+          "type": "string",
+          "description": "Surface marker used as the identity/purity readout, e.g. CD14"
+        },
+        "cell_line": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "null = unknown, not unrestricted transferability"
+        },
+        "culture_format": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "intended_use": {
+          "enum": [
+            "research",
+            "process_development",
+            "clinical_development"
+          ]
+        }
+      }
+    },
+    "desired_output": {
+      "type": "object",
+      "required": [
+        "metric",
+        "op",
+        "value",
+        "unit",
+        "at_day",
+        "day_tolerance",
+        "day_origin"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "enum": [
+            "target_cells_total",
+            "target_cells_per_input_cell"
+          ]
+        },
+        "op": {
+          "enum": [
+            ">="
+          ]
+        },
+        "value": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "unit": {
+          "enum": [
+            "cells",
+            "cells/input_cell"
+          ]
+        },
+        "at_day": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "day_tolerance": {
+          "type": "number",
+          "minimum": 0
+        },
+        "day_origin": {
+          "type": "string",
+          "description": "What day 0 is, e.g. 'iPSC seeding into the bioreactor'"
+        },
+        "applies_to_arms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Arms that must meet the target; default all arms"
+        },
+        "basis": {
+          "type": "string",
+          "description": "Who set this target and why (user/QA decision, not a biological claim)"
+        }
+      }
+    },
+    "qc_profile": {
+      "type": "string",
+      "description": "File stem in qc_profiles/"
+    },
+    "qc_overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "value",
+          "basis"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "value": {},
+          "basis": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "genotype_arms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/arm"
+      }
+    },
+    "current_protocol": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Path to the protocol being improved, or null"
+    },
+    "measurement_mode": {
+      "enum": [
+        "minimal",
+        "max"
+      ]
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "max_culture_days": {
+          "type": "number"
+        },
+        "xeno_free": {
+          "type": "boolean"
+        },
+        "gmp_grade_reagents": {
+          "type": "boolean"
+        },
+        "equipment": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "search_budget": {
+      "type": "object",
+      "required": [
+        "max_searches",
+        "max_full_texts"
+      ],
+      "properties": {
+        "max_searches": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_full_texts": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "loop_budget": {
+      "type": "object",
+      "properties": {
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "human_in_the_loop": {
+      "type": "object",
+      "description": "How much the person wants to be in the loop. Safety gates that do not depend on this are enforced in code regardless of mode.",
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "full",
+            "checkpoints",
+            "autonomous"
+          ],
+          "description": "full = approve every protocol and every decision; checkpoints = approve protocols and only flagged decisions; autonomous = the orchestrator decides and notifies"
+        },
+        "approve_protocols": {
+          "type": "boolean",
+          "description": "Override. Forced true whenever bioreactor_source is wet_lab."
+        },
+        "approve_decisions": {
+          "type": "boolean",
+          "description": "Override for the decision gate."
+        },
+        "consults": {
+          "enum": [
+            "always",
+            "high_value",
+            "never"
+          ],
+          "default": "high_value",
+          "description": "When the orchestrator should ask the person for an answer the machine cannot measure"
+        },
+        "notify": {
+          "type": "string",
+          "description": "Free text: how the person wants to be told (channel, cadence)"
+        },
+        "max_info_actions_per_iteration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 4,
+          "description": "Cap on consult/bioinformatics/literature actions before the orchestrator must either revise or stop"
+        }
+      }
+    },
+    "bioreactor_source": {
+      "enum": [
+        "wet_lab",
+        "synthetic_standin"
+      ],
+      "default": "wet_lab",
+      "description": "wet_lab always requires human protocol approval"
+    },
+    "bioinformatics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowed": {
+          "type": "boolean",
+          "default": true
+        },
+        "knowledge_sets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "File stems in bioinfo_knowledge/"
+        },
+        "live_lookups": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permit network calls to public annotation APIs. Off by default and never required by CI."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "arm": {
+      "type": "object",
+      "required": [
+        "arm_id",
+        "genotype"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "arm_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "genotype": {
+          "enum": [
+            "wild_type",
+            "knockout",
+            "knockdown",
+            "knock_in",
+            "overexpression",
+            "point_mutation",
+            "other"
+          ]
+        },
+        "gene": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modification": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Method and target, e.g. 'CRISPR-Cas9 exon 2 frameshift'"
+        },
+        "zygosity": {
+          "enum": [
+            "homozygous",
+            "heterozygous",
+            "hemizygous",
+            "not_applicable",
+            null
+          ]
+        },
+        "line_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

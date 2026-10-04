@@ -1,0 +1,16 @@
+# Configuration example based on the official single-file agent schema.
+# Launch smoke-tested with omnigent 0.16.0 + claude-sdk on 2026-10-04; a full
+# research run has not been validated yet.
+# Launch from this repo root after uv sync. Choose Claude credentials in setup.
+name: biosense_ipsc_literature
+instructions: agent_prompt.md
+executor:
+  harness: claude-sdk
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: auto
+    write_paths:
+      - ./runs
+    allow_network: true

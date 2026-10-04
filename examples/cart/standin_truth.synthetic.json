@@ -1,0 +1,18 @@
+{
+  "label": "HIDDEN TRUTH for the synthetic CAR-T stand-in only. Agents must never read this file.",
+  "note": "The knockout needs a shorter stimulation and more IL-15 than the unedited control. The loop has to discover that from measurements; nothing in the iteration-0 evidence states it.",
+  "arms": {
+    "EXH1_KO": {
+      "activation_optimum_h": 24.0,
+      "activation_tol_h": 20.0,
+      "cytokine_optima": {
+        "il15": 15.0
+      },
+      "cytokine_tol": {
+        "il15": 7.0
+      },
+      "genotype_exhaustion_ratio": 0.62,
+      "genotype_mu_ratio": 0.98
+    }
+  }
+}

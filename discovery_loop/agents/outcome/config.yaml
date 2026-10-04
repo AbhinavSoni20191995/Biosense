@@ -1,0 +1,21 @@
+spec_version: 1
+name: outcome
+description: >-
+  Outcome / quality-check specialist: computes metrics, applies constraints,
+  compares matched runs, reports uncertainty and sensitivity, and returns one
+  typed next action from the deterministic policy.
+instructions: prompt.md
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: auto
+    write_paths:
+      - ./runs
+    cwd_allow_hidden:
+      - .venv
+    allow_network: false

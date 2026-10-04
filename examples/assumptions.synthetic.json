@@ -1,0 +1,201 @@
+{
+  "assumption_set_id": "synthetic-compartment-v1",
+  "label": "SYNTHETIC ASSUMPTIONS: toy values for a workflow demonstration; none is biological evidence",
+  "assumptions": [
+    {
+      "id": "A-K",
+      "model_input": "global.K",
+      "provenance_type": "synthetic_assumption",
+      "value": 300000000.0,
+      "unit": "cells",
+      "rationale": "SYNTHETIC modeled capacity of a ~100 mL vessel; not an observed maximum",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-R0",
+      "model_input": "initial.R",
+      "provenance_type": "synthetic_assumption",
+      "value": 12000000.0,
+      "unit": "cells",
+      "rationale": "SYNTHETIC starting count (order of 1.2e5 cells/mL in 100 mL); not compiled evidence",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-C0",
+      "model_input": "initial.C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0,
+      "unit": "cells",
+      "rationale": "Declared: no target cells before differentiation",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-O0",
+      "model_input": "initial.O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0,
+      "unit": "cells",
+      "rationale": "Declared: no off-target cells at expansion start",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-D0",
+      "model_input": "initial.D",
+      "provenance_type": "synthetic_assumption",
+      "value": 0,
+      "unit": "cells",
+      "rationale": "Declared: dead-cell accounting starts at zero",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-exp-muR",
+      "model_input": "ipsc_expansion.mu_R",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.035,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model (~20 h doubling at low density)",
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.025,
+        "high": 0.045,
+        "unit": "1/h"
+      }
+    },
+    {
+      "id": "A-exp-dR",
+      "model_input": "ipsc_expansion.delta_R",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.002,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-exp-muC",
+      "model_input": "ipsc_expansion.mu_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.0,
+      "unit": "1/h",
+      "rationale": "Declared simplification: modeled target cells do not proliferate",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-exp-dC",
+      "model_input": "ipsc_expansion.delta_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.001,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-exp-muO",
+      "model_input": "ipsc_expansion.mu_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.01,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-exp-dO",
+      "model_input": "ipsc_expansion.delta_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.002,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-dif-muR",
+      "model_input": "cardiac_differentiation.mu_R",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.01,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-dif-dR",
+      "model_input": "cardiac_differentiation.delta_R",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.004,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-dif-kC",
+      "model_input": "cardiac_differentiation.k_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.015,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model; endpoint purity cannot identify this rate",
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.01,
+        "high": 0.02,
+        "unit": "1/h"
+      }
+    },
+    {
+      "id": "A-dif-kO",
+      "model_input": "cardiac_differentiation.k_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.003,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.002,
+        "high": 0.005,
+        "unit": "1/h"
+      }
+    },
+    {
+      "id": "A-dif-muC",
+      "model_input": "cardiac_differentiation.mu_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.0,
+      "unit": "1/h",
+      "rationale": "Declared simplification: modeled target cells do not proliferate",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-dif-dC",
+      "model_input": "cardiac_differentiation.delta_C",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.001,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    },
+    {
+      "id": "A-dif-muO",
+      "model_input": "cardiac_differentiation.mu_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.012,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence",
+      "uncertainty": {
+        "type": "synthetic_range",
+        "low": 0.008,
+        "high": 0.016,
+        "unit": "1/h"
+      }
+    },
+    {
+      "id": "A-dif-dO",
+      "model_input": "cardiac_differentiation.delta_O",
+      "provenance_type": "synthetic_assumption",
+      "value": 0.002,
+      "unit": "1/h",
+      "rationale": "SYNTHETIC: chosen to produce a visible yield/purity trade-off in the toy model",
+      "applicability": "Synthetic demonstration value; not biological evidence"
+    }
+  ]
+}
