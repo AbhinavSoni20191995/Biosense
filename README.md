@@ -14,56 +14,45 @@
 
 ---
 
-## The problem
+## The problem, and what BioSense does about it
 
-Optimising how a cell product is grown is a loop: read the literature, design a
-protocol, run it, read the result, change one thing, run it again. Each turn of
-that loop takes days of bench time, and the reasoning behind each change usually
-lives in someone's head or a lab notebook.
+BioSense is designed to accelerate the development of cell-based therapies by
+tackling one of the biggest bottlenecks in the field: biological manufacturing
+and experimental optimisation are complex, slow, and still heavily dependent on
+fragmented data, manual interpretation, and repeated trial-and-error. Instead of
+forcing scientists to navigate literature, datasets, experimental variables, and
+process measurements separately, BioSense turns a high-level biological objective
+into an iterative **design → run → measure → decide** workflow.
 
-Language models are good at the reading and the reasoning. They are **not** good
-at being trusted with the arithmetic, the pass/fail calls, or the authority to
-spend a week of someone's cells. So this project splits those jobs apart.
+An agentic orchestration layer coordinates specialised AI agents for literature
+evidence, bioinformatics, data analysis, simulation, and experimental planning,
+continuously combining prior knowledge with new results. During execution,
+feedback from the bioreactor and multiple sensors, detectors, and analytical
+measurements provides real-time information on how the cell product is
+responding, allowing the system to refine conditions and propose the next
+experiment. Scientists interact through a simple interface — asking a question,
+defining the desired outcome, and reviewing transparent assumptions and
+reasoning — while BioSense manages the complexity underneath.
 
-## What BioSense is for
+The long-term goal is a closed-loop discovery and manufacturing system that
+learns from every experiment, reduces unnecessary iterations, and helps move
+safer, more effective cell therapies toward patients faster.
 
-The bottleneck in cell-based therapy is not ideas — it is that biological
-manufacturing and experimental optimisation stay slow, fragmented and
-trial-and-error, with the literature, the datasets, the process variables and the
-measurements all living in different places and joined up by hand.
+> **Where the repository stands against that.** The five specialist agents exist
+> and the measurement-driven analysis is implemented. Three parts of the goal are
+> not: the loop runs against a **synthetic stand-in, not a real bioreactor**;
+> **live model-driven orchestration has not been run yet**; and each loop starts
+> fresh, so **nothing is learned across runs**. Everything below describes what
+> runs today, and [What this is **not**](#what-this-is-not) sets out the limits
+> in full.
 
-BioSense turns a high-level biological objective into an iterative
-**design → run → measure → decide** workflow:
+---
 
-- **One objective in, a loop out.** A scientist states the aim and the
-  constraints once; the system turns that into protocols, runs, measurements and
-  the decision about what to change next.
-- **Specialised agents, orchestrated.** Separate agents for literature evidence,
-  bioinformatics, data analysis, simulation and experimental planning, each doing
-  one job and handing on a checkable document. *(All five ship in
-  [`discovery_loop/`](discovery_loop/).)*
-- **Prior knowledge combined with new results.** Every iteration carries the
-  cited evidence and the annotations forward, alongside what the last run
-  actually measured.
-- **Measurement-driven, not schedule-driven.** Sensor and analytical channels —
-  viable cell density, viability, glucose, lactate, marker purity, release tests
-  — feed the analysis, which decides whether the data can even carry a
-  conclusion before it decides anything else.
-- **The scientist stays in the loop by design.** Ask a question, define the
-  desired outcome, review the assumptions and the reasoning. The complexity sits
-  underneath; the judgement stays with the person.
-- **Fewer wasted iterations.** The search reverts anything that does not beat an
-  arm's best result, so a run is never spent re-walking ground already covered.
+## How it works
 
-**The long-term goal** is a closed-loop discovery and manufacturing system that
-learns from every experiment and helps move safer, more effective cell therapies
-to patients faster. Three pieces of that are *not* built yet, and the repository
-does not pretend otherwise: the loop runs against a **synthetic stand-in, not a
-real bioreactor**; **live model-driven orchestration has not been run**; and each
-loop starts fresh, so there is **no learning carried across runs**. Everything
-below describes what actually runs today.
-
-## The idea, in one picture
+Language models are good at reading and reasoning. They are **not** good at being
+trusted with the arithmetic, the pass/fail calls, or the authority to spend a week
+of someone's cells. So those jobs are split apart:
 
 **The agent chooses. Separate, deterministic code decides what it is allowed to
 choose — and refuses the rest.**
