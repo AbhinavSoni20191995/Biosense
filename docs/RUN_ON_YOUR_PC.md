@@ -48,12 +48,16 @@ export PATH="$HOME/.local/bin:$PATH"       # add to ~/.zshrc or ~/.bashrc to kee
 ## A. The console
 
 ```bash
-git clone -b claude/vigilant-edison-7yj2v4 \
-  https://github.com/AbhinavSoni20191995/Biosense.git
+git clone https://github.com/AbhinavSoni20191995/Biosense.git
 cd Biosense
 uv sync --locked
 uv run --frozen python -m biosense.production.app --runs runs --static webapp
 ```
+
+No branch flag: the default branch is the current one. The repository also
+carries older branches from earlier in the project's history — `soni_demo2` and
+a session branch — and cloning either of those gets code that predates the
+console, the charts and the reports.
 
 Open **<http://127.0.0.1:8000>**, type a question, press *Run the loop*.
 
