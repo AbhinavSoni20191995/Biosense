@@ -228,17 +228,20 @@ def run_loop(request, loop_dir, standin='ipsc_tcell', truth=None, on_event=None,
                 dec, path, _ = OR.commit_decision({
                     'type': 'request_bioinformatics', 'route_to': 'bioinformatics',
                     'protocol_worked': 'undetermined',
-                    'reason': f'Before spending an iteration I want to know which protocol parameters '
-                              f'losing {", ".join(genes)} implicates, and which questions this machine '
-                              f'cannot settle at all. Annotation is offline and costs no iteration.',
-                    'reasoning': f'The analysis gives a per-arm result but not a cause. A shared change '
-                                 f'would address whatever both arms have in common and tell me nothing '
-                                 f'about the engineered arm specifically. Asking the annotation tools '
-                                 f'first is free, cannot spend an iteration, and either returns levers '
-                                 f'scoped to the gene or returns nothing - and nothing is itself worth '
-                                 f'knowing before I revise.',
+                    'reason': f'An annotation lookup for {", ".join(genes)} runs before the first '
+                              f'revision: it is offline, spends no iteration, and may scope the '
+                              f'change to one arm.',
+                    'reasoning': f'Deterministic policy, not a model. The engine runs one annotation '
+                                 f'lookup per loop whenever the request declares a gene arm and the '
+                                 f'envelope permits an information action. The rule exists because '
+                                 f'an analysis reports a per-arm result but not a cause: a shared '
+                                 f'change addresses what the arms have in common and leaves the '
+                                 f'engineered arm unexplained, while annotation costs nothing and '
+                                 f'cannot spend an iteration. A lookup that returns nothing is also '
+                                 f'informative, so the rule does not depend on finding an entry.',
                     'considered': [{'type': 'revise_protocol',
-                                    'why_not': 'Revising now would spend an iteration on a shared guess '
+                                    'why_not': 'Allowed here, but the rule gathers first: revising '
+                                               'now would spend an iteration on a shared change '
                                                'while the engineered arm stayed unexplained.'}],
                     'evidence': [report['verdict']['summary']],
                     'hypotheses': [{'hypothesis_id': 'OH1',
