@@ -18,3 +18,7 @@ jobs:
         run: uv run --frozen python -m unittest discover -s tests -t . -v
       - name: Offline synthetic campaign smoke run
         run: uv run --frozen python -m biosense.cli campaign --config examples/campaign.synthetic.json --out runs/ci-demo
+      - name: Offline production loop smoke run (synthetic fixtures)
+        run: uv run --frozen python -m biosense.production.cli demo --out runs/ci-prod-demo
+      - name: Offline agent-driven loop smoke run (synthetic CAR-T fixtures)
+        run: uv run --frozen python -m biosense.production.cli demo-cart --out runs/ci-cart-demo

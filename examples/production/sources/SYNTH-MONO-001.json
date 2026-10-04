@@ -1,0 +1,45 @@
+{
+  "id": "SYNTH-MONO-001",
+  "url": null,
+  "title": "SYNTHETIC FIXTURE: stirred-tank iPSC-to-monocyte protocol (not a real publication)",
+  "retrieved_at": "2026-10-04T00:00:00+00:00",
+  "sha256": null,
+  "article_type": "research-article",
+  "license": [
+    "Synthetic test fixture written for BioSense-AI; not biological evidence."
+  ],
+  "supplements_retrieved": false,
+  "supplement_count": 0,
+  "paragraphs": [
+    {
+      "id": "p0001",
+      "section": "body / Methods / Expansion",
+      "text": "SYNTHETIC. Human iPSCs (line SYNTH-L01) were seeded as single cells at 5 x 10^5 cells/mL into the stirred-tank vessel with 10 uM Y-27632 and expanded as aggregates for 4 days at 60 rpm and 20% air saturation."
+    },
+    {
+      "id": "p0002",
+      "section": "body / Methods / Mesoderm",
+      "text": "SYNTHETIC. Mesoderm was induced for 3 days with BMP4 at 25 ng/mL and VEGF at 50 ng/mL."
+    },
+    {
+      "id": "p0003",
+      "section": "body / Methods / Hematopoietic specification",
+      "text": "SYNTHETIC. Hematopoietic specification lasted 4 days."
+    },
+    {
+      "id": "p0004",
+      "section": "body / Methods / Myeloid production",
+      "text": "SYNTHETIC. Myeloid production ran for 14 days with M-CSF at 50 ng/mL and IL-3 at 25 ng/mL, and CD14+ monocytes were harvested from the supernatant."
+    },
+    {
+      "id": "p0005",
+      "section": "body / Results / Seeding density",
+      "text": "SYNTHETIC. In a separate arm seeded at 3 x 10^5 cells/mL, monocyte yield per input iPSC increased 1.6-fold relative to the standard seeding density."
+    },
+    {
+      "id": "p0006",
+      "section": "body / Results / Genotype",
+      "text": "SYNTHETIC. GENEX-knockout progenitors produced few CD14+ cells at the standard dose and required 80 ng/mL M-CSF to reach wild-type monocyte output."
+    }
+  ]
+}

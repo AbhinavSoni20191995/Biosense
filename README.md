@@ -1,12 +1,37 @@
-# BioSense-AI iPSC discovery loop: literature, biosimulator and outcome agents
+# BioSense-AI cell production discovery loop
 
-Three Omnigent specialists and a coordinator form a computational discovery
-loop: literature evidence -> explicit scenario -> toy-model simulation ->
-outcome evaluation -> typed next action (run another experiment, request
-evidence, request calibration, or stop). The biosimulator and outcome agents
-are documented in [docs/BIOSIMULATOR.md](docs/BIOSIMULATOR.md); launch the
-whole loop with `omnigent run discovery_loop`. The rest of this README covers
-the literature agent.
+A person states an aim and constraints once. From there a reasoning
+**orchestrator** agent runs a closed loop:
+
+- **literature agent** — Europe PMC search, cited claim extraction, and a
+  bioreactor protocol (seeding, growth factors with doses and exposure windows,
+  stage timing, per-genotype adjustments, predicted genotype effects);
+- **bioinformatics agent** — what annotation sets record about a gene
+  perturbation, which protocol parameters it implicates, and which questions
+  cannot be settled in this machine at all;
+- **human approval** — always required before a real bioreactor run;
+- **bioreactor** — people run it, or a clearly-labelled synthetic stand-in;
+- **analysis agent** — target, QC, data integrity, engineered arm vs control,
+  and why it failed;
+- **the orchestrator decides** — revise the protocol, gather more evidence, ask
+  the person a question the machine cannot answer, re-measure, complete QC,
+  escalate, or stop — inside an envelope the tools enforce.
+
+How much the person stays in the loop is one setting (`full`, `checkpoints`,
+`autonomous`), and a wet-lab run always needs a named human approver regardless.
+
+- Production loop: [docs/PRODUCTION_LOOP.md](docs/PRODUCTION_LOOP.md). Offline
+  end-to-end demos, no model required:
+  `uv run --frozen python -m biosense.production.cli demo-cart --out runs/cart-demo`
+  (agent-driven CAR-T fixture, with bioinformatics and a human consult) and
+  `... demo --out runs/mono-demo` (iPSC → monocyte).
+- Max-mode instruments and the monocyte stand-in:
+  [analysis_agent/README.md](analysis_agent/README.md).
+- Bioinformatics knowledge sets: [bioinfo_knowledge/README.md](bioinfo_knowledge/README.md).
+- Earlier cardiac toy-model campaign: [docs/BIOSIMULATOR.md](docs/BIOSIMULATOR.md).
+- Launch the agents with `omnigent run discovery_loop`.
+
+The rest of this README covers the literature agent's evidence workflow.
 
 
 This specialist agent turns a constrained literature question into candidate,

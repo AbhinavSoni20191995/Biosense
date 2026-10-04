@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/analysis-report-v2.0",
+  "title": "AnalysisReport 2.0: did the run meet the target and QC, and why not",
+  "type": "object",
+  "required": ["schema_version", "analysis_id", "run_id", "protocol_id", "request_id", "mode", "source",
+               "created_at", "qc_profile", "hashes", "verdict", "arms", "genotype_comparison", "diagnosis",
+               "data_integrity", "limitations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "analysis_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "protocol_id": {"type": "string"},
+    "request_id": {"type": "string"},
+    "mode": {"enum": ["minimal", "max"]},
+    "source": {"enum": ["wet_lab", "synthetic_standin"]},
+    "created_at": {"type": "string"},
+    "qc_profile": {"type": "object"},
+    "hashes": {"type": "object"},
+    "verdict": {
+      "type": "object",
+      "required": ["status", "summary", "target_met_arms", "target_failed_arms", "qc_status"],
+      "properties": {
+        "status": {"enum": ["SUCCESS", "TARGET_MET_QC_INCOMPLETE", "FAILED", "DATA_UNRELIABLE", "SAFETY_HOLD"]},
+        "summary": {"type": "string"},
+        "target_met_arms": {"type": "array", "items": {"type": "string"}},
+        "target_failed_arms": {"type": "array", "items": {"type": "string"}},
+        "qc_status": {"enum": ["PASS", "MARGINAL", "FAIL", "INCOMPLETE"]}
+      }
+    },
+    "arms": {"type": "array", "items": {"type": "object", "required": ["arm_id", "n_replicates", "metrics", "target", "qc"]}},
+    "genotype_comparison": {"type": "array", "items": {"type": "object", "required": ["arm_id", "reference_arm_id", "differences", "predicted_effects"]}},
+    "diagnosis": {"type": "array", "items": {"$ref": "#/$defs/hypothesis"}},
+    "data_integrity": {
+      "type": "object",
+      "required": ["status", "checks"],
+      "properties": {"status": {"enum": ["OK", "SUSPECT", "NOT_ASSESSED"]}, "checks": {"type": "array"}}
+    },
+    "max_mode": {"type": ["object", "null"]},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "hypothesis": {
+      "type": "object",
+      "required": ["hypothesis_id", "category", "statement", "arms", "stage_ids", "levers", "supporting_observations", "confidence"],
+      "properties": {
+        "hypothesis_id": {"type": "string"},
+        "category": {"enum": ["measurement", "safety", "genetic_stability", "expansion", "differentiation",
+                              "survival", "schedule", "genotype_specific", "residual_pluripotency"]},
+        "statement": {"type": "string"},
+        "arms": {"type": "array", "items": {"type": "string"}},
+        "stage_ids": {"type": "array", "items": {"type": "string"}},
+        "failed_criteria": {"type": "array", "items": {"type": "string"}},
+        "levers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["step_id", "parameter", "direction_hint"],
+            "properties": {
+              "step_id": {"type": ["string", "null"]},
+              "stage_id": {"type": ["string", "null"]},
+              "parameter": {"type": "string"},
+              "current": {},
+              "direction_hint": {"enum": ["increase", "decrease", "earlier", "later", "extend", "shorten", "revisit", "none"]},
+              "basis": {"type": "string"}
+            }
+          }
+        },
+        "supporting_observations": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"enum": ["low", "moderate", "high"]},
+        "blocks_protocol_revision": {"type": "boolean"}
+      }
+    }
+  }
+}

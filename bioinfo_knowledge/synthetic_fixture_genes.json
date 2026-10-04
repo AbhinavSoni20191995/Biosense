@@ -1,0 +1,85 @@
+{
+  "knowledge_set_id": "synthetic_fixture_genes",
+  "label": "SYNTHETIC placeholder gene annotations for the shipped demo fixtures. Invented for software testing; not biology and not clinical or manufacturing guidance.",
+  "live": false,
+  "retrieved_at": null,
+  "genes": {
+    "EXH1": {
+      "symbol": "EXH1",
+      "status": "synthetic_placeholder",
+      "aliases": [],
+      "description": "SYNTHETIC placeholder standing for an exhaustion-associated regulator in T cells. Used by examples/cart/. The symbol does not correspond to a real human gene.",
+      "measurable_readouts": ["target_cells_per_input_cell", "target_marker_pct", "viability_pct", "doubling_time_h"],
+      "perturbations": [
+        {
+          "perturbation": "knockout",
+          "affected_process": "response to prolonged TCR stimulation",
+          "direction": "decrease",
+          "readout_metric": "target_cells_per_input_cell",
+          "conditions": "Applies when stimulation runs to about 48 h; the deficit is reported to close when stimulation is shortened.",
+          "mechanism": "SYNTHETIC: loss of EXH1 is described as making cells less tolerant of extended stimulation, so the standard activation window overshoots for this genotype.",
+          "confidence": "synthetic_fixture",
+          "source": "SYNTH-CART-001 paragraph p0006 (synthetic fixture source)",
+          "suggested_protocol_levers": [
+            {"parameter": "activation duration", "direction": "shorten",
+             "basis": "SYNTHETIC: 24 h is reported to restore control-level output"},
+            {"parameter": "IL-15 dose", "direction": "increase",
+             "basis": "SYNTHETIC: 15 ng/mL is reported alongside the shortened activation"}
+          ]
+        },
+        {
+          "perturbation": "knockout",
+          "affected_process": "transduction efficiency",
+          "direction": "decrease",
+          "readout_metric": "target_marker_pct",
+          "conditions": "Indirect: transduction tracks how strongly the cells were activated, so a mismatched activation window lowers the transduced fraction as well.",
+          "mechanism": "SYNTHETIC: no direct effect on vector entry is described; the change is a knock-on of weaker activation.",
+          "confidence": "synthetic_fixture",
+          "source": "SYNTH-CART-001 paragraph p0006 (synthetic fixture source), read together with p0003"
+        }
+      ],
+      "experiments_not_possible_in_machine": [
+        {
+          "assay": "Inhibitory-receptor surface panel over the expansion window (for example a 5-colour exhaustion panel)",
+          "why_not_feasible": "More colours than the in-loop cytometer carries, and the staining protocol needs wash steps that break the closed single-use path.",
+          "what_it_would_resolve": "Whether the knockout's shortfall is activation-driven exhaustion or simply weaker initial activation. The two imply opposite protocol changes."
+        },
+        {
+          "assay": "Transcriptional profiling at the end of activation",
+          "why_not_feasible": "No sampling-to-sequencing path exists in the closed process; it is an offline, multi-day workflow.",
+          "what_it_would_resolve": "Which pathway the knockout actually perturbs, which would let the literature search target a mechanism instead of a parameter."
+        }
+      ]
+    },
+    "GENEX": {
+      "symbol": "GENEX",
+      "status": "synthetic_placeholder",
+      "aliases": [],
+      "description": "SYNTHETIC placeholder standing for a myeloid-commitment regulator. Used by examples/production/. The symbol does not correspond to a real human gene.",
+      "measurable_readouts": ["target_cells_per_input_cell", "target_marker_pct"],
+      "perturbations": [
+        {
+          "perturbation": "knockout",
+          "affected_process": "growth-factor requirement during myeloid production",
+          "direction": "increase",
+          "readout_metric": "target_cells_per_input_cell",
+          "conditions": "Only when the M-CSF dose is raised; at the control dose the knockout underperforms.",
+          "mechanism": "SYNTHETIC: loss of GENEX is described as raising the M-CSF concentration needed for commitment.",
+          "confidence": "synthetic_fixture",
+          "source": "SYNTH-MONO-001 paragraph p0006 (synthetic fixture source)",
+          "suggested_protocol_levers": [
+            {"parameter": "M-CSF dose", "direction": "increase",
+             "basis": "SYNTHETIC: 80 ng/mL is reported to reach control-level output"}
+          ]
+        }
+      ],
+      "experiments_not_possible_in_machine": [
+        {
+          "assay": "Colony-forming unit assay on the harvested progenitors",
+          "why_not_feasible": "A semi-solid culture read manually over one to two weeks; it is outside the closed process entirely.",
+          "what_it_would_resolve": "Whether the knockout changes progenitor potential or only the dose needed to commit it."
+        }
+      ]
+    }
+  }
+}

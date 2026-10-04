@@ -1,0 +1,887 @@
+{
+  "schema_version": "0.1",
+  "request_id": "cart-d10-001",
+  "ready_for_simulation": false,
+  "readiness_reason": "Candidate evidence only: semantic review, protocol selection and model mapping are required.",
+  "source_manifest": [
+    {
+      "id": "SYNTH-CART-001",
+      "url": null,
+      "sha256": null,
+      "retrieved_at": "2026-10-04T00:00:00+00:00",
+      "article_type": "research-article",
+      "supplement_count": 0,
+      "supplements_retrieved": false
+    }
+  ],
+  "candidate_protocols": [
+    {
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "contexts": [
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "peripheral blood T cell",
+          "target_cell": "CAR-T cell",
+          "cell_line": "SYNTH-D01",
+          "culture_format": "rocking_bag",
+          "medium": "serum-free T cell medium",
+          "time_origin": "T cell seeding and activation (day 0)",
+          "time_window": null
+        }
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "c01",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "initial_cell_density",
+      "stage": "t_cell_activation",
+      "role": "initial_condition",
+      "value": 1000000,
+      "unit": "cells/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0001",
+        "quote": "seeded at 1.0 x 10^6 cells/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c02",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "duration",
+      "stage": "t_cell_activation",
+      "role": "schedule",
+      "value": 48,
+      "unit": "h",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0001",
+        "quote": "anti-CD3/CD28 reagent at a bead-to-cell ratio of 1 for 48 h"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c03",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "activation_bead_to_cell_ratio",
+      "stage": "t_cell_activation",
+      "role": "operating_condition",
+      "value": 1,
+      "unit": "dimensionless",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0001",
+        "quote": "bead-to-cell ratio of 1"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c04",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "IL-2_concentration",
+      "stage": "t_cell_activation",
+      "role": "operating_condition",
+      "value": 100,
+      "unit": "IU/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0002",
+        "quote": "IL-2 at 100 IU/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c05",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "medium_addition_fraction",
+      "stage": "expansion",
+      "role": "operating_condition",
+      "value": 0.5,
+      "unit": "fraction",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0002",
+        "quote": "half-volume medium addition"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence. Reported as a half-volume addition; recorded as a fraction."
+    },
+    {
+      "id": "c06",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "vector_MOI",
+      "stage": "transduction",
+      "role": "operating_condition",
+      "value": 1,
+      "unit": "dimensionless",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0003",
+        "quote": "multiplicity of infection of 1"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c07",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "vector_addition_day",
+      "stage": "transduction",
+      "role": "schedule",
+      "value": 2,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0003",
+        "quote": "Lentiviral vector was added on day 2"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c08",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "duration",
+      "stage": "expansion",
+      "role": "schedule",
+      "value": 7,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0004",
+        "quote": "Expansion continued for 7 days after transduction"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c09",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "harvest_day",
+      "stage": "expansion",
+      "role": "schedule",
+      "value": 10,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0004",
+        "quote": "harvested on day 10"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c15",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "working_volume",
+      "stage": "t_cell_activation",
+      "role": "geometry",
+      "value": 100,
+      "unit": "mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0001",
+        "quote": "in a 100 mL rocking bag"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c10",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "IL-7_concentration",
+      "stage": "t_cell_activation",
+      "role": "operating_condition",
+      "value": 10,
+      "unit": "ng/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "il7-il15-arm",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0005",
+        "quote": "IL-7 at 10 ng/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c11",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "IL-15_concentration",
+      "stage": "t_cell_activation",
+      "role": "operating_condition",
+      "value": 5,
+      "unit": "ng/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "il7-il15-arm",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0005",
+        "quote": "IL-15 at 5 ng/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c12",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "total_expansion_fold_change",
+      "stage": "expansion",
+      "role": "outcome",
+      "value": 1.7,
+      "unit": "fold",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "il7-il15-arm",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0005",
+        "quote": "increased total expansion 1.7-fold by day 10"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence. An outcome of a comparison, not a kinetic constant."
+    }
+  ],
+  "rejected_claims": [],
+  "excluded_claims": [],
+  "conflicts": [],
+  "candidate_parameters": [
+    {
+      "id": "c01",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "initial_cell_density",
+      "stage": "t_cell_activation",
+      "role": "initial_condition",
+      "value": 1000000,
+      "unit": "cells/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0001",
+        "quote": "seeded at 1.0 x 10^6 cells/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c02",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "duration",
+      "stage": "t_cell_activation",
+      "role": "schedule",
+      "value": 48,
+      "unit": "h",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0001",
+        "quote": "anti-CD3/CD28 reagent at a bead-to-cell ratio of 1 for 48 h"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c03",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "activation_bead_to_cell_ratio",
+      "stage": "t_cell_activation",
+      "role": "operating_condition",
+      "value": 1,
+      "unit": "dimensionless",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0001",
+        "quote": "bead-to-cell ratio of 1"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c04",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "IL-2_concentration",
+      "stage": "t_cell_activation",
+      "role": "operating_condition",
+      "value": 100,
+      "unit": "IU/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0002",
+        "quote": "IL-2 at 100 IU/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c05",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "medium_addition_fraction",
+      "stage": "expansion",
+      "role": "operating_condition",
+      "value": 0.5,
+      "unit": "fraction",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0002",
+        "quote": "half-volume medium addition"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence. Reported as a half-volume addition; recorded as a fraction."
+    },
+    {
+      "id": "c06",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "vector_MOI",
+      "stage": "transduction",
+      "role": "operating_condition",
+      "value": 1,
+      "unit": "dimensionless",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0003",
+        "quote": "multiplicity of infection of 1"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c07",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "vector_addition_day",
+      "stage": "transduction",
+      "role": "schedule",
+      "value": 2,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0003",
+        "quote": "Lentiviral vector was added on day 2"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c08",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "duration",
+      "stage": "expansion",
+      "role": "schedule",
+      "value": 7,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0004",
+        "quote": "Expansion continued for 7 days after transduction"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c09",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "harvest_day",
+      "stage": "expansion",
+      "role": "schedule",
+      "value": 10,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0004",
+        "quote": "harvested on day 10"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c15",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "working_volume",
+      "stage": "t_cell_activation",
+      "role": "geometry",
+      "value": 100,
+      "unit": "mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "standard",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0001",
+        "quote": "in a 100 mL rocking bag"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c10",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "IL-7_concentration",
+      "stage": "t_cell_activation",
+      "role": "operating_condition",
+      "value": 10,
+      "unit": "ng/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "il7-il15-arm",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0005",
+        "quote": "IL-7 at 10 ng/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c11",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "IL-15_concentration",
+      "stage": "t_cell_activation",
+      "role": "operating_condition",
+      "value": 5,
+      "unit": "ng/mL",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "il7-il15-arm",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0005",
+        "quote": "IL-15 at 5 ng/mL"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence."
+    },
+    {
+      "id": "c12",
+      "protocol_id": "SYNTH_cart_rockingbag",
+      "parameter": "total_expansion_fold_change",
+      "stage": "expansion",
+      "role": "outcome",
+      "value": 1.7,
+      "unit": "fold",
+      "context": {
+        "species": "human",
+        "cell_origin": "peripheral blood T cell",
+        "target_cell": "CAR-T cell",
+        "cell_line": "SYNTH-D01",
+        "culture_format": "rocking_bag",
+        "medium": "serum-free T cell medium",
+        "time_origin": "T cell seeding and activation (day 0)",
+        "time_window": null
+      },
+      "condition_signature": "il7-il15-arm",
+      "evidence": {
+        "source_id": "SYNTH-CART-001",
+        "paragraph_id": "p0005",
+        "quote": "increased total expansion 1.7-fold by day 10"
+      },
+      "status": "reported",
+      "notes": "SYNTHETIC FIXTURE, not biological evidence. An outcome of a comparison, not a kinetic constant."
+    }
+  ],
+  "missing_required_parameters": [],
+  "selected_parameters": [],
+  "optimization_domains": [],
+  "search_log": [
+    {
+      "query": "SYNTHETIC: (\"CAR T\" OR \"chimeric antigen receptor\") AND expansion AND (bag OR bioreactor)",
+      "date": "2026-10-04",
+      "hits": 1,
+      "note": "fixture"
+    },
+    {
+      "query": "SYNTHETIC: \"CAR T\" AND (IL-7 OR IL-15) AND expansion AND yield",
+      "date": "2026-10-04",
+      "hits": 1,
+      "note": "fixture"
+    }
+  ],
+  "search_complete": false,
+  "limitations": [
+    "No automatic kinetic inference from endpoint purity.",
+    "Numeric/quote correctness and biological applicability need semantic review.",
+    "No optimal or safe operating range inferred from a reported setting.",
+    "Supplementary evidence is not retrieved by fetch_full_text."
+  ]
+}

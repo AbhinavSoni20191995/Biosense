@@ -76,15 +76,12 @@
           "type": "string"
         },
         "stage": {
-          "enum": [
-            "cardiac_differentiation",
-            "ipsc_expansion",
-            "purification",
-            "recovery"
-          ]
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
         },
         "role": {
           "enum": [
+            "genotype_effect",
             "geometry",
             "initial_condition",
             "kinetic_parameter",
@@ -105,13 +102,18 @@
             "%air_saturation",
             "1/day",
             "1/h",
+            "EU/mL",
+            "IU/mL",
             "L",
+            "cells",
             "cells/L",
             "cells/cm2",
+            "cells/input_cell",
             "cells/mL",
             "day",
             "degC",
             "dimensionless",
+            "fold",
             "fraction",
             "g/L",
             "g/L/day",
@@ -122,10 +124,12 @@
             "mg/mL",
             "mm",
             "mm2",
+            "ng/mL",
             "pH",
             "rpm",
             "text",
             "uM",
+            "ug/mL",
             "um"
           ]
         },

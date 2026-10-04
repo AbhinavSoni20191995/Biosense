@@ -1,0 +1,819 @@
+<title>BioSense Agent Tracker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* Layout: live message graph across the top, then agent lanes, readouts and the decision record. */
+:root {
+  --bg: #eef2f4; --panel: #ffffff; --panel-2: #e4eaed; --sunk: #f6f8f9;
+  --ink: #0f181d; --ink-2: #4a5a63; --ink-3: #78888f; --line: #ccd7dc; --line-2: #aebcc3;
+  --orch: #0a6a73; --orch-s: #d3e8ea; --lit: #1f6fa8; --lit-s: #d8e8f3; --bio: #6c4b9c; --bio-s: #e5dcf2;
+  --ana: #a8475f; --ana-s: #f6dde3; --lab: #2b6540; --lab-s: #d9ebdf; --hum: #9a5b00; --hum-s: #f6e6cd;
+  --stop: #9d2f28; --stop-s: #f7dedb;
+  --display: "Chivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b1115; --panel: #141d22; --panel-2: #1c272d; --sunk: #101a1e;
+  --ink: #e8eff2; --ink-2: #a6b8c0; --ink-3: #7a8d96; --line: #273439; --line-2: #3b4f58;
+  --orch: #4cc6cf; --orch-s: #0e3338; --lit: #65b4e8; --lit-s: #112c3e; --bio: #b89ae8; --bio-s: #251b39;
+  --ana: #ea8fa4; --ana-s: #37161f; --lab: #74c48f; --lab-s: #13301e; --hum: #e0a44f; --hum-s: #352610;
+  --stop: #ef8178; --stop-s: #371713; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0b1115; --panel: #141d22; --panel-2: #1c272d; --sunk: #101a1e;
+  --ink: #e8eff2; --ink-2: #a6b8c0; --ink-3: #7a8d96; --line: #273439; --line-2: #3b4f58;
+  --orch: #4cc6cf; --orch-s: #0e3338; --lit: #65b4e8; --lit-s: #112c3e; --bio: #b89ae8; --bio-s: #251b39;
+  --ana: #ea8fa4; --ana-s: #37161f; --lab: #74c48f; --lab-s: #13301e; --hum: #e0a44f; --hum-s: #352610;
+  --stop: #ef8178; --stop-s: #371713; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; margin: 0; -webkit-font-smoothing: antialiased; }
+.app { max-width: 1400px; margin: 0 auto; padding-inline: 16px; padding-block: 0 40px; }
+h1,h2,h3,h4 { font-family: var(--display); margin: 0; letter-spacing: -0.015em; }
+.mono { font-family: var(--mono); } .tnum { font-variant-numeric: tabular-nums; }
+
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); border-bottom: 1px solid var(--line); padding-block: 13px; margin-bottom: 16px; display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.brand h1 { font-size: 1.08rem; font-weight: 800; }
+.loopid { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.pill { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 5px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.pill .led { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.pill.run { background: var(--orch-s); color: var(--orch); } .pill.ok { background: var(--lab-s); color: var(--lab); }
+.pill.warn { background: var(--hum-s); color: var(--hum); } .pill.bad { background: var(--stop-s); color: var(--stop); }
+.pill.idle { background: var(--panel-2); color: var(--ink-3); }
+.live .led { animation: blink 1.4s ease-in-out infinite; }
+@keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+.spacer { flex: 1 1 auto; }
+button.btn { font-family: var(--mono); font-size: 11.5px; font-weight: 600; padding: 7px 11px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); cursor: pointer; }
+button.btn:hover { border-color: var(--orch); color: var(--orch); }
+button.btn:focus-visible { outline: 2px solid var(--orch); outline-offset: 2px; }
+button.btn[aria-pressed="true"] { background: var(--orch-s); border-color: var(--orch); color: var(--orch); }
+.clock { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 54px; text-align: right; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 13px; min-width: 0; }
+.ptitle { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding: 12px 15px 9px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.ptitle .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* graph */
+svg.graph { width: 100%; height: auto; display: block; overflow: visible; padding: 0 10px 12px; }
+.edge { fill: none; stroke: var(--line-2); stroke-width: 1.5; }
+.edge.gate { stroke-dasharray: 5 4; }
+.edge.hot { stroke-width: 2.6; }
+.nbox { rx: 10; stroke-width: 1.4; }
+.nlabel { font-family: var(--display); font-weight: 600; font-size: 15px; }
+.nrole { font-family: var(--mono); font-size: 10px; }
+.nodeg.act .nbox { stroke-width: 3; }
+.msg { font-family: var(--mono); font-size: 11.5px; font-weight: 600; }
+.msgbg { rx: 5; }
+.pulse { opacity: .5; }
+.elabel { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-3); }
+
+/* lanes */
+.lane { padding: 11px 15px; border-top: 1px solid var(--line); }
+.lane:first-of-type { border-top: 0; }
+.lrow { display: flex; align-items: center; gap: 8px; }
+.lname { font-weight: 600; font-size: .9rem; }
+.ltag { font-family: var(--mono); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 5px; border-radius: 4px; }
+.lstate { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; margin-left: auto; }
+.s-running { color: var(--orch); } .s-waiting { color: var(--hum); } .s-idle { color: var(--ink-3); }
+.s-done { color: var(--lab); } .s-blocked { color: var(--stop); }
+.lact { font-size: .81rem; color: var(--ink-2); margin-top: 5px; min-height: 2.1em; line-height: 1.4; }
+.track { height: 3px; background: var(--panel-2); border-radius: 3px; margin-top: 7px; overflow: hidden; }
+.track i { display: block; height: 100%; background: var(--orch); border-radius: 3px; width: 0; }
+.lane.active .track i { width: 40%; animation: sweep 1.5s ease-in-out infinite; }
+@keyframes sweep { 0% { margin-left: -40% } 100% { margin-left: 100% } }
+.lane.done .track i { width: 100%; background: var(--lab); }
+
+/* budget */
+.budget { padding: 4px 15px 14px; display: flex; flex-direction: column; gap: 10px; }
+.brow { display: flex; align-items: center; gap: 10px; }
+.brow .bl { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); min-width: 112px; }
+.pips { display: flex; gap: 4px; }
+.pip { width: 17px; height: 7px; border-radius: 2px; background: var(--panel-2); }
+.pip.used { background: var(--orch); } .pip.info { background: var(--bio); }
+.bv { font-family: var(--mono); font-size: 11px; color: var(--ink-2); margin-left: auto; }
+
+/* arms */
+.arms { padding: 4px 15px 14px; display: flex; flex-direction: column; gap: 13px; }
+.ahead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.aname { font-family: var(--mono); font-size: 11.5px; font-weight: 700; }
+.agt { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); }
+.averd { font-family: var(--mono); font-size: 9.5px; font-weight: 600; margin-left: auto; }
+.gauge { height: 21px; background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; margin-top: 7px; position: relative; overflow: hidden; }
+.gauge i { position: absolute; inset: 0 auto 0 0; background: var(--orch); opacity: .85; transition: width .6s cubic-bezier(.2,.7,.2,1); }
+.gauge.met i { background: var(--lab); }
+.gauge .req { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); }
+.gauge .lbl { position: absolute; inset: 0; display: flex; align-items: center; padding-inline: 8px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; }
+.gfoot { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); margin-top: 4px; display: flex; justify-content: space-between; gap: 10px; }
+.qcstrip { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 15px 14px; }
+.qc { font-family: var(--mono); font-size: 9.5px; font-weight: 600; padding: 4px 7px; border-radius: 5px; border: 1px solid transparent; }
+.qc.PASS { background: var(--lab-s); color: var(--lab); } .qc.FAIL { background: var(--stop-s); color: var(--stop); }
+.qc.MARGINAL { background: var(--hum-s); color: var(--hum); }
+.qc.NOT_TESTED { background: var(--panel-2); color: var(--ink-3); border-color: var(--line-2); border-style: dashed; }
+.qc.NOT_APPLICABLE { background: transparent; color: var(--ink-3); border-color: var(--line); }
+
+/* params */
+table { border-collapse: collapse; width: 100%; font-size: .81rem; }
+th, td { text-align: left; padding: 8px 15px; border-top: 1px solid var(--line); white-space: nowrap; }
+th { font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+td { color: var(--ink-2); }
+td.pname { color: var(--ink); font-weight: 600; white-space: normal; min-width: 130px; }
+td.val { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+td.arm { font-family: var(--mono); font-size: 10px; }
+.tag { font-family: var(--mono); font-size: 9px; font-weight: 600; padding: 1px 4px; border-radius: 3px; margin-left: 4px; }
+.tag.R { background: var(--lab-s); color: var(--lab); } .tag.A { background: var(--orch-s); color: var(--orch); }
+.tag.D { background: var(--hum-s); color: var(--hum); }
+.chg { font-family: var(--mono); font-size: 9.5px; color: var(--orch); }
+tr.changed td.pname::before { content: "▸ "; color: var(--orch); font-weight: 700; }
+.ptable { overflow-x: auto; }
+
+/* decision card */
+.dec { padding: 4px 15px 16px; }
+.dtype { font-family: var(--mono); font-size: 12.5px; font-weight: 700; }
+.dmeta { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 8px; }
+.dmeta span { font-family: var(--mono); font-size: 9.5px; padding: 3px 7px; border-radius: 4px; background: var(--panel-2); color: var(--ink-2); }
+.dsec { margin-top: 13px; }
+.dsec h5 { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 6px; }
+.dsec p, .dsec li { font-size: .84rem; color: var(--ink-2); line-height: 1.5; margin: 0; }
+.dsec ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 5px; }
+.dsec .no { color: var(--ink-3); }
+.allowset { display: flex; flex-wrap: wrap; gap: 4px; }
+.allowset span { font-family: var(--mono); font-size: 9.5px; padding: 3px 6px; border-radius: 4px; background: var(--sunk); border: 1px solid var(--line); color: var(--ink-2); }
+.allowset span.chosen { background: var(--orch-s); border-color: var(--orch); color: var(--orch); font-weight: 700; }
+
+/* consults */
+.consult { padding: 4px 15px 14px; display: flex; flex-direction: column; gap: 10px; }
+.cbox { border: 1px solid var(--line); border-left: 3px solid var(--hum); border-radius: 9px; padding: 12px; background: var(--sunk); }
+.cbox.answered { border-left-color: var(--lab); }
+.chead { display: flex; gap: 8px; align-items: center; }
+.cid { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--hum); }
+.cbox.answered .cid { color: var(--lab); }
+.cst { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; margin-left: auto; color: var(--ink-3); }
+.cq { font-size: .85rem; color: var(--ink); margin-top: 7px; line-height: 1.45; }
+.cmeta { font-size: .79rem; color: var(--ink-3); margin-top: 7px; line-height: 1.5; }
+.cmeta b { color: var(--ink-2); }
+.cempty { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+
+/* stream */
+.stream { max-height: 380px; overflow-y: auto; padding: 0 15px 13px; }
+.ev { display: grid; grid-template-columns: 42px 1fr; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); align-items: start; }
+.ev:first-child { border-top: 0; }
+.ev .ts { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); padding-top: 2px; }
+.ev .who { font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.ev .msg2 { font-size: .81rem; color: var(--ink-2); line-height: 1.45; margin-top: 2px; }
+.ev .msg2 code { font-family: var(--mono); font-size: .9em; color: var(--ink); }
+.ev.flag .msg2 { color: var(--ink); font-weight: 600; }
+.w-orch { color: var(--orch); } .w-lit { color: var(--lit); } .w-bio { color: var(--bio); }
+.w-ana { color: var(--ana); } .w-human { color: var(--hum); } .w-lab { color: var(--lab); } .w-sys { color: var(--ink-3); }
+
+/* timeline */
+.tl { display: flex; gap: 7px; padding: 4px 15px 14px; overflow-x: auto; }
+.tlit { flex: none; min-width: 136px; background: var(--sunk); border: 1px solid var(--line); border-radius: 9px; padding: 10px; }
+.tlit.cur { border-color: var(--orch); box-shadow: 0 0 0 1px var(--orch); }
+.tlit .it { font-family: var(--mono); font-size: 9px; color: var(--ink-3); letter-spacing: .07em; text-transform: uppercase; }
+.tlit .vd { font-family: var(--mono); font-size: 10.5px; font-weight: 700; margin-top: 4px; }
+.tlit .dc { font-family: var(--mono); font-size: 9.5px; color: var(--ink-2); margin-top: 4px; }
+.tlit .ad { font-family: var(--mono); font-size: 8.5px; color: var(--ink-3); margin-top: 5px; }
+
+details.wire { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 13px; }
+details.wire > summary { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-2); padding: 14px 16px; cursor: pointer; list-style: none; }
+details.wire > summary::-webkit-details-marker { display: none; }
+details.wire > summary::before { content: "+ "; color: var(--orch); font-weight: 700; }
+details.wire[open] > summary::before { content: "− "; }
+.wirebody { padding: 0 16px 18px; }
+.wirebody p { font-size: .86rem; color: var(--ink-2); max-width: 72ch; margin: 0 0 13px; }
+pre { font-family: var(--mono); font-size: 11.5px; line-height: 1.7; background: var(--sunk); border: 1px solid var(--line); border-radius: 9px; padding: 14px; overflow-x: auto; margin: 0 0 13px; color: var(--ink-2); }
+pre .k { color: var(--orch); } pre .s { color: var(--lab); } pre .c { color: var(--ink-3); }
+.livebar { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 9px 13px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); font-size: 12px; flex-wrap: wrap; }
+.livedot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; box-shadow: 0 0 0 3px rgba(63,185,80,.18); flex: none; animation: livepulse 2s ease-in-out infinite; }
+.livebar.stale .livedot { background: var(--ink-3); box-shadow: none; animation: none; }
+@keyframes livepulse { 50% { opacity: .35; } }
+.livelabel { font-weight: 600; letter-spacing: .02em; }
+.livebar select { font: inherit; font-family: var(--mono); font-size: 11px; padding: 3px 6px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--bg); color: var(--ink-1); }
+.livemeta { color: var(--ink-3); font-size: 11px; }
+.drop { border: 1.5px dashed var(--line-2); border-radius: 9px; padding: 15px; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.drop.over { border-color: var(--orch); color: var(--orch); background: var(--orch-s); }
+.foot { font-size: .79rem; color: var(--ink-3); margin-top: 16px; max-width: 78ch; line-height: 1.6; }
+
+.grid { display: grid; grid-template-columns: minmax(0,245px) minmax(0,1fr) minmax(0,330px); gap: 14px; align-items: start; }
+@media (max-width: 1140px) { .grid { grid-template-columns: minmax(0,1fr) minmax(0,330px); } .colA { grid-column: 1 / -1; } .lanewrap { display: grid; grid-template-columns: repeat(auto-fit,minmax(205px,1fr)); } .lane { border-top: 1px solid var(--line); } }
+@media (max-width: 780px) { .grid { grid-template-columns: 1fr; } .stream { max-height: 280px; } }
+@media (prefers-reduced-motion: reduce) { .pulse { display: none } * { animation: none !important } }
+</style>
+
+<div class="app">
+  <div class="bar">
+    <div class="brand"><h1>Agent Tracker</h1><span class="loopid" id="loopid">loop-cart-20260404-0930</span></div>
+    <span class="pill run live" id="statuspill"><span class="led"></span><span id="statustext">idle</span></span>
+    <span class="pill warn" id="autonomypill">checkpoints</span>
+    <span class="pill idle" id="iterpill">iteration 0</span>
+    <div class="spacer"></div>
+    <span class="clock tnum" id="clock">00:00</span>
+    <button class="btn" id="play" aria-pressed="false">▶ play</button>
+    <button class="btn" id="speed">1×</button>
+    <button class="btn" id="reset">reset</button>
+  </div>
+
+  <div class="panel" style="margin-bottom:14px">
+    <div class="ptitle">Messages <span class="hint" id="graphhint">press play</span></div>
+    <svg class="graph" id="graph" role="img" aria-label="Live message graph between the person and the agents"></svg>
+  </div>
+
+  <div class="grid">
+    <div class="colA stack">
+      <div class="panel">
+        <div class="ptitle">Agents</div>
+        <div class="lanewrap" id="lanes"></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Budget <span class="hint">revisions vs information</span></div>
+        <div class="budget" id="budget"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <div class="ptitle">Target <span class="hint" id="targethint"></span></div>
+        <div class="arms" id="arms"></div>
+        <div class="ptitle" style="padding-top:0">Release criteria</div>
+        <div class="qcstrip" id="qcstrip"></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Protocol parameters <span class="hint" id="paramhint"></span></div>
+        <div class="ptable"><table id="params"></table></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Decisions</div>
+        <div class="tl" id="timeline"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <div class="ptitle">Latest decision <span class="hint" id="dechint"></span></div>
+        <div class="dec" id="deccard"><p class="cempty">No decision yet.</p></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Consults <span class="hint" id="consulthint"></span></div>
+        <div class="consult" id="consults"><p class="cempty">None raised.</p></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Event stream <span class="hint" id="evcount"></span></div>
+        <div class="stream" id="stream" aria-live="polite" aria-label="Agent event stream"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="livebar" id="livebar" hidden>
+    <span class="livedot"></span>
+    <span class="livelabel" id="livelabel">connecting…</span>
+    <select id="looppick" aria-label="loop to watch"></select>
+    <span class="livemeta mono" id="livemeta"></span>
+  </div>
+
+  <details class="wire">
+    <summary>Wire this to your backend</summary>
+    <div class="wirebody">
+      <p>The page renders whatever state it is given; the demo above is a recorded replay of the offline <code>demo-cart</code> run so the first frame shows something real.</p>
+      <pre><span class="c">// 1. one event as it happens (WebSocket, SSE, poll — your choice)</span>
+BioSense.<span class="k">push</span>({ who: <span class="s">"bio"</span>, msg: <span class="s">"2 levers implicated, 2 questions untestable here"</span> });
+
+<span class="c">// 2. animate a message between two agents on the graph</span>
+BioSense.<span class="k">message</span>({ from: <span class="s">"orch"</span>, to: <span class="s">"bio"</span>, label: <span class="s">"what does losing EXH1 change?"</span> });
+
+<span class="c">// 3. replace dashboard state</span>
+BioSense.<span class="k">setState</span>({ loop_id, status, iteration, autonomy, arms, qc, params, budget });
+BioSense.<span class="k">setDecision</span>(decisionJson);   <span class="c">// decisions/decision-NN.json</span>
+BioSense.<span class="k">setConsults</span>(consultArray);    <span class="c">// consults/*.json</span>
+
+<span class="c">// 4. load files the loop already wrote</span>
+BioSense.<span class="k">loadLoopState</span>(json);   <span class="c">// runs/loop-*/loop_state.json</span>
+BioSense.<span class="k">loadAnalysis</span>(json);    <span class="c">// runs/loop-*/itN/analysis.json</span></pre>
+      <p>What maps from disk: <code>loop_state.json</code> gives the ledger, the autonomy gates and the consult list; <code>decisions/decision-NN.json</code> gives the type, reasoning, rejected alternatives, allowed set and policy advice; <code>analysis.json</code> gives per-arm target and QC; the approved protocol gives the parameter table with provenance tags. Only the live agent states come from your Omnigent session rather than from disk.</p>
+      <div class="drop" id="drop">Drop <span class="mono">loop_state.json</span>, <span class="mono">analysis.json</span> or a <span class="mono">decision-NN.json</span> here</div>
+    </div>
+  </details>
+
+  <p class="foot">Demo data replays a synthetic CAR-T process-development loop used to test this interface. The gene name, the source paper, the reactor and every number are invented; the decision documents are scripted stand-ins for the orchestrator's reasoning. Nothing here is clinical or manufacturing guidance.</p>
+</div>
+
+<script>
+/* ================= model ================= */
+const NODES = {
+  human: { label: "Person", role: "aim + judgement", c: "hum" },
+  orch:  { label: "Orchestrator", role: "reasoning agent", c: "orch" },
+  lit:   { label: "Literature", role: "LLM agent", c: "lit" },
+  bio:   { label: "Bioinformatics", role: "LLM + tools", c: "bio" },
+  lab:   { label: "Bioreactor", role: "people + hardware", c: "lab" },
+  ana:   { label: "Analysis", role: "LLM + tools", c: "ana" }
+};
+const EDGES = [
+  { id: "h-o", a: "human", b: "orch", bow: 0, label: "aim · constraints" },
+  { id: "o-b", a: "orch", b: "bio", bow: -24, label: "gene question" },
+  { id: "o-l", a: "orch", b: "lit", bow: -24, label: "design · revise" },
+  { id: "o-lab", a: "orch", b: "lab", bow: 0, label: "run sheet" },
+  { id: "lab-a", a: "lab", b: "ana", bow: 22, label: "measurements" },
+  { id: "a-o", a: "ana", b: "orch", bow: -20, label: "verdict" },
+  { id: "o-h", a: "orch", b: "human", bow: 32, label: "approve · consult", gate: true }
+];
+const REQ = { metric: "CAR+ T cells per input T cell", required: 12, day: 10 };
+const AGENTS = ["human", "orch", "lit", "bio", "lab", "ana"];
+
+function A(id, gt, obs, marker, viab, met) {
+  return { arm_id: id, genotype: gt, observed: obs, marker, viability: viab, status: met ? "MET" : "NOT_MET" };
+}
+const QC_OPEN = [["viability", "PASS"], ["CAR+ fraction", "PASS"], ["genomic integrity", "NOT_TESTED"],
+                 ["sterility", "NOT_TESTED"], ["mycoplasma", "NOT_TESTED"], ["endotoxin", "NOT_TESTED"],
+                 ["residual pluripotency", "NOT_APPLICABLE"]];
+const QC_DONE = [["viability", "PASS"], ["CAR+ fraction", "PASS"], ["genomic integrity", "PASS"],
+                 ["sterility", "PASS"], ["mycoplasma", "PASS"], ["endotoxin", "PASS"],
+                 ["residual pluripotency", "NOT_APPLICABLE"]];
+const P0 = [["Activation duration", "both", "48 h", "R", null], ["Seeding density", "both", "1.0e6 cells/mL", "R", null],
+            ["IL-2", "both", "100 IU/mL", "R", null], ["IL-7", "both", "—", null, null], ["IL-15", "both", "—", null, null],
+            ["Vector addition", "both", "day 2, MOI 1", "R", null], ["Harvest", "both", "day 10", "R", null]];
+const P1 = [["Activation duration", "both", "48 h", "R", null], ["Seeding density", "both", "1.0e6 cells/mL", "R", null],
+            ["IL-2", "both", "withdrawn", "A", "removed"], ["IL-7", "both", "10 ng/mL", "R", "added"],
+            ["IL-15", "both", "5 ng/mL", "R", "added"], ["Vector addition", "both", "day 2, MOI 1", "R", null],
+            ["Harvest", "both", "day 10", "R", null]];
+const P2 = [["Activation duration", "EXH1_KO", "24 h", "R", "48 → 24 h"], ["Activation duration", "WT", "48 h", "R", null],
+            ["Seeding density", "both", "1.0e6 cells/mL", "R", null], ["IL-7", "both", "10 ng/mL", "R", null],
+            ["IL-15", "EXH1_KO", "15 ng/mL", "R", "5 → 15 ng/mL"], ["IL-15", "WT", "5 ng/mL", "R", null],
+            ["Harvest", "both", "day 10", "R", null]];
+
+const ITER = [
+  { it: 0, verdict: "FAILED", arms: [A("WT", "unedited", 9.6, 46.6, 95.5, false), A("EXH1_KO", "knockout", 1.0, 22.2, 94.1, false)], qc: QC_OPEN, params: P0 },
+  { it: 1, verdict: "FAILED", arms: [A("WT", "unedited", 17.3, 46.6, 96.0, true), A("EXH1_KO", "knockout", 0.7, 22.2, 94.4, false)], qc: QC_OPEN, params: P1 },
+  { it: 2, verdict: "TARGET_MET_QC_INCOMPLETE", arms: [A("WT", "unedited", 17.3, 46.6, 96.0, true), A("EXH1_KO", "knockout", 17.0, 45.6, 94.5, true)], qc: QC_OPEN, params: P2 },
+  { it: 3, verdict: "SUCCESS", arms: [A("WT", "unedited", 17.3, 46.6, 96.0, true), A("EXH1_KO", "knockout", 17.0, 45.6, 94.5, true)], qc: QC_DONE, params: P2 }
+];
+
+const DECISIONS = {
+  d0: { type: "request_bioinformatics", advances: false, status: "committed", route: "bioinformatics",
+    reasoning: "The analysis shows a shared shortfall plus a much larger one in the knockout arm. A shared cytokine change would address the first but tells me nothing about the second, and I have budget for one information action before revising. Annotation is free and offline, so it costs nothing to ask first.",
+    considered: [["revise_protocol", "Revising now would spend an iteration on the shared shortfall only, leaving the knockout gap unexplained."]],
+    hypotheses: [["OH1", "The knockout needs different activation or cytokine conditions than the control, rather than simply growing more slowly."]],
+    allowed: ["revise_protocol", "request_bioinformatics", "request_literature", "consult_human", "repeat_measurement", "escalate_to_human"],
+    advice: "revise_protocol" },
+  d1: { type: "consult_human", advances: false, status: "committed", route: "human",
+    reasoning: "The annotation implicates two parameters at once and I cannot separate them from the measurements I have. Asking is cheap, the consult is non-blocking, and the fallback is written down, so the loop keeps moving either way.",
+    considered: [["revise_protocol", "Still possible, and it is the fallback if nobody answers."]],
+    hypotheses: [["OH1", "The knockout needs its own activation length and IL-15 dose."]],
+    allowed: ["revise_protocol", "request_bioinformatics", "request_literature", "consult_human", "repeat_measurement", "escalate_to_human"],
+    advice: "revise_protocol" },
+  d2: { type: "revise_protocol", advances: true, status: "committed", route: "literature",
+    reasoning: "Two separable problems. The shared one has cited evidence available, so I take it first and keep the arms comparable. The knockout levers go into the brief so the next round can act on them with evidence rather than on the annotation alone.",
+    considered: [["stop_budget", "Three iterations remain and the first change is evidenced."], ["consult_human", "Already raised and answered this round."]],
+    hypotheses: [["OH1", "The knockout needs its own activation length and IL-15 dose."]],
+    allowed: ["revise_protocol", "request_bioinformatics", "request_literature", "consult_human", "repeat_measurement", "escalate_to_human"],
+    advice: "revise_protocol" },
+  d3: { type: "revise_protocol", advances: true, status: "committed", route: "literature",
+    reasoning: "The shared cytokine change moved the control over the target, which confirms the shortfall was cytokine-limited. The knockout did not follow, so the remaining gap is genotype-specific and the levers from the annotation and the consult are now the obvious next change.",
+    considered: [["protocol_succeeded", "The target applies to both arms and the knockout did not reach it."]],
+    hypotheses: [["OH1", "The knockout needs its own activation length and IL-15 dose. — supported"]],
+    allowed: ["revise_protocol", "request_bioinformatics", "request_literature", "consult_human", "repeat_measurement", "escalate_to_human"],
+    advice: "revise_protocol" },
+  d4: { type: "complete_qc", advances: false, status: "committed", route: "operator",
+    reasoning: "The knockout-only adjustments closed the gap and the predicted effect now scores as consistent. What stands between this and a result is the QC record, not the recipe, so the right move is to close the record on this protocol rather than change it.",
+    considered: [["protocol_succeeded", "Sterility, mycoplasma and endotoxin are untested; an untested criterion is never a pass."], ["revise_protocol", "Nothing in the result asks for a protocol change."]],
+    hypotheses: [["OH1", "Supported: both arms met the target once the knockout got its own conditions."]],
+    allowed: ["complete_qc", "consult_human", "escalate_to_human"], advice: "complete_qc" },
+  d5: { type: "protocol_succeeded", advances: false, status: "committed", route: "human",
+    reasoning: "Target and QC are both satisfied on the same protocol, so the loop has done its job. This is not a released process: one replicate per arm, a synthetic stand-in reactor, and QA sign-off and confirmation runs are all still outstanding.",
+    considered: [["revise_protocol", "No failed criterion left to chase; further optimisation is a new question with a new target."]],
+    hypotheses: [["OH1", "Supported."]],
+    allowed: ["protocol_succeeded", "escalate_to_human"], advice: "protocol_succeeded" }
+};
+
+const CONSULT = {
+  id: "consult-00", blocking: false,
+  q: "Do you have an in-house read on whether the EXH1 knockout under-performs because of activation-driven exhaustion, or because the 48 h stimulation over-shoots for this line?",
+  why: "The two explanations imply opposite changes: shorten the stimulation, or support the cells harder through it.",
+  assay: "Inhibitory-receptor surface panel over the expansion window",
+  whynot: "More colours than the in-loop cytometer carries, and the staining needs wash steps that break the closed path.",
+  fallback: "Apply both annotated levers together on the knockout arm and read the result.",
+  consequence: "If it works we will not know which change carried it.",
+  answer: null
+};
+const CONSULT_ANSWERED = { ...CONSULT, answer: {
+  by: "DEMO scientist", content: "The stimulation simply over-shoots for this line; we see no exhaustion signature at 24 h.",
+  option: "Over-stimulation for this line", evidence: "unpublished_in_house_result", citable: "design_choice" } };
+
+/* event script: t, who, edge+dir, message, state, iteration, decision, consult */
+const S = [];
+let T = 0; const at = s => (T += s);
+function ev(o) { S.push({ t: T, ...o }); }
+
+ev({ who: "sys", msg: "Loop initialised. Target <code>≥ 12 CAR+ T cells per input T cell</code> at day 10, two arms, minimal mode, budget 4 iterations, autonomy <b>checkpoints</b>.", flag: 1, it: 0, st: { orch: "running" } });
+at(3); ev({ who: "human", m: ["h-o", 1, "aim · constraints · autonomy"], msg: "Person sets the target, the QC profile, the arms and how much they want to be involved.", it: 0, st: { human: "done", orch: "running" } });
+at(4); ev({ who: "orch", m: ["o-l", 1, "design a protocol"], msg: "Dispatched <code>literature-it0</code>: PROTOCOL DESIGN, budget 6 searches / 8 full texts.", it: 0, st: { orch: "waiting", lit: "running" } });
+at(6); ev({ who: "lit", msg: "Europe PMC: 4 searches, 6 open-access full texts. 15 claims extracted with paragraph-level quotes.", it: 0, st: { orch: "waiting", lit: "running" } });
+at(4); ev({ who: "lit", m: ["o-l", -1, "protocol + 15 claims, 1 design choice"], msg: "Protocol <code>cart-d10-it0</code>: 3 stages to day 10. No EXH1 evidence found, so the knockout runs the control schedule and its behaviour is a hypothesis.", flag: 1, it: 0, st: { orch: "running", lit: "done" } });
+at(4); ev({ who: "orch", m: ["o-h", 1, "approve? 1 design choice, 0 gaps"], msg: "<code>render-protocol</code> → <b>needs_approval</b>. Temperature is a design choice; nothing is a gap.", it: 0, st: { orch: "waiting", human: "waiting" } });
+at(5); ev({ who: "human", m: ["o-h", -1, "approved"], msg: "Approved by <b>A. Soni</b>, bound to the protocol hash, 1 design choice acknowledged.", flag: 1, it: 0, st: { orch: "running", human: "done" } });
+at(4); ev({ who: "orch", m: ["o-lab", 1, "run sheet, 2 arms, harvest day 10"], msg: "Run sheet released. Synthetic stand-in reactor for this demo.", it: 0, st: { orch: "waiting", lab: "running" } });
+at(6); ev({ who: "lab", m: ["lab-a", 1, "measurements returned"], msg: "Run returned and validated against the approved protocol hash.", it: 0, st: { orch: "waiting", lab: "done", ana: "running" } });
+at(5); ev({ who: "ana", m: ["a-o", 1, "FAILED · 9.6 and 1.0 vs 12"], msg: "Control reached <b>9.6</b>, knockout <b>1.0</b>. CAR+ and viability in spec, so the shortfall is quantity. The knockout is 9× below the control on an identical schedule.", flag: 1, it: 0, st: { orch: "running", ana: "done" } });
+at(4); ev({ who: "orch", m: ["o-b", 1, "what does losing EXH1 change?"], msg: "Decision <b>request_bioinformatics</b> — an information action, so it does not spend an iteration.", it: 0, dec: "d0", st: { orch: "waiting", bio: "running" } });
+at(5); ev({ who: "bio", m: ["o-b", -1, "2 levers · 2 questions untestable here"], msg: "Implicates <b>activation duration</b> (shorten) and <b>IL-15 dose</b> (increase), both at <code>synthetic_fixture</code> confidence. Cross-check: the knockout arm currently differs from the control in nothing.", flag: 1, it: 0, st: { orch: "running", bio: "done" } });
+at(4); ev({ who: "orch", m: ["o-h", 1, "consult: exhaustion or over-stimulation?"], msg: "Decision <b>consult_human</b>. Non-blocking, with a written fallback, because the two explanations imply opposite changes.", it: 0, dec: "d1", consult: "open", st: { orch: "waiting", human: "waiting" } });
+at(6); ev({ who: "human", m: ["o-h", -1, "over-stimulation (in-house)"], msg: "Answer recorded as an unpublished in-house result, citable as a <b>design choice</b> only.", flag: 1, it: 0, consult: "answered", st: { orch: "running", human: "done" } });
+at(4); ev({ who: "orch", m: ["o-l", 1, "revise: shared cytokine change first"], msg: "Decision <b>revise_protocol</b> — spends iteration 1 of 4. Knockout levers go into the brief for the next round.", flag: 1, it: 0, dec: "d2", st: { orch: "waiting", lit: "running" } });
+
+at(5); ev({ who: "lit", m: ["o-l", -1, "IL-2 out, IL-7 + IL-15 in"], msg: "Targeted search found 2 usable claims. Protocol <code>cart-d10-it1</code> changes both arms together; still no EXH1-specific evidence.", it: 1, st: { orch: "running", lit: "done" } });
+at(4); ev({ who: "human", m: ["o-h", -1, "approved"], msg: "Second protocol approved.", it: 1, st: { orch: "running", human: "done" } });
+at(6); ev({ who: "lab", m: ["lab-a", 1, "measurements returned"], msg: "Second run complete.", it: 1, st: { orch: "waiting", lab: "done", ana: "running" } });
+at(5); ev({ who: "ana", m: ["a-o", 1, "FAILED · 17.3 and 0.7"], msg: "Control <b>17.3</b> — target met. Knockout <b>0.7</b> — still short. The cytokine change helped one arm and not the other, which is itself the genotype finding.", flag: 1, it: 1, st: { orch: "running", ana: "done" } });
+at(4); ev({ who: "orch", m: ["o-l", 1, "revise: knockout levers only"], msg: "Decision <b>revise_protocol</b> — iteration 2 of 4. Control is on the keep-fixed list; every lever now targets the knockout arm.", flag: 1, it: 1, dec: "d3", st: { orch: "waiting", lit: "running" } });
+
+at(5); ev({ who: "lit", m: ["o-l", -1, "KO: 24 h activation, IL-15 15 ng/mL"], msg: "Protocol <code>cart-d10-it2</code> adds two knockout-only adjustments, each tied to a cited genotype effect. Control schedule untouched.", it: 2, st: { orch: "running", lit: "done" } });
+at(4); ev({ who: "human", m: ["o-h", -1, "approved"], msg: "Third protocol approved.", it: 2, st: { orch: "running", human: "done" } });
+at(6); ev({ who: "lab", m: ["lab-a", 1, "measurements returned"], msg: "Third run complete.", it: 2, st: { orch: "waiting", lab: "done", ana: "running" } });
+at(5); ev({ who: "ana", m: ["a-o", 1, "both arms met the target"], msg: "Control <b>17.3</b>, knockout <b>17.0</b>. Predicted effect E1 scores <b>consistent</b>, strength directional (1 replicate). Verdict <b>TARGET_MET_QC_INCOMPLETE</b>: three release tests were never run.", flag: 1, it: 2, st: { orch: "running", ana: "done" } });
+at(4); ev({ who: "orch", m: ["o-lab", 1, "re-run with release tests"], msg: "Decision <b>complete_qc</b>. The recipe is not changed — the QC record is closed first.", it: 2, dec: "d4", st: { orch: "waiting", lab: "running" } });
+at(6); ev({ who: "lab", m: ["lab-a", 1, "release tests returned"], msg: "Sterility no growth, mycoplasma not detected, endotoxin 0.08 EU/mL, vector copy number 2.1.", it: 3, st: { orch: "waiting", lab: "done", ana: "running" } });
+at(5); ev({ who: "ana", m: ["a-o", 1, "SUCCESS"], msg: "Both arms met the target and every release criterion passed.", flag: 1, it: 3, st: { orch: "running", ana: "done" } });
+at(4); ev({ who: "orch", msg: "Decision <b>protocol_succeeded</b>. Loop closed: 2 of 4 iterations spent, 2 information actions, 1 consult. Human QA sign-off and confirmation runs still outstanding.", flag: 1, it: 3, dec: "d5", st: { orch: "done" } });
+at(3); ev({ who: "sys", msg: "One replicate per arm means the knockout comparison stays directional. Synthetic stand-in reactor: not a validated or released process.", it: 3, st: { orch: "done" } });
+
+/* ================= graph ================= */
+const SVGNS = "http://www.w3.org/2000/svg";
+const gEl = document.getElementById("graph");
+let L = {}, paths = {}, nodeEls = {}, narrow = false;
+function layout() {
+  narrow = window.innerWidth < 820;
+  if (narrow) return { w: 430, h: 620, nw: 140, nh: 46, pos: { human: [45, 10], orch: [145, 130], bio: [10, 260], lit: [270, 260], lab: [145, 400], ana: [145, 530] } };
+  return { w: 1040, h: 330, nw: 158, nh: 50, pos: { human: [20, 20], orch: [430, 140], bio: [20, 250], lit: [840, 20], lab: [430, 10], ana: [840, 240] } };
+}
+const cxx = id => L.pos[id][0] + L.nw / 2, cyy = id => L.pos[id][1] + L.nh / 2;
+function edgePath(e) {
+  const x1 = cxx(e.a), y1 = cyy(e.a), x2 = cxx(e.b), y2 = cyy(e.b);
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+  const bow = narrow ? e.bow * .5 : e.bow;
+  return `M ${x1} ${y1} Q ${mx - (dy / len) * bow} ${my + (dx / len) * bow} ${x2} ${y2}`;
+}
+function renderGraph() {
+  L = layout();
+  gEl.setAttribute("viewBox", `0 0 ${L.w} ${L.h}`);
+  gEl.innerHTML = "";
+  paths = {}; nodeEls = {};
+  const ge = document.createElementNS(SVGNS, "g"), gn = document.createElementNS(SVGNS, "g"), gm = document.createElementNS(SVGNS, "g");
+  gEl.append(ge, gn, gm);
+  EDGES.forEach(e => {
+    const p = document.createElementNS(SVGNS, "path");
+    p.setAttribute("d", edgePath(e));
+    p.setAttribute("class", "edge" + (e.gate ? " gate" : ""));
+    ge.appendChild(p); paths[e.id] = p;
+    if (!narrow) {
+      const t = document.createElementNS(SVGNS, "text");
+      const pt = p.getPointAtLength(p.getTotalLength() * .5);
+      t.setAttribute("x", pt.x); t.setAttribute("y", pt.y - 6);
+      t.setAttribute("text-anchor", "middle"); t.setAttribute("class", "elabel");
+      t.textContent = e.label; ge.appendChild(t);
+    }
+  });
+  AGENTS.forEach(id => {
+    const n = NODES[id], [x, y] = L.pos[id];
+    const grp = document.createElementNS(SVGNS, "g");
+    grp.setAttribute("class", "nodeg");
+    const r = document.createElementNS(SVGNS, "rect");
+    r.setAttribute("x", x); r.setAttribute("y", y); r.setAttribute("width", L.nw); r.setAttribute("height", L.nh);
+    r.setAttribute("class", "nbox"); r.setAttribute("fill", `var(--${n.c}-s)`); r.setAttribute("stroke", `var(--${n.c})`);
+    const t1 = document.createElementNS(SVGNS, "text");
+    t1.setAttribute("x", x + 11); t1.setAttribute("y", y + 21); t1.setAttribute("class", "nlabel");
+    t1.setAttribute("fill", `var(--${n.c})`); t1.textContent = n.label;
+    const t2 = document.createElementNS(SVGNS, "text");
+    t2.setAttribute("x", x + 11); t2.setAttribute("y", y + 37); t2.setAttribute("class", "nrole");
+    t2.setAttribute("fill", "var(--ink-3)"); t2.textContent = n.role;
+    grp.append(r, t1, t2); gn.appendChild(grp); nodeEls[id] = grp;
+  });
+}
+let anim = null;
+function animate(edgeId, dir, label, who) {
+  const p = paths[edgeId]; if (!p) return;
+  const lay = gEl.children[2];
+  lay.innerHTML = "";
+  Object.values(paths).forEach(x => x.classList.remove("hot"));
+  p.classList.add("hot");
+  const col = `var(--${NODES[who] ? NODES[who].c : "orch"})`;
+  const halo = document.createElementNS(SVGNS, "circle"); halo.setAttribute("class", "pulse"); halo.setAttribute("fill", col);
+  const dot = document.createElementNS(SVGNS, "circle"); dot.setAttribute("r", 5.5); dot.setAttribute("fill", col);
+  const bg = document.createElementNS(SVGNS, "rect"); bg.setAttribute("class", "msgbg"); bg.setAttribute("fill", "var(--panel)"); bg.setAttribute("stroke", col);
+  const tx = document.createElementNS(SVGNS, "text"); tx.setAttribute("class", "msg"); tx.setAttribute("fill", col);
+  tx.setAttribute("text-anchor", "middle"); tx.textContent = label;
+  lay.append(halo, dot, bg, tx);
+  const len = p.getTotalLength(), t0 = performance.now(), dur = 1300 / speed;
+  cancelAnimationFrame(anim);
+  (function frame(now) {
+    const k = Math.min(1, (now - t0) / dur), f = dir === 1 ? k : 1 - k;
+    const pt = p.getPointAtLength(len * f);
+    dot.setAttribute("cx", pt.x); dot.setAttribute("cy", pt.y);
+    halo.setAttribute("cx", pt.x); halo.setAttribute("cy", pt.y); halo.setAttribute("r", 10 + 4 * Math.sin(k * Math.PI));
+    tx.setAttribute("x", pt.x); tx.setAttribute("y", pt.y - 18);
+    const b = tx.getBBox();
+    bg.setAttribute("x", b.x - 6); bg.setAttribute("y", b.y - 3); bg.setAttribute("width", b.width + 12); bg.setAttribute("height", b.height + 6);
+    if (k < 1) anim = requestAnimationFrame(frame);
+  })(performance.now());
+  document.getElementById("graphhint").textContent = label;
+}
+
+/* ================= panels ================= */
+const el = id => document.getElementById(id);
+const fmt = s => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+const laneEls = {};
+el("lanes").innerHTML = AGENTS.map(id => {
+  const a = NODES[id];
+  return `<div class="lane" id="ln-${id}"><div class="lrow"><span class="lname">${a.label}</span>` +
+    `<span class="ltag" style="background:var(--${a.c}-s);color:var(--${a.c})">${a.role}</span>` +
+    `<span class="lstate s-idle" id="ls-${id}">idle</span></div>` +
+    `<div class="lact" id="la-${id}">—</div><div class="track"><i></i></div></div>`;
+}).join("");
+AGENTS.forEach(id => laneEls[id] = { lane: el("ln-" + id), s: el("ls-" + id), act: el("la-" + id) });
+
+function renderBudget(used, info) {
+  el("budget").innerHTML =
+    `<div class="brow"><span class="bl">iterations</span><span class="pips">${[0,1,2,3].map(i => `<span class="pip ${i < used ? "used" : ""}"></span>`).join("")}</span><span class="bv">${used} / 4</span></div>` +
+    `<div class="brow"><span class="bl">info this iter.</span><span class="pips">${[0,1,2,3].map(i => `<span class="pip ${i < info ? "info" : ""}"></span>`).join("")}</span><span class="bv">${info} / 4</span></div>` +
+    `<p style="font-family:var(--mono);font-size:10px;color:var(--ink-3);margin:2px 0 0;line-height:1.5">Only <b>revise_protocol</b> spends an iteration. Annotation, targeted search and consults are capped instead.</p>`;
+}
+function renderArms(arms) {
+  const max = Math.max(REQ.required * 1.5, ...arms.map(a => a.observed * 1.15));
+  el("targethint").textContent = REQ.metric + " · day " + REQ.day;
+  el("arms").innerHTML = arms.map(a => {
+    const met = a.status === "MET";
+    return `<div><div class="ahead"><span class="aname">${a.arm_id}</span><span class="agt">${a.genotype}</span>` +
+      `<span class="averd" style="color:var(--${met ? "lab" : "stop"})">${a.status}</span></div>` +
+      `<div class="gauge${met ? " met" : ""}"><i style="width:${Math.min(100, a.observed / max * 100)}%"></i>` +
+      `<div class="req" style="left:${REQ.required / max * 100}%"></div>` +
+      `<div class="lbl tnum">${a.observed.toFixed(1)} / ${REQ.required}</div></div>` +
+      `<div class="gfoot"><span>CAR+ ${a.marker.toFixed(1)}%</span><span>viability ${a.viability.toFixed(1)}%</span></div></div>`;
+  }).join("");
+}
+const renderQC = qc => el("qcstrip").innerHTML = qc.map(q => `<span class="qc ${q[1]}">${q[0]} · ${q[1].replace(/_/g, " ").toLowerCase()}</span>`).join("");
+function renderParams(ps, it) {
+  el("paramhint").textContent = "iteration " + it + " · ▸ changed";
+  el("params").innerHTML = `<thead><tr><th>Parameter</th><th>Arm</th><th>Value</th><th>Change</th></tr></thead><tbody>` +
+    ps.map(p => `<tr class="${p[4] ? "changed" : ""}"><td class="pname">${p[0]}</td><td class="arm">${p[1]}</td>` +
+      `<td class="val">${p[2]}${p[3] ? `<span class="tag ${p[3]}">${p[3]}</span>` : ""}</td><td class="chg">${p[4] || ""}</td></tr>`).join("") + `</tbody>`;
+}
+function renderTimeline(upto) {
+  el("timeline").innerHTML = ITER.map(i => {
+    if (i.it > upto) return `<div class="tlit" style="opacity:.4"><div class="it">iteration ${i.it}</div><div class="vd" style="color:var(--ink-3)">pending</div></div>`;
+    const col = i.verdict === "SUCCESS" ? "lab" : i.verdict === "FAILED" ? "stop" : "hum";
+    return `<div class="tlit${i.it === upto ? " cur" : ""}"><div class="it">iteration ${i.it}</div>` +
+      `<div class="vd" style="color:var(--${col})">${i.verdict}</div><div class="dc">${i.it < 3 ? ITER[i.it].verdict === "FAILED" ? "revise / gather" : "complete_qc" : "succeeded"}</div></div>`;
+  }).join("");
+}
+function renderDecision(key) {
+  const d = DECISIONS[key]; if (!d) return;
+  el("dechint").textContent = d.advances ? "advances the iteration" : "does not spend an iteration";
+  el("deccard").innerHTML =
+    `<div class="dtype" style="color:var(--orch)">${d.type}</div>` +
+    `<div class="dmeta"><span>authored by orchestrator_agent</span><span>${d.status}</span><span>→ ${d.route}</span></div>` +
+    `<div class="dsec"><h5>Reasoning</h5><p>${d.reasoning}</p></div>` +
+    `<div class="dsec"><h5>Rejected</h5><ul>${d.considered.map(c => `<li><b class="mono">${c[0]}</b> — <span class="no">${c[1]}</span></li>`).join("")}</ul></div>` +
+    `<div class="dsec"><h5>Hypotheses</h5><ul>${d.hypotheses.map(h => `<li><b class="mono">${h[0]}</b> ${h[1]}</li>`).join("")}</ul></div>` +
+    `<div class="dsec"><h5>Allowed set · policy advised <b class="mono">${d.advice}</b></h5><div class="allowset">${d.allowed.map(a => `<span class="${a === d.type ? "chosen" : ""}">${a}</span>`).join("")}</div></div>`;
+}
+function renderConsults(stateKey) {
+  if (!stateKey) { el("consults").innerHTML = `<p class="cempty">None raised.</p>`; el("consulthint").textContent = ""; return; }
+  const c = stateKey === "answered" ? CONSULT_ANSWERED : CONSULT;
+  el("consulthint").textContent = stateKey === "answered" ? "1 answered" : "1 open";
+  el("consults").innerHTML = `<div class="cbox ${c.answer ? "answered" : ""}"><div class="chead"><span class="cid">${c.id}</span>` +
+    `<span class="cst">${c.answer ? "answered" : c.blocking ? "open · blocking" : "open · non-blocking"}</span></div>` +
+    `<div class="cq">${c.q}</div>` +
+    `<div class="cmeta"><b>Why it matters:</b> ${c.why}<br><b>Would need:</b> ${c.assay} — ${c.whynot}<br>` +
+    `<b>If nobody answers:</b> ${c.fallback} <i>${c.consequence}</i></div>` +
+    (c.answer ? `<div class="cmeta" style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line)">` +
+      `<b>${c.answer.by}:</b> “${c.answer.content}”<br><b>Chose:</b> ${c.answer.option}<br>` +
+      `<b>Evidence status:</b> <code>${c.answer.evidence}</code> → citable as <code>${c.answer.citable}</code></div>` : "") + `</div>`;
+}
+function pushEvent(e) {
+  const who = e.who === "orch" ? "orchestrator" : e.who === "lit" ? "literature" : e.who === "bio" ? "bioinformatics"
+    : e.who === "ana" ? "analysis" : e.who === "lab" ? "bioreactor" : e.who === "human" ? "person" : "system";
+  const d = document.createElement("div");
+  d.className = "ev" + (e.flag ? " flag" : "");
+  d.innerHTML = `<span class="ts tnum">${fmt(e.t ?? state.t)}</span><span><span class="who w-${e.who}">${who}</span>` +
+    `<span class="msg2">${e.msg}</span></span>`;
+  const s = el("stream"); s.insertBefore(d, s.firstChild);
+  while (s.children.length > 70) s.removeChild(s.lastChild);
+  el("evcount").textContent = s.children.length + " events";
+}
+
+/* ================= clock ================= */
+const state = { i: -1, t: 0, playing: false, used: 0, info: 0, consult: null, dec: null };
+let speed = 1, timer = null;
+function apply(e) {
+  AGENTS.forEach(id => {
+    const v = (e.st || {})[id] || "idle", Lx = laneEls[id];
+    Lx.s.textContent = v; Lx.s.className = "lstate s-" + v;
+    Lx.lane.className = "lane" + (v === "running" ? " active" : v === "done" ? " done" : "");
+    if (e.who === id) Lx.act.innerHTML = e.msg;
+  });
+  AGENTS.forEach(id => nodeEls[id] && nodeEls[id].classList.remove("act"));
+  if (e.m) { animate(e.m[0], e.m[1], e.m[2], e.who); const ed = EDGES.find(x => x.id === e.m[0]); const to = e.m[1] === 1 ? ed.b : ed.a; nodeEls[to] && nodeEls[to].classList.add("act"); }
+  if (nodeEls[e.who]) nodeEls[e.who].classList.add("act");
+  const it = ITER[e.it] || ITER[0];
+  renderArms(it.arms); renderQC(it.qc); renderParams(it.params, it.it); renderTimeline(e.it);
+  if (e.dec) { state.dec = e.dec; renderDecision(e.dec); if (DECISIONS[e.dec].advances) { state.used++; state.info = 0; } else if (["request_bioinformatics", "consult_human", "request_literature"].includes(DECISIONS[e.dec].type)) state.info++; }
+  if (e.consult) { state.consult = e.consult; renderConsults(e.consult); }
+  renderBudget(state.used, state.info);
+  el("iterpill").textContent = "iteration " + e.it;
+  const last = e === S[S.length - 1];
+  el("statuspill").className = "pill " + (last ? "ok" : state.playing ? "run live" : "idle");
+  el("statustext").textContent = last ? "protocol succeeded" : state.playing ? "running" : "paused";
+  pushEvent(e);
+}
+function tick() {
+  state.t += .25 * speed; el("clock").textContent = fmt(state.t);
+  while (state.i + 1 < S.length && S[state.i + 1].t <= state.t) { state.i++; apply(S[state.i]); }
+  if (state.i + 1 >= S.length) pause();
+}
+function play() { if (state.i + 1 >= S.length) reset(); state.playing = true; el("play").textContent = "❚❚ pause"; el("play").setAttribute("aria-pressed", "true"); timer = setInterval(tick, 250); }
+function pause() { state.playing = false; clearInterval(timer); timer = null; el("play").textContent = "▶ play"; el("play").setAttribute("aria-pressed", "false"); const done = state.i + 1 >= S.length; el("statuspill").className = "pill " + (done ? "ok" : "idle"); el("statustext").textContent = done ? "protocol succeeded" : "paused"; }
+function reset() {
+  pause(); state.i = -1; state.t = 0; state.used = 0; state.info = 0; state.consult = null; state.dec = null;
+  el("clock").textContent = "00:00"; el("stream").innerHTML = ""; el("evcount").textContent = "0 events";
+  AGENTS.forEach(id => { const Lx = laneEls[id]; Lx.s.textContent = "idle"; Lx.s.className = "lstate s-idle"; Lx.lane.className = "lane"; Lx.act.innerHTML = "—"; });
+  renderGraph(); renderArms(ITER[0].arms); renderQC(ITER[0].qc); renderParams(ITER[0].params, 0);
+  renderTimeline(-1); renderBudget(0, 0); renderConsults(null);
+  el("deccard").innerHTML = `<p class="cempty">No decision yet.</p>`; el("dechint").textContent = "";
+  el("iterpill").textContent = "iteration 0"; el("statustext").textContent = "idle"; el("graphhint").textContent = "press play";
+}
+el("play").addEventListener("click", () => state.playing ? pause() : play());
+el("reset").addEventListener("click", reset);
+el("speed").addEventListener("click", () => { speed = speed === 1 ? 4 : speed === 4 ? 12 : 1; el("speed").textContent = speed + "×"; });
+
+/* ================= integration ================= */
+const BioSense = {
+  push(e) { pushEvent({ t: state.t, who: e.who || "sys", msg: e.msg || "", flag: e.flag }); },
+  message({ from, to, label }) {
+    const e = EDGES.find(x => (x.a === from && x.b === to) || (x.a === to && x.b === from));
+    if (!e) return BioSense.push({ who: from, msg: "(no graph edge for " + from + " → " + to + ") " + label });
+    animate(e.id, e.a === from ? 1 : -1, label, from);
+    BioSense.push({ who: from, msg: label });
+  },
+  setState(s) {
+    if (s.loop_id) el("loopid").textContent = s.loop_id;
+    if (s.autonomy) el("autonomypill").textContent = s.autonomy;
+    if (typeof s.iteration === "number") el("iterpill").textContent = "iteration " + s.iteration;
+    if (s.arms) renderArms(s.arms);
+    if (s.qc) renderQC(s.qc);
+    if (s.params) renderParams(s.params, s.iteration ?? 0);
+    if (s.budget) renderBudget(s.budget.iterations_used ?? 0, s.budget.info_actions_used_this_iteration ?? 0);
+    if (s.status) { el("statustext").textContent = s.status; el("statuspill").className = "pill " + (s.status === "protocol succeeded" ? "ok" : s.status === "running" ? "run live" : "idle"); }
+    if (Array.isArray(s.agents)) s.agents.forEach(a => { const Lx = laneEls[a.id]; if (!Lx) return; Lx.s.textContent = a.state; Lx.s.className = "lstate s-" + a.state; Lx.lane.className = "lane" + (a.state === "running" ? " active" : a.state === "done" ? " done" : ""); if (a.action) Lx.act.innerHTML = a.action; });
+  },
+  setDecision(d) {
+    const key = "live";
+    DECISIONS[key] = { type: d.type, advances: !!d.advances_iteration, status: d.status || "committed",
+      route: d.route_to || "—", reasoning: d.reasoning || d.reason || "",
+      considered: (d.considered || []).map(c => [c.type, c.why_not]),
+      hypotheses: (d.hypotheses || []).map(h => [h.hypothesis_id, h.statement + (h.status ? " — " + h.status : "")]),
+      allowed: d.allowed_actions || [], advice: (d.policy_advice || {}).type || "—" };
+    renderDecision(key);
+    BioSense.push({ who: "orch", msg: `Decision <b>${d.type}</b> (${d.status || "committed"}).`, flag: 1 });
+  },
+  setConsults(list) {
+    if (!list || !list.length) return renderConsults(null);
+    const c = list[0];
+    const obj = { id: c.consult_id, blocking: c.blocking, q: c.question, why: c.why_it_matters || "",
+      assay: (c.experiment_requested || {}).assay || "—", whynot: (c.experiment_requested || {}).why_not_feasible || "",
+      fallback: (c.fallback || {}).action || "", consequence: (c.fallback || {}).consequence || "",
+      answer: c.answer ? { by: c.answer.answered_by, content: c.answer.content, option: c.answer.chosen_option,
+        evidence: c.answer.evidence_status, citable: c.answer.citable_as } : null };
+    Object.assign(CONSULT, obj); Object.assign(CONSULT_ANSWERED, obj);
+    renderConsults(obj.answer ? "answered" : "open");
+  },
+  loadLoopState(j) {
+    pause();
+    if (j.loop_id) el("loopid").textContent = j.loop_id;
+    if (j.autonomy && j.autonomy.mode) el("autonomypill").textContent = j.autonomy.mode;
+    const its = j.iterations || [];
+    const used = its.filter(i => i.advances_iteration).length;
+    renderBudget(used, 0);
+    el("iterpill").textContent = "iteration " + Math.max(0, its.length - 1);
+    el("timeline").innerHTML = its.map(i => {
+      const col = i.verdict === "SUCCESS" ? "lab" : i.verdict === "FAILED" ? "stop" : "hum";
+      return `<div class="tlit"><div class="it">#${i.iteration}</div><div class="vd" style="color:var(--${col})">${i.verdict}</div>` +
+        `<div class="dc">${i.decision_type}</div><div class="ad">${i.advances_iteration ? "advances" : "info"} · ${i.status || ""}</div></div>`;
+    }).join("") || `<div class="tlit"><div class="it">no iterations</div></div>`;
+    if (j.consults) BioSense.setConsults(j.consults.map(c => ({ consult_id: c.consult_id, question: c.question, blocking: c.blocking })));
+    BioSense.push({ who: "sys", msg: `Loaded <code>loop_state.json</code>: ${its.length} decision(s), ${used} iteration(s) spent.`, flag: 1 });
+  },
+  loadAnalysis(j) {
+    pause();
+    const arms = (j.arms || []).map(a => ({ arm_id: a.arm_id, genotype: a.genotype || "", observed: a.target?.observed_mean ?? 0,
+      marker: a.metrics?.target_marker_pct?.mean ?? 0, viability: a.metrics?.viability_pct?.mean ?? 0, status: a.target?.status ?? "NOT_MET" }));
+    if (arms.length) renderArms(arms);
+    const first = (j.arms || [])[0];
+    if (first?.qc?.criteria) renderQC(first.qc.criteria.map(c => [c.id.replace(/^qc-/, "").replace(/-/g, " "), c.status]));
+    el("statustext").textContent = (j.verdict?.status || "loaded").toLowerCase();
+    el("statuspill").className = "pill " + (j.verdict?.status === "SUCCESS" ? "ok" : "warn");
+    BioSense.push({ who: "ana", msg: "Loaded <code>analysis.json</code> — " + (j.verdict?.summary || ""), flag: 1 });
+  }
+};
+window.BioSense = BioSense;
+
+const drop = el("drop");
+["dragenter", "dragover"].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => {
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const j = JSON.parse(r.result);
+      if (j.iterations) BioSense.loadLoopState(j);
+      else if (j.verdict) BioSense.loadAnalysis(j);
+      else if (j.type && j.decision_id) BioSense.setDecision(j);
+      else BioSense.push({ who: "sys", msg: "Valid JSON, but not a loop state, analysis or decision.", flag: 1 });
+    } catch { BioSense.push({ who: "sys", msg: "Could not parse that file as JSON.", flag: 1 }); }
+  };
+  r.readAsText(f);
+});
+
+/* ================= boot ================= */
+renderGraph();
+renderArms(ITER[0].arms); renderQC(ITER[0].qc); renderParams(ITER[0].params, 0);
+renderTimeline(-1); renderBudget(0, 0); renderConsults(null);
+S.slice(0, 3).forEach(e => pushEvent(e));
+el("graphhint").textContent = "press play";
+let rt = null;
+window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { const w = narrow; renderGraph(); if (w !== narrow && state.i >= 0 && S[state.i].m) animate(S[state.i].m[0], S[state.i].m[1], S[state.i].m[2], S[state.i].who); }, 160); });
+
+/* ================= live mode =================
+   Served from biosense.production.serve, /api/loops answers and this page
+   switches from the recorded replay to the loop on disk. Opened as a file or as
+   a published artifact, the fetch fails and the replay stands. Read-only: the
+   page shows decisions, it never makes them. */
+const LIVE = (() => {
+  const bar = el("livebar"), label = el("livelabel"), pick = el("looppick"), meta = el("livemeta");
+  let current = null, seenDecisions = 0, seenAnalyses = 0, failures = 0;
+
+  const get = async (u) => {
+    const r = await fetch(u, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  };
+
+  async function refreshList() {
+    const loops = await get("api/loops");
+    if (!loops.length) { label.textContent = "no loops on disk yet"; bar.classList.add("stale"); return null; }
+    const keep = current && loops.some(l => l.dir === current) ? current : loops[0].dir;
+    if (pick.options.length !== loops.length || pick.value !== keep) {
+      pick.innerHTML = loops.map(l => `<option value="${l.dir}">${l.dir} — ${l.request_id || "?"}</option>`).join("");
+      pick.value = keep;
+    }
+    return keep;
+  }
+
+  function apply(bundle, firstLoad) {
+    BioSense.loadLoopState(bundle.state);
+    for (const a of bundle.analyses.slice(seenAnalyses)) BioSense.loadAnalysis(a.analysis);
+    const fresh = bundle.decisions.slice(seenDecisions);
+    for (const d of fresh) {
+      BioSense.setDecision(d);
+      if (d.route_to && d.route_to !== "none") BioSense.message({ from: "orch", to: d.route_to, label: d.type });
+    }
+    if (bundle.consults.length) {
+      BioSense.setConsults(bundle.consults.map(c => ({ consult_id: c.consult_id, question: c.question, blocking: c.blocking })));
+    }
+    if (!firstLoad && (fresh.length || bundle.analyses.length > seenAnalyses)) {
+      BioSense.push({ who: "sys", msg: `Live update: ${fresh.length} new decision(s).`, flag: 1 });
+    }
+    seenDecisions = bundle.decisions.length;
+    seenAnalyses = bundle.analyses.length;
+    const src = (bundle.state.autonomy || {}).bioreactor_source;
+    meta.textContent = `${seenDecisions} decision(s) · ${seenAnalyses} analysis file(s)`
+      + (src ? ` · ${src.replace("_", " ")}` : "");
+    label.textContent = src === "synthetic_standin" ? "LIVE — synthetic stand-in reactor" : "LIVE";
+    bar.classList.remove("stale");
+  }
+
+  async function tick(firstLoad) {
+    try {
+      const dir = await refreshList();
+      if (!dir) return;
+      if (dir !== current) { current = dir; seenDecisions = 0; seenAnalyses = 0; }
+      apply(await get("api/loops/" + encodeURIComponent(current)), firstLoad);
+      failures = 0;
+    } catch (e) {
+      if (++failures > 2) { bar.classList.add("stale"); label.textContent = "backend unreachable"; }
+    }
+  }
+
+  return {
+    async start() {
+      try { await get("api/loops"); } catch { return false; }
+      bar.hidden = false;
+      pick.addEventListener("change", () => { current = pick.value; seenDecisions = 0; seenAnalyses = 0; tick(true); });
+      await tick(true);
+      setInterval(() => tick(false), 4000);
+      return true;
+    }
+  };
+})();
+
+LIVE.start().then(ok => {
+  if (ok) el("graphhint").textContent = "live";
+});
+</script>

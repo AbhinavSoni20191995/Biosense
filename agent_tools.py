@@ -17,8 +17,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 BASE = 'https://www.ebi.ac.uk/europepmc/webservices/rest'
+# Stage names are product-specific snake_case (STAGE_PATTERN). STAGES only lists
+# those of the legacy cardiac example, kept for reference; nothing requires them.
 STAGES = {'ipsc_expansion', 'cardiac_differentiation', 'purification', 'recovery'}
-ROLES = {'operating_condition', 'schedule', 'initial_condition', 'kinetic_parameter', 'outcome', 'geometry'}
+STAGE_PATTERN = re.compile(r'[a-z][a-z0-9_]{1,63}')
+ROLES = {'operating_condition', 'schedule', 'initial_condition', 'kinetic_parameter', 'outcome', 'geometry',
+         'genotype_effect'}
 # Factors convert a value into its family's reference unit. No geometry guessing.
 UNITS = {
  'h': ('time', 1), 'day': ('time', 24),
@@ -28,6 +32,10 @@ UNITS = {
  'cells/mL': ('volume_density', 1), 'cells/L': ('volume_density', 1/1000),
  'cells/cm2': ('area_density', 1),
  'g/L': ('mass_concentration', 1), 'mg/mL': ('mass_concentration', 1),
+ 'ug/mL': ('mass_concentration', 1e-3), 'ng/mL': ('mass_concentration', 1e-6),
+ 'cells': ('count', 1), 'cells/input_cell': ('yield_per_input_cell', 1),
+ 'EU/mL': ('endotoxin', 1), 'fold': ('dimensionless', 1),
+ 'IU/mL': ('activity_concentration', 1),
  'g/L/day': ('volumetric_mass_rate', 1),
  'g/cell/day': ('cell_specific_mass_rate', 1),
  'mm': ('length', 1), 'um': ('length', .001), 'mm2': ('area', 1),
@@ -120,7 +128,7 @@ def compile_handoff(request, extraction, sources):
         if not isinstance(c['id'], str) or c['id'] in ids:
             reasons.append('Invalid or duplicate claim ID')
         ids.add(c['id'])
-        if c['stage'] not in STAGES or c['role'] not in ROLES:
+        if not isinstance(c['stage'], str) or not STAGE_PATTERN.fullmatch(c['stage']) or c['role'] not in ROLES:
             reasons.append('Unknown stage or role')
         if c['unit'] not in UNITS:
             reasons.append('Unknown unit')
@@ -133,6 +141,8 @@ def compile_handoff(request, extraction, sources):
         context_keys = ['species', 'cell_origin', 'target_cell', 'cell_line', 'culture_format', 'medium', 'time_origin', 'time_window']
         if not isinstance(ctx, dict) or any(k not in ctx for k in context_keys):
             reasons.append('Incomplete context')
+        elif c['role'] == 'genotype_effect' and not ctx.get('genotype'):
+            reasons.append('genotype_effect claims need context.genotype (e.g. "GENE knockout" vs "wild_type")')
         evidence = c['evidence']
         if not isinstance(evidence, dict):
             reasons.append('Evidence must be an object')
@@ -151,14 +161,19 @@ def compile_handoff(request, extraction, sources):
         else:
             accepted.append(c)
     compatible, excluded = [], []
+    # A ProductionRequest 2.0 carries the cell context under 'product'.
+    constraints = dict(request.get('constraints', {}))
+    for k in ['species', 'cell_origin', 'target_cell', 'cell_line', 'culture_format']:
+        if k not in constraints and k in request.get('product', {}):
+            constraints[k] = request['product'][k]
     for c in accepted:
         reasons = []
         ctx = c['context']
         for k in ['species', 'cell_origin', 'target_cell', 'cell_line', 'culture_format']:
-            wanted = request.get('constraints', {}).get(k)
+            wanted = constraints.get(k)
             if wanted is not None and wanted != ctx[k]:
                 reasons.append(f'{k}: source {ctx[k]!r} differs from requested {wanted!r}')
-        limit = request.get('constraints', {}).get('parameter_limits', {}).get(c['stage'] + ':' + c['parameter'])
+        limit = constraints.get('parameter_limits', {}).get(c['stage'] + ':' + c['parameter'])
         if limit:
             try:
                 v = convert_unit(c['value'], c['unit'], limit['unit'])

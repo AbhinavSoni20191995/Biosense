@@ -1,0 +1,24 @@
+spec_version: 1
+name: bioinformatics
+description: >-
+  Bioinformatics specialist: what annotation sets say about a gene and a
+  perturbation, which bioreactor parameters those statements implicate, whether
+  the protocol already differentiates them between arms, and which questions
+  cannot be settled in this machine at all.
+instructions: prompt.md
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: auto
+    write_paths:
+      - ./runs
+    cwd_allow_hidden:
+      - .venv
+    # Offline by default. Live annotation lookups need a request that sets
+    # bioinformatics.live_lookups true; flip this to true only for such a run.
+    allow_network: false

@@ -101,6 +101,101 @@ or prerequisite. Do not silently remove isolation to make the demo work.
 The browser-first option is omnigent start, then the local URL it prints. The
 first-run CLI normally exposes a UI at localhost:6767.
 
+## Run the production loop bundle
+
+`literature_agent.yaml` above runs the single literature agent. The main loop is
+the multi-agent bundle in `discovery_loop/`: the orchestrator plus five
+sub-agent directories under `discovery_loop/agents/`.
+
+Both uv and omnigent install to `~/.local/bin`. If `command -v omnigent` fails,
+that directory is missing from PATH — add it rather than reinstalling.
+
+Verify everything that needs no model credentials, in one command:
+
+```bash
+bash scripts/check.sh
+```
+
+It syncs the environment, runs the unit tests, runs both offline loop smoke
+tests, prints the CAR-T decision trail, and parses every agent config through
+Omnigent's own `omnigent.spec` parser and validator. Rung 4 is skipped when
+omnigent is absent, so the script is safe in CI.
+
+Verified on 2026-10-04 with uv 0.12.23, Python 3.12.15 and omnigent 0.16.0:
+153 tests pass; `demo` and `demo-cart` exit 0; all six agent specs validate with
+no errors; `tools.agents` as a list of directory names resolves against
+`discovery_loop/agents/` exactly as declared.
+
+### Watch a loop in a browser
+
+```bash
+uv run --frozen python -m biosense.production.serve --runs runs --static webapp
+```
+
+Then open http://127.0.0.1:8000. It serves `webapp/index.html` (the agent
+tracker) over a read-only JSON API of whatever is in `runs/`: `/api/loops`,
+`/api/loops/<loop_id>`, `/healthz`. The page polls every 4 seconds and switches
+from its recorded CAR-T replay to the loop on disk. `bash scripts/check.sh` fills
+`runs/` first, so this works before any live session.
+
+Read-only is the point: the dashboard shows decisions, it never makes them.
+Approving a protocol, committing a decision and answering a consult stay CLI acts
+with a named person. Files whose names contain `truth` are never served, so the
+stand-in's hidden answers stay hidden. See `deploy/README.md` for hosting it.
+
+### The live session
+
+This is the part that needs credentials. Two things must be in place.
+
+The `claude-sdk` harness shells out to the Claude CLI, so that binary must exist:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+claude auth login --claudeai      # subscription; or set ANTHROPIC_API_KEY instead
+```
+
+Omnigent reads `ANTHROPIC_API_KEY` (and `OMNIGENT_ANTHROPIC_API_KEY`) straight
+from the environment, so an API key needs no interactive setup at all. Then:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+cd /path/to/biosense-ai
+uv sync --locked
+omnigent run discovery_loop
+```
+
+`omnigent setup` walks the same ground interactively if you would rather be
+prompted, and `omnigent config list` shows which harness credentials it found.
+
+Run it from the repository root — the bundle's `os_env.cwd` is `.`, the
+sub-agents invoke `.venv/bin/python`, and `uv sync --locked` must have created
+that venv first. Write access is confined to `./runs`. The orchestrator and the
+bioinformatics, analysis, biosimulator and outcome agents run with
+`allow_network: false`; only the literature agent has network, because only it
+queries Europe PMC.
+
+For the first live session, hand it an existing request rather than negotiating
+one, so a failure points at the runtime instead of at the conversation:
+
+```
+Read discovery_loop/prompt.md. Initialise a loop from
+examples/cart/request.cart_d10.json into runs/live-cart-<date>/ and work it.
+It declares the synthetic stand-in reactor, so simulate-standin replaces the wet
+lab; label every number accordingly. Use .venv/bin/python for all tools.
+```
+
+That request sets `bioreactor_source: synthetic_standin`, `mode: checkpoints`
+and a 4-iteration budget, and its arms are a wild-type control against an
+`EXH1` knockout. `EXH1` is an invented gene in a synthetic fixture: the run
+demonstrates the workflow and produces no biological evidence.
+
+What a live run is actually testing, in order: whether the harness starts;
+whether `sys_session_send` reaches the sub-agents and the inbox wakes the
+orchestrator; whether the sandbox lets `.venv/bin/python` run and write under
+`runs/`; whether the literature agent reaches Europe PMC; and only then whether
+the orchestrator's choices survive `propose-decision`. A refusal from
+`validate_decision` is the system working, not a failure to debug away.
+
 ## Verify the Python path before debugging the LLM
 
 ```bash

@@ -1,0 +1,24 @@
+{
+  "profile_id": "monocyte_macrophage_research",
+  "version": "1.0",
+  "label": "iPSC-derived monocyte/macrophage precursor QC (research / process development). Demo defaults come from analysis_agent CQA_SPEC and must be confirmed by your QA team.",
+  "inherits": "generic_ipsc_derived_product",
+  "criteria": [
+    {"id": "qc-identity-purity", "metric": "target_marker_pct", "op": ">=", "value": 85.0, "unit": "%",
+     "category": "identity_purity", "severity": "release", "modes": ["minimal", "max"],
+     "value_status": "demo_default",
+     "basis": "Demo default (analysis_agent CQA_SPEC purity_estimate_pct >= 85, CD14). Not a regulatory value."},
+    {"id": "qc-residual-pluripotency", "metric": "residual_pluripotency_pct", "op": "<=", "value": 0.5, "unit": "%",
+     "category": "safety", "severity": "release", "modes": ["minimal", "max"],
+     "value_status": "demo_default",
+     "basis": "Demo default (analysis_agent CQA_SPEC residual_pluripotency_pct <= 0.5, TRA-1-60 surface). Assay LOD must be below the limit."},
+    {"id": "qc-monocyte-diameter-min", "metric": "harvest_cell_diam_mean_um", "op": ">=", "value": 12.0, "unit": "um",
+     "category": "identity_purity", "severity": "process", "modes": ["max"],
+     "value_status": "demo_default",
+     "basis": "Demo default (analysis_agent CQA_SPEC monocyte_diam_mean_um 12-17, M4 harvest counter)."},
+    {"id": "qc-monocyte-diameter-max", "metric": "harvest_cell_diam_mean_um", "op": "<=", "value": 17.0, "unit": "um",
+     "category": "identity_purity", "severity": "process", "modes": ["max"],
+     "value_status": "demo_default",
+     "basis": "Demo default (analysis_agent CQA_SPEC monocyte_diam_mean_um 12-17, M4 harvest counter)."}
+  ]
+}

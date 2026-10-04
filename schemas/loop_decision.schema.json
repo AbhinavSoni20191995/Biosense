@@ -1,0 +1,379 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/loop-decision-v2.0",
+  "title": "LoopDecision 2.0: the orchestrator's verdict on one bioreactor run",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "decision_id",
+    "loop_id",
+    "iteration",
+    "analysis_id",
+    "protocol_id",
+    "run_id",
+    "created_at",
+    "type",
+    "protocol_worked",
+    "reason",
+    "route_to",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "decision_id": {
+      "type": "string"
+    },
+    "loop_id": {
+      "type": "string"
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "analysis_id": {
+      "type": "string"
+    },
+    "protocol_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "protocol_succeeded",
+        "complete_qc",
+        "repeat_measurement",
+        "revise_protocol",
+        "request_bioinformatics",
+        "request_literature",
+        "consult_human",
+        "escalate_to_human",
+        "stop_budget"
+      ]
+    },
+    "protocol_worked": {
+      "enum": [
+        "yes",
+        "no",
+        "undetermined"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "route_to": {
+      "enum": [
+        "literature",
+        "bioinformatics",
+        "operator",
+        "human",
+        "none"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "operator_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "revision_brief": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/revision_brief"
+        }
+      ]
+    },
+    "remaining_iterations": {
+      "type": "integer"
+    },
+    "authored_by": {
+      "enum": [
+        "policy",
+        "orchestrator_agent"
+      ],
+      "description": "policy = the deterministic fallback; orchestrator_agent = reasoned, then validated against the allowed set"
+    },
+    "status": {
+      "enum": [
+        "committed",
+        "pending_human"
+      ],
+      "description": "pending_human when the autonomy mode gates decisions; no downstream step may act on it"
+    },
+    "advances_iteration": {
+      "type": "boolean",
+      "description": "Only a revise_protocol advances the iteration counter; information-gathering actions do not"
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Required for an agent-authored decision: why this action over the alternatives"
+    },
+    "considered": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "why_not"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "why_not": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Alternatives the orchestrator rejected"
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "hypothesis_id",
+          "statement",
+          "basis"
+        ],
+        "properties": {
+          "hypothesis_id": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Analysis observations, tool results or claim IDs this rests on"
+          },
+          "would_be_tested_by": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "supported",
+              "contradicted",
+              "untestable_here"
+            ]
+          }
+        }
+      }
+    },
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "tool",
+          "purpose"
+        ],
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "result_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path to the saved result"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "consult_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "autonomy": {
+      "type": "object",
+      "required": [
+        "mode",
+        "decision_approval_required"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "decision_approval_required": {
+          "type": "boolean"
+        },
+        "approved_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approved_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "human_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "allowed_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The set this decision was validated against, recorded so the choice is auditable"
+    },
+    "policy_advice": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "What the deterministic policy would have done, recorded even when the agent chose otherwise"
+    },
+    "instruction": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "For request_bioinformatics / request_literature / repeat_measurement: what the receiving agent or operator is asked to do",
+      "properties": {
+        "to": {
+          "type": "string"
+        },
+        "ask": {
+          "type": "string"
+        },
+        "genes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "levers": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "budget": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "revision_brief": {
+      "type": "object",
+      "required": [
+        "brief_id",
+        "protocol_id",
+        "request_id",
+        "iteration",
+        "why_it_did_not_work",
+        "failed_criteria",
+        "hypotheses",
+        "levers",
+        "keep_fixed",
+        "genotype_findings",
+        "suggested_queries",
+        "rules"
+      ],
+      "properties": {
+        "brief_id": {
+          "type": "string"
+        },
+        "protocol_id": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "iteration": {
+          "type": "integer"
+        },
+        "why_it_did_not_work": {
+          "type": "string"
+        },
+        "failed_criteria": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "hypotheses": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "levers": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "keep_fixed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "genotype_findings": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "suggested_queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

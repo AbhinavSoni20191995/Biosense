@@ -1,0 +1,386 @@
+{
+  "schema_version": "2.0",
+  "protocol_id": "cart-d10-it2",
+  "request_id": "cart-d10-001",
+  "iteration": 2,
+  "parent_protocol_id": "cart-d10-it1",
+  "revision_brief_id": "brief-cart-d10-it1",
+  "changes_from_parent": [
+    {
+      "step_id": "S03",
+      "change": "EXH1_KO only: activation shortened 48 h to 24 h (adjustment A1)",
+      "addresses": [
+        "H01",
+        "target:EXH1_KO"
+      ],
+      "claim_ids": [
+        "c13"
+      ]
+    },
+    {
+      "step_id": "S06",
+      "change": "EXH1_KO only: IL-15 raised 5 to 15 ng/mL (adjustment A2)",
+      "addresses": [
+        "H01",
+        "target:EXH1_KO"
+      ],
+      "claim_ids": [
+        "c14"
+      ]
+    }
+  ],
+  "title": "Rocking-bag CAR-T expansion to day 10, unedited vs EXH1 knockout (iteration 2)",
+  "label": "SYNTHETIC FIXTURE: built from a synthetic source. Not a validated protocol and not clinical or manufacturing guidance.",
+  "day_origin": "T cell seeding and activation",
+  "evidence": {
+    "handoff_paths": [
+      "examples/cart/handoff.it2.synthetic.json"
+    ],
+    "source_protocol_ids": [
+      "SYNTH_cart_rockingbag"
+    ],
+    "notes": "Synthetic fixture claims c01-c14"
+  },
+  "insights": [
+    {
+      "insight_id": "I1",
+      "statement": "The source process activates for 48 h, transduces on day 2 and harvests on day 10, which matches the day-10 question directly.",
+      "claim_ids": [
+        "c02",
+        "c07",
+        "c09"
+      ],
+      "evidence_level": "direct_same_cell_type",
+      "relevance": "Fixes the schedule and the harvest day."
+    },
+    {
+      "insight_id": "I3",
+      "statement": "Replacing IL-2 with IL-7 plus IL-15 raised total expansion 1.7-fold in the same bag format.",
+      "claim_ids": [
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "evidence_level": "direct_same_cell_type",
+      "relevance": "Addresses a shortfall that is quantity-limited rather than identity-limited."
+    },
+    {
+      "insight_id": "I4",
+      "statement": "EXH1-knockout T cells needed a 24 h activation and IL-15 at 15 ng/mL to match unedited cells.",
+      "claim_ids": [
+        "c13",
+        "c14"
+      ],
+      "evidence_level": "direct_same_cell_type",
+      "relevance": "Gives the knockout arm its own activation length and IL-15 dose."
+    }
+  ],
+  "culture_system": {
+    "format": "rocking_bag",
+    "vessel": "single-use rocking bag",
+    "working_volume": {
+      "value": 100,
+      "unit": "mL",
+      "provenance": "reported",
+      "claim_ids": [
+        "c15"
+      ],
+      "rationale": null
+    },
+    "parameters": {
+      "feed_fraction": {
+        "value": 0.5,
+        "unit": "fraction",
+        "provenance": "reported",
+        "claim_ids": [
+          "c05"
+        ],
+        "rationale": null
+      },
+      "temperature": {
+        "value": 37,
+        "unit": "degC",
+        "provenance": "design_choice",
+        "claim_ids": [],
+        "rationale": "Standard culture temperature; not stated in the source."
+      }
+    }
+  },
+  "stages": [
+    {
+      "stage_id": "t_cell_activation",
+      "name": "Activation",
+      "start_day": 0,
+      "end_day": 2,
+      "medium": {
+        "value": "serum-free T cell medium",
+        "unit": "text",
+        "provenance": "adapted",
+        "claim_ids": [
+          "c01"
+        ],
+        "rationale": "Medium named in the context of claim c01; composition not extracted."
+      },
+      "goal": "Stimulate the T cells into cycle and establish cytokine support",
+      "steps": [
+        {
+          "step_id": "S01",
+          "day": 0,
+          "end_day": null,
+          "action": "seed",
+          "factor": null,
+          "quantity": {
+            "value": 1000000,
+            "unit": "cells/mL",
+            "provenance": "reported",
+            "claim_ids": [
+              "c01"
+            ],
+            "rationale": null
+          },
+          "description": "Seed donor T cells into the rocking bag"
+        },
+        {
+          "step_id": "S02",
+          "day": 0,
+          "end_day": 2,
+          "action": "add_factor",
+          "factor": "anti-CD3/CD28",
+          "quantity": {
+            "value": 1,
+            "unit": "dimensionless",
+            "provenance": "reported",
+            "claim_ids": [
+              "c03"
+            ],
+            "rationale": null
+          },
+          "description": "Activation reagent at a bead-to-cell ratio of 1"
+        },
+        {
+          "step_id": "S03",
+          "day": 2,
+          "end_day": null,
+          "action": "remove_factor",
+          "factor": "anti-CD3/CD28",
+          "quantity": null,
+          "description": "Wash out the activation reagent; this step's day sets the stimulation length"
+        },
+        {
+          "step_id": "S05",
+          "day": 0,
+          "end_day": 10,
+          "action": "add_factor",
+          "factor": "IL-7",
+          "quantity": {
+            "value": 10,
+            "unit": "ng/mL",
+            "provenance": "reported",
+            "claim_ids": [
+              "c10"
+            ],
+            "rationale": null
+          },
+          "description": "IL-7 from activation through to harvest"
+        },
+        {
+          "step_id": "S06",
+          "day": 0,
+          "end_day": 10,
+          "action": "add_factor",
+          "factor": "IL-15",
+          "quantity": {
+            "value": 5,
+            "unit": "ng/mL",
+            "provenance": "reported",
+            "claim_ids": [
+              "c11"
+            ],
+            "rationale": null
+          },
+          "description": "IL-15 from activation through to harvest"
+        }
+      ]
+    },
+    {
+      "stage_id": "transduction",
+      "name": "Transduction",
+      "start_day": 2,
+      "end_day": 3,
+      "medium": {
+        "value": "serum-free T cell medium",
+        "unit": "text",
+        "provenance": "adapted",
+        "claim_ids": [
+          "c06"
+        ],
+        "rationale": "Same medium as activation; no separate transduction medium reported."
+      },
+      "goal": "Deliver the CAR transgene",
+      "steps": [
+        {
+          "step_id": "S10",
+          "day": 2,
+          "end_day": null,
+          "action": "add_factor",
+          "factor": "lentiviral vector",
+          "quantity": {
+            "value": 1,
+            "unit": "dimensionless",
+            "provenance": "reported",
+            "claim_ids": [
+              "c06"
+            ],
+            "rationale": null
+          },
+          "description": "Vector at a multiplicity of infection of 1, added on day 2"
+        }
+      ]
+    },
+    {
+      "stage_id": "expansion",
+      "name": "Expansion and harvest",
+      "start_day": 3,
+      "end_day": 10,
+      "medium": {
+        "value": "serum-free T cell medium",
+        "unit": "text",
+        "provenance": "adapted",
+        "claim_ids": [
+          "c08"
+        ],
+        "rationale": "Same medium maintained through expansion."
+      },
+      "goal": "Expand to the target dose while holding viability",
+      "steps": [
+        {
+          "step_id": "S20",
+          "day": 4,
+          "end_day": 10,
+          "action": "feed",
+          "factor": null,
+          "quantity": null,
+          "description": "Half-volume medium addition whenever the density approaches the bag limit (see culture_system.feed_fraction)"
+        },
+        {
+          "step_id": "S21",
+          "day": 7,
+          "end_day": null,
+          "action": "sample",
+          "factor": null,
+          "quantity": null,
+          "description": "Mid-expansion count and viability"
+        },
+        {
+          "step_id": "S22",
+          "day": 10,
+          "end_day": null,
+          "action": "harvest",
+          "factor": null,
+          "quantity": null,
+          "description": "Harvest, count, CAR detection and release sampling"
+        }
+      ]
+    }
+  ],
+  "genotype_arms": [
+    {
+      "arm_id": "WT",
+      "genotype": "wild_type",
+      "gene": null,
+      "modification": null,
+      "zygosity": "not_applicable",
+      "line_id": "SYNTH-D01",
+      "description": "Unedited donor T cells"
+    },
+    {
+      "arm_id": "EXH1_KO",
+      "genotype": "knockout",
+      "gene": "EXH1",
+      "modification": "CRISPR-Cas9 frameshift (placeholder gene name for this synthetic fixture)",
+      "zygosity": "homozygous",
+      "line_id": "SYNTH-D01-EXH1-KO",
+      "description": "Isogenic knockout of a placeholder exhaustion-associated gene"
+    }
+  ],
+  "genotype_effects": [
+    {
+      "effect_id": "E1",
+      "arm_id": "EXH1_KO",
+      "gene": "EXH1",
+      "stage_id": "t_cell_activation",
+      "affected_quantity": "activation length and IL-15 dose required to reach control-level output",
+      "readout_metric": "target_cells_per_input_cell",
+      "predicted_direction": "no_change",
+      "predicted_magnitude": null,
+      "mechanism": "With a 24 h activation and IL-15 at 15 ng/mL the knockout is reported to match unedited cells (c13, c14), so no difference in output is predicted.",
+      "claim_ids": [
+        "c13",
+        "c14"
+      ],
+      "evidence_level": "direct_same_cell_type"
+    }
+  ],
+  "arm_adjustments": [
+    {
+      "adjustment_id": "A1",
+      "arm_id": "EXH1_KO",
+      "step_id": "S03",
+      "day_shift": -1,
+      "rationale": "EXH1-knockout cells require a 24 h activation rather than 48 h (claim c13), so the activation reagent is washed out a day earlier in this arm only.",
+      "effect_ids": [
+        "E1"
+      ]
+    },
+    {
+      "adjustment_id": "A2",
+      "arm_id": "EXH1_KO",
+      "step_id": "S06",
+      "quantity": {
+        "value": 15,
+        "unit": "ng/mL",
+        "provenance": "reported",
+        "claim_ids": [
+          "c14"
+        ],
+        "rationale": null
+      },
+      "rationale": "EXH1-knockout cells require IL-15 at 15 ng/mL (claim c14). The control stays at 5 ng/mL.",
+      "effect_ids": [
+        "E1"
+      ]
+    }
+  ],
+  "measurement_plan": {
+    "mode": "minimal",
+    "sampling_days": [
+      2,
+      4,
+      7,
+      10
+    ],
+    "harvest_day": 10,
+    "qc_tests_planned": [
+      "sterility",
+      "mycoplasma",
+      "endotoxin",
+      "vector copy number"
+    ],
+    "replicates_per_arm": 1
+  },
+  "expected_outcomes": [],
+  "open_questions": [
+    "The source does not report a CAR+ fraction, so no expected transduction efficiency is carried into this protocol.",
+    "Feeding is described only as a half-volume addition; the trigger density is not reported.",
+    "The knockout's adjustments rest on a single synthetic source; a replicated run is needed before the effect size is anything but directional."
+  ],
+  "risks": [
+    "One replicate per arm makes every genotype comparison directional only.",
+    "Vector lot and donor variability are not represented in a single run."
+  ],
+  "limitations": [
+    "Built from a synthetic source for software testing.",
+    "A reported setting is not an optimised or validated setting."
+  ],
+  "approval": null
+}

@@ -19,6 +19,7 @@ EXPERIMENT_VERSION = '1.0'
 RESULT_VERSION = '1.0'
 EVALUATION_VERSION = '1.0'
 CAMPAIGN_VERSION = '1.0'
+PRODUCTION_VERSION = '2.0'
 
 MODES = ('synthetic_demo', 'evidence_based')
 PROVENANCE_TYPES = ('reported', 'derived', 'fitted', 'synthetic_assumption')
@@ -33,6 +34,14 @@ SCHEMAS = {
     'evaluation': 'outcome_evaluation.schema.json',
     'next_action': 'next_action.schema.json',
     'literature_handoff': '../output.schema.json',
+    # production loop (literature protocol -> bioreactor -> analysis -> orchestrator)
+    'production_request': 'production_request.schema.json',
+    'production_protocol': 'production_protocol.schema.json',
+    'bioreactor_run': 'bioreactor_run.schema.json',
+    'analysis_report': 'analysis_report.schema.json',
+    'loop_decision': 'loop_decision.schema.json',
+    'human_consult': 'human_consult.schema.json',
+    'bioinformatics_report': 'bioinformatics_report.schema.json',
 }
 
 

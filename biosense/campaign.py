@@ -393,8 +393,9 @@ def _interpretation(state, scenario, comparison, records, sens, ens):
         if c['run_id'] == comparison['best_run_id'] and c['matched_conditions']:
             d = c['target_cell_yield']
             if d.get('absolute_difference') is not None:
+                ratio = 'undefined' if d['ratio'] is None else f'{d["ratio"]:.3f}'
                 lines.append(f'Relative to baseline {c["baseline_run_id"]}: {d["absolute_difference"]:+.4g} cells '
-                             f'(ratio {"undefined" if d["ratio"] is None else f"{d["ratio"]:.3f}"}).')
+                             f'(ratio {ratio}).')
     if sens and sens.get('entries'):
         top = sens['entries'][:3]
         lines.append('Conclusion is most sensitive to: ' + ', '.join(

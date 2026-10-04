@@ -1,0 +1,45 @@
+{
+  "id": "SYNTH-CART-001",
+  "url": null,
+  "title": "SYNTHETIC FIXTURE: rocking-bag CAR-T expansion process (not a real publication)",
+  "retrieved_at": "2026-10-04T00:00:00+00:00",
+  "sha256": null,
+  "article_type": "research-article",
+  "license": [
+    "Synthetic test fixture written for BioSense-AI. Not biological evidence and not clinical or manufacturing guidance."
+  ],
+  "supplements_retrieved": false,
+  "supplement_count": 0,
+  "paragraphs": [
+    {
+      "id": "p0001",
+      "section": "body / Methods / Activation",
+      "text": "SYNTHETIC. Donor T cells (line SYNTH-D01) were seeded at 1.0 x 10^6 cells/mL in a 100 mL rocking bag and stimulated with anti-CD3/CD28 reagent at a bead-to-cell ratio of 1 for 48 h."
+    },
+    {
+      "id": "p0002",
+      "section": "body / Methods / Cytokine support",
+      "text": "SYNTHETIC. Cultures received IL-2 at 100 IU/mL from the start of activation and maintained to harvest, with half-volume medium addition once the density approached the bag limit."
+    },
+    {
+      "id": "p0003",
+      "section": "body / Methods / Transduction",
+      "text": "SYNTHETIC. Lentiviral vector was added on day 2 at a multiplicity of infection of 1."
+    },
+    {
+      "id": "p0004",
+      "section": "body / Methods / Expansion and harvest",
+      "text": "SYNTHETIC. Expansion continued for 7 days after transduction and the product was harvested on day 10."
+    },
+    {
+      "id": "p0005",
+      "section": "body / Results / Cytokine comparison",
+      "text": "SYNTHETIC. Replacing IL-2 with IL-7 at 10 ng/mL together with IL-15 at 5 ng/mL increased total expansion 1.7-fold by day 10 in the same bag format."
+    },
+    {
+      "id": "p0006",
+      "section": "body / Results / Edited cells",
+      "text": "SYNTHETIC. EXH1-knockout T cells expanded poorly under the standard schedule and required a shortened activation of 24 h together with IL-15 raised to 15 ng/mL to match unedited cells."
+    }
+  ]
+}

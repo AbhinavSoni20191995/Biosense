@@ -1,0 +1,357 @@
+{
+  "schema_version": "2.0",
+  "protocol_id": "mono-d25-it0",
+  "request_id": "mono-d25-001",
+  "iteration": 0,
+  "parent_protocol_id": null,
+  "revision_brief_id": null,
+  "changes_from_parent": [],
+  "title": "Stirred-tank iPSC -> CD14+ monocyte production, WT vs GENEX KO (iteration 0)",
+  "label": "SYNTHETIC FIXTURE: built from a synthetic source; not a validated protocol",
+  "day_origin": "iPSC seeding into the bioreactor",
+  "evidence": {
+    "handoff_paths": [
+      "examples/production/handoff.it0.synthetic.json"
+    ],
+    "source_protocol_ids": [
+      "SYNTH_mono_STR"
+    ],
+    "notes": "Synthetic fixture claims c01-c14"
+  },
+  "insights": [
+    {
+      "insight_id": "I1",
+      "statement": "The source protocol runs 4 stages over 25 days with continuous monocyte release from day 11.",
+      "claim_ids": [
+        "c02",
+        "c05",
+        "c08",
+        "c09"
+      ],
+      "evidence_level": "direct_same_cell_type",
+      "relevance": "Harvest at day 25 answers the question directly."
+    },
+    {
+      "insight_id": "I2",
+      "statement": "No GENEX-specific evidence was found within the initial budget; the KO effect is a hypothesis to test against WT.",
+      "claim_ids": [],
+      "evidence_level": "none",
+      "relevance": "KO arm runs the base protocol."
+    }
+  ],
+  "culture_system": {
+    "format": "stirred_tank_aggregate",
+    "vessel": "single-use stirred tank",
+    "working_volume": {
+      "value": 100,
+      "unit": "mL",
+      "provenance": "design_choice",
+      "claim_ids": [],
+      "rationale": "Vessel available in the lab; volume does not change per-input yield."
+    },
+    "parameters": {
+      "agitation_rpm": {
+        "value": 60,
+        "unit": "rpm",
+        "provenance": "reported",
+        "claim_ids": [
+          "c03"
+        ],
+        "rationale": null
+      },
+      "dissolved_oxygen": {
+        "value": 20,
+        "unit": "%air_saturation",
+        "provenance": "reported",
+        "claim_ids": [
+          "c04"
+        ],
+        "rationale": null
+      },
+      "feed_fraction": {
+        "value": 0.5,
+        "unit": "fraction",
+        "provenance": "design_choice",
+        "claim_ids": [],
+        "rationale": "Half-volume daily exchange; not reported in the source."
+      }
+    }
+  },
+  "stages": [
+    {
+      "stage_id": "ipsc_expansion",
+      "name": "iPSC expansion",
+      "start_day": 0,
+      "end_day": 4,
+      "medium": {
+        "value": "expansion medium",
+        "unit": "text",
+        "provenance": "adapted",
+        "claim_ids": [
+          "c01"
+        ],
+        "rationale": "Medium named in the context of claim c01; composition not extracted."
+      },
+      "goal": "Expand starting iPSCs as aggregates",
+      "steps": [
+        {
+          "step_id": "S01",
+          "day": 0,
+          "end_day": null,
+          "action": "seed",
+          "factor": null,
+          "quantity": {
+            "value": 500000,
+            "unit": "cells/mL",
+            "provenance": "reported",
+            "claim_ids": [
+              "c01"
+            ],
+            "rationale": null
+          },
+          "description": "Seed single iPSCs into the vessel"
+        },
+        {
+          "step_id": "S02",
+          "day": 0,
+          "end_day": 1,
+          "action": "add_factor",
+          "factor": "Y-27632",
+          "quantity": {
+            "value": 10,
+            "unit": "uM",
+            "provenance": "design_choice",
+            "claim_ids": [],
+            "rationale": "Reported in the source paragraph but not extracted as a claim; standard ROCK-inhibitor use at seeding. Reviewer to confirm."
+          },
+          "description": "ROCK inhibitor for the first 24 h"
+        },
+        {
+          "step_id": "S03",
+          "day": 2,
+          "end_day": null,
+          "action": "feed",
+          "factor": null,
+          "quantity": null,
+          "description": "Daily partial medium exchange per culture_system.feed_fraction"
+        }
+      ]
+    },
+    {
+      "stage_id": "mesoderm_induction",
+      "name": "Mesoderm induction",
+      "start_day": 4,
+      "end_day": 7,
+      "medium": {
+        "value": "defined medium",
+        "unit": "text",
+        "provenance": "adapted",
+        "claim_ids": [
+          "c06"
+        ],
+        "rationale": "Medium named in the context of claim c06; composition not extracted."
+      },
+      "goal": "Induce mesoderm",
+      "steps": [
+        {
+          "step_id": "S04",
+          "day": 4,
+          "end_day": 7,
+          "action": "add_factor",
+          "factor": "BMP4",
+          "quantity": {
+            "value": 25,
+            "unit": "ng/mL",
+            "provenance": "reported",
+            "claim_ids": [
+              "c06"
+            ],
+            "rationale": null
+          },
+          "description": "BMP4 for the whole stage"
+        },
+        {
+          "step_id": "S05",
+          "day": 4,
+          "end_day": 7,
+          "action": "add_factor",
+          "factor": "VEGF",
+          "quantity": {
+            "value": 50,
+            "unit": "ng/mL",
+            "provenance": "reported",
+            "claim_ids": [
+              "c07"
+            ],
+            "rationale": null
+          },
+          "description": "VEGF for the whole stage"
+        }
+      ]
+    },
+    {
+      "stage_id": "hematopoietic_specification",
+      "name": "Hematopoietic specification",
+      "start_day": 7,
+      "end_day": 11,
+      "medium": {
+        "value": "defined medium",
+        "unit": "text",
+        "provenance": "adapted",
+        "claim_ids": [
+          "c08"
+        ],
+        "rationale": "Medium named in the context of claim c08; composition not extracted."
+      },
+      "goal": "Specify hemogenic progenitors",
+      "steps": [
+        {
+          "step_id": "S06",
+          "day": 7,
+          "end_day": null,
+          "action": "medium_exchange",
+          "factor": null,
+          "quantity": null,
+          "description": "Exchange to hematopoietic medium (factors not extracted in this fixture; see open questions)"
+        }
+      ]
+    },
+    {
+      "stage_id": "myeloid_production",
+      "name": "Myeloid production and harvest",
+      "start_day": 11,
+      "end_day": 25,
+      "medium": {
+        "value": "defined medium",
+        "unit": "text",
+        "provenance": "adapted",
+        "claim_ids": [
+          "c10"
+        ],
+        "rationale": "Medium named in the context of claim c10; composition not extracted."
+      },
+      "goal": "Continuous CD14+ monocyte release",
+      "steps": [
+        {
+          "step_id": "S07",
+          "day": 11,
+          "end_day": 25,
+          "action": "add_factor",
+          "factor": "M-CSF",
+          "quantity": {
+            "value": 50,
+            "unit": "ng/mL",
+            "provenance": "reported",
+            "claim_ids": [
+              "c10"
+            ],
+            "rationale": null
+          },
+          "description": "M-CSF throughout myeloid production"
+        },
+        {
+          "step_id": "S08",
+          "day": 11,
+          "end_day": 25,
+          "action": "add_factor",
+          "factor": "IL-3",
+          "quantity": {
+            "value": 25,
+            "unit": "ng/mL",
+            "provenance": "reported",
+            "claim_ids": [
+              "c11"
+            ],
+            "rationale": null
+          },
+          "description": "IL-3 throughout myeloid production"
+        },
+        {
+          "step_id": "S09",
+          "day": 15,
+          "end_day": null,
+          "action": "start_harvest",
+          "factor": null,
+          "quantity": null,
+          "description": "Begin collecting released monocytes from the supernatant"
+        },
+        {
+          "step_id": "S10",
+          "day": 25,
+          "end_day": null,
+          "action": "harvest",
+          "factor": null,
+          "quantity": null,
+          "description": "Final harvest and QC sampling"
+        }
+      ]
+    }
+  ],
+  "genotype_arms": [
+    {
+      "arm_id": "WT",
+      "genotype": "wild_type",
+      "gene": null,
+      "modification": null,
+      "zygosity": "not_applicable",
+      "line_id": "SYNTH-L01",
+      "description": "Parental line"
+    },
+    {
+      "arm_id": "GENEX_KO",
+      "genotype": "knockout",
+      "gene": "GENEX",
+      "modification": "CRISPR-Cas9 frameshift (placeholder gene for the synthetic fixture)",
+      "zygosity": "homozygous",
+      "line_id": "SYNTH-L01-GENEX-KO",
+      "description": "Isogenic knockout"
+    }
+  ],
+  "genotype_effects": [
+    {
+      "effect_id": "E1",
+      "arm_id": "GENEX_KO",
+      "gene": "GENEX",
+      "stage_id": "myeloid_production",
+      "affected_quantity": "monocyte output at the standard M-CSF dose",
+      "readout_metric": "target_cells_per_input_cell",
+      "predicted_direction": "decrease",
+      "predicted_magnitude": null,
+      "mechanism": "Hypothesis: GENEX loss impairs myeloid commitment (mechanistic inference, no direct evidence found).",
+      "claim_ids": [],
+      "evidence_level": "mechanistic_inference"
+    }
+  ],
+  "arm_adjustments": [],
+  "measurement_plan": {
+    "mode": "minimal",
+    "sampling_days": [
+      0,
+      4,
+      11,
+      18,
+      25
+    ],
+    "harvest_day": 25,
+    "qc_tests_planned": [
+      "sterility",
+      "mycoplasma",
+      "endotoxin",
+      "karyotype"
+    ],
+    "replicates_per_arm": 1
+  },
+  "expected_outcomes": [],
+  "open_questions": [
+    "Hematopoietic-specification factors were not extracted from the source; confirm the medium composition for days 7-11.",
+    "Agitation and DO were reported for expansion only; they are applied to all stages here."
+  ],
+  "risks": [
+    "A single replicate per arm gives directional genotype comparisons only."
+  ],
+  "limitations": [
+    "Built from a synthetic source for software testing.",
+    "Reported settings are not optimal or validated ranges."
+  ],
+  "approval": null
+}

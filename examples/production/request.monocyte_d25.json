@@ -1,0 +1,75 @@
+{
+  "schema_version": "2.0",
+  "request_id": "mono-d25-001",
+  "question": "Increase my output of CD14+ monocytes at day 25, and tell me how a GENEX knockout line must be handled differently from wild type.",
+  "product": {
+    "species": "human",
+    "cell_origin": "iPSC",
+    "target_cell": "monocyte",
+    "target_subtype": "CD14+ classical monocyte",
+    "target_marker": "CD14",
+    "cell_line": null,
+    "culture_format": null,
+    "intended_use": "process_development"
+  },
+  "desired_output": {
+    "metric": "target_cells_per_input_cell",
+    "op": ">=",
+    "value": 25,
+    "unit": "cells/input_cell",
+    "at_day": 25,
+    "day_tolerance": 1,
+    "day_origin": "iPSC seeding into the bioreactor",
+    "basis": "DEMO target set by the user for the synthetic fixture; not a literature value"
+  },
+  "qc_profile": "monocyte_macrophage_research",
+  "qc_overrides": [
+    {
+      "id": "qc-endotoxin",
+      "value": 0.5,
+      "basis": "DEMO limit set by the user for the synthetic fixture; a real limit is derived from dose and route (USP <85>)."
+    }
+  ],
+  "genotype_arms": [
+    {
+      "arm_id": "WT",
+      "genotype": "wild_type",
+      "gene": null,
+      "modification": null,
+      "zygosity": "not_applicable",
+      "line_id": "SYNTH-L01",
+      "description": "Parental line"
+    },
+    {
+      "arm_id": "GENEX_KO",
+      "genotype": "knockout",
+      "gene": "GENEX",
+      "modification": "CRISPR-Cas9 frameshift (placeholder gene for the synthetic fixture)",
+      "zygosity": "homozygous",
+      "line_id": "SYNTH-L01-GENEX-KO",
+      "description": "Isogenic knockout"
+    }
+  ],
+  "current_protocol": null,
+  "measurement_mode": "minimal",
+  "constraints": {
+    "max_culture_days": 30,
+    "xeno_free": true,
+    "equipment": [
+      "stirred_tank"
+    ]
+  },
+  "allowed_sources": [
+    "Europe PMC",
+    "PubMed",
+    "primary publisher",
+    "user-supplied papers"
+  ],
+  "search_budget": {
+    "max_searches": 6,
+    "max_full_texts": 8
+  },
+  "loop_budget": {
+    "max_iterations": 4
+  }
+}
