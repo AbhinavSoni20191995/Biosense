@@ -1,0 +1,168 @@
+{
+  "knowledge_set_id": "tcell_curated_genes",
+  "label": "CURATED T-cell transcription-factor annotations with real, checkable citations. Every effect names a published source. Effects marked 'local_annotation' restate what the cited paper reports; effects marked 'inference' are a transfer of that finding to an iPSC-derived T-lineage expansion readout and are NOT reported in the cited work. Nothing here is clinical or manufacturing guidance, and no entry describes an iPSC-derived product unless its conditions field says so.",
+  "live": false,
+  "retrieved_at": "2026-10-04",
+  "curation_notes": [
+    "Curated by hand on 2026-10-04 from publication records located by web search. The Europe PMC retrieval path in agent_tools.py was blocked by this environment's network policy (403 on CONNECT to www.ebi.ac.uk), so full texts were NOT fetched and NO numeric parameter value in this file is attributed to a paper.",
+    "Every cited study below used mouse or human primary/peripheral T cells. None of them studied an iPSC-derived T-lineage differentiation. Whether a reported effect transfers to that system is a hypothesis for the loop to test, which is why the transfer statements carry confidence 'inference' rather than 'local_annotation'.",
+    "Direction fields describe the direction of the effect on the named readout_metric for the named perturbation. A direction is only as good as the condition attached to it."
+  ],
+  "references": {
+    "tsukumo2013": {
+      "citation": "Tsukumo S, Unno M, Muto A, Takeuchi A, Kometani K, Kurosaki T, Igarashi K, Saito T. Bach2 maintains T cells in a naive state by suppressing effector memory-related genes. Proc Natl Acad Sci USA. 2013;110(26):10735-10740.",
+      "doi": "10.1073/pnas.1306691110",
+      "pmid": "23754397",
+      "pmcid": "PMC3696756",
+      "model_system": "Bach2-deficient mice; peripheral naive CD4+ T cells",
+      "full_text_retrieved": false
+    },
+    "roychoudhuri2013": {
+      "citation": "Roychoudhuri R, Hirahara K, Mousavi K, et al. BACH2 represses effector programs to stabilize Treg-mediated immune homeostasis. Nature. 2013;498(7455):506-510.",
+      "doi": "10.1038/nature12199",
+      "pmid": "23728300",
+      "model_system": "Bach2-deficient mice; CD4+ T cells and regulatory T cells",
+      "full_text_retrieved": false
+    },
+    "roychoudhuri2016": {
+      "citation": "Roychoudhuri R, Clever D, Li P, et al. BACH2 regulates CD8+ T cell differentiation by controlling access of AP-1 factors to enhancers. Nat Immunol. 2016;17(7):851-860.",
+      "doi": "10.1038/ni.3441",
+      "pmid": "27158840",
+      "pmcid": "PMC4918801",
+      "model_system": "Mouse CD8+ T cells; viral infection model",
+      "full_text_retrieved": false
+    },
+    "bach2_dosage_2025": {
+      "citation": "Fine-tuning BACH2 dosage balances stemness and effector function to enhance antitumor T cell therapy. Nat Immunol. 2025.",
+      "doi": "10.1038/s41590-025-02389-z",
+      "preprint_doi": "10.1101/2025.08.18.670909",
+      "model_system": "Engineered CD8+ CAR T cells; BACH2 expression titrated across a dosage range",
+      "full_text_retrieved": false,
+      "note": "Located via publisher and preprint records only. The dosage-dependence claim below is the paper's own headline finding; no numeric dose from it is reproduced here."
+    },
+    "michaels2022": {
+      "citation": "Michaels YS, Edgar JM, Major MC, Castle EL, Zimmerman C, Yin T, Hagner A, Lau C, Hsu HH, Ibanez-Rios MI, Durland LJ, Knapp DJHF, Zandstra PW. DLL4 and VCAM1 enhance the emergence of T cell-competent hematopoietic progenitors from human pluripotent stem cells. Sci Adv. 2022;8(34):eabn5522.",
+      "doi": "10.1126/sciadv.abn5522",
+      "pmcid": "PMC9401626",
+      "model_system": "Human pluripotent stem cells differentiated toward progenitor T cells",
+      "full_text_retrieved": false,
+      "note": "Supports the DLL4/VCAM1 lever qualitatively. The reported ~80-fold progenitor-T output increase appears in the abstract record; it is recorded here as a directional claim, not transferred into any protocol quantity."
+    }
+  },
+  "genes": {
+    "BACH2": {
+      "symbol": "BACH2",
+      "status": "curated_from_literature",
+      "aliases": ["BTBD25"],
+      "description": "BTB and CNC homology 1 basic leucine zipper transcription factor 2. A transcriptional repressor that restrains effector and terminal differentiation in T cells and supports maintenance of naive and stem-like/memory states. Cited work is in mouse and human primary T cells, not in iPSC-derived T-lineage cultures.",
+      "measurable_readouts": [
+        "target_cells_per_input_cell",
+        "target_cells_total",
+        "target_marker_pct",
+        "viability_pct",
+        "doubling_time_h",
+        "growth_rate_per_h"
+      ],
+      "perturbations": [
+        {
+          "perturbation": "knockout",
+          "affected_process": "maintenance of the naive T-cell state",
+          "direction": "decrease",
+          "readout_metric": "target_marker_pct",
+          "conditions": "Reported in Bach2-deficient mice for peripheral naive CD4+ T cells. Not established for an iPSC-derived T-lineage culture, and the marker here stands for whichever identity marker the request names.",
+          "mechanism": "Loss of Bach2 de-represses effector-memory-associated genes, so cells leave the naive state more readily after TCR stimulation.",
+          "confidence": "local_annotation",
+          "source": "Tsukumo et al. 2013, PNAS 110:10735-10740, doi:10.1073/pnas.1306691110 (PMID 23754397) - reference key tsukumo2013"
+        },
+        {
+          "perturbation": "knockout",
+          "affected_process": "restraint of terminal effector differentiation",
+          "direction": "increase",
+          "readout_metric": "growth_rate_per_h",
+          "conditions": "Reported for mouse CD8+ T cells responding to viral infection: BACH2 restrains terminal differentiation and enables long-lived memory. Loss of restraint accelerates effector commitment early, which is NOT the same as a higher final yield.",
+          "mechanism": "BACH2 limits expression of TCR-driven genes by attenuating the availability of AP-1 sites to Jun-family factors at enhancers; without it, AP-1-dependent effector programmes run less opposed.",
+          "confidence": "local_annotation",
+          "source": "Roychoudhuri et al. 2016, Nat Immunol 17:851-860, doi:10.1038/ni.3441 (PMID 27158840) - reference key roychoudhuri2016"
+        },
+        {
+          "perturbation": "knockout",
+          "affected_process": "repression of multiple CD4+ effector lineage programmes",
+          "direction": "increase",
+          "readout_metric": "target_marker_pct",
+          "conditions": "Reported for CD4+ T cells and regulatory T cells in Bach2-deficient mice. Direction is on effector-lineage gene expression; the sign on any particular surface marker depends on which marker is being measured.",
+          "mechanism": "BACH2 acts as a broad repressor of effector lineage programmes, stabilising regulatory capacity.",
+          "confidence": "local_annotation",
+          "source": "Roychoudhuri et al. 2013, Nature 498:506-510, doi:10.1038/nature12199 (PMID 23728300) - reference key roychoudhuri2013"
+        },
+        {
+          "perturbation": "knockout",
+          "affected_process": "sustained proliferative output over a long expansion window",
+          "direction": "decrease",
+          "readout_metric": "target_cells_per_input_cell",
+          "conditions": "INFERENCE, not a reported measurement. The cited work reports that BACH2 restrains terminal differentiation and supports stem-like/memory states, and that BACH2 dosage tunes the stemness-effector continuum with persistence as the readout. Transferring that to cumulative fold-expansion in an iPSC-derived T-lineage bioreactor is unverified: it predicts that a knockout arm differentiates further and sooner and so sustains less expansion late in the window, while possibly matching or exceeding the control early. The loop must measure this, not assume it.",
+          "mechanism": "If terminal differentiation proceeds unopposed, the proliferative reserve of the population is spent earlier, so a long window should separate the arms more than a short one.",
+          "confidence": "inference",
+          "source": "Transfer by the curator from roychoudhuri2016 (doi:10.1038/ni.3441) and bach2_dosage_2025 (doi:10.1038/s41590-025-02389-z) to an iPSC-derived expansion readout. No cited paper measures this.",
+          "suggested_protocol_levers": [
+            {
+              "parameter": "expansion duration",
+              "direction": "shorten",
+              "basis": "INFERENCE from roychoudhuri2016: if the knockout spends its proliferative reserve earlier, harvesting the engineered arm sooner may capture more cells before terminal differentiation dominates. Untested here."
+            },
+            {
+              "parameter": "TCR/activation signal strength",
+              "direction": "decrease",
+              "basis": "INFERENCE from roychoudhuri2016: BACH2 opposes AP-1-driven effector genes, so without it an identical activation stimulus delivers a relatively stronger effector push. Lowering it may keep the knockout arm less differentiated. Untested here."
+            },
+            {
+              "parameter": "IL-7 dose",
+              "direction": "increase",
+              "basis": "INFERENCE from tsukumo2013 and roychoudhuri2016, both of which tie BACH2 to naive/memory maintenance: homeostatic cytokine support is the usual protocol lever for that state. No cited paper reports an IL-7 dose for a BACH2 knockout."
+            },
+            {
+              "parameter": "IL-15 dose",
+              "direction": "increase",
+              "basis": "INFERENCE, same basis as the IL-7 lever. Recorded as a candidate to test, not a recommendation."
+            }
+          ]
+        },
+        {
+          "perturbation": "overexpression",
+          "affected_process": "stemness versus effector balance under engineered expression",
+          "direction": "unknown",
+          "readout_metric": "target_cells_per_input_cell",
+          "conditions": "Reported as dosage-dependent in engineered CD8+ CAR T cells: high-level overexpression enforces quiescence and hinders tumour control, while low-dose expression promotes persistence without compromising effector function. A single direction cannot be given because the sign depends on the dose, so this entry deliberately reports 'unknown' rather than picking one.",
+          "mechanism": "Low-dose BACH2 partially attenuates Jun occupancy at highly AP-1-dependent genes, restraining terminal differentiation while preserving effector programmes.",
+          "confidence": "local_annotation",
+          "source": "Fine-tuning BACH2 dosage balances stemness and effector function to enhance antitumor T cell therapy, Nat Immunol 2025, doi:10.1038/s41590-025-02389-z - reference key bach2_dosage_2025"
+        }
+      ],
+      "experiments_not_possible_in_machine": [
+        {
+          "assay": "Differentiation-state surface panel across the expansion window (for example CD45RA/CCR7/CD95 with inhibitory receptors), read at several time points",
+          "why_not_feasible": "More colours than the in-loop cytometer carries, and the wash steps break the closed single-use path. The loop measures one identity marker and viability at harvest, not a differentiation-state trajectory.",
+          "what_it_would_resolve": "The central question for this gene: whether a BACH2-knockout arm's shortfall comes from accelerated terminal differentiation or from a different cause entirely. The two imply opposite protocol changes - shorten and soften the expansion, or push it harder."
+        },
+        {
+          "assay": "AP-1/Jun occupancy or accessibility profiling at effector enhancers (ChIP-seq or ATAC-seq) at the end of activation",
+          "why_not_feasible": "No sampling-to-sequencing path exists in the closed process; it is an offline multi-day workflow.",
+          "what_it_would_resolve": "Whether the mechanism the cited CD8 work describes is actually operating in this iPSC-derived context, which would let the literature search target a mechanism rather than a parameter."
+        },
+        {
+          "assay": "In vivo persistence or serial-transplant assay",
+          "why_not_feasible": "Requires an animal model; nothing in this loop leaves the culture vessel.",
+          "what_it_would_resolve": "Whether anything gained in culture yield corresponds to the persistence benefit the BACH2 dosage work measures. A bioreactor yield number cannot answer it."
+        }
+      ]
+    },
+    "DLL4_PATHWAY_NOTE": {
+      "symbol": "DLL4_PATHWAY_NOTE",
+      "status": "process_note_not_a_gene_perturbation",
+      "aliases": [],
+      "description": "Not a perturbation entry. A placeholder recording that Notch ligand DLL4 presentation, with VCAM1, is reported to increase T-cell-competent haematopoietic progenitor output from human pluripotent stem cells, so DLL4 presentation is a protocol lever for the differentiation stages rather than a genotype effect. Kept in this set so the lever carries its citation wherever it is used.",
+      "measurable_readouts": ["target_cells_total", "target_cells_per_input_cell"],
+      "perturbations": [],
+      "experiments_not_possible_in_machine": []
+    }
+  }
+}

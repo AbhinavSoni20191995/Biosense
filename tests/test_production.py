@@ -305,9 +305,42 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(d1['type'], 'escalate_to_human')
 
     def test_budget_exhaustion_stops(self):
+        # max_iterations is 4, so four revisions are allowed and the fifth decision
+        # stops on budget. This must match `allowed_actions`, which permits
+        # revise_protocol while `iterations_used < max_iterations`: the policy used
+        # to stop one revision early, so at used == 3 it proposed `stop_budget`
+        # while the envelope still allowed only `revise_protocol`. `decide` never
+        # runs `validate_decision`, so nothing caught the disagreement until an
+        # agent-path commit refused the policy's own advice.
         p0 = approved(0)
-        types = [self.decide(p0, run_for(p0, run_id=f'r{i}'))[0]['type'] for i in range(4)]
-        self.assertEqual(types, ['revise_protocol'] * 3 + ['stop_budget'])
+        types = [self.decide(p0, run_for(p0, run_id=f'r{i}'))[0]['type'] for i in range(5)]
+        self.assertEqual(types, ['revise_protocol'] * 4 + ['stop_budget'])
+
+    def test_policy_advice_always_inside_the_envelope(self):
+        """What the policy proposes must be something the envelope permits.
+
+        This is the invariant the budget off-by-one broke. It holds for every
+        iteration of the budget, including the boundary where it used to fail.
+        """
+        p0 = approved(0)
+        for i in range(6):
+            rep = AN.analyze(run_for(p0, run_id=f'e{i}'), p0, self.r)
+            state = OR.load_state(self.loop)
+            env = OR.allowed_actions(rep, p0, self.r, state)
+            doc = OR.policy_decision_document(rep, p0, self.r, state)
+            self.assertIn(doc['type'], env['allowed'],
+                          f'iteration {i}: policy proposed {doc["type"]!r} but the envelope allows '
+                          f'{env["allowed"]} (used {env["budget"]["iterations_used"]})')
+            self.assertFalse(OR.validate_decision(dict(doc, **{
+                'schema_version': '2.0', 'decision_id': f'd{i}', 'loop_id': state['loop_id'],
+                'iteration': i, 'analysis_id': rep['analysis_id'], 'protocol_id': p0['protocol_id'],
+                'run_id': rep['run_id'], 'created_at': '2026-10-04T00:00:00+00:00',
+                'advances_iteration': doc['type'] in OR.ADVANCING,
+                'allowed_actions': env['allowed'], 'policy_advice': env['policy_advice'],
+            }), rep, p0, self.r, state, author='policy'))
+            if doc['type'] != 'revise_protocol':
+                break
+            self.decide(p0, run_for(p0, run_id=f'b{i}'))
 
     def test_request_cannot_change_mid_loop(self):
         p0 = approved(0)

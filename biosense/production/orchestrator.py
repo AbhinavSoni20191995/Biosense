@@ -180,7 +180,11 @@ def _policy_decision(report, protocol, request, state):
                      'set the limit in request.qc_overrides (QA decision)' if c['status'] == 'SPEC_MISSING' else
                      'run this test' if c['status'] == 'NOT_TESTED' else f'add replicates or a fresh direct measurement ({c.get("note")})')
                      for aid, c in open_])
-    elif used >= state['max_iterations'] - 1:
+    elif used >= state['max_iterations']:
+        # The same comparison `allowed_actions` makes (`budget_left = used < max_it`).
+        # They must agree: when they did not, the policy proposed `stop_budget` while
+        # the envelope still allowed only `revise_protocol`, and the decision was
+        # refused with the budget apparently unspent.
         d.update(type='stop_budget', protocol_worked='no', route_to='human',
                  reason=f'Protocol failed and the loop budget of {state["max_iterations"]} iterations is used up. {v["summary"]}')
     else:
@@ -383,6 +387,96 @@ def allowed_actions(report, protocol, request, state, bioinfo_reports=()):
     }
 
 
+# Why each policy branch fires, in the policy's own terms. These are the rules in
+# `_policy_decision` stated as prose, so a decision document carries a reason a
+# reader can check against the code rather than an unexplained verdict. They are
+# descriptions of deterministic rules, not a model's reasoning, and the reports
+# label them that way.
+POLICY_RATIONALE = {
+    'escalate_to_human': (
+        'The verdict puts this outside what the loop may settle. A safety or genetic-stability hold, or a '
+        'second consecutive run whose measurements cannot be trusted, is a question about cells, reagents '
+        'and instruments in the physical world. No recipe change addresses it and results from this line '
+        'are confounded until a person has looked, so the only action the envelope allows is escalation.'),
+    'repeat_measurement': (
+        'The measurements themselves did not pass the data-integrity checks, so the protocol is neither '
+        'confirmed nor refuted by this run. Revising the recipe now would be fitting to noise: any change '
+        'would look like it worked or failed for reasons that have nothing to do with the recipe. The '
+        'same protocol is re-measured instead, which is why this does not spend an iteration.'),
+    'protocol_succeeded': (
+        'Every arm that the request holds to the target met it, and every QC criterion passed. There is '
+        'nothing further to gather evidence for and nothing left to revise, so the loop reports success. '
+        'This is not a released process: confirmation runs and human QA sign-off are outside this loop.'),
+    'complete_qc': (
+        'The production target was met but the QC record is not complete, so the protocol cannot be '
+        'called successful. Untested is never a pass. Closing the QC record does not change the recipe, '
+        'so it does not spend an iteration, and a missing limit is a QA decision rather than a test to run.'),
+    'stop_budget': (
+        'The protocol failed and the iteration budget the request set is spent. Revising again would '
+        'exceed what was authorised, so the loop stops and hands back what it learned. A stop on budget '
+        'is not a finding that the target is unreachable.'),
+    'revise_protocol': (
+        'At least one arm missed the target or a QC criterion, the measurements are trustworthy, and '
+        'iteration budget remains. The failure is therefore attributable to the recipe, which is the one '
+        'thing in the loop that can be changed, so the protocol is revised against a brief naming what '
+        'failed, which levers the diagnosis implicates and what must stay fixed.'),
+    'request_bioinformatics': (
+        'An annotation lookup is offline and spends no iteration, so asking what a gene perturbation '
+        'implicates before changing the recipe costs nothing and can scope the change to one arm.'),
+    'request_literature': (
+        'More evidence may change which lever is worth moving, and gathering it spends no iteration.'),
+    'consult_human': (
+        'A person\'s answer would change the next protocol, and the question is one this machine cannot '
+        'measure at all.'),
+}
+
+
+def policy_decision_document(report, protocol, request, state, bioinfo_reports=()):
+    """The deterministic policy's choice, written out as a full decision document.
+
+    `_policy_decision` picks the action. This wraps that choice with the reasoning
+    the rule embodies, the alternatives the envelope refused and why, and the
+    analysis hypotheses as hypotheses with their basis - so a policy-driven loop
+    produces the same auditable document an agent-driven one does.
+
+    The `reasoning` it writes is a description of a deterministic rule. It is not
+    a model's reasoning, and `authored_by` stays 'policy' to say so.
+    """
+    d = _policy_decision(report, protocol, request, state)
+    env = allowed_actions(report, protocol, request, state, bioinfo_reports)
+    t = d['type']
+    v = report['verdict']
+    rule = POLICY_RATIONALE.get(t, 'The deterministic policy selected this action for this verdict.')
+    d['reasoning'] = (
+        f'Deterministic policy, not a model. Verdict {v["status"]}: {v["summary"]} '
+        f'The envelope allowed {sorted(env["allowed"])} and the policy rule for this verdict selects '
+        f'{t!r}. {rule}')
+    considered = []
+    for alt in sorted(set(ALL_ACTIONS) - {t}):
+        why = env['forbidden'].get(alt)
+        if why:
+            considered.append({'type': alt, 'why_not': f'Refused by the envelope: {why}'})
+        elif alt in env['allowed']:
+            considered.append({'type': alt,
+                              'why_not': f'Allowed for this verdict but not selected: the policy rule for '
+                                         f'{v["status"]} prefers {t!r}. {rule}'})
+    d['considered'] = considered[:8]
+    d['hypotheses'] = [{
+        'hypothesis_id': h['hypothesis_id'],
+        'statement': h['statement'],
+        'basis': list(h.get('supporting_observations') or [])
+                 or [f'analysis {report["analysis_id"]} diagnosis category {h["category"]}'],
+        'would_be_tested_by': ('A protocol revision that moves the levers this hypothesis names'
+                               if t == 'revise_protocol' else
+                               'Not tested by this decision; recorded so it is not lost'),
+        'status': 'open',
+    } for h in report['diagnosis'][:5]]
+    d['tool_calls'] = []
+    d['consult_ids'] = []
+    d['authored_by'] = 'policy'
+    return d
+
+
 def _policy_advice(report, protocol, request, state):
     """What the deterministic policy would decide, as advice rather than a command."""
     try:
@@ -453,10 +547,16 @@ def answer_consult(loop_dir, consult_id, answered_by, content, chosen_option=Non
 REQUIRED_REASONING_CHARS = 60
 
 
-def validate_decision(decision, report, protocol, request, state, bioinfo_reports=()):
-    """Check an orchestrator-authored decision against the allowed envelope.
+def validate_decision(decision, report, protocol, request, state, bioinfo_reports=(),
+                      author='orchestrator_agent'):
+    """Check an authored decision against the allowed envelope.
 
     Returns a list of errors. An empty list means the decision may be committed.
+
+    `author` is who is claiming to have made the choice: 'orchestrator_agent' for
+    a reasoning model, 'policy' for deterministic code. Every other rule here
+    applies identically to both, which is the point - the envelope does not care
+    who is driving, and a deterministic driver gets no easier ride than a model.
     """
     errors = list(K.schema_errors('loop_decision', decision))
     if errors:
@@ -469,8 +569,9 @@ def validate_decision(decision, report, protocol, request, state, bioinfo_report
     elif t not in env['allowed']:
         errors.append(f'{t!r} is not allowed for verdict {env["verdict"]}: '
                       f'{env["forbidden"].get(t, "outside the allowed set")}')
-    if decision.get('authored_by') != 'orchestrator_agent':
-        errors.append("an agent-authored decision must set authored_by to 'orchestrator_agent'")
+    if decision.get('authored_by') != author:
+        errors.append(f'this decision must set authored_by to {author!r} '
+                      f'(got {decision.get("authored_by")!r})')
     if len((decision.get('reasoning') or '').strip()) < REQUIRED_REASONING_CHARS:
         errors.append(f'reasoning must explain the choice in at least {REQUIRED_REASONING_CHARS} characters')
     if decision.get('advances_iteration') != (t in ADVANCING):
@@ -517,8 +618,15 @@ def validate_decision(decision, report, protocol, request, state, bioinfo_report
     return errors
 
 
-def commit_decision(decision, report, protocol, request, state_dir, bioinfo_reports=()):
-    """Validate, gate on autonomy, write immutably and update the ledger."""
+def commit_decision(decision, report, protocol, request, state_dir, bioinfo_reports=(),
+                    author='orchestrator_agent'):
+    """Validate, gate on autonomy, write immutably and update the ledger.
+
+    `author` records who chose: 'orchestrator_agent' when a reasoning model wrote
+    the document, 'policy' when deterministic code did. It is written into the
+    decision and the ledger exactly as given, so a reader can always tell which
+    one produced the reasoning they are reading. It never relaxes a check.
+    """
     state = load_state(state_dir)
     if report['request_id'] != state['request_id']:
         raise K.ContractError('analysis belongs to a different request than this loop')
@@ -534,7 +642,7 @@ def commit_decision(decision, report, protocol, request, state_dir, bioinfo_repo
     d.update({'schema_version': K.PRODUCTION_VERSION, 'decision_id': f'decision-{idx:02d}',
               'loop_id': state['loop_id'], 'iteration': idx, 'analysis_id': report['analysis_id'],
               'protocol_id': protocol['protocol_id'], 'run_id': report['run_id'],
-              'created_at': K.now_iso(), 'authored_by': 'orchestrator_agent',
+              'created_at': K.now_iso(), 'authored_by': author,
               'advances_iteration': d['type'] in ADVANCING,
               'allowed_actions': env['allowed'], 'policy_advice': env['policy_advice'],
               'remaining_iterations': env['budget']['iterations_remaining']})
@@ -545,7 +653,7 @@ def commit_decision(decision, report, protocol, request, state_dir, bioinfo_repo
     d['status'] = 'pending_human' if gated else 'committed'
     d['autonomy'] = {'mode': env['gates']['mode'], 'decision_approval_required': gated,
                      'approved_by': None, 'approved_at': None, 'human_note': None}
-    errors = validate_decision(d, report, protocol, request, state, bioinfo_reports)
+    errors = validate_decision(d, report, protocol, request, state, bioinfo_reports, author=author)
     if errors:
         raise K.ContractError('decision refused: ' + '; '.join(errors[:8]))
     path = Path(state_dir) / 'decisions' / f'{d["decision_id"]}.json'
@@ -559,7 +667,7 @@ def commit_decision(decision, report, protocol, request, state_dir, bioinfo_repo
                                 'protocol_sha256': protocol_sha256(protocol), 'run_id': report['run_id'],
                                 'analysis_id': report['analysis_id'], 'verdict': report['verdict']['status'],
                                 'decision_id': d['decision_id'], 'decision_type': d['type'],
-                                'authored_by': 'orchestrator_agent', 'status': d['status'],
+                                'authored_by': author, 'status': d['status'],
                                 'advances_iteration': d['advances_iteration'],
                                 'decision_path': str(path),
                                 'revision_prompt_path': str(prompt_path) if prompt_path else None})

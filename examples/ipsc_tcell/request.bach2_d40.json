@@ -1,0 +1,96 @@
+{
+  "schema_version": "2.0",
+  "request_id": "ipsc-tcell-bach2-d40-001",
+  "question": "Optimise the conditions for growing wild-type T cells from iPSC, and compare what happens when the T cells carry a BACH2 knockout and must still be expanded. Output the best protocol for each arm.",
+  "product": {
+    "species": "human",
+    "cell_origin": "induced pluripotent stem cell",
+    "target_cell": "T cell",
+    "target_subtype": null,
+    "target_marker": "CD3",
+    "cell_line": null,
+    "culture_format": "suspension_aggregate",
+    "intended_use": "research"
+  },
+  "desired_output": {
+    "metric": "target_cells_per_input_cell",
+    "op": ">=",
+    "value": 25.0,
+    "unit": "cells/input_cell",
+    "at_day": 40,
+    "day_tolerance": 2,
+    "day_origin": "iPSC seeding into the vessel",
+    "basis": "Target set by the requester for this demonstration. Chosen so the designed baseline misses it on both arms, which is what gives the loop something to optimise. It is not derived from any published yield for an iPSC-derived T-lineage process."
+  },
+  "qc_profile": "generic_ipsc_derived_product",
+  "qc_overrides": [
+    {
+      "id": "qc-identity-purity",
+      "value": 60.0,
+      "basis": "Requester's demonstration limit on CD3+ fraction; a real product limit is set by QA."
+    },
+    {
+      "id": "qc-residual-pluripotency",
+      "value": 0.5,
+      "basis": "Requester's demonstration limit on residual undifferentiated iPSC; a real limit depends on assay sensitivity and dose."
+    },
+    {
+      "id": "qc-endotoxin",
+      "value": 0.5,
+      "basis": "Requester's demonstration limit; a real limit follows USP <85> K/M for the intended dose and route."
+    }
+  ],
+  "genotype_arms": [
+    {
+      "arm_id": "WT",
+      "genotype": "wild_type",
+      "gene": null,
+      "modification": null,
+      "zygosity": "not_applicable",
+      "line_id": null,
+      "description": "Unedited iPSC line, the control arm"
+    },
+    {
+      "arm_id": "BACH2_KO",
+      "genotype": "knockout",
+      "gene": "BACH2",
+      "modification": "CRISPR-Cas9 frameshift, isogenic to the control line",
+      "zygosity": "homozygous",
+      "line_id": null,
+      "description": "Isogenic BACH2 knockout of the same iPSC line"
+    }
+  ],
+  "current_protocol": null,
+  "measurement_mode": "minimal",
+  "constraints": {
+    "max_culture_days": 60,
+    "xeno_free": true,
+    "gmp_grade_reagents": false,
+    "notes": "Demonstration run against a synthetic stand-in reactor. No wet-lab work is authorised by this request."
+  },
+  "allowed_sources": [
+    "europepmc_open_access",
+    "publisher_records"
+  ],
+  "search_budget": {
+    "max_searches": 12,
+    "max_full_texts": 6
+  },
+  "loop_budget": {
+    "max_iterations": 30
+  },
+  "human_in_the_loop": {
+    "mode": "autonomous",
+    "consults": "high_value",
+    "max_info_actions_per_iteration": 4
+  },
+  "bioreactor_source": "synthetic_standin",
+  "bioinformatics": {
+    "allowed": true,
+    "knowledge_sets": [
+      "tcell_curated_genes",
+      "synthetic_fixture_genes"
+    ],
+    "live_lookups": false
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "label": "HIDDEN TRUTH for the synthetic iPSC -> T-lineage stand-in. The agents never read this file and the dashboard never serves it (its name contains 'truth'). Every number here is INVENTED for software testing. It is not a claim about BACH2, about T-cell development, or about any real cell line. A loop that recovers these values has demonstrated that the workflow can find a per-arm optimum, and nothing whatsoever about biology.",
+  "why_these_knobs": [
+    "Both arms are given optima that do NOT coincide with the designed protocol's doses. The designer had no retrieved numeric value for anything, so a schedule that happened to be optimal would be an artefact of the fixture rather than a test of the loop. Raising IL-7 and the DLL4 surface density helps both arms: those are the shared levers.",
+    "The knockout arm is additionally given a faster differentiation-index accrual and a much lower TCR optimum, so under the control schedule it matures hard, spends its proliferative reserve early, and falls behind late in the expansion window. Softening the TCR pulse and raising IL-7 further are its arm-specific levers.",
+    "That two-tier shape - shared levers first, then arm-specific ones - was chosen because it is what the curated BACH2 annotation's INFERENCE levers predict, so the demonstration is legible.",
+    "That is also exactly why the demonstration proves nothing biological: the stand-in was built to reward the levers the annotation suggests. A real experiment could reward the opposite, and the loop would then have to discover that instead. Treat a recovered value as evidence that the search works, never as evidence about BACH2."
+  ],
+  "arms": {
+    "WT": {
+      "genotype_mu_ratio": 1.0,
+      "genotype_commitment_ratio": 1.0,
+      "genotype_differentiation_ratio": 1.0,
+      "tcr_optimum": 50.0,
+      "tcr_tol": 38.0,
+      "refractory_fraction": 0.05,
+      "dll4_optimum": 800.0,
+      "factor_optima": {
+        "il7": 16.0,
+        "il15": 12.0,
+        "il2": 50.0
+      }
+    },
+    "BACH2_KO": {
+      "genotype_mu_ratio": 1.0,
+      "genotype_commitment_ratio": 0.92,
+      "genotype_differentiation_ratio": 1.6,
+      "tcr_optimum": 18.0,
+      "tcr_tol": 16.0,
+      "refractory_fraction": 0.05,
+      "dll4_optimum": 800.0,
+      "factor_optima": {
+        "il7": 28.0,
+        "il15": 14.0,
+        "il2": 50.0
+      }
+    }
+  }
+}
