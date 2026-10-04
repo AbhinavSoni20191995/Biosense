@@ -2,8 +2,8 @@
 
 <img src="webapp/assets/biosense-logo.png" alt="BioSenseAI" width="300">
 
-### Ask a cell-production question in plain language.
-### Watch agents work it. Read why every choice was made.
+### Accelerating cell-based therapy with agentic orchestration and real time evidence detection.
+### Define your purpose. Watch agents work it. Read why every choice was made.
 
 <a href="docs/RUN_ON_YOUR_PC.md"><b>Run it on your PC</b></a> ·
 <a href="docs/IPSC_TCELL_EXAMPLE.md"><b>Worked example</b></a> ·
