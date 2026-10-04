@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/literature-handoff-v0.1",
+  "title": "Candidate literature handoff; not an approved simulator configuration",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "request_id",
+    "ready_for_simulation",
+    "claims",
+    "candidate_parameters",
+    "conflicts",
+    "missing_required_parameters",
+    "selected_parameters"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "ready_for_simulation": {
+      "const": false
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/claim"
+      }
+    },
+    "candidate_parameters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/claim"
+      }
+    },
+    "conflicts": {
+      "type": "array"
+    },
+    "missing_required_parameters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "selected_parameters": {
+      "type": "array",
+      "maxItems": 0
+    }
+  },
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "required": [
+        "id",
+        "protocol_id",
+        "parameter",
+        "stage",
+        "role",
+        "value",
+        "unit",
+        "context",
+        "condition_signature",
+        "evidence",
+        "notes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "protocol_id": {
+          "type": "string"
+        },
+        "parameter": {
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "cardiac_differentiation",
+            "ipsc_expansion",
+            "purification",
+            "recovery"
+          ]
+        },
+        "role": {
+          "enum": [
+            "geometry",
+            "initial_condition",
+            "kinetic_parameter",
+            "operating_condition",
+            "outcome",
+            "schedule"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "unit": {
+          "enum": [
+            "%",
+            "%air_saturation",
+            "1/day",
+            "1/h",
+            "L",
+            "cells/L",
+            "cells/cm2",
+            "cells/mL",
+            "day",
+            "degC",
+            "dimensionless",
+            "fraction",
+            "g/L",
+            "g/L/day",
+            "g/cell/day",
+            "h",
+            "mL",
+            "mM",
+            "mg/mL",
+            "mm",
+            "mm2",
+            "pH",
+            "rpm",
+            "text",
+            "uM",
+            "um"
+          ]
+        },
+        "status": {
+          "const": "reported"
+        },
+        "condition_signature": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "context": {
+          "type": "object",
+          "required": [
+            "species",
+            "cell_origin",
+            "target_cell",
+            "cell_line",
+            "culture_format",
+            "medium",
+            "time_origin",
+            "time_window"
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "required": [
+            "source_id",
+            "paragraph_id",
+            "quote"
+          ],
+          "properties": {
+            "source_id": {
+              "type": "string"
+            },
+            "paragraph_id": {
+              "type": "string"
+            },
+            "quote": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

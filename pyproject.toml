@@ -1,0 +1,9 @@
+[project]
+name = "biosense-literature-agent"
+version = "0.1.0"
+description = "Evidence extraction tools for an Omnigent iPSC literature agent"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false

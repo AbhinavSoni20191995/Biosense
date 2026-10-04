@@ -1,0 +1,25 @@
+{
+  "request_id": "cardiac-001",
+  "objective": "Find evidence-backed simulator inputs for human iPSC expansion followed by cardiomyocyte differentiation",
+  "stages": ["ipsc_expansion", "cardiac_differentiation"],
+  "constraints": {
+    "species": "human",
+    "cell_origin": "iPSC",
+    "target_cell": "cardiomyocyte",
+    "cell_line": null,
+    "culture_format": null,
+    "parameter_limits": {}
+  },
+  "target_subtype": "unspecified",
+  "allowed_sources": ["Europe PMC", "PubMed", "primary publisher", "user-supplied papers"],
+  "search_budget": {"max_searches": 6, "max_full_texts": 8},
+  "required_parameters": [
+    "ipsc_expansion:duration",
+    "ipsc_expansion:initial_cell_density",
+    "ipsc_expansion:maximum_growth_rate",
+    "ipsc_expansion:cell_specific_glucose_uptake",
+    "cardiac_differentiation:duration",
+    "cardiac_differentiation:CHIR99021_concentration",
+    "cardiac_differentiation:differentiation_transition_rate"
+  ]
+}

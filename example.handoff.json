@@ -1,0 +1,268 @@
+{
+  "schema_version": "0.1",
+  "request_id": "cardiac-001",
+  "ready_for_simulation": false,
+  "readiness_reason": "Candidate evidence only: semantic review, protocol selection and model mapping are required.",
+  "source_manifest": [
+    {
+      "id": "PMC7076930",
+      "url": "https://europepmc.org/articles/PMC7076930",
+      "sha256": "b5c628b5335db05a1facae5d71d01c0ce4b875e926ded4bd937c76e3606b75ca",
+      "retrieved_at": "2026-10-04T00:10:06.852443+00:00",
+      "article_type": "research-article",
+      "supplement_count": 8,
+      "supplements_retrieved": false
+    }
+  ],
+  "candidate_protocols": [
+    {
+      "protocol_id": "Laco2020_FR202_integrated",
+      "contexts": [
+        {
+          "species": "human",
+          "cell_origin": "iPSC",
+          "target_cell": "cardiomyocyte",
+          "cell_line": "FR202",
+          "culture_format": "stirred_tank_microcarrier",
+          "medium": "mTeSR1",
+          "time_origin": "stage_start",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "iPSC",
+          "target_cell": "cardiomyocyte",
+          "cell_line": "FR202",
+          "culture_format": "stirred_tank_microcarrier",
+          "medium": "RPMI/B27 without insulin",
+          "time_origin": "stage_start",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "iPSC",
+          "target_cell": "cardiomyocyte",
+          "cell_line": "FR202",
+          "culture_format": "stirred_tank_microcarrier",
+          "medium": "RPMI/B27 without insulin",
+          "time_origin": "stage_start",
+          "time_window": null
+        },
+        {
+          "species": "human",
+          "cell_origin": "iPSC",
+          "target_cell": "cardiomyocyte",
+          "cell_line": "FR202",
+          "culture_format": "stirred_tank_microcarrier",
+          "medium": "RPMI/B27 without insulin",
+          "time_origin": "stage_start",
+          "time_window": null
+        }
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "expansion_duration",
+      "protocol_id": "Laco2020_FR202_integrated",
+      "parameter": "duration",
+      "stage": "ipsc_expansion",
+      "role": "schedule",
+      "value": 5,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "mTeSR1",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "condition_signature": "phase_duration",
+      "status": "reported",
+      "evidence": {
+        "source_id": "PMC7076930",
+        "paragraph_id": "p0030",
+        "quote": "5 days"
+      },
+      "notes": "Partial manually verified extraction; retain source context; not an optimized setting."
+    },
+    {
+      "id": "differentiation_duration",
+      "protocol_id": "Laco2020_FR202_integrated",
+      "parameter": "duration",
+      "stage": "cardiac_differentiation",
+      "role": "schedule",
+      "value": 9,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "RPMI/B27 without insulin",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "condition_signature": "phase_duration",
+      "status": "reported",
+      "evidence": {
+        "source_id": "PMC7076930",
+        "paragraph_id": "p0030",
+        "quote": "9 days"
+      },
+      "notes": "Partial manually verified extraction; retain source context; not an optimized setting."
+    },
+    {
+      "id": "CHIR_methods",
+      "protocol_id": "Laco2020_FR202_integrated",
+      "parameter": "CHIR99021_concentration",
+      "stage": "cardiac_differentiation",
+      "role": "operating_condition",
+      "value": 10,
+      "unit": "uM",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "RPMI/B27 without insulin",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "condition_signature": "initial_Wnt_activation",
+      "status": "reported",
+      "evidence": {
+        "source_id": "PMC7076930",
+        "paragraph_id": "p0012",
+        "quote": "10 μM"
+      },
+      "notes": "Partial manually verified extraction; retain source context; not an optimized setting."
+    },
+    {
+      "id": "CHIR_results",
+      "protocol_id": "Laco2020_FR202_integrated",
+      "parameter": "CHIR99021_concentration",
+      "stage": "cardiac_differentiation",
+      "role": "operating_condition",
+      "value": 12,
+      "unit": "uM",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "RPMI/B27 without insulin",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "condition_signature": "initial_Wnt_activation",
+      "status": "reported",
+      "evidence": {
+        "source_id": "PMC7076930",
+        "paragraph_id": "p0033",
+        "quote": "12 μM CHIR99021"
+      },
+      "notes": "Partial manually verified extraction; retain source context; not an optimized setting."
+    }
+  ],
+  "rejected_claims": [],
+  "excluded_claims": [],
+  "conflicts": [
+    {
+      "protocol_id": "Laco2020_FR202_integrated",
+      "stage": "cardiac_differentiation",
+      "parameter": "CHIR99021_concentration",
+      "claim_ids": [
+        "CHIR_methods",
+        "CHIR_results"
+      ],
+      "resolution": "unresolved; do not average or reinterpret as a tested range"
+    }
+  ],
+  "candidate_parameters": [
+    {
+      "id": "expansion_duration",
+      "protocol_id": "Laco2020_FR202_integrated",
+      "parameter": "duration",
+      "stage": "ipsc_expansion",
+      "role": "schedule",
+      "value": 5,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "mTeSR1",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "condition_signature": "phase_duration",
+      "status": "reported",
+      "evidence": {
+        "source_id": "PMC7076930",
+        "paragraph_id": "p0030",
+        "quote": "5 days"
+      },
+      "notes": "Partial manually verified extraction; retain source context; not an optimized setting."
+    },
+    {
+      "id": "differentiation_duration",
+      "protocol_id": "Laco2020_FR202_integrated",
+      "parameter": "duration",
+      "stage": "cardiac_differentiation",
+      "role": "schedule",
+      "value": 9,
+      "unit": "day",
+      "context": {
+        "species": "human",
+        "cell_origin": "iPSC",
+        "target_cell": "cardiomyocyte",
+        "cell_line": "FR202",
+        "culture_format": "stirred_tank_microcarrier",
+        "medium": "RPMI/B27 without insulin",
+        "time_origin": "stage_start",
+        "time_window": null
+      },
+      "condition_signature": "phase_duration",
+      "status": "reported",
+      "evidence": {
+        "source_id": "PMC7076930",
+        "paragraph_id": "p0030",
+        "quote": "9 days"
+      },
+      "notes": "Partial manually verified extraction; retain source context; not an optimized setting."
+    }
+  ],
+  "missing_required_parameters": [
+    "ipsc_expansion:initial_cell_density",
+    "ipsc_expansion:maximum_growth_rate",
+    "ipsc_expansion:cell_specific_glucose_uptake",
+    "cardiac_differentiation:CHIR99021_concentration",
+    "cardiac_differentiation:differentiation_transition_rate"
+  ],
+  "selected_parameters": [],
+  "optimization_domains": [],
+  "search_log": [
+    {
+      "query": "DOI:10.1186/s13287-020-01618-6",
+      "source": "Europe PMC",
+      "pmcid": "PMC7076930",
+      "scope": "Four manually reviewed claims from one accessible full text; not an exhaustive parameter search."
+    }
+  ],
+  "search_complete": false,
+  "limitations": [
+    "No automatic kinetic inference from endpoint purity.",
+    "Numeric/quote correctness and biological applicability need semantic review.",
+    "No optimal or safe operating range inferred from a reported setting.",
+    "Supplementary evidence is not retrieved by fetch_full_text."
+  ]
+}
