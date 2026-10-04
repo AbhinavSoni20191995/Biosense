@@ -22,7 +22,12 @@ How much the person stays in the loop is one setting (`full`, `checkpoints`,
 
 ## Ask it something
 
+Step-by-step setup for your own machine, Windows included:
+[docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md). The short version, once
+[uv](https://docs.astral.sh/uv/) is installed:
+
 ```bash
+uv sync --locked
 uv run --frozen python -m biosense.production.app --runs runs --static webapp
 ```
 

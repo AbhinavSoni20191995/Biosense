@@ -34,6 +34,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -779,20 +780,58 @@ def build_comparative_report(loop_dirs, title='Comparative reasoning report', in
 
 # ── output ──────────────────────────────────────────────────
 
+# Where a Chromium-family browser normally lives, per platform. Any of them can
+# print the report; the PDF is identical whichever one does it.
+_BROWSER_PATHS = {
+    'darwin': (
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+    ),
+    'win32': (
+        r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+        r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
+    ),
+    'linux': (
+        '/opt/pw-browsers/chromium',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        '/snap/bin/chromium',
+    ),
+}
+
+
 def _chromium():
-    for name in ('chromium', 'chromium-browser', 'google-chrome', 'chrome'):
+    """A Chromium-family browser that can print to PDF, or None.
+
+    Looked up on PATH first, then in the platform's usual install locations,
+    because on Windows and macOS a browser is normally installed somewhere PATH
+    does not reach. BIOSENSE_CHROME overrides everything, for a browser kept
+    somewhere unusual.
+    """
+    override = os.environ.get('BIOSENSE_CHROME')
+    if override and Path(override).is_file():
+        return override
+    for name in ('chromium', 'chromium-browser', 'google-chrome', 'chrome',
+                 'google-chrome-stable', 'msedge'):
         p = shutil.which(name)
         if p:
             return p
-    for p in ('/opt/pw-browsers/chromium', '/usr/bin/chromium'):
+    for p in _BROWSER_PATHS.get(sys.platform, _BROWSER_PATHS['linux']):
         if Path(p).is_file() and os.access(p, os.X_OK):
             return p
     # Playwright's bundled builds live in versioned directories.
     root = Path(os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers'))
     if root.is_dir():
-        for cand in sorted(root.glob('chromium*/chrome-linux/chrome')):
-            if os.access(cand, os.X_OK):
-                return str(cand)
+        for pattern in ('chromium*/chrome-linux/chrome', 'chromium*/chrome-win/chrome.exe',
+                        'chromium*/chrome-mac/Chromium.app/Contents/MacOS/Chromium'):
+            for cand in sorted(root.glob(pattern)):
+                if os.access(cand, os.X_OK):
+                    return str(cand)
     return None
 
 
