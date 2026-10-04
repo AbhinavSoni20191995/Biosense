@@ -25,6 +25,44 @@ Language models are good at the reading and the reasoning. They are **not** good
 at being trusted with the arithmetic, the pass/fail calls, or the authority to
 spend a week of someone's cells. So this project splits those jobs apart.
 
+## What BioSense is for
+
+The bottleneck in cell-based therapy is not ideas — it is that biological
+manufacturing and experimental optimisation stay slow, fragmented and
+trial-and-error, with the literature, the datasets, the process variables and the
+measurements all living in different places and joined up by hand.
+
+BioSense turns a high-level biological objective into an iterative
+**design → run → measure → decide** workflow:
+
+- **One objective in, a loop out.** A scientist states the aim and the
+  constraints once; the system turns that into protocols, runs, measurements and
+  the decision about what to change next.
+- **Specialised agents, orchestrated.** Separate agents for literature evidence,
+  bioinformatics, data analysis, simulation and experimental planning, each doing
+  one job and handing on a checkable document. *(All five ship in
+  [`discovery_loop/`](discovery_loop/).)*
+- **Prior knowledge combined with new results.** Every iteration carries the
+  cited evidence and the annotations forward, alongside what the last run
+  actually measured.
+- **Measurement-driven, not schedule-driven.** Sensor and analytical channels —
+  viable cell density, viability, glucose, lactate, marker purity, release tests
+  — feed the analysis, which decides whether the data can even carry a
+  conclusion before it decides anything else.
+- **The scientist stays in the loop by design.** Ask a question, define the
+  desired outcome, review the assumptions and the reasoning. The complexity sits
+  underneath; the judgement stays with the person.
+- **Fewer wasted iterations.** The search reverts anything that does not beat an
+  arm's best result, so a run is never spent re-walking ground already covered.
+
+**The long-term goal** is a closed-loop discovery and manufacturing system that
+learns from every experiment and helps move safer, more effective cell therapies
+to patients faster. Three pieces of that are *not* built yet, and the repository
+does not pretend otherwise: the loop runs against a **synthetic stand-in, not a
+real bioreactor**; **live model-driven orchestration has not been run**; and each
+loop starts fresh, so there is **no learning carried across runs**. Everything
+below describes what actually runs today.
+
 ## The idea, in one picture
 
 **The agent chooses. Separate, deterministic code decides what it is allowed to
