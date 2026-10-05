@@ -108,7 +108,7 @@ Open **<http://127.0.0.1:8000>** and type a question.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/console-dark.png">
-  <img alt="The BioSense console: a question box, the result as large numbers per arm, a search-trajectory chart, and an export button for the full report." src="docs/assets/console-light.png" width="100%">
+  <img alt="The BioSense console: a four-way nav across AI Discovery, Simulator, Data and Runs; a question box; the hypothesis card in the wide column showing M-CSF 25 to 50 ng per mL with every expected effect badged DERIVED or SIMULATED; and a sidebar of collapsible panels for the record, the datasets and earlier runs." src="docs/assets/console-light.png" width="100%">
 </picture>
 
 While it runs, the agents announce what they are doing:
@@ -193,12 +193,37 @@ What runs today, and what is only declared:
   <img alt="Generic statistics, processed flow cytometry and a screening bulk expression comparison run today, as does single-cell pseudobulk once its optional extra is installed and peak overlap over called ATAC or ChIP peaks. Raw FCS, FlowSOM and UMAP are declared but not written. DESeq2 is implemented behind the external-tool adapter and needs Rscript. Each box is marked Phase 1, Phase 2, Needs R or Planned." src="docs/assets/arch-capabilities-light.svg" width="100%">
 </picture>
 
+The **Data** page answers the three questions people ask before starting: what
+data is here, what analysis can run, and which processes BioSense knows how to
+tune. The four capability states read differently on purpose — *runs here*,
+*needs an install*, *needs a program*, *not written yet* — because only the last
+has no remedy.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/data-panel-dark.png">
+  <img alt="The Data page: registered datasets each badged public or private; the analyses that can run here badged RUNS HERE; and the analyses that cannot, badged NEEDS AN INSTALL, NEEDS A PROGRAM or NOT WRITTEN YET, each with the reason beside it." src="docs/assets/data-panel-light.png" width="100%">
+</picture>
+
+Each process exposes only its own knobs, with its own limits and the origin of
+any bound narrower than the global one. A parameter the model has no term for is
+marked **not modelled** rather than hidden: it is a real design variable you can
+set in the lab, and what it lacks is a prediction.
+
 ### Every number knows how it was produced
 
 The most dangerous thing a system like this could do is let a simulated figure
 and a measured one sit side by side looking alike. So the estimate type travels
 with each number rather than with the card, report or hypothesis holding it, and
 a comparison takes the weaker of its two inputs.
+
+The hypothesis card is where that shows up: the badge sits beside each number,
+because one card holds a measured baseline and a simulated candidate at once and
+a single badge over both would be a claim about neither.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hypothesis-card-dark.png">
+  <img alt="A hypothesis card: raise M-CSF from 25 to 50 nanograms per millilitre. Each expected effect shows percentage points and relative change as two separate figures, with its own badge reading DERIVED or SIMULATED. Below, the evidence rows carry class badges, then the recommended next experiment, then a note that the public benchmark runs on invented fixtures and none of its numbers measures any real cell." src="docs/assets/hypothesis-card-light.png" width="700">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-provenance-dark.svg">
@@ -308,7 +333,7 @@ instrument readings each condition produces.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/simulator-dark.png">
-  <img alt="Simulator mode: setpoint sliders grouped by stage, a side and top view of the vessel with aggregates sized from the imaging channels, a day timeline, and the day's instrument readings." src="docs/assets/simulator-light.png" width="100%">
+  <img alt="Simulator mode: a process selector above setpoint sliders grouped by stage, control and candidate presets, a side and top view of the vessel with aggregates sized from the imaging channels, a day timeline, and the day's instrument readings." src="docs/assets/simulator-light.png" width="100%">
 </picture>
 
 Nothing in the drawing is decorative: circle size is the measured aggregate
@@ -325,6 +350,16 @@ Hold two conditions, compare them, and carry one into a loop run — where every
 quantity arrives as a **`design_choice`**, the provenance class that blocks the
 wet lab until a named reviewer accepts it. A sandbox cannot launder a number
 into a protocol.
+
+Choosing a process this model is not for does **not** render borrowed sliders.
+It lists that project's own knobs read-only and says why there is no trajectory:
+an M-CSF control on a CAR-T process would invite a setpoint nobody can run, and
+a prediction for it would be invented outright.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/simulator-no-model-dark.png">
+  <img alt="The simulator with the CAR-T process selected: no sliders, a note saying this process has no mechanistic model at all and that borrowing another process's model would produce a number rather than an answer, and below it the eight CAR-T knobs listed read-only with their ranges." src="docs/assets/simulator-no-model-light.png" width="520">
+</picture>
 
 Details, including what it does **not** model →
 **[docs/SIMULATOR_MODE.md](docs/SIMULATOR_MODE.md)**
@@ -416,7 +451,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 677 tests
+uv run --frozen python -m unittest     # 680 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 

@@ -72,6 +72,22 @@ body[data-view="simple"] .tech{display:none}
 .stack{display:flex;flex-direction:column;gap:20px;min-width:0}
 
 .card{padding:20px 22px}
+
+/* ── collapsible sidebar panels ──────────────────────────── */
+/* Four panels stacked open made the column a wall. The heading becomes the
+   control, so the whole row is the hit target rather than a small chevron, and
+   the state is remembered per panel: someone who opens Earlier runs is usually
+   about to open it again. */
+.fold > .head{cursor:pointer;user-select:none;margin-bottom:0}
+.fold[data-open="1"] > .head{margin-bottom:14px}
+.fold > .head h3::before{content:"\25B8";display:inline-block;width:1em;
+  font-size:.78em;color:var(--ink-3);transition:transform .15s ease;
+  transform:translateY(-1px)}
+.fold[data-open="1"] > .head h3::before{transform:rotate(90deg) translateX(-1px)}
+.fold[data-open="0"] > .head ~ *{display:none}
+.fold > .head:focus-visible{outline:2px solid var(--brand);outline-offset:3px;
+  border-radius:6px}
+@media (prefers-reduced-motion:reduce){.fold > .head h3::before{transition:none}}
 .card > .head{display:flex;justify-content:space-between;align-items:baseline;
   gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .card h3{font-size:16.5px}
@@ -285,6 +301,12 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <details><summary>Show as a table</summary><div id="chartTable"></div></details>
     </section>
 
+    <section class="glass card" id="hypPanel">
+      <div class="head"><h3>Hypotheses</h3><span class="hint" id="hypHint">evidence, not a decision</span></div>
+      <div id="hyps" class="dim">loading…</div>
+      <p class="caveat" id="hypNote"></p>
+    </section>
+
   </div>
 
   <div class="stack">
@@ -294,31 +316,25 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div id="result" style="margin-top:15px"></div>
     </section>
 
-    <section class="glass card">
+    <section class="glass card fold" data-open="1">
       <div class="head"><h3>Record</h3><span class="hint" id="evCount"></span></div>
       <div class="feed" id="feed">
         <p class="dim">Nothing running yet. Type a question and press <b>Run the loop</b>.</p>
       </div>
     </section>
 
-    <section class="glass card" id="dataPanel">
+    <section class="glass card fold" id="dataPanel" data-open="0">
       <div class="head"><h3>Data</h3><span class="hint" id="dataHint">public only</span></div>
       <div id="datasets" class="dim">loading…</div>
       <p class="caveat" id="dataNote"></p>
     </section>
 
-    <section class="glass card" id="hypPanel">
-      <div class="head"><h3>Hypotheses</h3><span class="hint" id="hypHint">evidence, not a decision</span></div>
-      <div id="hyps" class="dim">loading…</div>
-      <p class="caveat" id="hypNote"></p>
-    </section>
-
-    <section class="glass card" id="analysisPanel" hidden>
+    <section class="glass card fold" id="analysisPanel" data-open="1" hidden>
       <div class="head"><h3>Analyses</h3><span class="hint">evidence, not decisions</span></div>
       <div id="analyses"></div>
     </section>
 
-    <section class="glass card">
+    <section class="glass card fold" data-open="0">
       <div class="head"><h3>Earlier runs</h3><span class="hint">read-only</span></div>
       <div id="loops" class="dim">loading…</div>
     </section>
@@ -1020,6 +1036,33 @@ async function loadHypotheses() {
   } catch (_) { box.textContent = 'the hypothesis service did not answer'; }
 }
 loadHypotheses();
+
+/* ── folding panels ───────────────────────────────────────── */
+(function () {
+  const KEY = 'bs-folds';
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (_) {}
+
+  document.querySelectorAll('.fold').forEach((sec, i) => {
+    const head = sec.querySelector('.head');
+    const id = sec.id || 'fold' + i;
+    if (id in saved) sec.dataset.open = saved[id] ? '1' : '0';
+    head.setAttribute('role', 'button');
+    head.setAttribute('tabindex', '0');
+    const sync = () => head.setAttribute('aria-expanded', sec.dataset.open === '1');
+    sync();
+    const toggle = () => {
+      sec.dataset.open = sec.dataset.open === '1' ? '0' : '1';
+      sync();
+      saved[id] = sec.dataset.open === '1';
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (_) {}
+    };
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+})();
 
 /* Simple and Technical are the same facts at two levels of detail, never two
    sets of facts: Technical adds ids and provenance lines, and hides nothing. */

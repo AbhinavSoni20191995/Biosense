@@ -659,6 +659,31 @@ class AppServerTests(unittest.TestCase):
             if q.get('candidate_value') is not None:
                 self.assertNotEqual(q['candidate_value'], q.get('current_value'))
 
+    def test_the_hypothesis_card_sits_in_the_wide_column(self):
+        """It is the widest thing on the page and the part people read most
+        closely, so it belongs beside the question rather than fifth in a
+        sidebar."""
+        code, body = self._get('/console.html')
+        text = body.decode()
+        cols = text.index('class="cols"')
+        stacks = [text.index('<div class="stack">', cols)]
+        stacks.append(text.index('<div class="stack">', stacks[0] + 1))
+        self.assertLess(text.index('id="hypPanel"'), stacks[1],
+                        'the hypothesis panel is in the sidebar, not the wide column')
+
+    def test_the_sidebar_panels_fold(self):
+        """Four panels stacked open made the column a wall."""
+        code, body = self._get('/console.html')
+        text = body.decode()
+        self.assertEqual(4, text.count('class="glass card fold"'))
+        # the heading is the control, so the whole row is the hit target
+        self.assertIn(".fold > .head{cursor:pointer", text)
+        self.assertIn("head.setAttribute('role', 'button')", text)
+        self.assertIn("aria-expanded", text)
+        # and it is reachable without a mouse
+        self.assertIn("head.setAttribute('tabindex', '0')", text)
+        self.assertIn("e.key === 'Enter'", text)
+
     def test_the_four_way_nav_is_the_same_on_every_page(self):
         """A nav that differs per page is how a section quietly becomes
         unreachable from the one place someone looks for it."""

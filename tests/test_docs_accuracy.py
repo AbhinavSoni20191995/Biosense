@@ -56,6 +56,34 @@ class DiagramTests(unittest.TestCase):
             self.assertIn(f'arch-{name}-light.svg', docs, name)
             self.assertIn(f'arch-{name}-dark.svg', docs, f'{name} has no dark-mode source')
 
+    def test_every_screenshot_is_generated_shown_and_paired(self):
+        """The screenshots went stale once because they were taken by hand and
+        nothing noticed. They have a generator now; this is the other half.
+
+        Checks the three ways the set can rot: a shot the generator makes that no
+        document shows, a shot a document asks for that the generator does not
+        make, and a light shot with no dark counterpart.
+        """
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'make_screenshots', K.ROOT / 'scripts' / 'make_screenshots.py')
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        docs = '\n'.join(p.read_text() for p in
+                         [K.ROOT / 'README.md'] + sorted((K.ROOT / 'docs').glob('*.md')))
+        for name in mod.SHOTS:
+            for theme in ('light', 'dark'):
+                f = ASSETS / f'{name}-{theme}.png'
+                self.assertTrue(f.is_file(), f'{f.name} has never been generated')
+                self.assertGreater(f.stat().st_size, 5000, f.name)
+            self.assertIn(f'{name}-light.png', docs, f'{name} is generated but shown nowhere')
+            self.assertIn(f'{name}-dark.png', docs, f'{name} has no dark-mode source')
+
+        for ref in set(re.findall(r'docs/assets/([a-z0-9-]+)-light\.png', docs)):
+            self.assertIn(ref, mod.SHOTS,
+                          f'{ref} is in the docs but nothing regenerates it')
+
     def test_every_diagram_carries_an_accessible_description(self):
         for name in DIAGRAMS:
             svg = (ASSETS / f'arch-{name}-light.svg').read_text()
