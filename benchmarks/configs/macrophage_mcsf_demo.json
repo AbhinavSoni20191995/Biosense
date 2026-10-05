@@ -1,0 +1,35 @@
+{
+  "schema_version": "2.0",
+  "benchmark_id": "macrophage_mcsf_demo",
+  "title": "Is M-CSF limiting monocyte output?",
+  "description": "The public demonstration. It runs the whole BioSense flow over committed SYNTHETIC fixtures: a named uncertainty, a processed flow-cytometry comparison, a quantified hypothesis, a candidate parameter, the project's mechanistic simulator, and a recommended next experiment. Every number is traceable; none is a measurement of any real cell.",
+  "project_id": "ipsc_macrophage",
+  "objective": "Increase viable macrophage production while maintaining macrophage identity and viability.",
+  "mode": "offline",
+  "export_policy": "public_safe",
+  "research_context": {
+    "strictness": "prefer",
+    "species": ["human"],
+    "cell_types": ["monocyte", "macrophage", "iPSC-derived monocyte"],
+    "states": ["differentiating", "mature"],
+    "exclude": ["mouse-only evidence"]
+  },
+  "datasets": ["facs-mcsf-fixture"],
+  "expert_knowledge": [],
+  "uncertainty": {
+    "kind": "evidence_gap",
+    "ref": "GAP-mcsf-dose",
+    "statement": "Nothing in this project says whether the current M-CSF concentration is limiting the monocyte yield, so a revision would move it blind."
+  },
+  "candidate_values": {"mcsf_ng_ml": 50, "temperature_c": 38},
+  "expected_capabilities": [
+    "objective_interpreted", "project_selected", "research_context_applied",
+    "uncertainty_identified", "evidence_collected", "analysis_plan_produced",
+    "deterministic_analysis_executed", "provenance_complete", "hypothesis_generated",
+    "quantitative_effect_supported", "candidate_parameter_generated",
+    "simulator_coverage_checked", "simulator_handoff", "predicted_improvement_generated",
+    "next_experiment_generated", "plain_language_generated", "privacy_validated"
+  ],
+  "seed": 7,
+  "notes": "SYNTHETIC DEMONSTRATION. The FACS table is invented data committed as a fixture, and the simulator is a mechanistic stand-in, not a validated digital twin."
+}

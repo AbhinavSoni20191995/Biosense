@@ -64,6 +64,49 @@ def _canon(x):
     return f'{float(x):.6g}'
 
 
+def _tolerance(raw):
+    """How far a written numeral may legitimately sit from the fact behind it.
+
+    Exact rounding semantics: a numeral written to two decimal places stands for
+    any value within half of the last place, so "41.18" covers [41.175, 41.185)
+    and "41" covers [40.5, 41.5). Significant-figure tolerance was tried first
+    and was far too loose -- it let "40" match 41.18 by rounding to one figure,
+    which is precisely the invented number this guard exists to catch.
+    """
+    s = raw.lstrip('+-').lower()
+    exp = 0
+    if 'e' in s:
+        s, _, e = s.partition('e')
+        exp = int(e)
+    decimals = len(s.split('.')[1]) if '.' in s else 0
+    return 0.5 * (10.0 ** (-decimals)) * (10.0 ** exp)
+
+
+def _matches(raw, values):
+    """Does a written numeral correspond to one of *values*?
+
+    Exact first, then within the rounding tolerance the numeral itself claims.
+    A text that says 41.18 where the fact is 41.181666 is rounding; a text that
+    says 40 is inventing. The guard has to allow the first and catch the second,
+    or every renderer would have to emit full float precision to stay honest.
+    """
+    try:
+        x = float(raw)
+    except ValueError:
+        return False
+    if _canon(x) in values or _canon(abs(x)) in values:
+        return True
+    tol = _tolerance(raw)
+    for v in values:
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if abs(fv - x) <= tol or abs(abs(fv) - abs(x)) <= tol:
+            return True
+    return False
+
+
 def facts_from_estimate(e, prefix='est'):
     """Every number an Estimate licenses prose to mention."""
     out = []
@@ -143,14 +186,7 @@ def validate(text, facts, *, allow=()):
     problems = []
     for m in _NUM.finditer(text or ''):
         raw = m.group(0)
-        try:
-            c = _canon(float(raw))
-        except ValueError:
-            continue
-        if c in known:
-            continue
-        # a bare sign-stripped match of a known fact is still that fact
-        if _canon(abs(float(raw))) in known:
+        if _matches(raw, known):
             continue
         problems.append(f'{raw!r} appears in the text but in no structured fact')
     low = (text or '').lower()

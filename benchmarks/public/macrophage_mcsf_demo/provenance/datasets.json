@@ -1,0 +1,16 @@
+[
+  {
+    "dataset_id": "facs-mcsf-fixture",
+    "title": "SYNTHETIC: processed FACS populations under two M-CSF conditions",
+    "source": "fixture",
+    "accession": null,
+    "visibility": "public",
+    "evidence_class": "synthetic_fixture",
+    "modality": "cytometry_summary",
+    "checksums": [
+      "78c05af0992cdbdce9f3164f24d9cd0fc4489e432a5082a7e6312029f694af6b"
+    ],
+    "context_match": "in_context",
+    "context_note": "matched on what was stated; state not stated"
+  }
+]

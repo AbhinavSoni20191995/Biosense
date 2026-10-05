@@ -1,0 +1,13 @@
+{
+  "tool_versions": {
+    "cytometry.population_comparison": "1.0.0"
+  },
+  "simulator": {
+    "model_id": "ipsc_monocyte_v1",
+    "model_version": "1.0.0",
+    "status": "current",
+    "label": "iPSC → monocyte mechanistic stand-in",
+    "evidence_status": "synthetic_demonstration",
+    "not_modelled_note": "Temperature, medium composition beyond glucose/lactate/ammonia, and any factor without a term in the model produce no prediction."
+  }
+}

@@ -1,0 +1,18 @@
+capability,status,detail
+objective_interpreted,PASS,objective: Increase viable macrophage production while maintaining macrophage identity and viability.
+project_selected,PASS,"ipsc_macrophage v1.0.0: 12 parameters, 7 readouts, simulator current"
+research_context_applied,PASS,"Species: human · Cell type: monocyte, macrophage, iPSC-derived monocyte · State: differentiating, mature · Excluded: mouse-only evidence. In-scope evidence ranks first; out-of-scope evidence is shown separately and labelled a context mismatch."
+uncertainty_identified,PASS,"evidence_gap GAP-mcsf-dose: Nothing in this project says whether the current M-CSF concentration is limiting the monocyte yield, so a revision would move it blind."
+evidence_collected,PASS,"1 dataset(s), 0 internal knowledge item(s)"
+analysis_plan_produced,PASS,"1 plan(s), each citing GAP-mcsf-dose"
+deterministic_analysis_executed,PASS,cytometry.population_comparison v1.0.0 over facs-mcsf-fixture
+provenance_complete,PASS,"every analysis carries code hash, plan hash and input checksums"
+candidate_parameter_generated,PASS,"mcsf_ng_ml (increase), temperature_c (revisit)"
+simulator_coverage_checked,PASS,"1 modelled, 1 not modelled; every candidate accounted for"
+simulator_handoff,PASS,simulated: Every number in `effects` was produced by the project's mechanistic stand-in and is labelled SIMULATED. It is not a meas
+predicted_improvement_generated,PASS,"7 predicted effect(s), all labelled SIMULATED"
+hypothesis_generated,PASS,HYP-macrophage_mcsf_demo-01
+quantitative_effect_supported,PASS,at least one effect carries a magnitude with provenance
+next_experiment_generated,PASS,"Test M-CSF at 20, 50, 80 ng/mL against the current process, measuring monocytes per input ipsc, harvested cells, final viability."
+plain_language_generated,PASS,"8 step(s), every number resolving to a structured fact"
+privacy_validated,PASS,no private lineage; safe to publish

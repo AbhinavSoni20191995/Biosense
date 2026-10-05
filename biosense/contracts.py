@@ -54,7 +54,12 @@ SCHEMAS = {
     'quantified_hypothesis': 'quantified_hypothesis.schema.json',
     'research_context': 'research_context.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',
+    # benchmarks: a reproducible demonstration and its capability scorecard
+    'benchmark_config': 'benchmark_config.schema.json',
+    'benchmark_result': 'benchmark_result.schema.json',
 }
+
+BIOSENSE_VERSION = '0.2.0'
 
 # What a piece of evidence IS, kept separate from where it came from and from who
 # may see it. An analysis computed over a private FACS table is a derived_analysis

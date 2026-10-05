@@ -62,8 +62,20 @@ def context(*, strictness='prefer', species=(), cell_types=(), tissues=(), state
 OPEN = None
 
 
+# Names for one thing. Not a generaliser: every pair here is the SAME entity
+# written two ways, which is why 'Homo sapiens' matching 'human' is correct and
+# 'mouse' matching 'human' is in NEVER_GENERALISE instead.
+SYNONYMS = {
+    'homo sapiens': 'human', 'h. sapiens': 'human', 'hsapiens': 'human',
+    'mus musculus': 'mouse', 'm. musculus': 'mouse',
+    'rattus norvegicus': 'rat',
+    'macaca mulatta': 'rhesus macaque',
+}
+
+
 def _norm(s):
-    return str(s or '').strip().lower()
+    v = str(s or '').strip().lower()
+    return SYNONYMS.get(v, v)
 
 
 def assess(ctx, item):

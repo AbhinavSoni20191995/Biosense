@@ -203,6 +203,77 @@ Full detail → **[docs/BIOINFORMATICS.md](docs/BIOINFORMATICS.md)**
 
 ---
 
+<!-- BENCHMARK:START -->
+
+## A worked demonstration
+
+> **SYNTHETIC DEMONSTRATION.** Every input is an invented fixture committed to this
+> repository and the simulator is a mechanistic stand-in. No number below is a
+> measurement of any real cell.
+
+**Is M-CSF limiting monocyte output?** — project `ipsc_macrophage` v1.0.0, run offline with no model API and no network.
+
+```bash
+uv run --frozen python -m biosense.benchmark.cli run \
+  --config benchmarks/configs/macrophage_mcsf_demo.json
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/workflow-dark.svg">
+  <img alt="The benchmark workflow: objective, uncertainty, evidence, analysis, hypothesis, candidate parameter, simulator, next experiment." src="benchmarks/public/macrophage_mcsf_demo/figures/workflow-light.svg" width="100%">
+</picture>
+
+BioSense started from the objective *"Increase viable macrophage production while maintaining macrophage identity and viability."*, identified the unresolved question `GAP-mcsf-dose`, and planned an analysis against it.
+
+It ran `cytometry.population_comparison` v1.0.0 over `facs-mcsf-fixture`:
+
+- CD14_pos_pct: 41.18 in control vs 67.58 in mcsf_high (+26.4) — *Welch's t-test, p=0.00132, BH-q=0.00176, n=3 vs 3, 95% CI [21.5, 31.5]*
+- CD206_pos_pct: 33.5 in control vs 57.52 in mcsf_high (+24.02) — *Welch's t-test, p=0.000335, BH-q=0.000671, n=3 vs 3, 95% CI [21.4, 26.7]*
+
+### The hypothesis it formed
+
+Changing M-CSF may improve the objective: Increase viable macrophage production while maintaining macrophage identity and viability.
+
+| Outcome | Baseline → Candidate | Change | Provenance |
+|---|---|---|---|
+| CD14 pos pct | 41.18% → 67.58% | +26.4 pp (+64.1%) | DERIVED |
+| CD16 pos pct | 16.93% → 31% | +14.06 pp (+83.04%) | DERIVED |
+| viability pct | 93.96% → 91.04% | -2.922 pp (-3.11%) | DERIVED |
+| CD206 pos pct | 33.5% → 57.52% | +24.02 pp (+71.69%) | DERIVED |
+| Monocytes per input iPSC | 17.99 cells/input_cell → 29.66 cells/input_cell | +11.67 cells/input_cell (+64.87%) | SIMULATED |
+| Harvested cells | 8.995 1e6 cells/mL → 14.83 1e6 cells/mL | +5.835 1e6 cells/mL (+64.87%) | SIMULATED |
+| Final viability | 80.78% → 80.78% | +0 pp (+0%) | SIMULATED |
+| Cells in the monocyte gate | 76.66% → 90.25% | +13.59 pp (+17.73%) | SIMULATED |
+| Peak viable cell density | 4.762 1e6 cells/mL → 4.762 1e6 cells/mL | +0 1e6 cells/mL (+0%) | SIMULATED |
+| Mean aggregate diameter | 273.9 um → 273.9 um | +0 um (+0%) | SIMULATED |
+| Mean condition score | 92.7 score → 92.7 score | +0 score (+0%) | SIMULATED |
+
+**Confidence: moderate.** supported by 2 source(s) across 2 evidence class(es) capped below high: no real experimental measurement of this process supports it yet
+
+### Simulator coverage
+
+Every candidate parameter is accounted for. A parameter the model cannot predict is labelled, never dropped and never predicted anyway.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/parameter_change-dark.svg">
+  <img alt="Candidate parameters and simulator coverage: M-CSF maps to a model knob and is modelled; temperature is a real design variable the model has no term for." src="benchmarks/public/macrophage_mcsf_demo/figures/parameter_change-light.svg" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/simulator_comparison-dark.svg">
+  <img alt="Control versus candidate in the project simulator, with every number labelled SIMULATED." src="benchmarks/public/macrophage_mcsf_demo/figures/simulator_comparison-light.svg" width="100%">
+</picture>
+
+**Next experiment.** Test M-CSF at 20, 50, 80 ng/mL against the current process, measuring monocytes per input ipsc, harvested cells, final viability.
+
+**Capability scorecard: 17 PASS / 0 FAIL.** This is a SYSTEM CAPABILITY scorecard. It records whether BioSense identified an uncertainty, planned an analysis, executed it deterministically, quantified what it could, checked simulator coverage and labelled every number. It does NOT measure biological truth, and a run can pass every row while being biologically wrong.
+
+Full bundle — report, figures, tables, provenance and the audit package → [`benchmarks/public/macrophage_mcsf_demo/`](benchmarks/public/macrophage_mcsf_demo/) · how benchmarks work → [docs/BENCHMARKING.md](docs/BENCHMARKING.md)
+
+<!-- BENCHMARK:END -->
+
+---
+
 ## Or turn the knobs yourself
 
 The console asks the loop to find a condition. **Simulator mode** hands you the
@@ -282,6 +353,15 @@ An evaluator should know the limits before the features.
 - **Single cell, ChIP-seq, ATAC-seq and raw FCS are declared, not implemented.**
   The contracts accept them so a manifest written today stays valid; calling one
   is refused with a message saying why.
+- **Only one project has a mechanistic model.** `ipsc_macrophage` has
+  `ipsc_monocyte_v1`; `cart_expansion` has none, and every parameter there
+  reports `no_simulator` rather than borrowing one. A candidate parameter the
+  model cannot predict is labelled `not_modelled`, never dropped and never
+  predicted anyway.
+- **There is no multi-user isolation.** "Private" means "does not leave this
+  machine". Two people sharing a checkout share one private root.
+- **A capability scorecard is not a measure of biological truth.** A benchmark
+  can pass every row while being biologically wrong, and the artifact says so.
 
 ---
 
@@ -302,9 +382,15 @@ Not conventions — things the software refuses to do:
 | Private data is identified by **where it is**, not what it is called, and no server may be rooted inside it | `data/roots.py` |
 | A dataset can never become a literature citation | the claim schema needs a source, paragraph and quote |
 | An external-tool result with no software version is refused | `bioinformatics/external.py` |
+| A parameter name that is not canonical is refused, never fuzzy-matched | `parameters.py` |
+| A project cannot widen a canonical bound, and a narrowed one names its origin | `projects.py` |
+| A simulated effect on a parameter the model does not cover is refused | `evidence/hypothesis.py` |
+| Plain-language prose is rejected if a number in it is in no structured fact | `evidence/narrative.py` |
+| Expert knowledge can never become a citation or set a protocol value | `evidence/expert.py` |
+| A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 517 tests
+uv run --frozen python -m unittest     # 563 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 
@@ -319,6 +405,11 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 | [`biosense/production/`](biosense/production/) | the loop: designer, optimiser, analysis, envelope, reports |
 | [`standins/`](standins/) | synthetic stand-in reactors |
 | [`discovery_loop/`](discovery_loop/) | the Omnigent agent bundle for the live, model-driven path |
+| [`biosense/parameters.py`](biosense/parameters.py) | the canonical identity of every process parameter |
+| [`projects/`](projects/) | project profiles: which knobs a biological system actually has |
+| [`biosense/evidence/`](biosense/evidence/) | quantified estimates, hypotheses, context, expert knowledge, narrative |
+| [`biosense/benchmark/`](biosense/benchmark/) | the benchmark runner, figures, report and privacy validator |
+| [`benchmarks/`](benchmarks/) | benchmark configurations and the committed public demonstration |
 | [`biosense/data/`](biosense/data/) | dataset manifests, the registry, ingest and the source adapters |
 | [`biosense/bioinformatics/`](biosense/bioinformatics/) | annotation, analysis planning, the tool registry and execution |
 | [`bioinfo_knowledge/`](bioinfo_knowledge/) | gene annotations, each with its own confidence and citation |
@@ -330,6 +421,7 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 **Deeper reading:** [the production loop](docs/PRODUCTION_LOOP.md) ·
 [simulator mode](docs/SIMULATOR_MODE.md) ·
 [bioinformatics, data and evidence](docs/BIOINFORMATICS.md) ·
+[benchmarks and demonstrations](docs/BENCHMARKING.md) ·
 [the worked example](docs/IPSC_TCELL_EXAMPLE.md) ·
 [running it yourself](docs/RUN_ON_YOUR_PC.md) ·
 [the literature agent](docs/LITERATURE_AGENT.md) ·

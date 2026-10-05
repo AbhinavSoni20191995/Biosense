@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/benchmark-config-v2.0",
+  "title": "BenchmarkConfig 2.0: a reproducible demonstration of what BioSense did",
+  "description": "A benchmark runs a real discovery flow over declared inputs and exports the structured artifacts it produced. export_policy is the safety-critical field: 'public_safe' refuses to export anything with private lineage rather than attempting to anonymise scientifically sensitive material, and 'private' keeps the whole bundle outside the repository.",
+  "type": "object",
+  "required": ["schema_version", "benchmark_id", "title", "project_id", "objective",
+               "mode", "export_policy", "expected_capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "benchmark_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$"},
+    "title": {"type": "string", "minLength": 3},
+    "description": {"type": ["string", "null"]},
+    "project_id": {"type": "string", "description": "The ProjectProfile this runs against"},
+    "objective": {"type": "string", "minLength": 10},
+    "mode": {
+      "enum": ["offline", "ai"],
+      "description": "offline = the deterministic path drives it, reproducible with no model API. ai = a model drives the orchestration, which is not bitwise reproducible and records its harness instead."
+    },
+    "export_policy": {
+      "enum": ["public_safe", "private"],
+      "description": "public_safe refuses if any private lineage is present. private keeps the bundle outside public repository paths."
+    },
+    "research_context": {"type": ["object", "null"]},
+    "datasets": {
+      "type": "array",
+      "description": "Dataset ids registered before the run. A public_safe benchmark may only name public or fixture datasets.",
+      "items": {"type": "string"}
+    },
+    "expert_knowledge": {"type": "array", "items": {"type": "string"},
+                         "description": "knowledge_ids; any entry makes the run private"},
+    "uncertainty": {
+      "type": ["object", "null"],
+      "required": ["kind", "ref", "statement"],
+      "properties": {"kind": {"enum": ["hypothesis", "evidence_gap", "diagnosis"]},
+                     "ref": {"type": "string"}, "statement": {"type": "string"}}
+    },
+    "control": {"type": ["object", "null"], "description": "Simulator setpoints for the current process; defaults come from the project"},
+    "candidate_values": {"type": ["object", "null"], "description": "Values to test, keyed by canonical parameter_id"},
+    "expected_capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The scorecard rows this benchmark asserts. A capability that is expected and absent is a FAIL.",
+      "items": {"type": "string"}
+    },
+    "seed": {"type": ["integer", "null"]},
+    "notes": {"type": ["string", "null"]}
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/benchmark-result-v2.0",
+  "title": "BenchmarkResult 2.0: what a run actually produced, and whether it was honest about it",
+  "description": "The canonical benchmark artifact. The scorecard measures SYSTEM CAPABILITY -- whether BioSense identified an uncertainty, planned, executed, quantified, checked coverage and labelled its numbers. It does not measure biological truth and says so. simulator_coverage_honest is the row that matters most: it passes when an unsupported parameter is labelled not_modelled, and fails if BioSense silently dropped it or invented an effect for it.",
+  "type": "object",
+  "required": ["schema_version", "benchmark_id", "created_at", "mode", "project",
+               "objective", "provenance", "scorecard", "privacy", "limitations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "benchmark_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "created_at": {"type": "string"},
+    "mode": {"enum": ["offline", "ai"]},
+    "title": {"type": ["string", "null"]},
+    "objective": {"type": "string"},
+
+    "project": {
+      "type": "object",
+      "required": ["project_id", "version"],
+      "properties": {
+        "project_id": {"type": "string"}, "version": {"type": "string"},
+        "name": {"type": ["string", "null"]},
+        "simulator": {"type": ["object", "null"]}
+      }
+    },
+    "research_context": {"type": ["object", "null"]},
+
+    "uncertainties": {"type": "array", "items": {"type": "object"}},
+    "datasets": {"type": "array", "items": {"type": "object"}},
+    "expert_knowledge": {
+      "type": "array",
+      "description": "In a public_safe export these are counts and types only, never statements.",
+      "items": {"type": "object"}
+    },
+    "evidence_classes": {"type": "object", "description": "class -> count"},
+    "analyses": {"type": "array", "items": {"type": "object"}},
+    "hypotheses": {"type": "array", "items": {"type": "object"}},
+    "selected_hypothesis": {"type": ["string", "null"]},
+    "candidate_parameters": {"type": "array", "items": {"type": "object"}},
+    "simulator": {"type": ["object", "null"], "description": "The control-vs-candidate comparison"},
+    "next_experiment": {"type": ["object", "null"]},
+
+    "provenance": {
+      "type": "object",
+      "required": ["biosense_version", "git_commit", "code_sha256", "project_version"],
+      "properties": {
+        "biosense_version": {"type": "string"},
+        "git_commit": {"type": ["string", "null"]},
+        "git_dirty": {"type": ["boolean", "null"]},
+        "code_sha256": {"type": "string"},
+        "project_version": {"type": "string"},
+        "simulator_model": {"type": ["string", "null"]},
+        "simulator_model_version": {"type": ["string", "null"]},
+        "tool_versions": {"type": "object"},
+        "dataset_checksums": {"type": "object"},
+        "seeds": {"type": "object"},
+        "runtime_s": {"type": ["number", "null"]},
+        "ai": {"type": ["object", "null"],
+               "description": "For mode 'ai': harness, model, agent spec revision. Never implies bitwise determinism."}
+      }
+    },
+
+    "scorecard": {
+      "type": "object",
+      "required": ["rows", "passed", "failed", "note"],
+      "properties": {
+        "rows": {"type": "array", "items": {"type": "object",
+                 "required": ["capability", "status", "detail"],
+                 "properties": {"capability": {"type": "string"},
+                                "status": {"enum": ["PASS", "FAIL", "SKIP"]},
+                                "detail": {"type": "string"}}}},
+        "passed": {"type": "integer"}, "failed": {"type": "integer"},
+        "note": {"type": "string",
+                 "description": "States that this measures system capability, not biological truth"}
+      }
+    },
+
+    "privacy": {
+      "type": "object",
+      "required": ["export_policy", "has_private_lineage", "safe_to_publish"],
+      "properties": {
+        "export_policy": {"enum": ["public_safe", "private"]},
+        "has_private_lineage": {"type": "boolean"},
+        "private_sources": {"type": "array", "items": {"type": "string"}},
+        "safe_to_publish": {"type": "boolean"},
+        "refusal_reason": {"type": ["string", "null"]}
+      }
+    },
+
+    "narrative": {"type": "array", "items": {"type": "object"},
+                  "description": "Numbered plain-language steps, each resolving to structured facts"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "operational": {"type": ["object", "null"],
+                    "description": "runtime, counts of analyses, simulator runs, hypotheses considered"}
+  }
+}

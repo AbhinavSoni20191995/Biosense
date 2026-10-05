@@ -4,6 +4,7 @@ A diagram that draws a planned capability like a working one is a claim the
 repository cannot support, and it is the kind of claim nobody notices going
 stale. These tests check the documents against the registries they describe.
 """
+import json
 import re
 import unittest
 from pathlib import Path
@@ -118,6 +119,89 @@ class ReadmeTests(unittest.TestCase):
                                               top_level_dir=str(K.ROOT)).countTestCases()
         self.assertAlmostEqual(int(m.group(1)), total, delta=15,
                                msg=f'README says {m.group(1)} tests; there are {total}')
+
+
+class BenchmarkReadmeTests(unittest.TestCase):
+    """The README's benchmark numbers are generated, never typed.
+
+    A hand-copied number goes stale silently and a reader cannot tell."""
+
+    def setUp(self):
+        self.readme = README.read_text()
+
+    def test_the_section_is_delimited_by_markers(self):
+        self.assertIn('<!-- BENCHMARK:START -->', self.readme)
+        self.assertIn('<!-- BENCHMARK:END -->', self.readme)
+
+    def test_the_section_is_current(self):
+        import subprocess
+        r = subprocess.run(['python', str(K.ROOT / 'scripts' / 'update_benchmark_readme.py'),
+                            '--check'], capture_output=True, text=True, cwd=K.ROOT)
+        self.assertEqual(0, r.returncode,
+                         f'{r.stdout}{r.stderr} — run scripts/update_benchmark_readme.py')
+
+    def test_the_generator_rewrites_only_the_marked_block(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            copy = Path(d) / 'README.md'
+            copy.write_text(self.readme.replace('<!-- BENCHMARK:START -->',
+                                                '<!-- BENCHMARK:START -->\nSTALE'))
+            subprocess.run(['python', str(K.ROOT / 'scripts' / 'update_benchmark_readme.py'),
+                            '--readme', str(copy)], capture_output=True, cwd=K.ROOT)
+            after = copy.read_text()
+        self.assertNotIn('STALE', after)
+        head = self.readme.split('<!-- BENCHMARK:START -->')[0]
+        self.assertEqual(head, after.split('<!-- BENCHMARK:START -->')[0])
+
+    def test_the_section_says_the_demonstration_is_synthetic(self):
+        block = self.readme.split('<!-- BENCHMARK:START -->')[1].split('<!-- BENCHMARK:END -->')[0]
+        self.assertIn('SYNTHETIC DEMONSTRATION', block)
+        self.assertIn('measurement of any real cell', block)
+        self.assertIn('invented fixture', block)
+
+    def test_every_number_in_the_section_comes_from_the_benchmark(self):
+        """A figure in the README must exist in the artifact it was generated from.
+
+        Rounding is allowed -- the README shows 4.762 where the artifact holds
+        4.7619 -- so this reuses the same decimal-place tolerance the narrative
+        validator applies. Inventing a number is not allowed.
+        """
+        from biosense.evidence import narrative as N
+        block = self.readme.split('<!-- BENCHMARK:START -->')[1].split('<!-- BENCHMARK:END -->')[0]
+        bench = K.read_json(K.ROOT / 'benchmarks' / 'public' / 'macrophage_mcsf_demo'
+                            / 'benchmark.json')
+
+        known = set()
+
+        def collect(o):
+            if isinstance(o, dict):
+                for v in o.values():
+                    collect(v)
+            elif isinstance(o, list):
+                for v in o:
+                    collect(v)
+            elif isinstance(o, (int, float)) and not isinstance(o, bool):
+                known.add(f'{float(o):.6g}')
+
+        collect(bench)
+        suspicious = []
+        for m in re.finditer(r'(?<![\w.$/-])(\d+\.\d+)(?![\w.%-])', block):
+            if not N._matches(m.group(1), known):
+                suspicious.append(m.group(1))
+        self.assertEqual([], suspicious,
+                         f'number(s) in the README benchmark section are not in benchmark.json: '
+                         f'{suspicious}')
+
+    def test_the_section_links_resolve(self):
+        import re
+        block = self.readme.split('<!-- BENCHMARK:START -->')[1].split('<!-- BENCHMARK:END -->')[0]
+        for target in re.findall(r'\]\(([^)#][^)]*)\)', block):
+            if target.startswith(('http', 'mailto')):
+                continue
+            self.assertTrue((K.ROOT / target).exists(), target)
+        for src in re.findall(r'src(?:set)?="([^"]+)"', block):
+            self.assertTrue((K.ROOT / src).exists(), src)
 
 
 class FixtureHonestyTests(unittest.TestCase):

@@ -4,125 +4,398 @@
   "title": "QuantifiedHypothesis 2.0: a parameter change, what it is expected to do, and at what cost",
   "description": "A hypothesis about one process parameter, carrying several Estimates at once. Cell production is not a single-number problem: a candidate that raises yield 18% and drops viability 1.5 points is a trade-off, and a contract with one 'improvement' field would let the orchestrator maximise yield by not looking. Evidence stays broken out by class rather than collapsed into a score, so a reader can see that the private FACS data is strong, the public RNA supportive and the real experiment untested. Nothing here changes a protocol: the orchestrator weighs it and a revise_protocol decision still has to pass the envelope.",
   "type": "object",
-  "required": ["schema_version", "hypothesis_id", "created_at", "statement", "project_id",
-               "uncertainty_ref", "parameter", "expected_effects", "evidence", "confidence",
-               "next_experiment", "limitations", "may_change_protocol"],
+  "required": [
+    "schema_version",
+    "hypothesis_id",
+    "created_at",
+    "statement",
+    "project_id",
+    "uncertainty_ref",
+    "parameter",
+    "expected_effects",
+    "evidence",
+    "confidence",
+    "next_experiment",
+    "limitations",
+    "may_change_protocol"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "2.0"},
-    "hypothesis_id": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{3,64}$"},
-    "created_at": {"type": "string"},
-    "created_by": {"type": ["string", "null"]},
-    "loop_id": {"type": ["string", "null"]},
-    "iteration": {"type": ["integer", "null"]},
-    "statement": {"type": "string", "minLength": 10},
-
-    "project_id": {"type": "string"},
-    "project_version": {"type": ["string", "null"]},
-    "research_context": {"type": ["object", "null"]},
-
+    "schema_version": {
+      "const": "2.0"
+    },
+    "hypothesis_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{3,64}$"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "created_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "loop_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "iteration": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 10
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "project_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "research_context": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
     "uncertainty_ref": {
       "type": "object",
-      "required": ["kind", "ref", "statement"],
+      "required": [
+        "kind",
+        "ref",
+        "statement"
+      ],
       "description": "The same mandatory reference an AnalysisPlan carries. A hypothesis exists to resolve something.",
       "properties": {
-        "kind": {"enum": ["hypothesis", "evidence_gap", "diagnosis"]},
-        "ref": {"type": "string"},
-        "statement": {"type": "string"},
-        "raised_by": {"type": ["string", "null"]},
-        "source_artifact": {"type": ["string", "null"]}
+        "kind": {
+          "enum": [
+            "hypothesis",
+            "evidence_gap",
+            "diagnosis"
+          ]
+        },
+        "ref": {
+          "type": "string"
+        },
+        "statement": {
+          "type": "string"
+        },
+        "raised_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_artifact": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
-
     "parameter": {
       "type": "object",
-      "required": ["parameter_id", "direction", "simulator_coverage"],
+      "required": [
+        "parameter_id",
+        "direction",
+        "simulator_coverage"
+      ],
       "additionalProperties": false,
       "description": "The canonical parameter, its current value where known, and what the project's model can say about it.",
       "properties": {
-        "parameter_id": {"type": "string"},
-        "label": {"type": ["string", "null"]},
-        "unit": {"type": ["string", "null"]},
-        "stage": {"type": ["string", "null"]},
-        "direction": {"enum": ["increase", "decrease", "shorten", "extend", "earlier", "later", "revisit"]},
-        "current_value": {"type": ["number", "null"]},
-        "candidate_value": {"type": ["number", "null"]},
+        "parameter_id": {
+          "type": "string"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "direction": {
+          "enum": [
+            "increase",
+            "decrease",
+            "shorten",
+            "extend",
+            "earlier",
+            "later",
+            "revisit"
+          ]
+        },
+        "current_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "candidate_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "search_range": {
-          "type": ["object", "null"],
-          "required": ["lower", "upper", "basis"],
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "lower",
+            "upper",
+            "basis"
+          ],
           "properties": {
-            "lower": {"type": "number"}, "upper": {"type": "number"},
-            "basis": {"type": "string"},
-            "narrowed_by": {"type": "array", "items": {"type": "string"},
-                            "description": "e.g. an expert knowledge_id that ruled out part of the range"}
+            "lower": {
+              "type": "number"
+            },
+            "upper": {
+              "type": "number"
+            },
+            "basis": {
+              "type": "string"
+            },
+            "narrowed_by": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "e.g. an expert knowledge_id that ruled out part of the range"
+            }
           }
         },
-        "simulator_coverage": {"enum": ["modelled", "not_modelled", "no_simulator", "not_in_project"]},
-        "coverage_note": {"type": ["string", "null"]}
+        "simulator_coverage": {
+          "enum": [
+            "modelled",
+            "not_modelled",
+            "no_simulator",
+            "not_in_project"
+          ]
+        },
+        "coverage_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
-
     "expected_effects": {
       "type": "array",
       "minItems": 1,
       "description": "One Estimate per outcome. Several, so trade-offs are structural.",
-      "items": {"$ref": "https://example.org/biosense/estimate-v2.0#/$defs/estimate"}
+      "items": {
+        "$ref": "https://example.org/biosense/estimate-v2.0#/$defs/estimate"
+      }
     },
     "trade_offs": {
       "type": "array",
-      "items": {"type": "object", "required": ["summary"],
-                "properties": {"summary": {"type": "string"},
-                               "gains": {"type": "array", "items": {"type": "string"}},
-                               "costs": {"type": "array", "items": {"type": "string"}}}}
+      "items": {
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "gains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "costs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
     },
-
     "evidence": {
       "type": "array",
       "description": "Broken out by class, never collapsed into one score.",
       "items": {
         "type": "object",
-        "required": ["evidence_class", "stance", "summary"],
+        "required": [
+          "evidence_class",
+          "stance",
+          "summary"
+        ],
         "additionalProperties": false,
         "properties": {
-          "evidence_class": {"enum": ["published_literature", "public_dataset",
-                                      "private_user_dataset", "derived_analysis",
-                                      "expert_knowledge", "simulation", "real_measurement",
-                                      "synthetic_fixture"]},
-          "stance": {"enum": ["supportive", "contradicting", "neutral", "untested"]},
-          "strength": {"enum": ["weak", "moderate", "strong", "not_assessed"]},
-          "summary": {"type": "string"},
-          "ref": {"type": ["string", "null"]},
-          "visibility": {"enum": ["public", "private"]},
-          "context_match": {"enum": ["in_context", "context_mismatch", "not_assessed"],
-                            "description": "context_mismatch is shown, not hidden, and its relevance is reduced rather than its existence denied"},
-          "context_mismatch_note": {"type": ["string", "null"]}
+          "evidence_class": {
+            "enum": [
+              "published_literature",
+              "public_dataset",
+              "private_user_dataset",
+              "derived_analysis",
+              "expert_knowledge",
+              "simulation",
+              "real_measurement",
+              "synthetic_fixture"
+            ]
+          },
+          "stance": {
+            "enum": [
+              "supportive",
+              "contradicting",
+              "neutral",
+              "untested"
+            ]
+          },
+          "strength": {
+            "enum": [
+              "weak",
+              "moderate",
+              "strong",
+              "not_assessed"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "visibility": {
+            "enum": [
+              "public",
+              "private"
+            ]
+          },
+          "context_match": {
+            "enum": [
+              "in_context",
+              "context_mismatch",
+              "not_assessed"
+            ],
+            "description": "context_mismatch is shown, not hidden, and its relevance is reduced rather than its existence denied"
+          },
+          "context_mismatch_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
-
-    "confidence": {"enum": ["low", "moderate", "high"]},
-    "confidence_basis": {"type": "array", "items": {"type": "string"}},
-    "status": {"enum": ["proposed", "supported", "contradicted", "superseded", "rejected"]},
-    "supersedes": {"type": ["string", "null"], "description": "The hypothesis this replaces, so the progression is recoverable"},
-    "superseded_reason": {"type": ["string", "null"]},
-
-    "next_experiment": {
-      "type": "object",
-      "required": ["summary"],
-      "additionalProperties": false,
-      "properties": {
-        "summary": {"type": "string"},
-        "conditions": {"type": "array", "items": {"type": "string"}},
-        "measure": {"type": "array", "items": {"type": "string"}},
-        "replicates": {"type": ["integer", "null"]},
-        "rationale": {"type": ["string", "null"]}
+    "confidence": {
+      "enum": [
+        "low",
+        "moderate",
+        "high"
+      ]
+    },
+    "confidence_basis": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     },
-
+    "status": {
+      "enum": [
+        "proposed",
+        "supported",
+        "contradicted",
+        "superseded",
+        "rejected"
+      ]
+    },
+    "supersedes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The hypothesis this replaces, so the progression is recoverable"
+    },
+    "superseded_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "next_experiment": {
+      "type": "object",
+      "required": [
+        "summary"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measure": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "replicates": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "test_points": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "The concrete values to test. Registered as facts so the plain-language step that names them can be validated like any other number."
+        }
+      }
+    },
     "may_change_protocol": {
       "const": false,
       "description": "A hypothesis is evidence for a decision. Only a validated revise_protocol decision changes a protocol."
     },
-    "limitations": {"type": "array", "items": {"type": "string"}}
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   }
 }
