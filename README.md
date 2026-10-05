@@ -190,8 +190,34 @@ What runs today, and what is only declared:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-capabilities-dark.svg">
-  <img alt="Generic statistics, processed flow cytometry and a screening bulk expression comparison run today. Single cell RNA, ChIP-seq, ATAC-seq, raw FCS, FlowSOM and UMAP are declared but not implemented. An external-tool adapter for DESeq2, edgeR, Scanpy and MACS ships its contract and a mock." src="docs/assets/arch-capabilities-light.svg" width="100%">
+  <img alt="Generic statistics, processed flow cytometry and a screening bulk expression comparison run today, as does single-cell pseudobulk once its optional extra is installed and peak overlap over called ATAC or ChIP peaks. Raw FCS, FlowSOM and UMAP are declared but not written. DESeq2 is implemented behind the external-tool adapter and needs Rscript. Each box is marked Phase 1, Phase 2, Needs R or Planned." src="docs/assets/arch-capabilities-light.svg" width="100%">
 </picture>
+
+### Every number knows how it was produced
+
+The most dangerous thing a system like this could do is let a simulated figure
+and a measured one sit side by side looking alike. So the estimate type travels
+with each number rather than with the card, report or hypothesis holding it, and
+a comparison takes the weaker of its two inputs.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-provenance-dark.svg">
+  <img alt="Five estimate types: measured, derived, simulated, predicted and target. Combining a measured value with a simulated one gives simulated; two measured values give derived, because nothing measured the difference. Percentage points and relative change are reported as separate figures. A quantified hypothesis carries its parameter, effects, evidence and limitations, and a prediction committed before the run becomes a residual once a measurement exists." src="docs/assets/arch-provenance-light.svg" width="100%">
+</picture>
+
+A change computed from two measured values is **derived**, not measured: no
+instrument measured a difference, code subtracted two readings, and a reader who
+sees MEASURED beside "+26 percentage points" would believe something stronger
+than is true. 42% to 68% is *+26 percentage points* **and** *+62% relative*,
+reported as two figures, because one standing for both is a larger-sounding
+claim about a different quantity. A prediction whose magnitude is not yet
+estimated is a state the contract can express, with a required reason, rather
+than a blank somebody fills in later.
+
+The loop closes at the residual. A prediction is hashed when it is committed, and
+a commitment timestamped after the run is refused — otherwise the comparison is a
+model fitted to a result and then congratulated for matching it. Agreement is
+reported; the model is never called validated.
 
 Your own data stays yours: it lives outside every served directory, is
 git-ignored, is never listed by the web app, and **can never become a literature
@@ -390,7 +416,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 666 tests
+uv run --frozen python -m unittest     # 667 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 

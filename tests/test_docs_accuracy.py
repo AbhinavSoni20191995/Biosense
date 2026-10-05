@@ -16,7 +16,22 @@ from biosense.data.sources import geo
 README = K.ROOT / 'README.md'
 BIOINFO_DOC = K.ROOT / 'docs' / 'BIOINFORMATICS.md'
 ASSETS = K.ROOT / 'docs' / 'assets'
-DIAGRAMS = ('system', 'evidence', 'loop', 'capabilities')
+def _diagram_names():
+    """The names the generator actually produces.
+
+    Read from the script rather than listed here, because a hardcoded list is
+    how a new diagram quietly escapes every check in this file — which is the
+    staleness this file exists to catch.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        'make_architecture_diagrams', K.ROOT / 'scripts' / 'make_architecture_diagrams.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return tuple(mod.DIAGRAMS)
+
+
+DIAGRAMS = _diagram_names()
 
 
 class DiagramTests(unittest.TestCase):
@@ -32,6 +47,14 @@ class DiagramTests(unittest.TestCase):
             svg = (ASSETS / f'arch-{name}-light.svg').read_text()
             self.assertTrue(svg.startswith('<svg'))
             self.assertNotIn('<image', svg, 'a diagram must not embed a raster')
+
+    def test_every_diagram_is_actually_shown_somewhere(self):
+        """A diagram nobody links to is a file that goes stale unobserved."""
+        docs = '\n'.join(p.read_text() for p in
+                         [K.ROOT / 'README.md'] + sorted((K.ROOT / 'docs').glob('*.md')))
+        for name in DIAGRAMS:
+            self.assertIn(f'arch-{name}-light.svg', docs, name)
+            self.assertIn(f'arch-{name}-dark.svg', docs, f'{name} has no dark-mode source')
 
     def test_every_diagram_carries_an_accessible_description(self):
         for name in DIAGRAMS:

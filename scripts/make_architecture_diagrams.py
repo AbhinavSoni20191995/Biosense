@@ -355,7 +355,73 @@ def capabilities(c):
     return ''.join(s)
 
 
-DIAGRAMS = {'system': system, 'evidence': evidence, 'loop': loop, 'capabilities': capabilities}
+# ── 5. how a number keeps its provenance ──────────────────────────────────
+def provenance(c):
+    """Phase 2: the estimate type travels with each number, not with the object.
+
+    Drawn because the single most dangerous thing this system could do is let a
+    simulated figure and a measured one sit side by side looking alike.
+    """
+    W, H = 980, 530
+    s = [head(W, H, c,
+              'Every number carries how it was produced. A change computed from two measured '
+              'values is DERIVED, because no instrument measured a difference; a comparison '
+              'takes the weaker of its two inputs; and a prediction becomes checkable only '
+              'where a residual compares it against a real measurement.')]
+    s.append(title(490, 30, c, 'THE ESTIMATE TYPE TRAVELS WITH THE NUMBER'))
+    s.append(caption(490, 48, c,
+                     'not with the card, the report or the hypothesis holding it'))
+
+    kinds = [
+        ('MEASURED', 'an instrument read it|FACS, sensor, sequencer', c['human'],
+         c['human_soft']),
+        ('DERIVED', 'code computed it|from measured values', c['data'], c['data_soft']),
+        ('SIMULATED', 'a model produced it|needs a modelled parameter', c['code'],
+         c['code_soft']),
+        ('PREDICTED', 'expected, not yet run|direction may stand alone', c['code'],
+         c['code_soft']),
+        ('TARGET', 'what was asked for|never evidence of anything', c['brand'],
+         c['brand_soft']),
+    ]
+    for i, (t, sub, accent, soft) in enumerate(kinds):
+        x = 30 + i * 186
+        s.append(box(x, 76, 170, 70, t, sub, c, accent, soft, 'PHASE 2'))
+
+    s.append(box(30, 176, 448, 80, 'Weakest link wins',
+                 'combining a measured value with a simulated one gives SIMULATED;|'
+                 'two measured values give DERIVED, because nothing measured the difference',
+                 c, c['code'], c['code_soft'], 'PHASE 2'))
+    s.append(box(502, 176, 448, 80, 'Points and percentages stay apart',
+                 '42% to 68% is +26 percentage POINTS and +62% RELATIVE;|'
+                 'one figure standing for both is a larger-sounding claim about another quantity',
+                 c, c['code'], c['code_soft'], 'PHASE 2'))
+
+    s.append(arrow(254, 256, 254, 292, c))
+    s.append(arrow(726, 256, 726, 292, c))
+    s.append(box(30, 292, 920, 70, 'Quantified hypothesis',
+                 'one parameter, its current and candidate value, the expected effects with '
+                 'their own types,|the evidence rows with their classes, and the limitations '
+                 'that travel with it',
+                 c, c['brand'], c['brand_soft'], 'PHASE 2'))
+
+    s.append(arrow(490, 362, 490, 398, c, 'committed BEFORE the run', color=c['human'],
+                   lx=500, ly=382, anchor='start'))
+    s.append(box(30, 398, 920, 76, 'Prediction residual',
+                 'measured minus predicted, hashed at commitment so a prediction edited after '
+                 'the result is visible.|A stand-in run, an unreplicated reading or an '
+                 'unmodelled parameter is recorded and never counted as model evidence.',
+                 c, c['human'], c['human_soft'], 'PHASE 2'))
+
+    s.append(legend(30, 500, c, [(c['human'], 'an instrument'),
+                                 (c['data'], 'code computed it'),
+                                 (c['code'], 'a model produced it'),
+                                 (c['brand'], 'what was asked for')]))
+    s.append('</svg>')
+    return ''.join(s)
+
+
+DIAGRAMS = {'system': system, 'evidence': evidence, 'loop': loop,
+            'capabilities': capabilities, 'provenance': provenance}
 
 
 def main(argv=None):
