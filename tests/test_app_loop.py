@@ -476,11 +476,17 @@ class AppServerTests(unittest.TestCase):
                   '/standin_truth.synthetic.json', '/api/runs/notanid'):
             self.assertEqual(404, self._get(p)[0], p)
 
-    def test_console_is_the_landing_page_and_the_tracker_is_still_served(self):
+    def test_the_discovery_page_is_the_landing_page_and_the_others_still_serve(self):
+        """The structured discovery workflow is the product, so it is what a
+        visitor lands on. The free-text stand-in loop keeps its page; it is a
+        demonstration, not the thing people came for."""
         code, body = self._get('/')
         self.assertEqual(200, code)
-        self.assertIn(b'BioSense Console', body)
-        self.assertEqual(200, self._get('/index.html')[0])
+        self.assertIn(b'Run AI discovery', body)
+        self.assertIn(b'discovery.js', body)
+        for page in ('/index.html', '/loop.html', '/simulator.html', '/data.html'):
+            self.assertEqual(200, self._get(page)[0], page)
+        self.assertIn(b'Quick synthetic loop', self._get('/loop.html')[1])
 
     def test_simulator_mode_is_served_and_refuses_an_unknown_knob(self):
         code, body = self._get('/api/sim/config')
@@ -572,13 +578,18 @@ class AppServerTests(unittest.TestCase):
             if e['relative_change_pct'] not in (None, 0) and e['absolute_change']:
                 self.assertNotEqual(e['absolute_change'], e['relative_change_pct'])
 
-    def test_the_console_renders_the_card_from_the_endpoint_not_from_markup(self):
-        """No hardcoded hypothesis in the page: a card that survives the data
-        being removed is a mockup."""
-        code, body = self._get('/console.html')
-        text = body.decode()
-        self.assertIn("fetch('/api/hypotheses')", text)
-        self.assertNotIn('HYP-macrophage_mcsf_demo', text)
+    def test_the_console_renders_every_card_from_data_not_from_markup(self):
+        """No hardcoded result anywhere in the page: a card that survives the
+        data being removed is a mockup."""
+        page = self._get('/console.html')[1].decode()
+        script = self._get('/discovery.js')[1].decode()
+        for text in (page, script):
+            for invented in ('HYP-macrophage_mcsf_demo', '+26.4', '41.18', '67.58'):
+                self.assertNotIn(invented, text, invented)
+        # every panel is filled from an endpoint
+        for endpoint in ('/api/discovery', '/api/glossary', '/api/runtime',
+                         '/api/workspace/projects', '/api/benchmarks'):
+            self.assertIn(endpoint, script, endpoint)
 
     def test_the_project_endpoint_gives_each_process_its_own_knobs(self):
         """The reason this is served per project rather than as one global knob
@@ -659,23 +670,21 @@ class AppServerTests(unittest.TestCase):
             if q.get('candidate_value') is not None:
                 self.assertNotEqual(q['candidate_value'], q.get('current_value'))
 
-    def test_the_hypothesis_card_sits_in_the_wide_column(self):
-        """It is the widest thing on the page and the part people read most
-        closely, so it belongs beside the question rather than fifth in a
-        sidebar."""
-        code, body = self._get('/console.html')
-        text = body.decode()
+    def test_the_hypothesis_and_protocol_sit_in_the_wide_column(self):
+        """They are the widest things on the page and the parts people read most
+        closely, so they belong beside the question rather than in a sidebar."""
+        text = self._get('/console.html')[1].decode()
         cols = text.index('class="cols"')
-        stacks = [text.index('<div class="stack">', cols)]
-        stacks.append(text.index('<div class="stack">', stacks[0] + 1))
-        self.assertLess(text.index('id="hypPanel"'), stacks[1],
-                        'the hypothesis panel is in the sidebar, not the wide column')
+        first = text.index('<div class="stack">', cols)
+        second = text.index('<div class="stack">', first + 1)
+        for panel in ('id="resultPanel"', 'id="protocolPanel"', 'id="analysisPanel"'):
+            self.assertLess(text.index(panel), second,
+                            f'{panel} is in the sidebar, not the wide column')
 
     def test_the_sidebar_panels_fold(self):
         """Four panels stacked open made the column a wall."""
-        code, body = self._get('/console.html')
-        text = body.decode()
-        self.assertEqual(4, text.count('class="glass card fold"'))
+        text = self._get('/console.html')[1].decode()
+        self.assertGreaterEqual(text.count('glass card fold'), 4)
         # the heading is the control, so the whole row is the hit target
         self.assertIn(".fold > .head{cursor:pointer", text)
         self.assertIn("head.setAttribute('role', 'button')", text)
@@ -687,7 +696,7 @@ class AppServerTests(unittest.TestCase):
     def test_the_four_way_nav_is_the_same_on_every_page(self):
         """A nav that differs per page is how a section quietly becomes
         unreachable from the one place someone looks for it."""
-        want = ['console.html', 'simulator.html', 'data.html', 'index.html']
+        want = ['console.html', 'loop.html', 'simulator.html', 'data.html', 'index.html']
         for page in want:
             code, body = self._get('/' + page)
             self.assertEqual(200, code, page)

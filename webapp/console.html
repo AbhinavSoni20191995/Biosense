@@ -3,33 +3,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BioSense Console</title>
-<meta name="description" content="Ask a cell-production question in plain language, watch the agents work it in real time, and read why every choice was made.">
+<title>BioSense · AI Discovery</title>
+<meta name="description" content="Pick a project, state a scientific objective, choose a runtime, and watch BioSense gather evidence, analyse data, form a quantified hypothesis and recommend a protocol.">
 <link rel="icon" type="image/png" href="assets/biosense-mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="brand.css">
 <style>
-/* small print under a panel: the thing that stops a badge being read as a claim */
+/* Page-specific layout only. Everything reusable lives in brand.css so the
+   simulator, the data page and this one cannot drift apart. */
+.cols{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:20px;
+  align-items:start;margin-top:4px}
+@media (max-width:64rem){.cols{grid-template-columns:1fr}}
+.stack{display:flex;flex-direction:column;gap:20px;min-width:0}
+.card{padding:20px 22px}
+.card > .head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  flex-wrap:wrap;margin-bottom:14px}
+.card h3{font-size:16.5px}
+.card .hint{font-size:13.5px;color:var(--ink-3);font-weight:400;letter-spacing:0}
 .caveat{font-size:12.5px;line-height:1.55;color:var(--ink-3);margin:12px 0 0;max-width:70ch}
-
-/* ── hypothesis card ─────────────────────────────────────── */
-/* The estimate type sits beside each number rather than on the card, because a
-   card can hold a measured baseline and a simulated candidate at once, and a
-   single badge over both would be a claim about neither. */
+.lab{font-size:11px;font-family:var(--mono);letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-3);margin:14px 0 4px}
+textarea{width:100%;min-height:104px;resize:vertical;font-family:var(--sans);font-size:17px;
+  line-height:1.55;padding:13px 15px;border-radius:12px;border:1px solid var(--line);
+  background:var(--glass-2);color:var(--ink)}
+textarea:focus{outline:none;border-color:var(--brand);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 16%,transparent)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.flag{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;padding:5px 10px;border-radius:999px;color:var(--warn);
+  border:1px solid color-mix(in srgb,var(--warn) 42%,transparent);
+  background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.feed{max-height:22rem;overflow:auto;font-size:14px;scrollbar-width:thin}
+.ev{display:grid;grid-template-columns:3.2rem 1fr;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--line)}
+.ev:last-child{border-bottom:0}
+.ev .t{font-family:var(--mono);font-size:11px;color:var(--ink-3);padding-top:2px;
+  font-variant-numeric:tabular-nums}
+.ev .d{min-width:0;overflow-wrap:anywhere;line-height:1.5}
+.k{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;padding:2px 7px;border-radius:6px;display:inline-block;
+  margin-right:7px;white-space:nowrap;border:1px solid var(--line);color:var(--ink-3)}
+/* Simple and Technical are the same facts at two depths, never two sets of
+   facts: Technical adds ids and provenance and hides nothing. */
+body[data-view="simple"] .tech{display:none}
+.tech{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:3px}
 .hyp{border:1px solid var(--line);border-radius:var(--r-s);padding:14px 16px;margin-bottom:12px}
-.hyp h4{margin:0 0 6px;font-size:14px;line-height:1.4}
-.hyp .move{font-family:var(--mono);font-size:13px;margin:8px 0;color:var(--ink)}
+.hyp h4{margin:0 0 6px;font-size:14.5px;line-height:1.4}
+.hyp .move{font-family:var(--mono);font-size:13.5px;margin:9px 0;color:var(--ink)}
 .hyp .move b{color:var(--brand)}
-.eff{display:flex;justify-content:space-between;gap:10px;align-items:baseline;
-  padding:6px 0;border-top:1px dotted var(--line);font-size:13px}
-.eff .amt{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hyp .m{font-size:12.5px;color:var(--ink-3);margin:2px 0 8px}
+.eff{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:6px 0;
+  border-top:1px dotted var(--line);font-size:13.5px}
+.eff .amt{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;
+  display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .eff .rel{color:var(--ink-3);font-size:12px}
 .et{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.09em;
   text-transform:uppercase;padding:2px 6px;border-radius:4px;border:1px solid var(--line);
-  color:var(--ink-3);margin-left:6px;white-space:nowrap}
-.et.measured{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
-.et.derived{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent);opacity:.9}
+  color:var(--ink-3);white-space:nowrap}
+.et.measured,.et.derived{color:var(--ok);
+  border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
 .et.simulated,.et.predicted{color:var(--warn);
   border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
 .et.target{border-style:dashed}
@@ -38,185 +71,23 @@
 .hev .cls{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.07em;
   text-transform:uppercase;padding:3px 7px;border-radius:999px;white-space:nowrap;
   border:1px solid var(--line);color:var(--ink-3)}
-/* expert knowledge is private and not citable: it may narrow a search range,
-   never supply a protocol value, and the badge has to say so at a glance. */
-.hev .cls.expert{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent);
-  background:color-mix(in srgb,var(--warn) 10%,transparent)}
-.hev .cls.sim{color:var(--warn);border-style:dashed}
-.hyp .lab{font-size:11px;font-family:var(--mono);letter-spacing:.07em;text-transform:uppercase;
-  color:var(--ink-3);margin:12px 0 2px}
-body[data-view="simple"] .tech{display:none}
-.tech{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
-
-/* ── hero + ask ──────────────────────────────────────────── */
-/* The input is the primary control, so it carries the largest type on the
-   page. Headline copy was removed: it sold the tool to someone already using it. */
-.ask textarea{font-size:19px;min-height:132px}
-.ask .head{margin-bottom:12px}
-.flags{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-
-.flag{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.09em;
-  text-transform:uppercase;padding:6px 11px;border-radius:999px;color:var(--warn);
-  border:1px solid color-mix(in srgb,var(--warn) 42%,transparent);
-  background:color-mix(in srgb,var(--warn) 10%,transparent)}
-.flag.as-btn{cursor:pointer;color:var(--ink-2);border-color:var(--line);background:transparent}
-.flag.as-btn:hover{color:var(--brand);border-color:var(--brand)}
-.notice{margin:13px 0 0;padding:14px 17px;border-radius:var(--r-s);font-size:14.5px;
-  line-height:1.55;max-width:72ch;color:var(--ink-2);
-  border:1px solid color-mix(in srgb,var(--warn) 32%,transparent);
-  background:color-mix(in srgb,var(--warn) 7%,transparent)}
-
-.cols{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;
-  align-items:start;margin-top:4px}
-@media (max-width:62rem){.cols{grid-template-columns:1fr}}
-.stack{display:flex;flex-direction:column;gap:20px;min-width:0}
-
-.card{padding:20px 22px}
-
-/* ── collapsible sidebar panels ──────────────────────────── */
-/* Four panels stacked open made the column a wall. The heading becomes the
-   control, so the whole row is the hit target rather than a small chevron, and
-   the state is remembered per panel: someone who opens Earlier runs is usually
-   about to open it again. */
-.fold > .head{cursor:pointer;user-select:none;margin-bottom:0}
-.fold[data-open="1"] > .head{margin-bottom:14px}
-.fold > .head h3::before{content:"\25B8";display:inline-block;width:1em;
-  font-size:.78em;color:var(--ink-3);transition:transform .15s ease;
-  transform:translateY(-1px)}
-.fold[data-open="1"] > .head h3::before{transform:rotate(90deg) translateX(-1px)}
-.fold[data-open="0"] > .head ~ *{display:none}
-.fold > .head:focus-visible{outline:2px solid var(--brand);outline-offset:3px;
-  border-radius:6px}
-@media (prefers-reduced-motion:reduce){.fold > .head h3::before{transition:none}}
-.card > .head{display:flex;justify-content:space-between;align-items:baseline;
-  gap:12px;flex-wrap:wrap;margin-bottom:14px}
-.card h3{font-size:16.5px}
-.card .hint{font-size:13.5px;color:var(--ink-3);font-weight:400;letter-spacing:0}
-
-textarea{width:100%;min-height:118px;resize:vertical;font-family:var(--sans);
-  font-size:17px;line-height:1.55;padding:15px 17px;border-radius:13px;
-  border:1px solid var(--line);background:var(--glass-2);color:var(--ink);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
-  transition:border-color .16s, box-shadow .16s}
-textarea::placeholder{color:var(--ink-3)}
-textarea:focus{outline:none;border-color:var(--brand);
-  box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 17%,transparent)}
-.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px}
-.chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
-.chip{font-family:var(--mono);font-size:12px;padding:7px 13px;border-radius:999px;
-  border:1px dashed var(--line);background:transparent;color:var(--ink-2);
-  cursor:pointer;transition:all .16s}
-.chip:hover{border-style:solid;border-color:var(--brand);color:var(--brand)}
-
-/* ── agentic flow ────────────────────────────────────────── */
-.flow{position:relative;min-height:116px;padding:16px 18px;overflow:hidden}
-.flow .lane{display:flex;gap:11px;flex-wrap:wrap;align-items:flex-start}
-.fchip{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;
-  border-radius:12px;border:1px solid var(--glass-brd);background:var(--glass-2);
-  -webkit-backdrop-filter:blur(14px) saturate(150%);
-  backdrop-filter:blur(14px) saturate(150%);
-  max-width:330px;animation:chipIn .42s cubic-bezier(.2,.9,.3,1) both}
-.fchip.out{animation:chipOut .55s ease-in forwards}
-@keyframes chipIn{from{opacity:0;transform:translateY(12px) scale(.96);filter:blur(5px)}
-  to{opacity:1;transform:none;filter:none}}
-@keyframes chipOut{to{opacity:0;transform:translateY(-14px) scale(.97);filter:blur(5px)}}
-.fchip .dot{width:9px;height:9px;border-radius:50%;flex:none;margin-top:6px;
-  box-shadow:0 0 0 4px color-mix(in srgb,currentColor 18%,transparent)}
-.fchip .who{font-family:var(--mono);font-size:10.5px;font-weight:600;
-  letter-spacing:.11em;text-transform:uppercase;line-height:1.5}
-.fchip .what{font-size:14px;color:var(--ink);line-height:1.45;margin-top:1px}
-@media (prefers-reduced-motion:reduce){
-  .fchip{animation:none}.fchip.out{animation:none;opacity:0}
-}
-
-/* ── stat tiles ──────────────────────────────────────────── */
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px}
-.tile{padding:17px 19px;border-radius:13px;border:1px solid var(--line);
-  background:var(--glass-2);
-  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-.tile .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
-  text-transform:uppercase;color:var(--ink-3)}
-.tile .v{font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.12;
-  margin-top:6px;font-variant-numeric:tabular-nums}
-.tile .n{font-size:13.5px;color:var(--ink-2);margin-top:3px}
-
-/* ── plain-language read ─────────────────────────────────── */
-.read{font-size:17px;line-height:1.65}
-.read p{margin:0 0 11px}
-.read p:last-child{margin-bottom:0}
-.read .big{font-size:19.5px;font-weight:600;letter-spacing:-.015em}
-.read ul{margin:9px 0;padding-left:20px}
-.read li{margin:5px 0}
-.read .qt{border-left:3px solid var(--brand);padding:9px 0 9px 15px;
-  margin:12px 0;color:var(--ink-2);font-size:16px}
-.export{display:flex;flex-direction:column;gap:7px;margin-top:4px}
-.export .btn{justify-content:center;text-align:center;text-decoration:none}
-.export .note{font-size:13px;color:var(--ink-3);line-height:1.45}
-
-/* ── feed ────────────────────────────────────────────────── */
-.feed{max-height:27rem;overflow:auto;font-size:14.5px;
-  scrollbar-width:thin}
-.ev{display:grid;grid-template-columns:3.4rem 1fr;gap:11px;padding:9px 0;
-  border-bottom:1px solid var(--line)}
-.ev:last-child{border-bottom:0}
-.ev .t{font-family:var(--mono);font-size:11px;color:var(--ink-3);padding-top:3px;
-  font-variant-numeric:tabular-nums}
-.ev .d{min-width:0;overflow-wrap:anywhere;line-height:1.5}
-.k{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.09em;
-  text-transform:uppercase;padding:2px 8px;border-radius:6px;display:inline-block;
-  margin-right:7px;white-space:nowrap;border:1px solid currentColor;
-  background:color-mix(in srgb,currentColor 12%,transparent)}
-
-table{width:100%;border-collapse:collapse;font-size:14.5px}
-th,td{text-align:left;padding:8px 9px;border-bottom:1px solid var(--line);
-  vertical-align:top}
-th{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--ink-3);font-weight:600}
-td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
-
-figure{margin:0}
-figcaption{font-size:13.5px;color:var(--ink-3);margin-top:10px;line-height:1.55}
-svg.chart{width:100%;height:auto;display:block;overflow:visible}
-svg.chart text{font-family:var(--mono);font-size:10px;fill:var(--ink-3)}
-.grid line{stroke:var(--line);stroke-width:1}
-.serie{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
-.target{stroke:var(--ink-3);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
-.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin:0 0 11px;
-  color:var(--ink-2)}
-.legend span{display:inline-flex;align-items:center;gap:7px}
-.sw{width:12px;height:12px;border-radius:4px;flex:none;display:inline-block}
-
-.tip{position:fixed;pointer-events:none;z-index:60;padding:11px 14px;
-  border-radius:11px;font-size:14px;max-width:17rem;opacity:0;
-  transition:opacity .1s;background:var(--glass);
-  -webkit-backdrop-filter:blur(20px) saturate(170%);
-  backdrop-filter:blur(20px) saturate(170%);
-  border:1px solid var(--glass-brd);box-shadow:var(--shadow)}
-.tip.on{opacity:1}
-.tip h4{font-size:13.5px;margin-bottom:6px}
-.tip .r{display:flex;justify-content:space-between;gap:16px;line-height:1.7}
-
-.err{padding:13px 16px;border-radius:var(--r-s);font-size:15px;
-  border:1px solid color-mix(in srgb,var(--bad) 42%,transparent);
-  background:color-mix(in srgb,var(--bad) 10%,transparent);color:var(--ink)}
 details{margin-top:12px}
 summary{cursor:pointer;font-family:var(--mono);font-size:12.5px;color:var(--brand)}
-summary:hover{text-decoration:underline}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
-
-/* Narrow screens: keep the sticky header to one row. Left to wrap it took
-   119px of an 844px viewport, which is a lot of a phone screen to spend on
-   chrome that is pinned the whole way down the page. */
+.export{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.export .btn{justify-content:center;text-align:center;text-decoration:none}
+.export .note{font-size:12.5px;color:var(--ink-3);line-height:1.45}
+.fold > .head{cursor:pointer;user-select:none;margin-bottom:0}
+.fold[data-open="1"] > .head{margin-bottom:14px}
+.fold > .head h3::before{content:"\25B8";display:inline-block;width:1em;font-size:.78em;
+  color:var(--ink-3);transition:transform .15s ease;transform:translateY(-1px)}
+.fold[data-open="1"] > .head h3::before{transform:rotate(90deg) translateX(-1px)}
+.fold[data-open="0"] > .head ~ *{display:none}
+.fold > .head:focus-visible{outline:2px solid var(--brand);outline-offset:3px;border-radius:6px}
+@media (prefers-reduced-motion:reduce){.fold > .head h3::before{transition:none}}
 @media (max-width:30rem){
-  .bar{gap:9px;padding:9px 20px}
-  .brand img{height:32px;width:32px}
-  .brand .nm{font-size:17px}
-  .brand .sub{display:none}
-  #clock{display:none}
-  .pill{font-size:10px;padding:5px 9px;letter-spacing:.04em}
-  .bar .btn{font-size:11px;padding:7px 10px}
-  .hero h1{letter-spacing:-.03em}
+  .bar{gap:9px;padding:9px 20px} .brand img{height:32px;width:32px}
+  .brand .nm{font-size:17px} .brand .sub{display:none}
   .card{padding:17px 17px}
 }
 </style>
@@ -234,815 +105,229 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   </div>
   <nav class="modes" aria-label="Section">
     <a href="console.html" aria-current="page">AI Discovery</a>
+    <a href="loop.html">Quick loop</a>
     <a href="simulator.html">Simulator</a>
     <a href="data.html">Data</a>
     <a href="index.html">Runs</a>
   </nav>
   <div class="spacer"></div>
-  <span class="pill idle" id="status"><span class="led"></span><span id="statusText">ready</span></span>
-  <span class="mono dim tnum" id="clock" style="min-width:4.2rem;text-align:right"></span>
+  <span id="identity" class="row" style="margin:0;gap:8px"></span>
   <button class="btn" id="viewBtn" aria-pressed="false">Technical view</button>
   <button class="btn" id="theme" title="Switch light / dark">Theme</button>
 </header>
 
-
+<section class="glass card" id="signinCard" hidden>
+  <div class="head"><h3>Sign in</h3>
+    <span class="hint">through your Omnigent account</span></div>
+  <form id="signinForm" class="fields">
+    <div class="fld">
+      <label for="signinServer">Omnigent server</label>
+      <input type="text" id="signinServer" placeholder="https://your-omnigent-server">
+      <p class="hint">The server you run <code>omnigent login</code> against. BioSense forwards
+        your password to it once and never stores it; the session token stays on the server side
+        of this application and never reaches your browser.</p>
+    </div>
+    <div class="two">
+      <div class="fld"><label for="signinUser">Email or username</label>
+        <input type="text" id="signinUser" autocomplete="username"></div>
+      <div class="fld"><label for="signinPass">Password</label>
+        <input type="password" id="signinPass" autocomplete="current-password"
+          style="width:100%;font-size:15px;padding:10px 13px;border-radius:10px;
+                 border:1px solid var(--line);background:var(--glass-2);color:var(--ink)"></div>
+    </div>
+    <div class="row">
+      <button class="btn go" type="submit">Sign in</button>
+      <span class="dim" id="signinMsg"></span>
+    </div>
+  </form>
+  <p class="caveat" id="identityNote"></p>
+</section>
 
 <div class="cols">
   <div class="stack">
 
-    <section class="glass card ask">
+    <section class="glass card">
       <div class="head">
-        <h3>Production question</h3>
-        <div class="flags">
-          <span class="flag">Synthetic stand-in</span>
-          <button class="flag as-btn" id="why" aria-expanded="false">Why &rsaquo;</button>
+        <h3>Run AI discovery</h3>
+        <span class="rt-badge synthetic_demo" id="runtimeBadge"></span>
+      </div>
+
+      <div class="fields">
+        <div class="fld">
+          <label for="project">Project</label>
+          <select id="project"></select>
+          <p class="hint" id="projectNote"></p>
+        </div>
+
+        <div class="fld">
+          <label for="objective">Scientific objective</label>
+          <textarea id="objective" spellcheck="false"
+            placeholder="Increase viable macrophage production while maintaining macrophage identity and viability."></textarea>
+          <p class="hint">What you want to find out, in your own words. It travels as data: it is
+            never put into a command line.</p>
+        </div>
+
+        <details>
+          <summary>Research context, data and constraints</summary>
+          <div class="fields" style="margin-top:14px">
+            <div class="fld">
+              <span class="lab">Evidence scope</span>
+              <div class="two">
+                <div><label for="ctxSpecies">Species</label>
+                  <input type="text" id="ctxSpecies" placeholder="human"></div>
+                <div><label for="ctxCellTypes">Cell types</label>
+                  <input type="text" id="ctxCellTypes" placeholder="macrophage, monocyte"></div>
+              </div>
+              <div class="two" style="margin-top:12px">
+                <div><label for="ctxStates">States</label>
+                  <input type="text" id="ctxStates" placeholder="differentiating, mature"></div>
+                <div><label for="ctxTissues">Tissue</label>
+                  <input type="text" id="ctxTissues" placeholder=""></div>
+              </div>
+              <div class="two" style="margin-top:12px">
+                <div><label for="ctxDisease">Disease context</label>
+                  <input type="text" id="ctxDisease" placeholder=""></div>
+                <div><label for="ctxStrictness">How strictly to apply it</label>
+                  <select id="ctxStrictness">
+                    <option value="prefer">prefer — show out-of-scope evidence, ranked lower and labelled</option>
+                    <option value="strict">strict — exclude out-of-scope evidence</option>
+                    <option value="open">open — no restriction</option>
+                  </select></div>
+              </div>
+              <p class="hint">Comma-separated. A mouse result is not a weaker answer about human
+                cells; it is an answer to a different question, so a mismatch is shown rather
+                than absorbed.</p>
+            </div>
+
+            <div class="fld">
+              <span class="lab">Your data</span>
+              <div class="picks" id="datasetPicks"></div>
+              <p class="hint" id="datasetNote"></p>
+            </div>
+
+            <div class="fld">
+              <span class="lab">Values to test</span>
+              <div class="row" style="margin-top:0">
+                <select id="candParam" style="flex:1 1 14rem"></select>
+                <input type="text" id="candValue" inputmode="decimal" placeholder="value"
+                  style="flex:0 1 8rem">
+                <button class="btn" id="candAdd" type="button">Add</button>
+              </div>
+              <div class="picks" id="candList" style="margin-top:10px"></div>
+              <p class="hint">Optional. Name a value and the run can put it in a protocol;
+                leave it out and a hypothesis will say which way to move without claiming how
+                far, which is the honest answer when nothing supports a number.</p>
+            </div>
+
+            <div class="fld">
+              <label for="constraints">Process constraints</label>
+              <textarea id="constraints" style="min-height:70px;font-size:15px"
+                placeholder="What this process cannot do, whatever the evidence says."></textarea>
+            </div>
+          </div>
+        </details>
+
+        <div class="fld">
+          <span class="lab">Runtime</span>
+          <div class="rt-grid" id="runtimes"></div>
+          <p class="hint">A synthetic run and a real one are different claims about the same
+            question. BioSense never substitutes one for the other: if a real runtime is
+            unavailable the run fails with the reason, and says what fixes it.</p>
         </div>
       </div>
-      <div class="notice" id="caveat" hidden role="note">
-        Runs here never touch a bioreactor and never call a model. The designer, the
-        optimiser and the decisions are deterministic code; the reactor is a stand-in whose
-        per-arm behaviour was invented for software testing. Every protocol value is a
-        design choice, not a published number. Limitations and references are in the report.
-      </div>
-      <label class="sr" for="prompt">Your production question</label>
-      <textarea id="prompt" spellcheck="false" placeholder="Optimise the conditions for growing wild-type T cells from iPSC, and compare with a BACH2 knockout that must still be expanded."></textarea>
+
       <div class="row">
-        <button class="btn go" id="run">Run the loop</button>
-        <button class="btn" id="check">Assumptions</button>
-        <span class="dim mono tnum" id="len"></span>
+        <button class="btn go" id="runBtn">Run AI discovery</button>
       </div>
-      <div class="chips">
-        <button class="chip" data-ex="Please optimize the condition for growing wild type Tcell from ipsc, please output the best protocol. Compare this with what happens when a Tcell with knockout of Bach2 is required to be expanded.">BACH2 comparison</button>
-        <button class="chip" data-ex="Reach 30 cells per input cell of CD3+ T cells from iPSC by day 45, wild type only.">Wild type · day 45</button>
-        <button class="chip" data-ex="Expand CAR-T cells to 12 per input T cell at day 10 with an EXH1 knockout arm.">CAR-T · day 10</button>
-      </div>
-      <div id="parseOut"></div>
+      <div id="runState" hidden style="margin-top:14px"></div>
     </section>
 
-    <section class="glass flow" id="flowPanel" hidden aria-live="polite" aria-label="Agent activity">
-      <div class="eyebrow" style="margin-bottom:11px">Agents working</div>
-      <div class="lane" id="flow"></div>
+    <section class="glass card" id="resultPanel" hidden>
+      <div class="head"><h3>Current hypothesis</h3><span class="hint" id="resultHead"></span></div>
+      <div id="hypothesis"></div>
     </section>
 
-    <section class="glass card" id="readPanel" hidden>
-      <div class="head"><h3>Result</h3>
-        </div>
-      <div class="read" id="read"></div>
+    <section class="glass card" id="protocolPanel" hidden>
+      <div class="head"><h3>Recommended protocol</h3>
+        <span class="hint">one page, and what did not make it</span></div>
+      <div id="protocol"></div>
     </section>
 
-    <section class="glass card" id="chartPanel" hidden>
-      <div class="head"><h3>Search trajectory</h3>
-        <span class="hint">per arm, per iteration</span></div>
-      <figure>
-        <div class="legend" id="legend"></div>
-        <div id="chart"></div>
-        <figcaption id="chartCap"></figcaption>
-      </figure>
-      <details><summary>Show as a table</summary><div id="chartTable"></div></details>
+    <section class="glass card" id="analysisPanel" hidden>
+      <div class="head"><h3>Analyses</h3><span class="hint">evidence, not decisions</span></div>
+      <div id="analyses"></div>
     </section>
 
-    <section class="glass card" id="hypPanel">
-      <div class="head"><h3>Hypotheses</h3><span class="hint" id="hypHint">evidence, not a decision</span></div>
-      <div id="hyps" class="dim">loading…</div>
-      <p class="caveat" id="hypNote"></p>
+    <section class="glass card" id="benchPanel" hidden>
+      <div class="head"><h3>Benchmark</h3>
+        <span class="hint">system capability, not biological truth</span></div>
+      <div id="benchmark"></div>
     </section>
 
   </div>
 
   <div class="stack">
-    <section class="glass card" id="tilePanel" hidden>
-      <div class="head"><h3>Outcome</h3><span class="hint" id="tileHint"></span></div>
-      <div class="tiles" id="tiles"></div>
-      <div id="result" style="margin-top:15px"></div>
+    <section class="glass card" id="progressPanel" hidden>
+      <div class="head"><h3>Progress</h3>
+        <span class="rt-badge synthetic_demo" id="runBadge"></span></div>
+      <ul class="stages" id="stages"></ul>
     </section>
 
     <section class="glass card fold" data-open="1">
-      <div class="head"><h3>Record</h3><span class="hint" id="evCount"></span></div>
-      <div class="feed" id="feed">
-        <p class="dim">Nothing running yet. Type a question and press <b>Run the loop</b>.</p>
-      </div>
+      <div class="head"><h3>Candidate parameters</h3>
+        <span class="hint">what to turn next</span></div>
+      <div id="candidates" class="dim">Nothing proposed yet.</div>
     </section>
 
-    <section class="glass card fold" id="dataPanel" data-open="0">
-      <div class="head"><h3>Data</h3><span class="hint" id="dataHint">public only</span></div>
-      <div id="datasets" class="dim">loading…</div>
-      <p class="caveat" id="dataNote"></p>
-    </section>
-
-    <section class="glass card fold" id="analysisPanel" data-open="1" hidden>
-      <div class="head"><h3>Analyses</h3><span class="hint">evidence, not decisions</span></div>
-      <div id="analyses"></div>
+    <section class="glass card fold" id="evidencePanel" data-open="1" hidden>
+      <div class="head"><h3>Evidence</h3><span class="hint">by what it is</span></div>
+      <div id="evidence"></div>
     </section>
 
     <section class="glass card fold" data-open="0">
-      <div class="head"><h3>Earlier runs</h3><span class="hint">read-only</span></div>
-      <div id="loops" class="dim">loading…</div>
+      <div class="head"><h3>Record</h3><span class="hint" id="evCount"></span></div>
+      <div class="feed" id="feed">
+        <p class="dim">Nothing running yet.</p>
+      </div>
+    </section>
+
+    <section class="glass card fold" data-open="1">
+      <div class="head"><h3>Export</h3><span class="hint">from this run</span></div>
+      <div class="export" id="exports">
+        <p class="dim">Available once a run has finished.</p>
+      </div>
+    </section>
+
+    <section class="glass card fold" data-open="0">
+      <div class="head"><h3>Benchmarks</h3><span class="hint">read or re-run</span></div>
+      <div id="benchList" class="dim">loading…</div>
+      <div class="lab">Run one again</div>
+      <div id="benchRun"></div>
+      <p class="caveat" id="benchNote"></p>
     </section>
   </div>
 </div>
 
-<div class="tip" id="tip" role="status"></div>
 </div>
-
 <script>
-'use strict';
-const $ = s => document.querySelector(s);
-const el = (t,c,x)=>{const n=document.createElement(t);if(c)n.className=c;
-  if(x!=null)n.textContent=x;return n;};
-const fmt=(v,nd=2)=>(typeof v==='number'&&isFinite(v))
-  ?(Math.abs(v)>=1e6?v.toExponential(2):(+v.toFixed(nd)).toString()):'—';
-const SERIES=['var(--s1)','var(--s2)','var(--s3)'];
-
-/* theme ---------------------------------------------------- */
-(function(){
-  let saved=null; try{saved=localStorage.getItem('bs-theme');}catch(_){}
-  if(saved)document.documentElement.setAttribute('data-theme',saved);
-  $('#theme').addEventListener('click',()=>{
-    const cur=document.documentElement.getAttribute('data-theme')
-      || (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
-    const next=cur==='dark'?'light':'dark';
-    document.documentElement.setAttribute('data-theme',next);
-    try{localStorage.setItem('bs-theme',next);}catch(_){}
-    if(state.obs.length)drawChart();
+/* theme: shared behaviour, kept inline so the page works before any module loads */
+(function () {
+  let saved = null; try { saved = localStorage.getItem('bs-theme'); } catch (_) {}
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+  document.querySelector('#theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme')
+      || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('bs-theme', next); } catch (_) {}
   });
 })();
-
-/* which agent owns which event ----------------------------- */
-const AGENT={
-  evidence:['Literature agent','var(--s1)'],
-  protocol:['Protocol designer','var(--brand)'],
-  approved:['Approval gate','var(--brand)'],
-  run:['Bioreactor stand-in','var(--s3)'],
-  analysis:['Analysis agent','var(--s2)'],
-  bioinformatics:['Bioinformatics agent','var(--s3)'],
-  dataset_analysis:['Bioinformatics agent','var(--s1)'],
-  envelope:['Decision envelope','var(--neutral)'],
-  decision:['Orchestrator','var(--brand)'],
-  brief:['Orchestrator','var(--brand)'],
-  revision:['Optimiser','var(--s2)'],
-  terminal:['Orchestrator','var(--ok)'],
-  report:['Reporter','var(--ok)'],
-  refusal:['Refused','var(--bad)'],
-  error:['Error','var(--bad)'],
-  loop_init:['Loop','var(--brand)'],
-  accepted:['Loop','var(--brand)'],
-  note:['Loop','var(--warn)'],
-  done:['Loop','var(--ok)'],
-};
-const state={arms:[],obs:[],target:null,findings:[],summary:null,colors:{}};
-
-/* agentic flow -------------------------------------------------
-   The engine finishes a 25-iteration run in about a second, so the
-   events arrive as one burst. Rendering them straight through gives a
-   flicker and an empty panel. They are queued instead and released at a
-   readable pace, so the panel narrates the run even though the run is
-   already over. Low-value kinds are dropped first when the queue runs
-   long, so the narration keeps up without lying about the order. */
-const FLOW_MS=430, FLOW_MAX=5, FLOW_LIFE=4200;
-const flowQ=[]; let flowTimer=null, flowIdle=null;
-const FLOW_DROPPABLE=new Set(['envelope','protocol','approved','brief','run']);
-
-function queueFlow(kind,text){
-  flowQ.push({kind,text});
-  // Running behind: shed the least informative items rather than the newest.
-  while(flowQ.length>14){
-    const i=flowQ.findIndex(x=>FLOW_DROPPABLE.has(x.kind));
-    flowQ.splice(i<0?0:i,1);
-  }
-  if(!flowTimer)flowTimer=setInterval(drainFlow,FLOW_MS);
-  drainFlow();
-}
-function drainFlow(){
-  const item=flowQ.shift();
-  if(!item){
-    if(flowTimer){clearInterval(flowTimer);flowTimer=null;}
-    scheduleFlowHide();
-    return;
-  }
-  flowChip(item.kind,item.text);
-}
-function scheduleFlowHide(){
-  // Short debounce only: the panel is hidden as soon as the last chip has gone
-  // and nothing is queued. Waiting a chip-lifetime left an empty glass box on
-  // screen for several seconds after the run, which reads as a broken panel.
-  clearTimeout(flowIdle);
-  flowIdle=setTimeout(()=>{
-    if(!flowQ.length&&!flowTimer&&!$('#flow').children.length)$('#flowPanel').hidden=true;
-  },260);
-}
-
-function flowChip(kind,text){
-  const [who,col]=AGENT[kind]||['Loop','var(--neutral)'];
-  $('#flowPanel').hidden=false;
-  const lane=$('#flow');
-  const c=el('div','fchip'); c.style.color=col;
-  const d=el('span','dot'); d.style.background=col; c.appendChild(d);
-  const b=el('div');
-  const w=el('div','who',who); w.style.color=col; b.appendChild(w);
-  b.appendChild(el('div','what',text));
-  c.appendChild(b); lane.appendChild(c);
-  setTimeout(()=>{
-    c.classList.add('out');
-    setTimeout(()=>{ if(c.parentNode)c.remove(); scheduleFlowHide(); },560);
-  },FLOW_LIFE);
-  while(lane.children.length>FLOW_MAX) lane.firstElementChild.remove();
-}
-
-/* one-line description of an event ------------------------- */
-function say(e){
-  switch(e.kind){
-    case 'loop_init': return e.question||'loop started';
-    case 'accepted': return `request ${e.request_id} · ${e.standin} stand-in`
-      + (e.assumed?` · ${e.assumed} defaults assumed`:'');
-    case 'evidence': return `${e.claims} directional claims from ${e.sources} publications`;
-    case 'dataset_analysis': return `${(e.datasets||[]).join(', ')} analysed for ${e.uncertainty}`
-      + ((e.levers||[]).length?` · candidate ${e.levers[0].parameter}`:' · no parameter implicated');
-    case 'protocol': return `iteration ${e.iteration} · ${e.design_choices} design choices, `
-      + `${e.gaps} gaps`;
-    case 'approved': return `iteration ${e.iteration} · ${e.acknowledged} design choices acknowledged`;
-    case 'run': return e.label||e.run_id;
-    case 'analysis': return `${e.verdict} — `+(e.arms||[]).map(a=>
-      `${a.arm_id} ${fmt(a.observed)}${a.status==='MET'?' ✓':' ✗'}`).join(' · ');
-    case 'bioinformatics': return `${(e.found||[]).join(', ')||'nothing found'} · `
-      + `${(e.levers||[]).length} levers implicated`;
-    case 'envelope': return `may choose: ${(e.allowed||[]).join(', ')}`;
-    case 'decision': return `${e.type} · ${e.status} · by ${e.authored_by}`;
-    case 'brief': return (e.failed||[]).join('; ')||'revision brief written';
-    case 'revision': {
-      const mv=(e.moves||[]).map(m=>`${m.factor} ${fmt(m.from)}→${fmt(m.to)}`
-        +(m.arm_id?` [${m.arm_id}]`:'')).join('; ');
-      const rv=(e.reverts||[]).map(r=>`revert ${r.factor} (${r.why})`).join('; ');
-      return [rv,mv].filter(Boolean).join(' · ')||'nothing left to move';
-    }
-    case 'terminal': return `${e.type}`;
-    case 'report': return 'reasoning report written';
-    case 'refusal': case 'error': return `${e.step||''}: ${e.detail||''}`;
-    case 'note': return e.detail||'';
-    case 'done': return `${e.terminal} · ${e.iterations_used}/${e.max_iterations} iterations`;
-    default: return JSON.stringify(e).slice(0,150);
-  }
-}
-
-function pushEvent(e){
-  const feed=$('#feed');
-  if(feed.firstElementChild&&feed.firstElementChild.tagName==='P')feed.textContent='';
-  const row=el('div','ev');
-  row.appendChild(el('div','t',e.t!=null?e.t.toFixed(1)+'s':''));
-  const d=el('div','d');
-  const [who,col]=AGENT[e.kind]||['','var(--neutral)'];
-  const tag=el('span','k',e.kind.replace(/_/g,' ')); tag.style.color=col;
-  d.appendChild(tag); d.appendChild(document.createTextNode(say(e)));
-  row.appendChild(d); feed.appendChild(row);
-  feed.scrollTop=feed.scrollHeight;
-  $('#evCount').textContent=feed.querySelectorAll('.ev').length+' events';
-
-  // The envelope line is in the full record below; it adds nothing as a chip.
-  if(e.kind!=='envelope') queueFlow(e.kind,say(e));
-
-  if(e.kind==='loop_init'){
-    state.arms=e.arms||[]; state.obs=[]; state.findings=[];
-    state.colors={}; state.arms.forEach((a,i)=>state.colors[a]=SERIES[i%SERIES.length]);
-    const m=/([a-z_]+) >= ([0-9.]+)/.exec(e.target||'');
-    if(m){state.target=parseFloat(m[2]);}
-  }
-  if(e.kind==='analysis'){
-    const r={iteration:e.iteration,arms:{}};
-    (e.arms||[]).forEach(a=>r.arms[a.arm_id]=a.observed);
-    state.obs=state.obs.filter(o=>o.iteration!==e.iteration).concat([r])
-      .sort((a,b)=>a.iteration-b.iteration);
-    drawChart();
-  }
-  if(e.kind==='dataset_analysis')renderAnalysis(e);
-  if(e.kind==='revision'&&(e.findings||[]).length){state.findings=e.findings;renderFindings();}
-  if(e.kind==='done')state.summary=e;
-}
-
-/* chart ---------------------------------------------------- */
-function drawChart(){
-  if(!state.obs.length||!state.arms.length)return;
-  $('#chartPanel').hidden=false;
-  const W=660,H=268,m={t:16,r:80,b:36,l:52};
-  const iw=W-m.l-m.r, ih=H-m.t-m.b;
-  const xs=state.obs.map(o=>o.iteration);
-  const x0=Math.min(...xs), x1=Math.max(Math.max(...xs),x0+1);
-  let vals=[]; state.obs.forEach(o=>state.arms.forEach(a=>{
-    if(typeof o.arms[a]==='number')vals.push(o.arms[a]);}));
-  if(state.target)vals.push(state.target);
-  const ymax=(Math.max(...vals)||1)*1.14;
-  const X=v=>m.l+(v-x0)/(x1-x0)*iw, Y=v=>m.t+ih-(v/ymax)*ih;
-  const ns='http://www.w3.org/2000/svg';
-  const mk=(t,at)=>{const n=document.createElementNS(ns,t);
-    for(const k in at)n.setAttribute(k,at[k]);return n;};
-  const svg=mk('svg',{class:'chart',viewBox:`0 0 ${W} ${H}`,role:'img',
-    'aria-label':`Target metric per iteration for ${state.arms.join(' and ')}`});
-
-  const g=mk('g',{class:'grid'});
-  const nT=4;
-  for(let i=0;i<=nT;i++){const y=m.t+ih-i/nT*ih;
-    g.appendChild(mk('line',{x1:m.l,x2:m.l+iw,y1:y,y2:y}));}
-  svg.appendChild(g);
-  for(let i=0;i<=nT;i++){const v=i/nT*ymax,y=m.t+ih-i/nT*ih;
-    const t=mk('text',{x:m.l-9,y:y+3.5,'text-anchor':'end'});
-    t.textContent=Math.round(v); svg.appendChild(t);}
-  const step=Math.max(1,Math.ceil((x1-x0)/8));
-  for(let v=x0;v<=x1;v+=step){const t=mk('text',{x:X(v),y:H-m.b+16,'text-anchor':'middle'});
-    t.textContent=v; svg.appendChild(t);}
-  const xl=mk('text',{x:m.l+iw/2,y:H-3,'text-anchor':'middle'});
-  xl.textContent='iteration'; svg.appendChild(xl);
-
-  if(state.target){
-    svg.appendChild(mk('line',{class:'target',x1:m.l,x2:m.l+iw,
-      y1:Y(state.target),y2:Y(state.target)}));
-    const t=mk('text',{x:m.l+5,y:Y(state.target)-8});
-    t.textContent='target '+Math.round(state.target); svg.appendChild(t);
-  }
-  const dots=state.obs.length<=12;
-  state.arms.forEach((arm,i)=>{
-    const col=state.colors[arm]||SERIES[i%SERIES.length];
-    const pts=state.obs.filter(o=>typeof o.arms[arm]==='number')
-      .map(o=>[X(o.iteration),Y(o.arms[arm])]);
-    if(!pts.length)return;
-    svg.appendChild(mk('path',{class:'serie',stroke:col,
-      d:pts.map((p,j)=>(j?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')}));
-    if(dots)pts.forEach(p=>{const c=mk('circle',{cx:p[0],cy:p[1],r:4.5,fill:col});
-      c.setAttribute('stroke','var(--bg)');c.setAttribute('stroke-width','2.5');
-      svg.appendChild(c);});
-    const last=pts[pts.length-1];
-    const lb=mk('text',{x:last[0]+8,y:last[1]+(i%2?14:-7)});
-    lb.setAttribute('style','fill:'+col+';font-weight:600;font-size:11px');
-    lb.textContent=arm; svg.appendChild(lb);
-  });
-
-  const cross=mk('line',{class:'target',y1:m.t,y2:m.t+ih,x1:m.l,x2:m.l});
-  cross.setAttribute('stroke-dasharray','2 3');
-  cross.setAttribute('visibility','hidden');
-  svg.appendChild(cross);
-  const hit=mk('rect',{x:m.l,y:m.t,width:iw,height:ih,fill:'transparent'});
-  svg.appendChild(hit);
-  const tip=$('#tip');
-  hit.addEventListener('pointermove',ev=>{
-    const r=svg.getBoundingClientRect();
-    const vx=(ev.clientX-r.left)/r.width*W;
-    const it=Math.round(x0+(vx-m.l)/iw*(x1-x0));
-    const o=state.obs.reduce((b,c)=>Math.abs(c.iteration-it)<Math.abs(b.iteration-it)?c:b,
-      state.obs[0]);
-    cross.setAttribute('x1',X(o.iteration));cross.setAttribute('x2',X(o.iteration));
-    cross.setAttribute('visibility','visible');
-    tip.textContent='';
-    tip.appendChild(el('h4',null,'iteration '+o.iteration));
-    state.arms.forEach((a,i)=>{
-      const row=el('div','r'); const lf=el('span');
-      const sw=el('i','sw'); sw.style.background=state.colors[a]||SERIES[i%3];
-      sw.style.marginRight='7px'; lf.appendChild(sw);
-      lf.appendChild(document.createTextNode(a));
-      row.appendChild(lf); row.appendChild(el('span','mono tnum',fmt(o.arms[a])));
-      tip.appendChild(row);
-    });
-    tip.classList.add('on');
-    tip.style.left=Math.min(ev.clientX+15,innerWidth-270)+'px';
-    tip.style.top=(ev.clientY+15)+'px';
-  });
-  hit.addEventListener('pointerleave',()=>{tip.classList.remove('on');
-    cross.setAttribute('visibility','hidden');});
-
-  $('#chart').textContent=''; $('#chart').appendChild(svg);
-  $('#chartCap').textContent='One point per run. A move that does not beat an arm’s best '
-    +'is reverted, so a line can step back. Dashed rule is your target.';
-
-  const t=el('table'); const hr=el('tr'); hr.appendChild(el('th','n','Iteration'));
-  state.arms.forEach(a=>hr.appendChild(el('th','n',a)));
-  t.appendChild(el('thead')).appendChild(hr);
-  const tb=el('tbody');
-  state.obs.forEach(o=>{const r=el('tr'); r.appendChild(el('td','n tnum',o.iteration));
-    state.arms.forEach(a=>r.appendChild(el('td','n tnum',fmt(o.arms[a])))); tb.appendChild(r);});
-  t.appendChild(tb); $('#chartTable').textContent=''; $('#chartTable').appendChild(t);
-
-  const lg=$('#legend'); lg.textContent='';
-  state.arms.forEach((a,i)=>{const s=el('span');
-    const sw=el('i','sw'); sw.style.background=state.colors[a]||SERIES[i%3];
-    s.appendChild(sw); s.appendChild(document.createTextNode(a)); lg.appendChild(s);});
-}
-
-function renderFindings(){
-  // Findings surface inside the Result card; they had their own panel too, which
-  // printed the same sentence twice on one screen.
-}
-
-/* the result in as few words as possible ------------------- */
-function interpret(snap){
-  const s=snap.summary||{}; const best=s.best||{};
-  const arms=Object.entries(best);
-  const missed=arms.filter(([,v])=>v.status!=='MET').map(([k])=>k);
-  const r=$('#read'); r.textContent='';
-  const TERM={
-    protocol_succeeded:'Every arm reached the target. QC passed.',
-    stop_budget:'Budget ran out before every arm got there.',
-    search_exhausted:'The search ran out of levers it could move.',
-    complete_qc:'Target met, QC record incomplete.',
-    escalate_to_human:'Raised for a person to settle.',
-    refused:'The loop declined to start.',
-    error:'The run hit an error.',
-  };
-  const head=el('p','big',TERM[s.terminal]||String(s.terminal||'').replace(/_/g,' '));
-  r.appendChild(head);
-  if(missed.length) r.appendChild(el('p','mut',`${missed.join(' and ')} did not reach it.`));
-  // The one thing worth reading: a parameter no shared recipe could satisfy.
-  state.findings.forEach(f=>{
-    const q=el('div','qt'); q.textContent=f; r.appendChild(q);
-  });
-  $('#readPanel').hidden=false;
-}
-
-function renderResult(snap){
-  const s=snap.summary||{};
-  $('#tilePanel').hidden=false;
-  $('#tileHint').textContent=(s.terminal||snap.status||'').replace(/_/g,' ');
-  const tiles=$('#tiles'); tiles.textContent='';
-  Object.entries(s.best||{}).forEach(([arm,b])=>{
-    const d=el('div','tile');
-    d.appendChild(el('div','k',arm));
-    const v=el('div','v',fmt(b.observed));
-    v.style.color=b.status==='MET'?'var(--ok)':'var(--bad)';
-    d.appendChild(v);
-    d.appendChild(el('div','n',(b.status==='MET'?'target met':'target not met')
-      +' · iteration '+b.iteration));
-    tiles.appendChild(d);
-  });
-  if(s.iterations_used!=null){
-    const d=el('div','tile');
-    d.appendChild(el('div','k','Iterations'));
-    d.appendChild(el('div','v',s.iterations_used+'/'+s.max_iterations));
-    d.appendChild(el('div','n','only revisions cost one'));
-    tiles.appendChild(d);
-  }
-  const out=$('#result'); out.textContent='';
-  if((s.refusals||[]).length){
-    out.appendChild(el('h4',null,'Refusals'));
-    const ul=el('ul','tight');
-    s.refusals.forEach(x=>ul.appendChild(el('li','warnc',
-      (x.step||'')+': '+(x.error||x.status||''))));
-    out.appendChild(ul);
-  }
-  // The screen carries the answer; the report carries the justification.
-  const ex=el('div','export');
-  const a=el('a','btn go','Export full report');
-  a.href='/api/runs/'+snap.run_id+'/report'; a.target='_blank'; a.rel='noopener';
-  ex.appendChild(a);
-  ex.appendChild(el('div','note','Every decision and its reasoning, the search moves, '
-    +'the provenance of each value, and the references with DOIs.'));
-  out.appendChild(ex);
-  interpret(snap);
-}
-
-/* parse preview -------------------------------------------- */
-async function preview(){
-  const prompt=$('#prompt').value.trim(); if(!prompt)return;
-  $('#parseOut').textContent='';
-  try{
-    const r=await fetch('/api/parse',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'could not read that');
-    const box=el('div'); box.style.marginTop='18px';
-    const mkT=(title,rows,withBasis)=>{
-      box.appendChild(Object.assign(el('div','eyebrow',title),
-        {style:'margin:16px 0 7px'}));
-      const t=el('table'); const tb=el('tbody');
-      rows.forEach(p=>{const tr=el('tr');
-        tr.appendChild(el('td','mono',p.field));
-        tr.appendChild(el('td',null,JSON.stringify(p.value)));
-        tr.appendChild(el('td','dim',withBasis?(p.basis||''):
-          (p.matched_phrase?'“'+p.matched_phrase+'”':'')));
-        tb.appendChild(tr);});
-      t.appendChild(tb); box.appendChild(t);
-    };
-    mkT('Read from your question',d.provenance.read_from_prompt,false);
-    mkT('Assumed — each of these changes what counts as success',
-        d.provenance.assumed,true);
-    $('#parseOut').appendChild(box);
-  }catch(e){ $('#parseOut').appendChild(el('div','err',String(e.message||e))); }
-}
-
-/* run ------------------------------------------------------ */
-let es=null,t0=0,timer=null;
-function setStatus(k,t,live){ $('#status').className='pill '+k+(live?' live':'');
-  $('#statusText').textContent=t; }
-function tick(){ $('#clock').textContent=t0?((Date.now()-t0)/1000).toFixed(1)+'s':''; }
-
-async function start(){
-  const prompt=$('#prompt').value.trim();
-  if(prompt.length<10){ $('#parseOut').textContent='';
-    $('#parseOut').appendChild(el('div','err','Write at least 10 characters.')); return; }
-  $('#run').disabled=true; $('#check').disabled=true;
-  $('#feed').textContent=''; $('#parseOut').textContent='';
-  ['chartPanel','tilePanel','readPanel'].forEach(i=>$('#'+i).hidden=true);
-  state.obs=[];state.findings=[];state.summary=null;
-  flowQ.length=0; $('#flow').textContent=''; $('#flowPanel').hidden=true;
-  setStatus('run','starting',true);
-  try{
-    const r=await fetch('/api/runs',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'could not start');
-    t0=Date.now(); timer=setInterval(tick,100);
-    setStatus('run','running',true); listen(d.run_id);
-  }catch(e){
-    setStatus('bad','refused');
-    $('#parseOut').appendChild(el('div','err',String(e.message||e)));
-    $('#run').disabled=false; $('#check').disabled=false;
-  }
-}
-
-function finish(snap){
-  clearInterval(timer); tick();
-  const term=(snap.summary||{}).terminal||snap.status;
-  setStatus(term==='protocol_succeeded'?'ok'
-    :(snap.status==='refused'||snap.status==='error')?'bad':'warn',
-    (term||'done').replace(/_/g,' '));
-  renderResult(snap); renderFindings(); loadLoops();
-  $('#run').disabled=false; $('#check').disabled=false;
-}
-
-function listen(id){
-  if(es)es.close();
-  es=new EventSource('/api/runs/'+id+'/events');
-  es.onmessage=ev=>{ try{pushEvent(JSON.parse(ev.data));}catch(_){} };
-  es.addEventListener('closed',()=>{
-    es.close(); es=null;
-    fetch('/api/runs/'+id+'?after=999999').then(r=>r.json()).then(finish).catch(()=>{});
-  });
-  es.onerror=()=>{
-    fetch('/api/runs/'+id+'?after=999999').then(r=>r.json()).then(snap=>{
-      if(snap.status!=='running'&&snap.status!=='queued'){
-        if(es){es.close();es=null;} finish(snap);
-      }
-    }).catch(()=>{});
-  };
-}
-
-/* ── evidence badges ──────────────────────────────────────── */
-/* Three facts, three badges, never merged: what a thing IS, what it came FROM,
-   and who may see it. A derived analysis over private data shows all three. */
-const EV_LABEL={
-  published_literature:'published literature', public_dataset:'public dataset',
-  private_user_dataset:'private user data', derived_analysis:'derived analysis',
-  simulation:'simulation', real_measurement:'real measurement', mixed:'mixed sources',
-  synthetic_fixture:'synthetic fixture'};
-function badge(cls,text){
-  const b=document.createElement('span');
-  b.className='ev '+cls; b.textContent=text||EV_LABEL[cls]||cls; return b;
-}
-function evidenceRow(o){
-  const row=document.createElement('div'); row.className='ev-row';
-  if(o.evidence_class) row.append(badge(o.evidence_class));
-  if(o.source_evidence_class && o.source_evidence_class!==o.evidence_class)
-    row.append(badge(o.source_evidence_class,'source: '+(EV_LABEL[o.source_evidence_class]||o.source_evidence_class)));
-  const vis=o.source_visibility||o.visibility;
-  if(vis) row.append(badge('vis-'+vis, vis));
-  if(o.confidence) row.append(badge('simulation','confidence '+o.confidence));
-  return row;
-}
-
-/* ── datasets ─────────────────────────────────────────────── */
-async function loadDatasets(){
-  try{
-    const d=await (await fetch('/api/datasets')).json();
-    const box=$('#datasets'); box.textContent='';
-    $('#dataNote').textContent=d.note||'';
-    if(!d.datasets.length){
-      box.className='dim';
-      box.textContent='No public datasets registered. Register one with '
-        +'`python -m biosense.bioinformatics.cli datasets register`.';
-      return;
-    }
-    box.className='';
-    d.datasets.forEach(m=>{
-      const w=document.createElement('div'); w.className='ds';
-      const t=document.createElement('div'); t.className='t'; t.textContent=m.title; w.append(t);
-      const meta=document.createElement('div'); meta.className='m';
-      meta.textContent=[m.modality, m.accession||m.dataset_id,
-        m.sample_count?m.sample_count+' samples':null,
-        m.analysable?null:'no reader for '+m.file_types.join('/')]
-        .filter(Boolean).join(' · ');
-      w.append(meta, evidenceRow(m));
-      if(m.missing_metadata && m.missing_metadata.length){
-        const g=document.createElement('div'); g.className='gap';
-        g.textContent='missing: '+m.missing_metadata.join(', ')+' — asked for, never guessed';
-        w.append(g);
-      }
-      box.append(w);
-    });
-  }catch(_){ $('#datasets').textContent='could not list datasets'; }
-}
-
-/* ── analysis cards ───────────────────────────────────────── */
-/* One card per dataset analysis the run performed. Question, method, finding,
-   process implication, parameter, provenance -- and the line that says it
-   changed nothing. */
-function renderAnalysis(e){
-  $('#analysisPanel').hidden=false;
-  const box=$('#analyses');
-  const w=document.createElement('div'); w.className='ds';
-  const q=document.createElement('div'); q.className='t';
-  q.textContent='Resolving '+e.uncertainty;
-  w.append(q, evidenceRow(e));
-  const m=document.createElement('div'); m.className='m';
-  m.textContent=(e.datasets||[]).join(', ');
-  w.append(m);
-  (e.findings||[]).slice(0,3).forEach(f=>{
-    const d=document.createElement('div'); d.style.cssText='font-size:13.5px;margin-top:7px';
-    d.textContent=f; w.append(d);
-  });
-  (e.levers||[]).forEach(l=>{
-    const d=document.createElement('div');
-    d.style.cssText='font-size:13.5px;margin-top:7px;color:var(--brand);font-weight:600';
-    d.textContent='candidate: '+l.parameter+' — '+l.direction+' ('+l.confidence+')';
-    w.append(d);
-  });
-  const n=document.createElement('p'); n.className='caveat';
-  n.textContent='Evidence for the orchestrator. It changes no parameter by itself.';
-  w.append(n);
-  box.append(w);
-}
-
-async function loadLoops(){
-  try{
-    const d=await (await fetch('/api/loops')).json();
-    const box=$('#loops'); box.textContent='';
-    if(!d.length){box.className='dim';box.textContent='No runs on disk yet.';return;}
-    box.className='';
-    const t=el('table'); const hr=el('tr');
-    ['Run','Verdict','Iter','Report'].forEach((h,i)=>
-      hr.appendChild(el('th',i===2?'n':null,h)));
-    t.appendChild(el('thead')).appendChild(hr);
-    const tb=el('tbody');
-    d.slice(0,10).forEach(l=>{
-      const tr=el('tr');
-      tr.appendChild(el('td','mono',l.dir.replace(/^app-/,'')));
-      const v=l.verdicts||[];
-      tr.appendChild(el('td','dim',v.length?v[v.length-1]:'—'));
-      tr.appendChild(el('td','n tnum',l.iterations_used+'/'+l.max_iterations));
-      const td=el('td'); const a=el('a',null,'open');
-      a.href='/api/loops/'+l.dir+'/report'; a.target='_blank';
-      td.appendChild(a); tr.appendChild(td); tb.appendChild(tr);
-    });
-    t.appendChild(tb); box.appendChild(t);
-  }catch(_){ $('#loops').textContent='could not list runs'; }
-}
-
-$('#why').addEventListener('click',()=>{
-  const n=$('#caveat'), open=n.hidden;
-  n.hidden=!open; $('#why').setAttribute('aria-expanded',String(open));
-  $('#why').innerHTML=open?'Why &lsaquo;':'Why &rsaquo;';
-});
-$('#run').addEventListener('click',start);
-$('#check').addEventListener('click',preview);
-/* a condition carried over from simulator mode -------------- */
-/* Simulator mode leaves its prompt in localStorage rather than a URL, so a
-   long setpoint list cannot be truncated by a query-string limit, and so the
-   handover is visible in the box before anything runs. Consumed once. */
-(function(){
-  let carried=null; try{carried=localStorage.getItem('bs-sim-prompt');}catch(_){}
-  if(!carried)return;
-  try{localStorage.removeItem('bs-sim-prompt');}catch(_){}
-  const box=$('#prompt');
-  if(box.value.trim())return;
-  box.value=carried; box.dispatchEvent(new Event('input'));
-})();
-
-$('#prompt').addEventListener('input',()=>{
-  const n=$('#prompt').value.length; $('#len').textContent=n?n+' / 2000':'';
-});
-document.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{
-  $('#prompt').value=b.dataset.ex;
-  $('#prompt').dispatchEvent(new Event('input')); $('#prompt').focus();
-}));
-$('#prompt').addEventListener('keydown',e=>{
-  if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();start();}
-});
-loadLoops();
-loadDatasets();
-
-/* ── hypotheses ───────────────────────────────────────────── */
-/* A hypothesis is the unit a person argues about, so the card has to answer
-   "where did that number come from?" without anybody opening a file. */
-/* the classes a hypothesis can cite that the dataset badges above did not need */
-Object.assign(EV_LABEL, { expert_knowledge: 'expert knowledge', prior_experiment: 'prior run',
-  internal_analysis: 'analysis' });
-
-function evClass(c) {
-  if (c === 'expert_knowledge') return 'expert';
-  if (c === 'simulation' || c === 'synthetic_fixture') return 'sim';
-  return '';
-}
-
-function effectRow(e) {
-  const r = document.createElement('div'); r.className = 'eff';
-  const left = document.createElement('div');
-  left.append(document.createTextNode(e.label || e.metric));
-  const amt = document.createElement('div'); amt.className = 'amt';
-
-  if (!e.magnitude_estimated) {
-    /* a representable state, not a missing field: direction known, size not */
-    amt.append(document.createTextNode(
-      'direction ' + (e.direction || 'unknown') + ', magnitude not estimated'));
-  } else {
-    const sign = e.absolute_change > 0 ? '+' : '';
-    amt.append(document.createTextNode(
-      sign + (+e.absolute_change).toPrecision(4).replace(/\.?0+$/, '')
-      + ' ' + (e.change_unit || '')));
-    /* percentage points and a relative change are different quantities, so the
-       card shows them as two figures and never collapses them into one */
-    const rel = document.createElement('span'); rel.className = 'rel';
-    rel.textContent = e.relative_change_pct != null
-      ? '  (' + (e.relative_change_pct > 0 ? '+' : '') + e.relative_change_pct + '%)'
-      : (e.relative_withheld_reason ? '  (relative change withheld)' : '');
-    if (rel.textContent) amt.append(rel);
-    if (e.relative_withheld_reason) rel.title = e.relative_withheld_reason;
-  }
-  const et = document.createElement('span');
-  et.className = 'et ' + e.estimate_type; et.textContent = e.estimate_type;
-  et.title = 'how this number was produced';
-  amt.append(et);
-  r.append(left, amt);
-  return r;
-}
-
-function hypCard(row) {
-  const h = row.hypothesis, w = document.createElement('div'); w.className = 'hyp';
-  const t = document.createElement('h4'); t.textContent = h.statement; w.append(t);
-
-  const p = h.parameter, move = document.createElement('div'); move.className = 'move';
-  if (p.current_value != null && p.candidate_value != null) {
-    move.innerHTML = (p.label || p.parameter_id) + ': ' + p.current_value
-      + ' → <b>' + p.candidate_value + '</b> ' + (p.unit || '');
-  } else {
-    move.textContent = (p.label || p.parameter_id) + ': ' + (p.direction || 'change');
-  }
-  w.append(move);
-  if (p.simulator_coverage && p.simulator_coverage !== 'modelled') {
-    const n = document.createElement('p'); n.className = 'caveat';
-    n.textContent = 'The model has no term for this parameter ('
-      + p.simulator_coverage.replace(/_/g, ' ') + '), so no effect is predicted for it. '
-      + 'It can still be set in the lab.';
-    w.append(n);
-  }
-
-  w.append(Object.assign(document.createElement('div'), { className: 'lab',
-    textContent: 'Expected effects' }));
-  (h.expected_effects || []).forEach(e => w.append(effectRow(e)));
-
-  w.append(Object.assign(document.createElement('div'), { className: 'lab',
-    textContent: 'Evidence · confidence ' + h.confidence }));
-  (h.evidence || []).forEach(e => {
-    const r = document.createElement('div'); r.className = 'hev';
-    const c = document.createElement('span');
-    c.className = 'cls ' + evClass(e.evidence_class);
-    c.textContent = EV_LABEL[e.evidence_class] || e.evidence_class;
-    if (e.evidence_class === 'expert_knowledge') {
-      c.title = 'private and not citable: it may narrow a search range, never supply a '
-        + 'protocol value';
-    }
-    const txt = document.createElement('div'); txt.textContent = e.summary;
-    r.append(c, txt); w.append(r);
-  });
-
-  const nx = h.next_experiment || {};
-  if (nx.summary) {
-    w.append(Object.assign(document.createElement('div'), { className: 'lab',
-      textContent: 'Recommended next' }));
-    w.append(Object.assign(document.createElement('div'),
-      { style: 'font-size:13px', textContent: nx.summary }));
-  }
-  w.append(Object.assign(document.createElement('p'),
-    { className: 'caveat tech', textContent: h.hypothesis_id + ' · ' + row.source
-      + ' · inputs: ' + row.inputs }));
-  return w;
-}
-
-async function loadHypotheses() {
-  const box = $('#hyps');
-  try {
-    const d = await (await fetch('/api/hypotheses')).json();
-    box.textContent = ''; $('#hypNote').textContent = d.note || '';
-    if (!d.hypotheses.length) {
-      box.className = 'dim';
-      box.textContent = 'No hypothesis has been formed yet. Run a loop, or build a benchmark.';
-      return;
-    }
-    box.className = '';
-    $('#hypHint').textContent = d.hypotheses.length + ' on disk';
-    d.hypotheses.forEach(r => box.append(hypCard(r)));
-  } catch (_) { box.textContent = 'the hypothesis service did not answer'; }
-}
-loadHypotheses();
-
-/* ── folding panels ───────────────────────────────────────── */
+/* folding panels: the heading is the control, so the whole row is the hit
+   target, and the state is remembered per panel. */
 (function () {
   const KEY = 'bs-folds';
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (_) {}
-
   document.querySelectorAll('.fold').forEach((sec, i) => {
     const head = sec.querySelector('.head');
     const id = sec.id || 'fold' + i;
@@ -1063,18 +348,7 @@ loadHypotheses();
     });
   });
 })();
-
-/* Simple and Technical are the same facts at two levels of detail, never two
-   sets of facts: Technical adds ids and provenance lines, and hides nothing. */
-(function () {
-  const b = $('#viewBtn');
-  b.addEventListener('click', () => {
-    const tech = document.body.dataset.view !== 'technical';
-    document.body.dataset.view = tech ? 'technical' : 'simple';
-    b.textContent = tech ? 'Simple view' : 'Technical view';
-    b.setAttribute('aria-pressed', String(tech));
-  });
-})();
 </script>
+<script src="discovery.js"></script>
 </body>
 </html>
