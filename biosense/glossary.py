@@ -256,9 +256,11 @@ RUNTIME_MODES = {
     },
     'local_real_ai': {
         'label': 'REAL AI — LOCAL',
-        'short': 'Real agents, orchestrated on this machine.',
+        'short': 'Real agents, orchestrated where this application runs.',
         'long': 'The discovery agents did the work: real literature search, real analyses over '
-                'the data you provided, a real hypothesis. The reactor is still a stand-in.',
+                'the data you provided, a real hypothesis. The reactor is still a stand-in. '
+                'A hosted BioSense runs this same runtime inside its own service and shows it '
+                'as REAL AI — ONLINE, because "local" in a browser would mean your computer.',
     },
     'remote_real_ai': {
         'label': 'REAL AI — REMOTE',

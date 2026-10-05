@@ -35,6 +35,9 @@ Configuration comes from the environment, never from a request:
     BIOSENSE_OMNIGENT_TOKEN        bearer token; or
     BIOSENSE_OMNIGENT_TOKEN_FILE   a file holding one
     BIOSENSE_OMNIGENT_ALLOW_INSECURE=1   permit http:// to a non-loopback host
+    BIOSENSE_HOSTED=1              this deployment runs the runtime itself, so the
+                                   browser is told ONLINE rather than LOCAL and the
+                                   remedies it is shown are ones a visitor can act on
 
 A browser never sees the token, the token file's path, or the workspace path.
 `public_config()` is what the interface gets, and it carries the server's scheme
@@ -58,6 +61,14 @@ LABELS = {
     'local_real_ai': 'REAL AI — LOCAL',
     'remote_real_ai': 'REAL AI — REMOTE',
 }
+# What a deployment that runs the Omnigent runtime inside its own service calls
+# its real runtime. The mode is still `local_real_ai` — the server is on loopback
+# inside the container — but "LOCAL" in a browser means "on your laptop", and for
+# a visitor to a hosted URL that is the wrong word for the true thing.
+HOSTED_LABEL = 'REAL AI — ONLINE'
+HOSTED_BLURB = ('Real AI agents, orchestrated by Omnigent inside this hosted service. No '
+                'install and no terminal. It spends model credits, so runs are capped.')
+
 BLURBS = {
     'synthetic_demo': 'Deterministic code over committed fixtures. No model is called and no '
                       'number measures a real cell.',
@@ -85,6 +96,7 @@ ENV_WORKSPACE = 'BIOSENSE_OMNIGENT_WORKSPACE'
 ENV_TOKEN = 'BIOSENSE_OMNIGENT_TOKEN'
 ENV_TOKEN_FILE = 'BIOSENSE_OMNIGENT_TOKEN_FILE'
 ENV_INSECURE = 'BIOSENSE_OMNIGENT_ALLOW_INSECURE'
+ENV_HOSTED = 'BIOSENSE_HOSTED'
 
 # Every reason a real runtime can be unusable, with the step that fixes it. A
 # reason code is part of the API: the interface switches on it, the tests assert
@@ -102,7 +114,7 @@ REASONS = {
         'Install the optional extra: uv sync --extra omnigent'),
     'runtime_unreachable': (
         'Nothing answered at the configured Omnigent server.',
-        'Start it with: omnigent start   (then reload this page)'),
+        'Start it in one command: ./scripts/start_local_ai.sh   (or: omnigent start)'),
     'auth_required': (
         'The Omnigent server requires authentication and none was configured.',
         'Run: omnigent login <server>   then set BIOSENSE_OMNIGENT_TOKEN'),
@@ -111,10 +123,12 @@ REASONS = {
         'Run: omnigent login <server>   and replace BIOSENSE_OMNIGENT_TOKEN'),
     'agent_not_registered': (
         'The discovery_loop agent is not registered on that Omnigent server.',
-        'Register it: omnigent server --agent discovery_loop'),
+        './scripts/start_local_ai.sh registers it at boot   '
+        '(by hand: omnigent server --agent discovery_loop)'),
     'no_runner_available': (
         'The Omnigent server has no online runner, so no session can execute.',
-        'Register this machine as a host: omnigent host --server <server>'),
+        './scripts/start_local_ai.sh registers this machine   '
+        '(by hand: omnigent host --server <server>)'),
     'workspace_mismatch': (
         'The runs directory is not inside the Omnigent runner workspace, so the agents would '
         'write their artifacts where BioSense cannot read them.',
@@ -128,6 +142,37 @@ REASONS = {
 }
 
 
+# The same failures, as a visitor to a hosted deployment can act on them. Telling
+# somebody to run `omnigent host` is useful on their own machine and useless in a
+# browser, where they have no shell and no access to the container: the honest
+# remedy there is to say whose fault it is and what still works.
+HOSTED_STEPS = {
+    'runtime_unreachable': 'The hosted AI runtime is starting or restarting. Try again in a '
+                           'minute. The demonstration path works meanwhile.',
+    'no_runner_available': 'The hosted AI runtime has no executor right now. Try again in a '
+                           'minute. The demonstration path works meanwhile.',
+    'auth_required': 'This is a fault in the hosted deployment, not in your request.',
+    'auth_invalid': 'This is a fault in the hosted deployment, not in your request.',
+    'agent_not_registered': 'This is a fault in the hosted deployment, not in your request.',
+    'sdk_not_installed': 'This is a fault in the hosted deployment, not in your request.',
+    'workspace_mismatch': 'This is a fault in the hosted deployment, not in your request.',
+    'model_auth_missing': 'The hosted AI runtime has no model credentials configured. Nothing '
+                          'you can change fixes this; the demonstration path still works.',
+    'probe_failed': 'This is a fault in the hosted deployment, not in your request.',
+    'no_server_configured': 'This is a fault in the hosted deployment, not in your request.',
+    # Not a fault at all: a deployment offering one runtime is a choice. A
+    # visitor shown an environment variable here would be reading somebody
+    # else's configuration note.
+    'not_configured': 'This service runs its own AI runtime; there is nothing for you to set.',
+}
+
+
+def next_step_for(code, *, hosted=False):
+    """The remedy for *code*, phrased for whoever is actually reading it."""
+    step = REASONS.get(code, (None, None))[1]
+    return HOSTED_STEPS.get(code, step) if hosted else step
+
+
 class RuntimeUnavailable(K.ContractError):
     """A real runtime was asked for and cannot be used.
 
@@ -136,10 +181,11 @@ class RuntimeUnavailable(K.ContractError):
     NOT something any caller may handle by running the synthetic path instead.
     """
 
-    def __init__(self, reason, detail=None):
+    def __init__(self, reason, detail=None, *, hosted=False):
         self.reason = reason
         self.detail = detail
-        headline, step = REASONS.get(reason, ('The runtime is unavailable.', None))
+        headline = REASONS.get(reason, ('The runtime is unavailable.', None))[0]
+        step = next_step_for(reason, hosted=hosted)
         parts = [headline]
         if detail:
             parts.append(detail)
@@ -172,11 +218,35 @@ class RuntimeConfig:
     token: str = None
     allowed: tuple = MODES
     runs_dir: str = None
+    hosted: bool = False
 
     # ── description ────────────────────────────────────────────────────
     @property
     def label(self):
-        return LABELS[self.mode]
+        return self.label_for(self.mode)
+
+    def label_for(self, mode):
+        """The badge for *mode* as this deployment should say it.
+
+        A hosted service runs its own runtime on its own loopback, which is
+        `local_real_ai` from the code's point of view and ONLINE from the
+        browser's. The mode is never renamed — it is recorded, exported and
+        tested under its own name — but the word the reader sees is true for
+        where they are standing.
+        """
+        return HOSTED_LABEL if self._is_own_runtime(mode) else LABELS[normalise_mode(mode)]
+
+    def blurb_for(self, mode):
+        return HOSTED_BLURB if self._is_own_runtime(mode) else BLURBS[normalise_mode(mode)]
+
+    def _is_own_runtime(self, mode):
+        """Whether *mode* is the runtime this hosted service runs itself.
+
+        Only the configured mode gets the hosted wording. A hosted deployment
+        that also offers `remote` is offering somebody else's server, and calling
+        that ONLINE too would make two different things read identically.
+        """
+        return self.hosted and normalise_mode(mode) == self.mode and self.mode in REAL_MODES
 
     @property
     def is_real(self):
@@ -193,12 +263,13 @@ class RuntimeConfig:
     def public(self):
         """What the browser may see. No token, no filesystem path."""
         return {
-            'mode': self.mode, 'label': self.label, 'blurb': BLURBS[self.mode],
+            'mode': self.mode, 'label': self.label, 'blurb': self.blurb_for(self.mode),
+            'hosted': self.hosted,
             'is_real': self.is_real, 'agent': self.agent if self.is_real else None,
             'server': self.server_display if self.is_real else None,
             'token_configured': bool(self.token) if self.is_real else None,
             'allowed_modes': list(self.allowed),
-            'modes': [{'mode': m, 'label': LABELS[m], 'blurb': BLURBS[m],
+            'modes': [{'mode': m, 'label': self.label_for(m), 'blurb': self.blurb_for(m),
                        'offered': m in self.allowed} for m in MODES],
         }
 
@@ -340,7 +411,8 @@ def from_env(*, runs_dir=None, env=None):
     if mode not in allowed:
         allowed = tuple(dict.fromkeys(list(allowed) + [mode]))
     workspace = (env.get(ENV_WORKSPACE) or '').strip() or str(K.ROOT)
-    return RuntimeConfig(mode=mode, server=server,
+    hosted = (env.get(ENV_HOSTED) or '').strip().lower() in ('1', 'true', 'yes')
+    return RuntimeConfig(mode=mode, server=server, hosted=hosted,
                          agent=(env.get(ENV_AGENT) or '').strip() or DEFAULT_AGENT,
                          workspace=str(Path(workspace).expanduser().resolve()),
                          token=_read_token(env), allowed=allowed,
@@ -364,7 +436,8 @@ def check_workspace(cfg):
     except ValueError:
         raise RuntimeUnavailable(
             'workspace_mismatch',
-            f'The runs directory is {runs} and the workspace is {ws}.') from None
+            f'The runs directory is {runs} and the workspace is {ws}.',
+            hosted=cfg.hosted) from None
     return str(rel)
 
 
@@ -377,17 +450,17 @@ def available(cfg, mode=None, *, probe_fn=None):
     mode = normalise_mode(mode or cfg.mode)
     out = {'mode': mode, 'label': LABELS[mode], 'offered': mode in cfg.allowed}
     if mode not in cfg.allowed:
-        return {**out, **_reason('not_configured')}
+        return {**out, **_reason('not_configured', hosted=cfg.hosted)}
     if mode == 'synthetic_demo':
         return {**out, **_reason('ok'), 'server': None}
     target = cfg.for_mode(mode)
     out['server'] = target.server_display
     if not target.server:
-        return {**out, **_reason('no_server_configured')}
+        return {**out, **_reason('no_server_configured', hosted=cfg.hosted)}
     try:
         check_workspace(target)
     except RuntimeUnavailable as e:
-        return {**out, **_reason(e.reason, e.detail)}
+        return {**out, **_reason(e.reason, e.detail, hosted=cfg.hosted)}
     if probe_fn is None:
         from . import omnigent_runtime as OMNI
         probe_fn = OMNI.probe
@@ -395,12 +468,12 @@ def available(cfg, mode=None, *, probe_fn=None):
     return {**out, **found}
 
 
-def _reason(code, detail=None):
-    headline, step = REASONS[code]
+def _reason(code, detail=None, hosted=False):
+    headline = REASONS[code][0]
     return {'ok': code == 'ok', 'reason': code, 'headline': headline,
-            'next_step': step, 'detail': detail}
+            'next_step': next_step_for(code, hosted=hosted), 'detail': detail}
 
 
-def reason(code, detail=None):
+def reason(code, detail=None, *, hosted=False):
     """Public spelling of _reason, for the adapter and the tests."""
-    return _reason(code, detail)
+    return _reason(code, detail, hosted)

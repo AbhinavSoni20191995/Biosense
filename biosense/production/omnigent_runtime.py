@@ -128,15 +128,16 @@ def probe(cfg):
     server there, is the agent registered, is a runner online. Each gets its own
     reason code because each has a different fix.
     """
+    hosted = bool(getattr(cfg, 'hosted', False))
     if not cfg.server:
-        return RT.reason('no_server_configured')
+        return RT.reason('no_server_configured', hosted=hosted)
     try:
         return _run_async(_probe(cfg))
     except RT.RuntimeUnavailable as e:
-        return RT.reason(e.reason, e.detail)
+        return RT.reason(e.reason, e.detail, hosted=hosted)
     except Exception as e:  # noqa: BLE001 - every failure must become a named reason
         code, detail = _classify(e)
-        return RT.reason(code, detail)
+        return RT.reason(code, detail, hosted=hosted)
 
 
 async def _probe(cfg):
@@ -145,7 +146,8 @@ async def _probe(cfg):
         agent = await client.sessions.resolve_agent(cfg.agent)
         where = await _find_executor(client, agent.harness)
         if where['kind'] == 'none':
-            return RT.reason(where['reason'], where['detail'])
+            return RT.reason(where['reason'], where['detail'],
+                             hosted=bool(getattr(cfg, 'hosted', False)))
         return {**RT.reason('ok'), 'agent_id': agent.id, 'harness': agent.harness,
                 'runner_id': where.get('runner_id'), 'host_id': where.get('host_id'),
                 'executor': where['kind']}
@@ -312,7 +314,8 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
         raise
     except Exception as e:  # noqa: BLE001
         code, detail = _classify(e)
-        raise RT.RuntimeUnavailable(code, detail) from None
+        raise RT.RuntimeUnavailable(code, detail,
+                                    hosted=bool(getattr(cfg, 'hosted', False))) from None
 
 
 async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
@@ -322,7 +325,8 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
         agent = await client.sessions.resolve_agent(cfg.agent)
         where = await _find_executor(client, agent.harness)
         if where['kind'] == 'none':
-            raise RT.RuntimeUnavailable(where['reason'], where['detail'])
+            raise RT.RuntimeUnavailable(where['reason'], where['detail'],
+                                        hosted=bool(getattr(cfg, 'hosted', False)))
 
         created, runner = await _create_session(
             client, cfg, agent, where,
@@ -426,5 +430,6 @@ def ensure_available(cfg):
         _sdk()
     found = probe(cfg)
     if not found.get('ok'):
-        raise RT.RuntimeUnavailable(found['reason'], found.get('detail'))
+        raise RT.RuntimeUnavailable(found['reason'], found.get('detail'),
+                                    hosted=bool(getattr(cfg, 'hosted', False)))
     return found
