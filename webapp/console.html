@@ -10,6 +10,9 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="brand.css">
 <style>
+/* small print under a panel: the thing that stops a badge being read as a claim */
+.caveat{font-size:12.5px;line-height:1.55;color:var(--ink-3);margin:12px 0 0;max-width:70ch}
+
 /* ── hero + ask ──────────────────────────────────────────── */
 /* The input is the primary control, so it carries the largest type on the
    page. Headline copy was removed: it sold the tool to someone already using it. */
@@ -261,6 +264,17 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       </div>
     </section>
 
+    <section class="glass card" id="dataPanel">
+      <div class="head"><h3>Data</h3><span class="hint" id="dataHint">public only</span></div>
+      <div id="datasets" class="dim">loading…</div>
+      <p class="caveat" id="dataNote"></p>
+    </section>
+
+    <section class="glass card" id="analysisPanel" hidden>
+      <div class="head"><h3>Analyses</h3><span class="hint">evidence, not decisions</span></div>
+      <div id="analyses"></div>
+    </section>
+
     <section class="glass card">
       <div class="head"><h3>Earlier runs</h3><span class="hint">read-only</span></div>
       <div id="loops" class="dim">loading…</div>
@@ -302,6 +316,7 @@ const AGENT={
   run:['Bioreactor stand-in','var(--s3)'],
   analysis:['Analysis agent','var(--s2)'],
   bioinformatics:['Bioinformatics agent','var(--s3)'],
+  dataset_analysis:['Bioinformatics agent','var(--s1)'],
   envelope:['Decision envelope','var(--neutral)'],
   decision:['Orchestrator','var(--brand)'],
   brief:['Orchestrator','var(--brand)'],
@@ -381,6 +396,8 @@ function say(e){
     case 'accepted': return `request ${e.request_id} · ${e.standin} stand-in`
       + (e.assumed?` · ${e.assumed} defaults assumed`:'');
     case 'evidence': return `${e.claims} directional claims from ${e.sources} publications`;
+    case 'dataset_analysis': return `${(e.datasets||[]).join(', ')} analysed for ${e.uncertainty}`
+      + ((e.levers||[]).length?` · candidate ${e.levers[0].parameter}`:' · no parameter implicated');
     case 'protocol': return `iteration ${e.iteration} · ${e.design_choices} design choices, `
       + `${e.gaps} gaps`;
     case 'approved': return `iteration ${e.iteration} · ${e.acknowledged} design choices acknowledged`;
@@ -436,6 +453,7 @@ function pushEvent(e){
       .sort((a,b)=>a.iteration-b.iteration);
     drawChart();
   }
+  if(e.kind==='dataset_analysis')renderAnalysis(e);
   if(e.kind==='revision'&&(e.findings||[]).length){state.findings=e.findings;renderFindings();}
   if(e.kind==='done')state.summary=e;
 }
@@ -703,6 +721,91 @@ function listen(id){
   };
 }
 
+/* ── evidence badges ──────────────────────────────────────── */
+/* Three facts, three badges, never merged: what a thing IS, what it came FROM,
+   and who may see it. A derived analysis over private data shows all three. */
+const EV_LABEL={
+  published_literature:'published literature', public_dataset:'public dataset',
+  private_user_dataset:'private user data', derived_analysis:'derived analysis',
+  simulation:'simulation', real_measurement:'real measurement', mixed:'mixed sources',
+  synthetic_fixture:'synthetic fixture'};
+function badge(cls,text){
+  const b=document.createElement('span');
+  b.className='ev '+cls; b.textContent=text||EV_LABEL[cls]||cls; return b;
+}
+function evidenceRow(o){
+  const row=document.createElement('div'); row.className='ev-row';
+  if(o.evidence_class) row.append(badge(o.evidence_class));
+  if(o.source_evidence_class && o.source_evidence_class!==o.evidence_class)
+    row.append(badge(o.source_evidence_class,'source: '+(EV_LABEL[o.source_evidence_class]||o.source_evidence_class)));
+  const vis=o.source_visibility||o.visibility;
+  if(vis) row.append(badge('vis-'+vis, vis));
+  if(o.confidence) row.append(badge('simulation','confidence '+o.confidence));
+  return row;
+}
+
+/* ── datasets ─────────────────────────────────────────────── */
+async function loadDatasets(){
+  try{
+    const d=await (await fetch('/api/datasets')).json();
+    const box=$('#datasets'); box.textContent='';
+    $('#dataNote').textContent=d.note||'';
+    if(!d.datasets.length){
+      box.className='dim';
+      box.textContent='No public datasets registered. Register one with '
+        +'`python -m biosense.bioinformatics.cli datasets register`.';
+      return;
+    }
+    box.className='';
+    d.datasets.forEach(m=>{
+      const w=document.createElement('div'); w.className='ds';
+      const t=document.createElement('div'); t.className='t'; t.textContent=m.title; w.append(t);
+      const meta=document.createElement('div'); meta.className='m';
+      meta.textContent=[m.modality, m.accession||m.dataset_id,
+        m.sample_count?m.sample_count+' samples':null,
+        m.analysable?null:'no reader for '+m.file_types.join('/')]
+        .filter(Boolean).join(' · ');
+      w.append(meta, evidenceRow(m));
+      if(m.missing_metadata && m.missing_metadata.length){
+        const g=document.createElement('div'); g.className='gap';
+        g.textContent='missing: '+m.missing_metadata.join(', ')+' — asked for, never guessed';
+        w.append(g);
+      }
+      box.append(w);
+    });
+  }catch(_){ $('#datasets').textContent='could not list datasets'; }
+}
+
+/* ── analysis cards ───────────────────────────────────────── */
+/* One card per dataset analysis the run performed. Question, method, finding,
+   process implication, parameter, provenance -- and the line that says it
+   changed nothing. */
+function renderAnalysis(e){
+  $('#analysisPanel').hidden=false;
+  const box=$('#analyses');
+  const w=document.createElement('div'); w.className='ds';
+  const q=document.createElement('div'); q.className='t';
+  q.textContent='Resolving '+e.uncertainty;
+  w.append(q, evidenceRow(e));
+  const m=document.createElement('div'); m.className='m';
+  m.textContent=(e.datasets||[]).join(', ');
+  w.append(m);
+  (e.findings||[]).slice(0,3).forEach(f=>{
+    const d=document.createElement('div'); d.style.cssText='font-size:13.5px;margin-top:7px';
+    d.textContent=f; w.append(d);
+  });
+  (e.levers||[]).forEach(l=>{
+    const d=document.createElement('div');
+    d.style.cssText='font-size:13.5px;margin-top:7px;color:var(--brand);font-weight:600';
+    d.textContent='candidate: '+l.parameter+' — '+l.direction+' ('+l.confidence+')';
+    w.append(d);
+  });
+  const n=document.createElement('p'); n.className='caveat';
+  n.textContent='Evidence for the orchestrator. It changes no parameter by itself.';
+  w.append(n);
+  box.append(w);
+}
+
 async function loadLoops(){
   try{
     const d=await (await fetch('/api/loops')).json();
@@ -759,6 +862,7 @@ $('#prompt').addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();start();}
 });
 loadLoops();
+loadDatasets();
 </script>
 </body>
 </html>

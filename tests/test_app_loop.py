@@ -516,6 +516,29 @@ class AppServerTests(unittest.TestCase):
             self.assertEqual(200, code, path)
             self.assertIn(needle, body, path)
 
+    def test_the_analysis_tool_registry_is_served_and_marks_planned_tools(self):
+        code, body = self._get('/api/analysis-tools')
+        self.assertEqual(200, code)
+        d = json.loads(body)
+        self.assertTrue(d['implemented'])
+        self.assertTrue(d['planned'])
+        implemented = {t['name'] for t in d['implemented']}
+        for p in d['planned']:
+            self.assertNotIn(p['name'], implemented)
+
+    def test_the_dataset_endpoint_says_it_lists_public_data_only(self):
+        code, body = self._get('/api/datasets')
+        self.assertEqual(200, code)
+        d = json.loads(body)
+        self.assertIs(False, d['private_listed'])
+        for row in d['datasets']:
+            self.assertEqual('public', row['visibility'])
+
+    def test_the_config_names_private_datasets_among_what_is_refused(self):
+        code, body = self._get('/api/config')
+        cfg = json.loads(body)
+        self.assertTrue(any('privately' in r for r in cfg['refuses']))
+
     def test_a_run_streams_and_produces_a_report(self):
         import time
         code, d = self._post('/api/runs', {'prompt': 'T cells from iPSC by day 40, wild type only'})

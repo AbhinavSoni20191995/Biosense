@@ -8,6 +8,7 @@
 <a href="docs/RUN_ON_YOUR_PC.md"><b>Run it on your PC</b></a> ·
 <a href="docs/IPSC_TCELL_EXAMPLE.md"><b>Worked example</b></a> ·
 <a href="reports/"><b>Example reports</b></a> ·
+<a href="docs/BIOINFORMATICS.md"><b>Data &amp; evidence</b></a> ·
 <a href="deploy/README.md"><b>Hosting</b></a>
 
 </div>
@@ -38,11 +39,13 @@ The long-term goal is a closed-loop discovery and manufacturing system that
 learns from every experiment, reduces unnecessary iterations, and helps move
 safer, more effective cell therapies toward patients faster.
 
-> **Where the repository stands against that.** The five specialist agents exist
-> and the measurement-driven analysis is implemented. Three parts of the goal are
-> not: the loop runs against a **synthetic stand-in, not a real bioreactor**;
-> **live model-driven orchestration has not been run yet**; and each loop starts
-> fresh, so **nothing is learned across runs**. Everything below describes what
+> **Where the repository stands against that.** The five specialist agents exist,
+> the measurement-driven analysis is implemented, and the bioinformatics agent
+> now plans and executes real analyses over public and private datasets rather
+> than only reading gene annotations. Three parts of the goal are not reached:
+> the loop runs against a **synthetic stand-in, not a real bioreactor**; **live
+> model-driven orchestration has not been run yet**; and each loop starts fresh,
+> so **nothing is learned across runs**. Everything below describes what
 > runs today, and [What this is **not**](#what-this-is-not) sets out the limits
 > in full.
 
@@ -58,21 +61,33 @@ of someone's cells. So those jobs are split apart:
 choose — and refuses the rest.**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/loop-dark.svg">
-  <img alt="The orchestrator agent reads the analysis and proposes one action. A decision envelope made of deterministic code checks that action against what the verdict permits, and refuses anything outside it. Protocols go through a named human approver before any wet-lab run, and the analysis that feeds the next decision is computed, never written by a model." src="docs/assets/loop-light.svg" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-system-dark.svg">
+  <img alt="A person states an objective. The orchestrator asks the literature and bioinformatics specialists what evidence is missing. The bioinformatics agent discovers public and private datasets and plans an analysis that deterministic tools execute. Evidence is synthesised into candidate parameters, a decision envelope validates or refuses, and the simulator or bioreactor returns sensor, FACS and omics measurements to the orchestrator. Each box is marked Current, Phase 1 or Planned." src="docs/assets/arch-system-light.svg" width="100%">
 </picture>
 
 Everything a model writes is a **proposal**. Everything that counts as a fact —
-the verdict, the QC calls, the metrics, the comparison between arms — is
-computed. If the agent proposes something the verdict does not permit, the
-envelope refuses it and says why.
+the verdict, the QC calls, the metrics, the comparison between arms, every
+statistic — is computed. If the agent proposes something the verdict does not
+permit, the envelope refuses it and says why.
 
 | The model does | The code does |
 |---|---|
 | Reads papers, extracts cited claims | Computes every metric and verdict |
+| Decides *what evidence is missing* | Refuses an analysis that names no uncertainty |
+| Designs an analysis | Executes it deterministically, and does the statistics |
 | Forms a hypothesis about why a run failed | Decides which actions the verdict permits |
 | Chooses one action and explains it | Refuses anything outside that set |
 | Writes the brief for the next protocol | Enforces that only a revision costs an iteration |
+
+### The loop it runs
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-loop-dark.svg">
+  <img alt="One iteration: objective, uncertainty, evidence, analysis, candidate parameter, decision envelope, simulator or bioreactor, measurements, and then either finish or optimise against the dominant remaining uncertainty." src="docs/assets/arch-loop-light.svg" width="100%">
+</picture>
+
+An analysis never changes a parameter. It produces evidence; the orchestrator
+decides, and the envelope can refuse.
 
 ---
 
@@ -139,6 +154,52 @@ weaker TCR stimulus.
 Reports, committed and readable without running anything →
 **[`reports/`](reports/)** · the full write-up, including everything this does
 *not* show → **[docs/IPSC_TCELL_EXAMPLE.md](docs/IPSC_TCELL_EXAMPLE.md)**
+
+---
+
+## It reasons across evidence, not just papers
+
+BioSense weighs published literature, public datasets, a person's own
+unpublished data, simulation and real measurements — and keeps them apart.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-evidence-dark.svg">
+  <img alt="Five sources feed one evidence layer that records what a thing is, what it came from, who may see it, which dataset it came from, and the checksums. A derived analysis stays derived; the citation firewall means no dataset can become a literature claim." src="docs/assets/arch-evidence-light.svg" width="100%">
+</picture>
+
+Three facts stay separate, because collapsing them is how provenance gets lost.
+An analysis of somebody's own FACS run is:
+
+```
+evidence_class        : derived_analysis      ← what it IS
+source_evidence_class : private_user_dataset  ← what it came FROM
+source_visibility     : private               ← who may SEE it
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/analysis-card-dark.png">
+  <img alt="An analysis card in the console: Resolving H01, badges reading DERIVED ANALYSIS, SOURCE: SYNTHETIC FIXTURE, PUBLIC and CONFIDENCE MODERATE, the finding, the candidate parameter il7_ng_ml increase, and the line 'Evidence for the orchestrator. It changes no parameter by itself.'" src="docs/assets/analysis-card-light.png" width="760">
+</picture>
+
+**No analysis may run without naming the uncertainty it would reduce.** Not as a
+convention — `AnalysisPlan` requires `uncertainty_ref`, and a plan citing a
+hypothesis the loop never raised is refused by name. That is the difference
+between a bioinformatics capability and a dashboard.
+
+What runs today, and what is only declared:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-capabilities-dark.svg">
+  <img alt="Generic statistics, processed flow cytometry and a screening bulk expression comparison run today. Single cell RNA, ChIP-seq, ATAC-seq, raw FCS, FlowSOM and UMAP are declared but not implemented. An external-tool adapter for DESeq2, edgeR, Scanpy and MACS ships its contract and a mock." src="docs/assets/arch-capabilities-light.svg" width="100%">
+</picture>
+
+Your own data stays yours: it lives outside every served directory, is
+git-ignored, is never listed by the web app, and **can never become a literature
+citation** — a claim needs a source, a paragraph and a verbatim quote, and a
+measurement has none of those. It can support a hypothesis, contradict public
+evidence and suggest a parameter. It cannot be cited.
+
+Full detail → **[docs/BIOINFORMATICS.md](docs/BIOINFORMATICS.md)**
 
 ---
 
@@ -212,6 +273,15 @@ An evaluator should know the limits before the features.
 - **Live model-driven orchestration has not been run yet.** The deterministic
   path is fully exercised; the Omnigent path is set up and validated but a first
   live session remains a genuine test.
+- **The dataset fixtures are invented.** Every committed example table is
+  synthetic and every fixture accession begins with `SYNTHETIC-GSE`. BioSense has
+  not downloaded or analysed a real public dataset.
+- **Live repository search is written but unverified from this repository.**
+  Outbound access to NCBI is blocked in the environment it was developed in, so
+  the live branch has never run against the real service.
+- **Single cell, ChIP-seq, ATAC-seq and raw FCS are declared, not implemented.**
+  The contracts accept them so a manifest written today stays valid; calling one
+  is refused with a message saying why.
 
 ---
 
@@ -227,9 +297,14 @@ Not conventions — things the software refuses to do:
 | A gap in a protocol blocks the wet lab | `production/protocol.py` |
 | Targets and QC limits can never be changed after results are seen | `production/orchestrator.py` |
 | An unannotated gene returns `found: false` with the public queries to run — never a guessed effect | `bioinformatics/tools.py` |
+| An analysis that names no uncertainty cannot be planned | `bioinformatics/plan.py` |
+| A missing experimental-design field refuses the analysis and names the field | `data/manifest.py` |
+| Private data is identified by **where it is**, not what it is called, and no server may be rooted inside it | `data/roots.py` |
+| A dataset can never become a literature citation | the claim schema needs a source, paragraph and quote |
+| An external-tool result with no software version is refused | `bioinformatics/external.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 269 tests
+uv run --frozen python -m unittest     # 421 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 
@@ -244,12 +319,17 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 | [`biosense/production/`](biosense/production/) | the loop: designer, optimiser, analysis, envelope, reports |
 | [`standins/`](standins/) | synthetic stand-in reactors |
 | [`discovery_loop/`](discovery_loop/) | the Omnigent agent bundle for the live, model-driven path |
+| [`biosense/data/`](biosense/data/) | dataset manifests, the registry, ingest and the source adapters |
+| [`biosense/bioinformatics/`](biosense/bioinformatics/) | annotation, analysis planning, the tool registry and execution |
 | [`bioinfo_knowledge/`](bioinfo_knowledge/) | gene annotations, each with its own confidence and citation |
+| [`examples/datasets/`](examples/datasets/) | synthetic dataset fixtures, all labelled as invented |
+| `private_data/` | where your own data lands. Git-ignored, never served |
 | [`reports/`](reports/) | the committed example reports, HTML and PDF |
 | [`docs/`](docs/) | setup, the worked example, the production loop in depth |
 
 **Deeper reading:** [the production loop](docs/PRODUCTION_LOOP.md) ·
 [simulator mode](docs/SIMULATOR_MODE.md) ·
+[bioinformatics, data and evidence](docs/BIOINFORMATICS.md) ·
 [the worked example](docs/IPSC_TCELL_EXAMPLE.md) ·
 [running it yourself](docs/RUN_ON_YOUR_PC.md) ·
 [the literature agent](docs/LITERATURE_AGENT.md) ·

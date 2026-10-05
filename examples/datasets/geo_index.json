@@ -1,0 +1,87 @@
+{
+  "index_id": "geo_fixture_index",
+  "label": "Offline fixture index for the GEO adapter",
+  "live": false,
+  "synthetic": true,
+  "note": "INVENTED RECORDS. Every accession below begins with SYNTHETIC-GSE because none of them is a real GEO accession, and presenting an invented accession as a real one would be fabricating a citation. The records exist to exercise the search adapter's scoring, normalisation and candidate contract offline. A live GEO search returns real accessions and is gated behind an explicit network permission.",
+  "records": [
+    {
+      "accession": "SYNTHETIC-GSE000101",
+      "title": "SYNTHETIC: M-CSF dose response in human iPSC-derived macrophage differentiation",
+      "modality": "bulk_rna",
+      "organism": "Homo sapiens",
+      "cell_type": "iPSC-derived macrophage",
+      "perturbation": "M-CSF concentration",
+      "sample_count": 18,
+      "biological_conditions": ["mcsf_25", "mcsf_50", "mcsf_100"],
+      "processed_available": ["counts_matrix", "sample_metadata"],
+      "summary": "Invented record. Bulk expression across three M-CSF concentrations during myeloid commitment, with CD14 and MRC1 among the reported markers.",
+      "retrieved_at": null
+    },
+    {
+      "accession": "SYNTHETIC-GSE000102",
+      "title": "SYNTHETIC: BACH2 knockout in activated primary human T cells",
+      "modality": "bulk_rna",
+      "organism": "Homo sapiens",
+      "cell_type": "primary T cell",
+      "perturbation": "BACH2 knockout",
+      "sample_count": 12,
+      "biological_conditions": ["wild_type", "BACH2_KO"],
+      "processed_available": ["counts_matrix", "sample_metadata"],
+      "summary": "Invented record. Transcriptional profile of BACH2 knockout versus wild type after anti-CD3/CD28 activation, exhaustion and memory programmes reported.",
+      "retrieved_at": null
+    },
+    {
+      "accession": "SYNTHETIC-GSE000103",
+      "title": "SYNTHETIC: single-cell atlas of inflammatory versus homeostatic macrophages",
+      "modality": "single_cell_rna",
+      "organism": "Homo sapiens",
+      "cell_type": "macrophage",
+      "perturbation": "LPS stimulation",
+      "sample_count": 8,
+      "biological_conditions": ["homeostatic", "inflammatory"],
+      "processed_available": ["h5ad", "cell_metadata"],
+      "summary": "Invented record. Single-cell transcriptomes contrasting inflammatory and homeostatic macrophage states. Declarable today; BioSense has no single-cell reader until Phase 2.",
+      "retrieved_at": null
+    },
+    {
+      "accession": "SYNTHETIC-GSE000104",
+      "title": "SYNTHETIC: shear stress and apoptosis signatures in stirred-tank iPSC culture",
+      "modality": "bulk_rna",
+      "organism": "Homo sapiens",
+      "cell_type": "iPSC",
+      "perturbation": "agitation rate",
+      "sample_count": 15,
+      "biological_conditions": ["60_rpm", "90_rpm", "128_rpm"],
+      "processed_available": ["counts_matrix", "sample_metadata"],
+      "summary": "Invented record. Stress and apoptosis programmes across agitation rates in suspension culture, relevant to agitation_rpm as a process parameter.",
+      "retrieved_at": null
+    },
+    {
+      "accession": "SYNTHETIC-GSE000105",
+      "title": "SYNTHETIC: CD14 and CD16 population frequencies during myeloid differentiation",
+      "modality": "cytometry_summary",
+      "organism": "Homo sapiens",
+      "cell_type": "iPSC-derived monocyte",
+      "perturbation": "differentiation timepoint",
+      "sample_count": 24,
+      "biological_conditions": ["day_14", "day_18", "day_22"],
+      "processed_available": ["population_table"],
+      "summary": "Invented record. Gated population frequencies over the harvest window, reported as percentages per sample.",
+      "retrieved_at": null
+    },
+    {
+      "accession": "SYNTHETIC-GSE000106",
+      "title": "SYNTHETIC: BACH2 ChIP-seq in human CD8 T cells",
+      "modality": "chip_seq",
+      "organism": "Homo sapiens",
+      "cell_type": "CD8 T cell",
+      "perturbation": "none",
+      "sample_count": 4,
+      "biological_conditions": ["BACH2_ChIP", "input"],
+      "processed_available": ["narrowPeak"],
+      "summary": "Invented record. Transcription factor occupancy. Declarable today; BioSense has no peak tooling until Phase 2.",
+      "retrieved_at": null
+    }
+  ]
+}

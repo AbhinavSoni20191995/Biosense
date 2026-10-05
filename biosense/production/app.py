@@ -17,6 +17,9 @@ What a visitor cannot do, enforced in code and not by convention:
   that field, so there is no input that reaches a wet-lab path;
 * approve a protocol as a named person. The approver string every app run records
   says in words that no human approved it;
+* reach a private dataset. `/api/datasets` reads the public roots only, the
+  static handler refuses any path inside the private data root, and `main`
+  refuses a runs or static directory that overlaps it;
 * read the stand-in's hidden truth. Simulator mode runs the same reactor model
   by hand and returns instrument channels only -- never the line's true growth
   rate, death rate or clonal fraction;
@@ -37,6 +40,10 @@ Endpoints
     GET  /api/runs/<id>           one run: status, events so far, summary
     GET  /api/runs/<id>/events    Server-Sent Events, live, from `?after=<n>`
     GET  /api/runs/<id>/report    the reasoning report as HTML
+    GET  /api/datasets            registered PUBLIC datasets only; private ones are
+                                  never listed here and never served
+    GET  /api/analysis-tools      the tool registry: what can run, over what, and
+                                  what is declared but not implemented
     GET  /api/sim/config          simulator mode: the knobs, stages and limits
     POST /api/sim/run             simulator mode: one condition, no loop, no decision
     POST /api/sim/compare         simulator mode: two conditions side by side
@@ -66,6 +73,7 @@ from . import engine as EN
 from . import prompt as PR
 from . import report as RP
 from . import sim_mode as SM
+from ..data import registry as DREG
 from .serve import LOOP_ID, list_loops, load_loop, _is_forbidden
 
 MAX_PROMPT = 2000
@@ -328,10 +336,29 @@ class Handler(BaseHTTPRequestHandler):
                     'any request whose bioreactor_source is not synthetic_standin',
                     'self-approving a protocol when the gates require a named human',
                     'serving any file whose name contains "truth"',
+                    'serving or listing any dataset a person registered privately',
                     'calling a model: nothing on this path spends credits',
                 ],
                 'note': 'This server starts work. Its runs are synthetic-stand-in only and no '
                         'number it produces is biological evidence.'})
+        if path == '/api/datasets':
+            # include_private=False is applied to the ROOTS that are read, not to
+            # the rows that come back, so a bug in a row filter cannot leak one.
+            return self._send(200, {
+                'datasets': [DREG.summary(m) for m in
+                             DREG.list_datasets(include_private=False)],
+                'note': 'Public and fixture datasets only. Datasets a person registered '
+                        'privately are never listed or served by this process; they are '
+                        'visible to the CLI on the machine that holds them.',
+                'private_listed': False})
+        if path == '/api/analysis-tools':
+            from ..bioinformatics import registry as TREG
+            from ..bioinformatics import external as EXT
+            d = TREG.describe()
+            d['external_adapters'] = EXT.describe()
+            d['note'] = ('Implemented tools run in process on numpy and scipy. Planned entries '
+                         'are declared so the shape is visible; calling one is refused.')
+            return self._send(200, d)
         if path == '/api/sim/config':
             return self._send(200, SM.config())
         if path == '/api/runs':
@@ -426,6 +453,9 @@ class Handler(BaseHTTPRequestHandler):
                                else 'index.html')
         if not str(target).startswith(str(root)) or not target.is_file() or _is_forbidden(target):
             return self._send(404, {'error': 'not found'})
+        from ..data import roots as DR
+        if DR.is_private_path(target):
+            return self._send(404, {'error': 'not found'})
         types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
                  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
                  '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2',
@@ -442,6 +472,10 @@ def main(argv=None):
     ap.add_argument('--host', default='127.0.0.1', help='interface to bind (0.0.0.0 in a container)')
     ap.add_argument('--port', type=int, default=8000)
     a = ap.parse_args(argv)
+    from ..data import roots as DR
+    DR.assert_disjoint(a.runs)
+    if a.static:
+        DR.assert_disjoint(a.static)
     runs = Path(a.runs)
     runs.mkdir(parents=True, exist_ok=True)
     Handler.runs_dir = runs

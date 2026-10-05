@@ -1,0 +1,132 @@
+{
+  "schema_version": "2.0",
+  "dataset_id": "facs-mcsf-fixture",
+  "created_at": "2026-10-05T07:31:27.931051+00:00",
+  "title": "SYNTHETIC: processed FACS populations under two M-CSF conditions",
+  "description": "Invented data committed to this repository so the dataset and analysis contracts can be exercised offline. Not a measurement.",
+  "source": "fixture",
+  "accession": null,
+  "source_url": null,
+  "retrieved_at": null,
+  "visibility": "public",
+  "evidence_class": "synthetic_fixture",
+  "modality": "cytometry_summary",
+  "modality_detail": {
+    "panel_markers": [
+      "CD14",
+      "CD16",
+      "CD206"
+    ],
+    "population_names": [
+      "CD14+",
+      "CD16+",
+      "CD206+"
+    ],
+    "fluorophores": null,
+    "gating_hierarchy": null,
+    "compensation": null,
+    "instrument": null
+  },
+  "organism": "Homo sapiens",
+  "cell_type": "iPSC-derived monocyte",
+  "perturbation": "M-CSF concentration",
+  "conditions": [
+    "control",
+    "mcsf_high"
+  ],
+  "files": [
+    {
+      "path": "examples/datasets/facs_mcsf_synthetic.csv",
+      "role": "population_table",
+      "file_type": "csv",
+      "checksum_sha256": "78c05af0992cdbdce9f3164f24d9cd0fc4489e432a5082a7e6312029f694af6b",
+      "bytes": 869,
+      "rows": 12,
+      "columns": [
+        "sample_id",
+        "condition",
+        "replicate",
+        "donor",
+        "CD14_pos_pct",
+        "CD16_pos_pct",
+        "viability_pct",
+        "CD206_pos_pct",
+        "events_acquired"
+      ]
+    }
+  ],
+  "sample_metadata": {
+    "sample_count": 12,
+    "columns": [
+      "sample_id",
+      "condition",
+      "replicate",
+      "donor",
+      "CD14_pos_pct",
+      "CD16_pos_pct",
+      "viability_pct",
+      "CD206_pos_pct",
+      "events_acquired"
+    ],
+    "levels": {
+      "sample_id": [
+        "control_D1_w1",
+        "control_D1_w2",
+        "control_D2_w1",
+        "control_D2_w2",
+        "control_D3_w1",
+        "control_D3_w2",
+        "mcsf_high_D1_w1",
+        "mcsf_high_D1_w2",
+        "mcsf_high_D2_w1",
+        "mcsf_high_D2_w2",
+        "mcsf_high_D3_w1",
+        "mcsf_high_D3_w2"
+      ],
+      "condition": [
+        "control",
+        "mcsf_high"
+      ],
+      "replicate": [
+        "D1_w1",
+        "D1_w2",
+        "D2_w1",
+        "D2_w2",
+        "D3_w1",
+        "D3_w2"
+      ],
+      "donor": [
+        "D1",
+        "D2",
+        "D3"
+      ]
+    }
+  },
+  "experimental_design": {
+    "condition_column": "condition",
+    "control": "control",
+    "treatments": [
+      "mcsf_high"
+    ],
+    "replicate_column": "replicate",
+    "donor_column": "donor",
+    "sample_id_column": "sample_id"
+  },
+  "derived_from": null,
+  "missing_metadata": [
+    {
+      "field": "batch_column",
+      "why_it_matters": "whether a batch effect could explain a difference"
+    },
+    {
+      "field": "timepoint_column",
+      "why_it_matters": "whether a change is a trend or a snapshot"
+    }
+  ],
+  "citable": false,
+  "limitations": [
+    "A synthetic fixture committed to this repository. The numbers are invented for exercising the contracts; nothing derived from them is biological evidence."
+  ],
+  "registered_by": "repository fixture",
+  "notes": null
+}

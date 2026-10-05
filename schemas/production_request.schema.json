@@ -310,6 +310,21 @@
           "type": "boolean",
           "default": false,
           "description": "Permit network calls to public annotation APIs. Off by default and never required by CI."
+        },
+        "datasets": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permit dataset-backed analysis at all. Off by default: a loop that was never asked to look at data should not start reading files."
+        },
+        "private_data": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permit analysis over datasets the person registered privately. Requires datasets. A private dataset may support or contradict a hypothesis and may inform a parameter decision; it never becomes a literature citation and is never served or published."
+        },
+        "dataset_search_live": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permit live repository search (GEO and friends). Off by default and never required by CI, which searches a committed fixture index."
         }
       }
     }

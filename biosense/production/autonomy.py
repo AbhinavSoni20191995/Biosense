@@ -55,6 +55,12 @@ def resolve(request):
         'bioinformatics_allowed': bool((request.get('bioinformatics') or {}).get('allowed', True)),
         'live_lookups': bool((request.get('bioinformatics') or {}).get('live_lookups', False)),
         'knowledge_sets': (request.get('bioinformatics') or {}).get('knowledge_sets'),
+        # Dataset analysis is off unless the request asks for it. A loop that was
+        # never told to look at data should not start reading files, and a loop
+        # that may read public data should not thereby reach a person's own.
+        'datasets_allowed': bool((request.get('bioinformatics') or {}).get('datasets', False)),
+        'private_data_allowed': bool((request.get('bioinformatics') or {}).get('private_data', False)),
+        'dataset_search_live': bool((request.get('bioinformatics') or {}).get('dataset_search_live', False)),
     }
 
 
@@ -70,7 +76,13 @@ def describe(gates):
             f'Information-gathering actions before the orchestrator must revise or stop: '
             f'{gates["max_info_actions_per_iteration"]} per iteration.',
             'Bioinformatics: ' + ('available' if gates['bioinformatics_allowed'] else 'not available')
-            + (', live lookups permitted.' if gates['live_lookups'] else ', offline knowledge sets only.')]
+            + (', live lookups permitted.' if gates['live_lookups'] else ', offline knowledge sets only.'),
+            'Datasets: ' + ('not enabled for this request.' if not gates['datasets_allowed'] else
+                            ('public and private datasets may be analysed.'
+                             if gates['private_data_allowed'] else
+                             'public datasets only; private user data is not read.'))
+            + (' Live repository search permitted.' if gates['dataset_search_live']
+               else ' Repository search is offline (cached index only).')]
     if gates['safety_overrides']:
         bits.append('Overridden by a safety rule: ' + ' '.join(gates['safety_overrides']))
     return ' '.join(bits)

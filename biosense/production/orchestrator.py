@@ -547,6 +547,56 @@ def answer_consult(loop_dir, consult_id, answered_by, content, chosen_option=Non
 REQUIRED_REASONING_CHARS = 60
 
 
+# A `request_bioinformatics` decision can be one of two things, and the second one
+# is new: an annotation lookup, or a request to analyse a dataset. The second kind
+# carries `instruction.analysis`, and when it does, these fields are required.
+#
+# They exist so that "only analyse when it resolves an uncertainty" is a property
+# of the system rather than a line in a prompt. `request_data_analysis` was
+# deliberately NOT added as a separate decision type: the routing, the budget
+# semantics (information actions never spend an iteration) and the policy
+# machinery already fit, and a new enum member would have to be threaded through
+# ROUTE_OF, WORKED_OF, POLICY_RATIONALE and every reader of a decision document
+# for no behavioural gain.
+DATA_ANALYSIS_FIELDS = ('uncertainty_ref', 'dataset_ids', 'plan', 'parameter_decision')
+
+
+def data_analysis_errors(decision, report, state):
+    """Check a data-analysis instruction. Returns a list of errors, empty if fine."""
+    ins = decision.get('instruction') or {}
+    ana = ins.get('analysis')
+    if not ana:
+        return []
+    errors = []
+    for f in DATA_ANALYSIS_FIELDS:
+        if not ana.get(f):
+            errors.append(f'a data-analysis request must name {f!r} in instruction.analysis: '
+                          f'which uncertainty it resolves, which datasets it would use, the plan '
+                          f'it would run, and which process decision it could inform')
+    u = ana.get('uncertainty_ref') or {}
+    if u:
+        if u.get('kind') not in ('hypothesis', 'evidence_gap'):
+            errors.append("instruction.analysis.uncertainty_ref.kind must be 'hypothesis' or "
+                          "'evidence_gap'")
+        elif u.get('kind') == 'hypothesis':
+            known = {h['hypothesis_id'] for h in report.get('diagnosis', [])}
+            if u.get('ref') not in known:
+                errors.append(
+                    f'the analysis cites hypothesis {u.get("ref")!r}, which this analysis report '
+                    f'does not raise (it raises {", ".join(sorted(known)) or "none"}). An '
+                    f'analysis is requested against an uncertainty the loop actually has.')
+        elif u.get('kind') == 'evidence_gap' and not (u.get('statement') or '').strip():
+            errors.append('an evidence gap must state what is missing')
+    plan = ana.get('plan') or {}
+    if plan and not plan.get('uncertainty_ref'):
+        errors.append('the AnalysisPlan carried in instruction.analysis.plan has no '
+                      'uncertainty_ref; planning without one is refused')
+    if plan and plan.get('dataset_ids') and ana.get('dataset_ids'):
+        if sorted(plan['dataset_ids']) != sorted(ana['dataset_ids']):
+            errors.append('instruction.analysis.dataset_ids and the plan\'s dataset_ids disagree')
+    return errors
+
+
 def validate_decision(decision, report, protocol, request, state, bioinfo_reports=(),
                       author='orchestrator_agent'):
     """Check an authored decision against the allowed envelope.
@@ -613,6 +663,7 @@ def validate_decision(decision, report, protocol, request, state, bioinfo_report
                               '`considered` why a consult was not worth it')
     if t in INFO_ACTIONS and not decision.get('instruction'):
         errors.append(f'{t!r} must carry an instruction saying what is being asked of whom')
+    errors += data_analysis_errors(decision, report, state)
     if t == 'consult_human' and not decision.get('consult_ids'):
         errors.append('consult_human must reference the consult notice it raised')
     return errors

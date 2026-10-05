@@ -42,7 +42,21 @@ SCHEMAS = {
     'loop_decision': 'loop_decision.schema.json',
     'human_consult': 'human_consult.schema.json',
     'bioinformatics_report': 'bioinformatics_report.schema.json',
+    # data-aware bioinformatics: a dataset, the analysis planned against one named
+    # uncertainty, and what that analysis computed
+    'dataset_manifest': 'dataset_manifest.schema.json',
+    'analysis_plan': 'analysis_plan.schema.json',
+    'analysis_result': 'analysis_result.schema.json',
 }
+
+# What a piece of evidence IS, kept separate from where it came from and from who
+# may see it. An analysis computed over a private FACS table is a derived_analysis
+# whose source is private_user_dataset and whose visibility is private; collapsing
+# those three into one label is how provenance gets lost.
+EVIDENCE_CLASSES = ('published_literature', 'public_dataset', 'private_user_dataset',
+                    'derived_analysis', 'simulation', 'real_measurement',
+                    'synthetic_fixture')
+VISIBILITIES = ('public', 'private')
 
 
 class ContractError(ValueError):

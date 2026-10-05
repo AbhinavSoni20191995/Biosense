@@ -1,0 +1,372 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/dataset-manifest-v2.0",
+  "title": "DatasetManifest 2.0: one dataset, public or private, with its provenance",
+  "description": "The single description BioSense keeps of a dataset, whatever its source. Three facts are kept apart on purpose: what kind of evidence the dataset IS (evidence_class), whether anyone may see it (visibility), and where it came from (source/accession/derived_from). A derived dataset always names its parent, so lineage is recoverable from the manifest alone. Nothing here is ever inferred when it can be asked for: a missing experimental-design field is listed in missing_metadata and blocks analysis rather than being guessed.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "created_at",
+    "title",
+    "source",
+    "visibility",
+    "evidence_class",
+    "modality",
+    "organism",
+    "files",
+    "experimental_design",
+    "missing_metadata",
+    "limitations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{3,96}$"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source": {
+      "enum": [
+        "geo",
+        "encode",
+        "biostudies",
+        "sc_expression_atlas",
+        "flow_repository",
+        "immport",
+        "fixture",
+        "user_upload",
+        "derived"
+      ],
+      "description": "Where the data came from. 'derived' means this manifest describes the output of a tool run over a parent dataset. 'fixture' is a synthetic example committed to this repository: invented data for exercising the contracts, never a measurement."
+    },
+    "accession": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Public accession; null for private or derived data"
+    },
+    "source_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "retrieved_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "When the payload was fetched; null for data that was never fetched"
+    },
+    "visibility": {
+      "enum": [
+        "public",
+        "private"
+      ],
+      "description": "private data never leaves the machine: it is not served over HTTP, not committed, and can never become a literature citation."
+    },
+    "evidence_class": {
+      "enum": [
+        "public_dataset",
+        "private_user_dataset",
+        "derived_analysis",
+        "synthetic_fixture"
+      ],
+      "description": "What this object IS. An analysis performed ON a private dataset is derived_analysis whose SOURCE is private_user_dataset; the two are never collapsed."
+    },
+    "modality": {
+      "enum": [
+        "bulk_rna",
+        "single_cell_rna",
+        "chip_seq",
+        "atac_seq",
+        "flow_cytometry",
+        "cytometry_summary",
+        "generic_table"
+      ],
+      "description": "Phase 1 executes bulk_rna, flow_cytometry, cytometry_summary and generic_table. The other members are declarable so a manifest written today stays valid when their tools land."
+    },
+    "modality_detail": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Modality-specific description, deliberately open so a new modality adds a block rather than changing this schema. For flow_cytometry: panel_markers, fluorophores, gating_hierarchy, population_names, compensation, instrument. Validated per modality in biosense/data/manifest.py, never invented."
+    },
+    "organism": {
+      "type": "string"
+    },
+    "cell_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "perturbation": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The experimental conditions present, as the data labels them"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "role",
+          "file_type",
+          "checksum_sha256",
+          "bytes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path as stored. For a private dataset this is under the private root and is never served."
+          },
+          "role": {
+            "enum": [
+              "matrix",
+              "counts",
+              "metadata",
+              "population_table",
+              "peaks",
+              "events",
+              "summary",
+              "other"
+            ]
+          },
+          "file_type": {
+            "enum": [
+              "csv",
+              "tsv",
+              "json",
+              "bed",
+              "narrowPeak",
+              "h5ad",
+              "fcs",
+              "mtx",
+              "other"
+            ],
+            "description": "h5ad and fcs are declarable now and unreadable until their Phase 2 readers land; ingest refuses them rather than pretending."
+          },
+          "checksum_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rows": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "columns": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "sample_metadata": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Per-sample annotation read from the data: {column: [values]} plus sample_count.",
+      "properties": {
+        "sample_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "levels": {
+          "type": "object",
+          "description": "column -> observed distinct values"
+        }
+      }
+    },
+    "experimental_design": {
+      "type": "object",
+      "description": "What an analysis needs in order to compare anything. Fields left null are reported in missing_metadata and block a plan that needs them.",
+      "required": [
+        "condition_column",
+        "control",
+        "treatments",
+        "replicate_column"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "condition_column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "control": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "treatments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "replicate_column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "batch_column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample_id_column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timepoint_column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "donor_column": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "paired": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "derived_from": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "parent_dataset_id",
+        "tool",
+        "tool_version"
+      ],
+      "additionalProperties": false,
+      "description": "Present on every derived dataset. A derived dataset without a resolvable parent is refused.",
+      "properties": {
+        "parent_dataset_id": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "tool_version": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "missing_metadata": {
+      "type": "array",
+      "description": "Design fields that were not supplied. These are asked for, never guessed; a plan that needs one is refused and names it.",
+      "items": {
+        "type": "object",
+        "required": [
+          "field",
+          "why_it_matters"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "why_it_matters": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "citable": {
+      "const": false,
+      "description": "No dataset is ever a literature citation. A literature claim requires a source, a paragraph and a verbatim quote; a measurement has none of those. Private data additionally may not leave the machine at all."
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "registered_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

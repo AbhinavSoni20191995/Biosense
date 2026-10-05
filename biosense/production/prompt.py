@@ -224,6 +224,9 @@ def parse(prompt, request_id=None):
     note('loop_budget.max_iterations', 'default', DEFAULTS['max_iterations'], None,
          'The search moves one lever per arm per iteration, so it needs room to work through the '
          'protocol\'s coordinates. Lower it to stop sooner.')
+    note('bioinformatics.private_data', 'default', False, None,
+         'A prompt is not consent to read private data: a loop started from a prompt analyses '
+         'public and fixture datasets only.')
     note('bioreactor_source', 'default', 'synthetic_standin', None,
          'FORCED, not assumed. A prompt-driven run always uses the synthetic stand-in: an '
          'unattended loop must not produce a run sheet that reads as if a person approved it.')
@@ -274,9 +277,16 @@ def parse(prompt, request_id=None):
         'human_in_the_loop': {'mode': 'autonomous', 'consults': 'high_value',
                               'max_info_actions_per_iteration': 4},
         'bioreactor_source': 'synthetic_standin',
+        # Public datasets on, private data off, and no live repository search.
+        # A prompt typed into a web console is not consent to read whatever is on
+        # the machine, so a loop started this way can reach the committed
+        # fixtures and nothing a person registered privately.
         'bioinformatics': {'allowed': True,
                            'knowledge_sets': ['tcell_curated_genes', 'synthetic_fixture_genes'],
-                           'live_lookups': False},
+                           'live_lookups': False,
+                           'datasets': True,
+                           'private_data': False,
+                           'dataset_search_live': False},
     }
     errors = K.schema_errors('production_request', request)
     if errors:

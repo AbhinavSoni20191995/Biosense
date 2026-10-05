@@ -80,7 +80,9 @@ def build(c):
         f'<marker id="a-{col.lstrip("#")}" viewBox="0 0 10 10" refX="9" refY="5" '
         f'markerWidth="6" markerHeight="6" orient="auto-start-reverse">'
         f'<path d="M 0 1 L 9 5 L 0 9 z" fill="{col}"/></marker>'
-        for col in {c['line'], c['brand'], c['code'], c['stop'], c['human']})
+        # sorted for the same reason the architecture generator sorts: an
+        # unsorted set makes the output differ between runs
+        for col in sorted({c['line'], c['brand'], c['code'], c['stop'], c['human']}))
 
     s = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" '
          f'height="{H}" role="img" font-family="Inter,system-ui,-apple-system,sans-serif" '

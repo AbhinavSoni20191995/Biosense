@@ -185,3 +185,34 @@ button{font-family:inherit}
 .modes a:hover{text-decoration:none;color:var(--brand)}
 .modes a[aria-current]{background:linear-gradient(135deg,var(--brand),var(--brand-deep));
   color:#fff}
+
+/* ── evidence badges ─────────────────────────────────────── */
+/* Six classes, and the point of the set is that they stay apart. A derived
+   analysis over somebody's own FACS table is a DERIVED ANALYSIS whose source is
+   PRIVATE — two badges, never one that silently merges them. */
+.ev{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);
+  font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  padding:4px 9px;border-radius:999px;white-space:nowrap;
+  border:1px solid color-mix(in srgb,currentColor 45%,transparent);
+  background:color-mix(in srgb,currentColor 11%,transparent)}
+.ev::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.ev.published_literature{color:var(--s3)}
+.ev.public_dataset{color:var(--s1)}
+.ev.private_user_dataset{color:var(--warn)}
+.ev.derived_analysis{color:var(--brand)}
+.ev.simulation{color:var(--ink-3)}
+.ev.synthetic_fixture{color:var(--ink-3)}
+.ev.mixed{color:var(--warn)}
+.ev.real_measurement{color:var(--ok)}
+/* Visibility is its own badge, because it is its own fact. */
+.ev.vis-private{color:var(--bad)}
+.ev.vis-public{color:var(--ink-3)}
+.ev-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+/* ── dataset rows ────────────────────────────────────────── */
+.ds{padding:11px 0;border-bottom:1px solid var(--line)}
+.ds:last-child{border-bottom:0}
+.ds .t{font-size:14.5px;font-weight:600;line-height:1.35}
+.ds .m{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:4px}
+.ds .ev-row{margin-top:7px}
+.ds .gap{font-size:12.5px;color:var(--warn);margin-top:5px}

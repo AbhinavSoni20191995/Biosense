@@ -1,0 +1,110 @@
+{
+  "schema_version": "2.0",
+  "dataset_id": "bulk-mcsf-fixture",
+  "created_at": "2026-10-05T07:31:27.925656+00:00",
+  "title": "SYNTHETIC: bulk expression under two M-CSF conditions",
+  "description": "Invented data committed to this repository so the dataset and analysis contracts can be exercised offline. Not a measurement.",
+  "source": "fixture",
+  "accession": null,
+  "source_url": null,
+  "retrieved_at": null,
+  "visibility": "public",
+  "evidence_class": "synthetic_fixture",
+  "modality": "bulk_rna",
+  "modality_detail": null,
+  "organism": "Homo sapiens",
+  "cell_type": "iPSC-derived monocyte",
+  "perturbation": "M-CSF concentration",
+  "conditions": [
+    "control",
+    "mcsf_high"
+  ],
+  "files": [
+    {
+      "path": "examples/datasets/bulk_counts_synthetic.csv",
+      "role": "counts",
+      "file_type": "csv",
+      "checksum_sha256": "6369601ac9d3e870012234ecab6c0d9ba0355d0317b3bf37ea6d0f0f756016e9",
+      "bytes": 2310,
+      "rows": 60,
+      "columns": [
+        "sample_id",
+        "condition",
+        "replicate",
+        "gene",
+        "expression_log2"
+      ]
+    }
+  ],
+  "sample_metadata": {
+    "sample_count": 60,
+    "columns": [
+      "sample_id",
+      "condition",
+      "replicate",
+      "gene",
+      "expression_log2"
+    ],
+    "levels": {
+      "sample_id": [
+        "control_r1",
+        "control_r2",
+        "control_r3",
+        "mcsf_high_r1",
+        "mcsf_high_r2",
+        "mcsf_high_r3"
+      ],
+      "condition": [
+        "control",
+        "mcsf_high"
+      ],
+      "replicate": [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "gene": [
+        "BACH2",
+        "CD14",
+        "MRC1",
+        "CSF1R",
+        "TNF",
+        "IL10",
+        "HSPA1A",
+        "CASP3",
+        "ACTB",
+        "GAPDH"
+      ]
+    }
+  },
+  "experimental_design": {
+    "condition_column": "condition",
+    "control": "control",
+    "treatments": [
+      "mcsf_high"
+    ],
+    "replicate_column": "replicate",
+    "sample_id_column": "sample_id"
+  },
+  "derived_from": null,
+  "missing_metadata": [
+    {
+      "field": "batch_column",
+      "why_it_matters": "whether a batch effect could explain a difference"
+    },
+    {
+      "field": "donor_column",
+      "why_it_matters": "whether observations are independent between people"
+    },
+    {
+      "field": "timepoint_column",
+      "why_it_matters": "whether a change is a trend or a snapshot"
+    }
+  ],
+  "citable": false,
+  "limitations": [
+    "A synthetic fixture committed to this repository. The numbers are invented for exercising the contracts; nothing derived from them is biological evidence."
+  ],
+  "registered_by": "repository fixture",
+  "notes": null
+}

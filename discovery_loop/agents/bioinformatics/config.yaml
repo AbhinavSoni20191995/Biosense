@@ -17,6 +17,10 @@ os_env:
     type: auto
     write_paths:
       - ./runs
+    # Deliberately NOT ./private_data: the agent reads registered datasets
+    # through the CLI, which refuses to serve or copy a private payload. An
+    # agent that could write there could also move a private file somewhere
+    # servable.
     cwd_allow_hidden:
       - .venv
     # Offline by default. Live annotation lookups need a request that sets

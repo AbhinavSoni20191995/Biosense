@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/analysis-plan-v2.0",
+  "title": "AnalysisPlan 2.0: the analysis that would reduce one named uncertainty",
+  "description": "Written before anything executes. The required field is uncertainty_ref: an analysis that answers no stated question cannot be constructed, which is the structural difference between this and a bioinformatics dashboard. The plan also names the decision it could affect and the process parameters that might change, so a result can be read against what it was asked for rather than against what it happened to find.",
+  "type": "object",
+  "required": ["schema_version", "plan_id", "created_at", "created_by", "question",
+               "uncertainty_ref", "why_requested", "dataset_ids", "modality", "analysis_type",
+               "tool", "required_metadata", "expected_outputs", "decision_relevance",
+               "parameters_that_may_change"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "plan_id": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{3,96}$"},
+    "created_at": {"type": "string"},
+    "created_by": {"type": "string", "description": "bioinformatics_agent, policy, or a person's name"},
+    "loop_id": {"type": ["string", "null"]},
+    "iteration": {"type": ["integer", "null"]},
+
+    "question": {"type": "string", "minLength": 10,
+                 "description": "The biological question, in the terms a person would ask it"},
+
+    "uncertainty_ref": {
+      "type": "object",
+      "required": ["kind", "ref", "statement"],
+      "additionalProperties": false,
+      "description": "MANDATORY. Either a hypothesis the analysis already raised (kind hypothesis, ref = a hypothesis_id in the analysis report's diagnosis) or an explicitly recorded gap in the evidence (kind evidence_gap). Planning is refused without one.",
+      "properties": {
+        "kind": {"enum": ["hypothesis", "evidence_gap"]},
+        "ref": {"type": "string", "minLength": 1},
+        "statement": {"type": "string", "minLength": 10},
+        "raised_by": {"type": ["string", "null"]},
+        "source_artifact": {"type": ["string", "null"], "description": "Path to the analysis report or record the uncertainty came from"}
+      }
+    },
+    "why_requested": {"type": "string", "minLength": 10,
+                      "description": "Why this is being asked now, rather than revising or stopping"},
+
+    "dataset_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "modality": {"enum": ["bulk_rna", "single_cell_rna", "chip_seq", "atac_seq",
+                          "flow_cytometry", "cytometry_summary", "generic_table"]},
+    "analysis_type": {
+      "enum": ["population_comparison", "marker_intensity_comparison", "viability_comparison",
+               "bulk_expression_comparison", "generic_two_group", "correlation",
+               "longitudinal_population"],
+      "description": "Phase 1 set. Single-cell, peak-overlap and motif analyses join this list with their tools."
+    },
+    "comparison": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "group_column": {"type": ["string", "null"]},
+        "control": {"type": ["string", "null"]},
+        "treatment": {"type": ["string", "null"]},
+        "paired": {"type": ["boolean", "null"]},
+        "covariates": {"type": "array", "items": {"type": "string"}},
+        "readouts": {"type": "array", "items": {"type": "string"},
+                     "description": "Which measured columns to compare; empty means every numeric column"}
+      }
+    },
+    "steps": {"type": "array", "items": {"type": "string"},
+              "description": "What the tool will do, in order, for a reader who will not run it"},
+    "tool": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "description": "A name in the tool registry; an unknown tool is refused"},
+        "parameters": {"type": "object"},
+        "external": {"type": ["boolean", "null"],
+                     "description": "true when execution goes through the external-tool adapter (R, Scanpy, MACS). Phase 1 ships the contract and a mock."}
+      }
+    },
+    "required_metadata": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Manifest fields this analysis cannot run without. Checked against the manifest before execution; a missing one refuses the plan and names it."
+    },
+    "expected_outputs": {"type": "array", "items": {"type": "string"}},
+    "decision_relevance": {"type": "string", "minLength": 10,
+                           "description": "Which process decision this could inform. Not a promise that it will."},
+    "parameters_that_may_change": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Protocol parameters the result might implicate, named in advance so a result cannot be read as supporting whatever it happens to favour."
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

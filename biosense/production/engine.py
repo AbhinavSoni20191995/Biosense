@@ -85,10 +85,80 @@ def _bioinfo(request, gates, protocol, loop_dir, iteration, genes):
                                'cannot be settled in this machine at all?',
                       asked_by='engine (deterministic policy path)')
     bio['protocol_cross_check'] = BT.cross_check(bio, protocol)
+    K.require_valid('bioinformatics_report', bio)   # validate what is written, not what was built
     d = Path(loop_dir) / f'it{iteration}'
     K.write_json_atomic(d / 'bioinfo.json', bio, overwrite=False)
     K.write_text_atomic(d / 'bioinfo.md', BT.render_report(bio))
     return bio, d / 'bioinfo.json'
+
+
+def _dataset_analysis(request, gates, report, loop_dir, iteration):
+    """Analyse a registered dataset, but only against an uncertainty the loop has.
+
+    Off unless `bioinformatics.datasets` is set, so an existing loop behaves
+    exactly as before. When it is on, the step is still conditional on three
+    things in order, and returns None rather than inventing any of them:
+
+      1. the analysis raised a hypothesis that does not block revision --
+         an analysis with nothing open has no uncertainty to resolve;
+      2. a registered dataset is relevant to it, found through the same search
+         adapter a person would use;
+      3. the datasets the gates permit. Private data is read only when the
+         request asked for it.
+
+    Returns (plan, result, paths) or None.
+    """
+    from ..bioinformatics import execute as EX
+    from ..bioinformatics import plan as PLAN
+    from ..bioinformatics import registry as TREG
+    from ..data import sources as DSRC
+
+    open_h = [h for h in report.get('diagnosis', []) if not h['blocks_protocol_revision']]
+    if not open_h:
+        return None
+    h = open_h[0]
+
+    terms = ' '.join([h['statement']] + [lv['parameter'] for lv in h.get('levers', [])]
+                     + [request['product']['target_cell']])
+    res = DSRC.get('local').search(terms, include_private=gates['private_data_allowed'])
+    if not res.candidates:
+        return None
+
+    for cand in res.candidates:
+        tools = TREG.for_analysis('population_comparison', cand.modality) or \
+            TREG.for_analysis('bulk_expression_comparison', cand.modality)
+        if not tools:
+            continue
+        spec = tools[0]
+        atype = ('population_comparison' if 'population_comparison' in spec.analysis_types
+                 else 'bulk_expression_comparison')
+        try:
+            p = PLAN.plan(
+                plan_id=f'plan-it{iteration}-{cand.accession}',
+                question=f'Does {cand.title} speak to: {h["statement"]}',
+                uncertainty_ref=PLAN.uncertainty_from_hypothesis(
+                    h, source_artifact=str(Path(loop_dir) / f'it{iteration}' / 'analysis.json'),
+                    raised_by='analysis_agent'),
+                why_requested=(f'The analysis raised {h["hypothesis_id"]} and the loop holds no '
+                               f'measurement that bears on it. The lookup spends no iteration.'),
+                dataset_ids=[cand.accession], analysis_type=atype, tool=spec.name,
+                decision_relevance=(f'Whether the next revision should move '
+                                    f'{", ".join(lv["parameter"] for lv in h.get("levers", [])) or "a parameter"}'),
+                parameters_that_may_change=[lv['parameter'] for lv in h.get('levers', [])],
+                created_by='engine (deterministic policy path)',
+                loop_id=Path(loop_dir).name, iteration=iteration,
+                analysis_report=report)
+            d = Path(loop_dir) / f'it{iteration}'
+            K.write_json_atomic(d / 'analysis_plan.json', p, overwrite=False)
+            r = EX.execute(p, executed_by='engine (deterministic policy path)',
+                           analysis_id=f'dsanalysis-it{iteration}-{cand.accession}',
+                           out=d / 'dataset_analysis.json')
+            K.write_text_atomic(d / 'dataset_analysis.md', EX.render(r))
+            return p, r, (d / 'analysis_plan.json', d / 'dataset_analysis.json')
+        except K.ContractError:
+            # A dataset that cannot support this plan is skipped, not forced.
+            continue
+    return None
 
 
 def run_loop(request, loop_dir, standin='ipsc_tcell', truth=None, on_event=None, seed=11,
@@ -127,9 +197,10 @@ def run_loop(request, loop_dir, standin='ipsc_tcell', truth=None, on_event=None,
     search = RV.new_state()
     last_report, last_iteration = None, 0
     iteration, steps, bio_paths, bio_reports, levers = 0, 0, [], [], []
+    ds_done, ds_results = False, []
     summary = {'loop_id': out.name, 'loop_dir': str(out), 'request_id': request['request_id'],
                'iterations': [], 'terminal': None, 'best': {}, 'refusals': [], 'consults': [],
-               'standin': standin}
+               'standin': standin, 'dataset_analyses': []}
 
     while steps < max_steps:
         steps += 1
@@ -276,6 +347,95 @@ def run_loop(request, loop_dir, standin='ipsc_tcell', truth=None, on_event=None,
                 _emit(on_event, 'refusal', step='commit_decision(request_bioinformatics)', detail=str(e),
                       note='The envelope refused this decision. That is the system working.')
 
+        # Dataset-backed analysis, when the request enabled it and the analysis
+        # left an uncertainty open. It reuses `request_bioinformatics` rather than
+        # adding a decision type: an analysis is information-gathering, it must
+        # not spend an iteration, and the envelope already gets that right.
+        if (gates['datasets_allowed'] and not ds_done
+                and 'request_bioinformatics' in env['allowed']):
+            found = _dataset_analysis(request, gates, report, out, iteration)
+            if found:
+                dplan, dres, (plan_path, res_path) = found
+                ds_done = True
+                ds_results.append(dres)
+                _emit(on_event, 'dataset_analysis', iteration=iteration,
+                      analysis_id=dres['analysis_id'],
+                      uncertainty=dres['uncertainty_ref']['ref'],
+                      datasets=[d['dataset_id'] for d in dres['datasets']],
+                      evidence_class=dres['evidence_class'],
+                      source_evidence_class=dres['source_evidence_class'],
+                      source_visibility=dres['source_visibility'],
+                      confidence=dres['confidence'],
+                      findings=[f['finding'] for f in dres['key_findings']][:4],
+                      levers=dres['candidate_process_parameters'],
+                      path=str(res_path),
+                      note='Evidence for the orchestrator. It changes nothing by itself.')
+                try:
+                    dec, dpath, _ = OR.commit_decision({
+                        'type': 'request_bioinformatics', 'route_to': 'bioinformatics',
+                        'protocol_worked': 'undetermined',
+                        'reason': f'{dplan["uncertainty_ref"]["ref"]} is open and a registered '
+                                  f'dataset bears on it. Analysing it spends no iteration.',
+                        'reasoning': (
+                            f'Deterministic policy, not a model. The engine asks for a dataset '
+                            f'analysis only when the analysis report leaves a hypothesis open '
+                            f'that does not block revision, a registered dataset is relevant to '
+                            f'it, and the request enabled datasets. The rule exists because the '
+                            f'alternative is revising against a lever nothing has measured: an '
+                            f'analysis that resolves {dplan["uncertainty_ref"]["ref"]} either '
+                            f'supports that lever or removes it from consideration, and either '
+                            f'outcome is worth more than a blind move. The result is evidence; '
+                            f'it does not change a parameter.'),
+                        'considered': [{'type': 'revise_protocol',
+                                        'why_not': 'Allowed here, but it would spend an iteration '
+                                                   'moving a lever no measurement in this loop '
+                                                   'speaks to.'}],
+                        'evidence': [report['verdict']['summary']]
+                                    + [f['finding'] for f in dres['key_findings']][:3],
+                        'hypotheses': [{
+                            'hypothesis_id': dplan['uncertainty_ref']['ref'],
+                            'statement': dplan['uncertainty_ref']['statement'],
+                            'basis': [f'{f["finding"]} ({f["basis"]})'
+                                      for f in dres['key_findings']][:4]
+                                     or ['no readout survived multiplicity correction'],
+                            'would_be_tested_by': 'A protocol revision that moves the implicated '
+                                                  'parameter against a wild-type control',
+                            'status': ('supported' if dres['candidate_process_parameters']
+                                       else 'open')}],
+                        'instruction': {
+                            'to': 'bioinformatics',
+                            'ask': dplan['question'],
+                            'analysis': {
+                                'uncertainty_ref': dplan['uncertainty_ref'],
+                                'dataset_ids': dplan['dataset_ids'],
+                                'plan': dplan,
+                                'parameter_decision': dplan['decision_relevance'],
+                            }},
+                        'tool_calls': [{
+                            'tool': dres['method']['tool'],
+                            'purpose': f'resolve {dplan["uncertainty_ref"]["ref"]}',
+                            'result_ref': str(res_path),
+                            'summary': (
+                                f'{dres["evidence_class"]} over a '
+                                f'{dres["source_evidence_class"]} source '
+                                f'({dres["source_visibility"]}); confidence '
+                                f'{dres["confidence"]}; candidates: '
+                                + (', '.join(f'{c["parameter"]} ({c["direction"]})'
+                                             for c in dres['candidate_process_parameters'])
+                                   or 'none'))}],
+                    }, report, approved, request, out, bio_reports, author='policy')
+                    _emit(on_event, 'decision', iteration=iteration,
+                          decision_id=dec['decision_id'], type=dec['type'],
+                          status=dec['status'], authored_by=dec['authored_by'],
+                          advances=dec['advances_iteration'], reason=dec['reason'],
+                          reasoning=dec.get('reasoning'), path=str(dpath))
+                except K.ContractError as e:
+                    summary['refusals'].append(
+                        {'step': 'commit_decision(dataset_analysis)', 'error': str(e)})
+                    _emit(on_event, 'refusal', step='commit_decision(dataset_analysis)',
+                          detail=str(e),
+                          note='The envelope refused this decision. That is the system working.')
+
         # The policy decides what happens next, inside the same envelope and
         # through the same commit path a reasoning agent would use.
         try:
@@ -363,6 +523,14 @@ def run_loop(request, loop_dir, standin='ipsc_tcell', truth=None, on_event=None,
         note='Deterministic engine run: the protocol designer, the reviser and the decisions are all '
              'deterministic code, and the reactor is a synthetic stand-in. No LLM reasoned here and no '
              'number is biological evidence.'))
+    summary['dataset_analyses'] = [
+        {'analysis_id': r['analysis_id'], 'uncertainty': r['uncertainty_ref']['ref'],
+         'evidence_class': r['evidence_class'],
+         'source_evidence_class': r['source_evidence_class'],
+         'source_visibility': r['source_visibility'], 'confidence': r['confidence'],
+         'datasets': [d['dataset_id'] for d in r['datasets']],
+         'candidate_process_parameters': r['candidate_process_parameters']}
+        for r in ds_results]
     return summary
 
 

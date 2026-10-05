@@ -34,7 +34,18 @@ MAX_BYTES = 8 * 1024 * 1024
 
 
 def _is_forbidden(path):
-    return FORBIDDEN in path.name.lower()
+    """Whether this file may never be served.
+
+    Two independent rules, because they protect different things:
+
+    * the `truth` name rule covers the stand-in's hidden answers, which are files
+      this project named itself;
+    * `roots.is_private_path` covers datasets a *person* ingested, and asks where
+      the file is rather than what it is called. A filename convention is no
+      protection at all for a file somebody else named.
+    """
+    from ..data import roots as DR
+    return FORBIDDEN in Path(path).name.lower() or DR.is_private_path(path)
 
 
 def _read_json(path):
@@ -183,6 +194,13 @@ def main(argv=None):
     ap.add_argument('--host', default='127.0.0.1', help='interface to bind (0.0.0.0 in a container)')
     ap.add_argument('--port', type=int, default=8000)
     a = ap.parse_args(argv)
+    # Refuse the configuration, not just the request. A per-file check can only
+    # decline what it is asked for; this declines the arrangement that would make
+    # every private dataset reachable at once.
+    from ..data import roots as DR
+    DR.assert_disjoint(a.runs)
+    if a.static:
+        DR.assert_disjoint(a.static)
     Handler.runs_dir = Path(a.runs)
     Handler.static_dir = Path(a.static) if a.static else None
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
