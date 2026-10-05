@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/discovery-request-v2.0",
+  "title": "DiscoveryRequest 2.0: what the person asked, as structure rather than a blob",
+  "description": "What a scientist fills in before pressing Run AI Discovery: the project, the objective, the biological scope, the data they are willing to bring, the process constraints they are under, and which runtime should answer. It exists so the fields are never concatenated into one uncontrolled text blob: the ResearchContext, the dataset references and the expert-knowledge references already have contracts of their own, and flattening them into prose would lose the strictness setting, the visibility of each source and the ability to say which field a context mismatch is in. runtime_mode is part of the request rather than a server setting, because a synthetic run and a real one are different claims about the same question and must never be the same recorded object.",
+  "type": "object",
+  "required": ["schema_version", "request_id", "created_at", "project_id", "objective",
+               "runtime_mode"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "request_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$"},
+    "created_at": {"type": "string"},
+    "title": {"type": ["string", "null"]},
+
+    "project_id": {
+      "type": "string",
+      "description": "The ProjectProfile this runs against. It decides which parameters exist, what their bounds are, which stages the process has and whether a simulator can say anything at all."
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 4000,
+      "description": "The scientific goal, in the person's own words. Carried as a value from here to the wire: it is never interpolated into a command line, a shell string or an argv."
+    },
+
+    "research_context": {
+      "type": ["object", "null"],
+      "description": "A ResearchContext document. Null means no scope was declared, which is not the same as 'open' and is recorded as such."
+    },
+    "dataset_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Datasets the person is bringing, by registered id. A private id makes the whole run private; the ids travel, the bytes never do."
+    },
+    "expert_knowledge_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Internal observations by knowledge_id. Expert knowledge may narrow a search range; it may never supply a cited protocol value, and any entry makes the run private."
+    },
+    "process_constraints": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "What the process cannot do, whatever the evidence says. A constraint is not a finding and is never reported as one.",
+      "properties": {
+        "notes": {"type": ["string", "null"], "maxLength": 2000},
+        "parameter_bounds": {
+          "type": "array",
+          "description": "Per-parameter limits this run must stay inside, by canonical parameter_id.",
+          "items": {
+            "type": "object",
+            "required": ["parameter_id", "source"],
+            "additionalProperties": false,
+            "properties": {
+              "parameter_id": {"type": "string"},
+              "minimum": {"type": ["number", "null"]},
+              "maximum": {"type": ["number", "null"]},
+              "source": {
+                "enum": ["process_design", "literature", "expert_knowledge", "prior_experiment",
+                         "equipment_limit", "safety_constraint", "model_validity",
+                         "design_choice"],
+                "description": "Where the limit comes from. A bound with no origin is a guess wearing the clothes of a constraint."
+              },
+              "basis": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    },
+
+    "uncertainty": {
+      "type": ["object", "null"],
+      "required": ["kind", "ref", "statement"],
+      "additionalProperties": false,
+      "description": "The decision-blocking question, when the person already knows it. Null means the run has to identify one, which is a step it must then show.",
+      "properties": {
+        "kind": {"enum": ["hypothesis", "evidence_gap", "diagnosis"]},
+        "ref": {"type": "string"},
+        "statement": {"type": "string", "minLength": 10}
+      }
+    },
+    "control": {
+      "type": ["object", "null"],
+      "description": "The current process, as simulator setpoints. Defaults come from the project; a control chosen to flatter a candidate is not a control."
+    },
+    "candidate_values": {
+      "type": ["object", "null"],
+      "description": "Values the person wants tested, keyed by canonical parameter_id. Optional: the run proposes its own."
+    },
+
+    "runtime_mode": {
+      "enum": ["synthetic_demo", "local_real_ai", "remote_real_ai"],
+      "description": "Which runtime answers. synthetic_demo is the deterministic path over committed fixtures and demonstrates what the system can express, never what any cell did. local_real_ai and remote_real_ai drive the discovery_loop agents through an Omnigent session and spend model credits. BioSense never substitutes one for another: if a real runtime is unavailable the request fails with the reason."
+    },
+    "requested_by": {
+      "type": ["string", "null"],
+      "description": "A label for who asked, when the deployment has one. Never a credential."
+    },
+    "notes": {"type": ["string", "null"], "maxLength": 2000}
+  }
+}

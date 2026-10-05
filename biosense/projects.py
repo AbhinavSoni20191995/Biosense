@@ -33,7 +33,16 @@ from . import contracts as K
 from . import parameters as PR
 
 PROFILE_DIR = K.ROOT / 'projects'
-COVERAGE = ('modelled', 'not_modelled', 'no_simulator')
+COVERAGE = ('modelled', 'not_modelled', 'no_simulator', 'de_novo_ai', 'expert_declared')
+# Coverage kinds that produce a prediction. `modelled` is the calibrated model's
+# own term; the other two are a shape and some constants somebody proposed, which
+# deterministic code then evaluates. They predict, and every number they produce
+# carries that provenance.
+PREDICTING = ('modelled', 'de_novo_ai', 'expert_declared')
+UNCALIBRATED = ('de_novo_ai', 'expert_declared')
+RESPONSE_SHAPES = ('bell', 'saturating', 'linear', 'threshold')
+RESPONSE_TARGETS = ('growth', 'death', 'viability', 'transition_efficiency', 'harvest')
+RESPONSE_ORIGINS = ('ai_proposed', 'expert_declared')
 BOUND_SOURCES = ('process_design', 'literature', 'expert_knowledge', 'prior_experiment',
                  'equipment_limit', 'safety_constraint', 'model_validity', 'design_choice')
 
@@ -52,6 +61,7 @@ class ProjectParameter:
     step: float = None
     editable: bool = True
     bound_origin: dict = None
+    response_model: dict = None
     notes: str = None
 
     @property
@@ -68,7 +78,18 @@ class ProjectParameter:
 
     @property
     def modelled(self):
+        """Whether the project's own calibrated model has a term for this."""
         return self.simulator_coverage == 'modelled'
+
+    @property
+    def predicts(self):
+        """Whether anything at all can produce a number for this parameter."""
+        return self.simulator_coverage in PREDICTING
+
+    @property
+    def uncalibrated(self):
+        """Whether a prediction for this rests on a proposed term rather than a fitted one."""
+        return self.simulator_coverage in UNCALIBRATED
 
     def to_dict(self):
         c = self.canonical
@@ -111,7 +132,7 @@ class Project:
                 display_name=p.get('display_name'), default_value=p.get('default_value'),
                 minimum=p.get('minimum'), maximum=p.get('maximum'), step=p.get('step'),
                 editable=p.get('editable', True), bound_origin=p.get('bound_origin'),
-                notes=p.get('notes'))
+                response_model=p.get('response_model'), notes=p.get('notes'))
 
     # ── validation ─────────────────────────────────────────────────────
     def _check_bounds(self, pid, p):
@@ -148,6 +169,9 @@ class Project:
     def _check_coverage(self, pid, p):
         cov, mapping = p['simulator_coverage'], p.get('simulator_mapping')
         status = self.doc['simulator']['status']
+        if cov not in COVERAGE:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: simulator_coverage must be one of {COVERAGE}')
         if cov == 'modelled' and not mapping:
             raise K.ContractError(
                 f'{self.project_id}/{pid}: simulator_coverage is "modelled" but no '
@@ -165,6 +189,73 @@ class Project:
             raise K.ContractError(
                 f'{self.project_id}/{pid}: this project has no simulator, so every parameter\'s '
                 f'coverage must be "no_simulator" (got {cov!r}).')
+        self._check_response_model(pid, p, cov)
+
+    def _check_response_model(self, pid, p, cov):
+        """A proposed term must say what it does, and only a proposed term may.
+
+        The point of separating `de_novo_ai` and `expert_declared` from
+        `modelled` is that a reader can tell a fitted term from a suggested one.
+        That only holds if a suggested term actually carries its shape, its
+        constants and who suggested them -- and if a calibrated parameter cannot
+        quietly acquire a second, unfitted definition sitting beside the real one.
+        """
+        rm = p.get('response_model')
+        if cov not in UNCALIBRATED:
+            if rm:
+                raise K.ContractError(
+                    f'{self.project_id}/{pid}: a response_model is given but coverage is '
+                    f'{cov!r}. A response_model is how a de_novo_ai or expert_declared '
+                    f'parameter acts; a calibrated parameter\'s behaviour belongs in the '
+                    f'model, where it can be versioned and checked.')
+            return
+        if not rm:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: coverage {cov!r} promises a prediction but no '
+                f'response_model says how the parameter acts. A term that predicts without '
+                f'saying what it computes is not reviewable.')
+        if rm.get('shape') not in RESPONSE_SHAPES:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: response_model.shape must be one of '
+                f'{RESPONSE_SHAPES}')
+        if rm.get('target') not in RESPONSE_TARGETS:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: response_model.target must be one of '
+                f'{RESPONSE_TARGETS}')
+        if rm.get('origin') not in RESPONSE_ORIGINS:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: response_model.origin must be one of '
+                f'{RESPONSE_ORIGINS}')
+        want_origin = 'ai_proposed' if cov == 'de_novo_ai' else 'expert_declared'
+        if rm['origin'] != want_origin:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: coverage {cov!r} and response_model.origin '
+                f'{rm["origin"]!r} disagree about who proposed this term.')
+        if rm.get('calibrated') is not False:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: response_model.calibrated must be false. A term '
+                f'fitted to data is not de novo; give it a model version instead.')
+        if len((rm.get('basis') or '').strip()) < 10:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: response_model.basis must say why this shape and '
+                f'these constants, in at least 10 characters. A proposed term with no stated '
+                f'reasoning is a number nobody can argue with.')
+        needed = {'bell': ('optimum', 'tolerance'), 'saturating': ('half_max',),
+                  'linear': ('slope',), 'threshold': ('threshold',)}[rm['shape']]
+        missing = [k for k in needed if rm.get(k) is None]
+        if missing:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: a {rm["shape"]!r} response needs '
+                f'{", ".join(needed)}; missing {", ".join(missing)}.')
+        if rm['shape'] == 'bell' and float(rm['tolerance']) <= 0:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: response_model.tolerance must be above zero')
+        eff = rm.get('max_effect')
+        if eff is None or not -1.0 <= float(eff) <= 4.0:
+            raise K.ContractError(
+                f'{self.project_id}/{pid}: response_model.max_effect must be between -1 and 4. '
+                f'It is bounded so a proposed term cannot overwhelm the calibrated biology it '
+                f'sits beside.')
 
     # ── access ─────────────────────────────────────────────────────────
     @property

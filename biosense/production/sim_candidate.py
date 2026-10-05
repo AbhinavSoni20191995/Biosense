@@ -32,6 +32,7 @@ from .. import contracts as K
 from .. import parameters as PR
 from .. import projects as PJ
 from ..evidence import estimates as E
+from . import response_model as RM
 from . import sim_mode as SM
 
 # Metrics the simulator signature exposes, and the unit each carries. The
@@ -84,7 +85,7 @@ def plan_handoff(project, candidates):
     """
     if not isinstance(project, PJ.Project):
         raise K.ContractError('plan_handoff needs a loaded Project')
-    applied, skipped = [], []
+    applied, skipped, proposed = [], [], []
     has_model = project.simulator['status'] == 'current'
     for c in candidates:
         pid = PR.resolve(c['parameter'] if 'parameter' in c else c['parameter_id'])
@@ -104,6 +105,19 @@ def plan_handoff(project, candidates):
                             f'{project.project_id} does not expose {pid}; it is a canonical '
                             f'parameter but not a knob of this process.'})
             continue
+        if cov in PJ.UNCALIBRATED:
+            # A term somebody proposed rather than one the model was fitted with.
+            # It predicts, and it is kept apart from `applied` for the whole of
+            # its life so a reader never has to work out which kind they are
+            # looking at.
+            pp = project.parameter(pid)
+            d = RM.describe(pp.response_model)
+            proposed.append({**row, 'current_value': pp.default_value,
+                             'minimum': pp.minimum, 'maximum': pp.maximum,
+                             'response_model': pp.response_model, 'description': d,
+                             'badge': d['badge'], 'origin': d['origin'],
+                             'evidence_status': d['evidence_status']})
+            continue
         if cov != 'modelled':
             pp = project.parameter(pid)
             skipped.append({**row, 'reason':
@@ -115,8 +129,9 @@ def plan_handoff(project, candidates):
         applied.append({**row, 'knob': pp.simulator_mapping,
                         'current_value': pp.default_value,
                         'minimum': pp.minimum, 'maximum': pp.maximum})
-    return {'applied': applied, 'skipped': skipped,
+    return {'applied': applied, 'skipped': skipped, 'proposed': proposed,
             'coverage': {'modelled': len(applied), 'not_modelled': len(skipped),
+                         'proposed_terms': len(proposed),
                          'has_model': has_model,
                          'model_id': project.simulator.get('model_id'),
                          'model_version': project.simulator.get('model_version')}}
@@ -142,6 +157,24 @@ def candidate_setpoints(project, applied, values):
                                                                "this project's range")})
         out[row['knob']] = c
     return out, clamped
+
+
+def _control_by_parameter(project, setpoints):
+    """Control values keyed by canonical parameter_id rather than by simulator knob.
+
+    A proposed term is defined against the parameter, not against a model knob it
+    has no mapping for, so the control it is compared against has to be looked up
+    the same way. A parameter with no control setpoint falls back to the
+    project's recorded default, which is what the current process uses.
+    """
+    out = {}
+    for pid in project.parameter_ids:
+        q = project.parameter(pid)
+        if q.simulator_mapping and q.simulator_mapping in (setpoints or {}):
+            out[pid] = setpoints[q.simulator_mapping]
+        elif q.default_value is not None:
+            out[pid] = q.default_value
+    return out
 
 
 def compare_conditions(project, *, control=None, candidate_values=None, candidates=(),
@@ -171,11 +204,17 @@ def compare_conditions(project, *, control=None, candidate_values=None, candidat
 
     cand_setpoints, clamped = candidate_setpoints(
         project, hand['applied'], candidate_values or {})
-    if not cand_setpoints:
+    # Terms somebody proposed, evaluated beside the calibrated model rather than
+    # inside it. They fire whether or not a calibrated knob also moved, which is
+    # the point: a project may have nothing but proposed terms.
+    terms = RM.plan_terms(project, _control_by_parameter(project, base_setpoints),
+                          candidate_values or {})
+    live_terms = [t for t in terms if t['multiplier'] is not None and not t['unchanged']]
+    if not cand_setpoints and not live_terms:
         return {'project_id': project.project_id, 'project_version': project.version,
                 'model': project.simulator, 'handoff': hand, 'effects': [],
                 'control': None, 'candidate': None, 'clamped': clamped,
-                'prediction': 'none',
+                'proposed_terms': terms, 'prediction': 'none',
                 'prediction_note':
                     'No candidate parameter reached the simulator, so there is nothing to '
                     'compare. Every candidate and the reason it was not applied is in `handoff`.',
@@ -186,6 +225,14 @@ def compare_conditions(project, *, control=None, candidate_values=None, candidat
               'seed': seed, 'label': label_b}
     a, b = SM.simulate(a_cond), SM.simulate(b_cond)
     sig_a, sig_b = enrich_signature(a), enrich_signature(b)
+    # The calibrated signature is kept, untouched, beside the adjusted one. A
+    # reader can then see what the model said and what the proposed terms did to
+    # it, instead of one number that silently contains both.
+    sig_b_calibrated = dict(sig_b)
+    applied_terms = {}
+    if live_terms:
+        out = RM.apply_to_signature(sig_b, live_terms)
+        sig_b, applied_terms = out['signature'], out['adjusted']
 
     wanted = readouts or [r['readout_id'] for r in project.readouts if r.get('simulator_metric')]
     effects = []
@@ -197,17 +244,33 @@ def compare_conditions(project, *, control=None, candidate_values=None, candidat
         if sig_a[metric] is None or sig_b[metric] is None:
             continue
         unit = r['unit'] or METRIC_UNITS.get(metric, '')
+        touched = applied_terms.get(metric) or []
+        limits = [f'Simulated by {project.simulator["model_id"]} '
+                  f'v{project.simulator.get("model_version")}. '
+                  f'{project.simulator.get("evidence_status") or ""}'.strip(),
+                  'A mechanistic stand-in, not a validated digital twin. No number here '
+                  'is a measurement of any real cell.']
+        for row in touched:
+            term = next(t for t in live_terms if t['parameter_id'] == row['parameter_id'])
+            limits.append(
+                f'{term["label"]} acts here through a response nobody fitted to data: '
+                f'{term["description"]["evidence_status"]}')
         e = E.estimate(
             rid, unit,
             E.value(sig_a[metric], 'simulated', source_ref=f'{project.simulator["model_id"]}:control'),
             E.value(sig_b[metric], 'simulated', source_ref=f'{project.simulator["model_id"]}:candidate'),
             label=r['label'],
             higher_is_better=r.get('higher_is_better', HIGHER_IS_BETTER.get(metric)),
-            limitations=[f'Simulated by {project.simulator["model_id"]} '
-                         f'v{project.simulator.get("model_version")}. '
-                         f'{project.simulator.get("evidence_status") or ""}'.strip(),
-                         'A mechanistic stand-in, not a validated digital twin. No number here '
-                         'is a measurement of any real cell.'])
+            limitations=limits)
+        # Carried beside the estimate rather than inside it: an Estimate's
+        # estimate_type says how a number was produced, and `simulated` is still
+        # true. What changes is how much the model behind it is worth, and that
+        # needs its own field so the interface can badge it without overloading
+        # a vocabulary other code depends on.
+        if touched:
+            e['model_basis'] = sorted({row['origin'] for row in touched})
+            e['uncalibrated_terms'] = [row['parameter_id'] for row in touched]
+            e['calibrated_value'] = sig_b_calibrated.get(metric)
         effects.append(e)
 
     return {
@@ -222,10 +285,16 @@ def compare_conditions(project, *, control=None, candidate_values=None, candidat
                                   for row in hand['applied'] if row['knob'] in cand_setpoints]},
         'clamped': clamped,
         'effects': effects,
+        'proposed_terms': terms,
+        'applied_terms': applied_terms,
+        'calibrated_candidate_signature': sig_b_calibrated if applied_terms else None,
         'prediction': 'simulated',
         'prediction_note': 'Every number in `effects` was produced by the project\'s mechanistic '
                            'stand-in and is labelled SIMULATED. It is not a measurement and not '
-                           'a promise about a real culture.',
+                           'a promise about a real culture.'
+                           + (' Some of them also passed through a response term that was '
+                              'proposed rather than fitted; those carry model_basis and the '
+                              'calibrated value they started from.' if applied_terms else ''),
         'evidence_status': project.simulator.get('evidence_status'),
         'seed': seed, 'challenge': challenge,
     }
