@@ -185,10 +185,16 @@ class Project:
             raise K.ContractError(
                 f'{self.project_id}/{pid}: a simulator_mapping is given but coverage is '
                 f'{cov!r}. One of the two is wrong.')
-        if status == 'none' and cov != 'no_simulator':
+        if status == 'none' and cov not in ('no_simulator',) + UNCALIBRATED:
+            # `simulator.status` describes the project's CALIBRATED model. A
+            # project without one can still carry a response somebody proposed —
+            # that is the ordinary case for a new process, where the literature
+            # says a dose has an optimum and no model has ever been fitted. What
+            # it cannot carry is a `modelled` claim, which is checked above.
             raise K.ContractError(
-                f'{self.project_id}/{pid}: this project has no simulator, so every parameter\'s '
-                f'coverage must be "no_simulator" (got {cov!r}).')
+                f'{self.project_id}/{pid}: this project has no calibrated model, so a '
+                f'parameter is either "no_simulator", or predicts through a response that '
+                f'says it was proposed rather than fitted (got {cov!r}).')
         self._check_response_model(pid, p, cov)
 
     def _check_response_model(self, pid, p, cov):

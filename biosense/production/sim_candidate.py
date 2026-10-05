@@ -159,6 +159,35 @@ def candidate_setpoints(project, applied, values):
     return out, clamped
 
 
+def _relative_effect(term):
+    """What a proposed response says, with no absolute value attached.
+
+    Deliberately not an Estimate: an Estimate carries a baseline and a candidate
+    value, and here there are none. A ratio with no anchor is a different kind of
+    statement and gets a different shape, so nothing downstream can mistake it
+    for a simulated measurement.
+    """
+    m = term['multiplier']
+    pct = (m - 1.0) * 100.0
+    d = term['description']
+    return {
+        'parameter_id': term['parameter_id'], 'label': term['label'],
+        'unit': term['unit'],
+        'from': term['control_value'], 'to': term['candidate_value'],
+        'target': d['target'],
+        'relative_change_pct': round(pct, 2),
+        'direction': 'increase' if pct > 0 else ('decrease' if pct < 0 else 'no change'),
+        'estimate_type': 'predicted',
+        'absolute_value_available': False,
+        'why_no_absolute': 'This project has no calibrated model, so there is no baseline '
+                           'number for the proposed response to move.',
+        'model_basis': d['origin'], 'badge': d['badge'],
+        'basis': d['basis'], 'references': d['references'],
+        'evidence_status': d['evidence_status'],
+        'response': d['summary'],
+    }
+
+
 def _control_by_parameter(project, setpoints):
     """Control values keyed by canonical parameter_id rather than by simulator knob.
 
@@ -192,14 +221,26 @@ def compare_conditions(project, *, control=None, candidate_values=None, candidat
     base_setpoints = dict(control or {})
 
     if not hand['coverage']['has_model']:
+        # No calibrated model to anchor an absolute number. A proposed response
+        # can still say which way and roughly how far, and saying that is better
+        # than saying nothing — as long as it is reported as a ratio with no
+        # absolute value attached, which is all it actually knows.
+        terms = RM.plan_terms(project, dict(control or {}), candidate_values or {})
+        live = [t for t in terms if t['multiplier'] is not None and not t['unchanged']]
         return {'project_id': project.project_id, 'project_version': project.version,
                 'model': project.simulator, 'handoff': hand, 'effects': [],
                 'control': None, 'candidate': None, 'clamped': [],
-                'prediction': 'none',
+                'proposed_terms': terms,
+                'relative_effects': [_relative_effect(t) for t in live],
+                'prediction': 'relative_only' if live else 'none',
                 'prediction_note':
-                    f'{project.name} has no mechanistic model, so no control-versus-candidate '
-                    f'prediction exists. The candidate parameters remain valid evidence-driven '
-                    f'design variables and the next step is a real experiment, not a simulation.',
+                    (f'{project.name} has no calibrated model, so there is no absolute '
+                     f'prediction. What is shown is what the proposed responses imply as a '
+                     f'relative change, and nothing fitted either of them to data.' if live else
+                     f'{project.name} has no mechanistic model, so no control-versus-candidate '
+                     f'prediction exists. The candidate parameters remain valid evidence-driven '
+                     f'design variables and the next step is a real experiment, not a '
+                     f'simulation.'),
                 'evidence_status': None}
 
     cand_setpoints, clamped = candidate_setpoints(
