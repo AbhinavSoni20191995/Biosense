@@ -1,0 +1,574 @@
+{
+  "schema_version": "2.0",
+  "hypothesis_id": "HYP-macrophage_mcsf_demo-01",
+  "created_at": "2026-10-05T09:03:02.122550+00:00",
+  "created_by": "benchmark (deterministic path)",
+  "loop_id": null,
+  "iteration": null,
+  "statement": "Changing M-CSF may improve the objective: Increase viable macrophage production while maintaining macrophage identity and viability.",
+  "project_id": "ipsc_macrophage",
+  "project_version": "1.0.0",
+  "research_context": {
+    "schema_version": "2.0",
+    "context_id": null,
+    "created_at": "2026-10-05T09:03:02.063611+00:00",
+    "strictness": "prefer",
+    "species": [
+      "human"
+    ],
+    "cell_types": [
+      "monocyte",
+      "macrophage",
+      "iPSC-derived monocyte"
+    ],
+    "tissues": [],
+    "states": [
+      "differentiating",
+      "mature"
+    ],
+    "disease_context": [],
+    "modalities": [],
+    "assays": [],
+    "therapy_context": [],
+    "exclude": [
+      "mouse-only evidence"
+    ],
+    "publication_from_year": null,
+    "publication_to_year": null,
+    "time_range": null,
+    "notes": null,
+    "applied": null
+  },
+  "uncertainty_ref": {
+    "kind": "evidence_gap",
+    "ref": "GAP-mcsf-dose",
+    "statement": "Nothing in this project says whether the current M-CSF concentration is limiting the monocyte yield, so a revision would move it blind."
+  },
+  "parameter": {
+    "parameter_id": "mcsf_ng_ml",
+    "label": "M-CSF",
+    "unit": "ng/mL",
+    "stage": "myeloid",
+    "direction": "increase",
+    "current_value": 25.0,
+    "candidate_value": 50,
+    "search_range": {
+      "lower": 0.0,
+      "upper": 150.0,
+      "basis": "ipsc_macrophage range for mcsf_ng_ml",
+      "narrowed_by": []
+    },
+    "simulator_coverage": "modelled",
+    "coverage_note": null
+  },
+  "expected_effects": [
+    {
+      "metric": "CD14_pos_pct",
+      "label": null,
+      "unit": "%",
+      "estimate_type": "derived",
+      "baseline": {
+        "value": 41.181666666666665,
+        "estimate_type": "measured",
+        "source_ref": "facs-mcsf-fixture",
+        "n": 3,
+        "sd": 3.995492251692313,
+        "note": null
+      },
+      "candidate": {
+        "value": 67.58,
+        "estimate_type": "measured",
+        "source_ref": "facs-mcsf-fixture",
+        "n": 3,
+        "sd": 4.077686231185526,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 26.398333,
+      "change_unit": "percentage_points",
+      "relative_change_pct": 64.1,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": {
+        "lower": 21.471666666666657,
+        "upper": 31.488333333333337,
+        "type": "confidence_interval",
+        "level": 0.95,
+        "method": "percentile bootstrap, 4000 resamples, seed 0"
+      },
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [
+        "facs-mcsf-fixture"
+      ],
+      "limitations": [
+        "Welch's t-test, BH-q = 0.00176"
+      ]
+    },
+    {
+      "metric": "CD16_pos_pct",
+      "label": null,
+      "unit": "%",
+      "estimate_type": "derived",
+      "baseline": {
+        "value": 16.933333333333334,
+        "estimate_type": "measured",
+        "source_ref": "facs-mcsf-fixture",
+        "n": 3,
+        "sd": 1.1978139811061377,
+        "note": null
+      },
+      "candidate": {
+        "value": 30.995000000000005,
+        "estimate_type": "measured",
+        "source_ref": "facs-mcsf-fixture",
+        "n": 3,
+        "sd": 0.8660398374208891,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 14.061667,
+      "change_unit": "percentage_points",
+      "relative_change_pct": 83.04,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": {
+        "lower": 12.761666666666667,
+        "upper": 15.361666666666668,
+        "type": "confidence_interval",
+        "level": 0.95,
+        "method": "percentile bootstrap, 4000 resamples, seed 0"
+      },
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [
+        "facs-mcsf-fixture"
+      ],
+      "limitations": [
+        "Welch's t-test, BH-q = 0.000596"
+      ]
+    },
+    {
+      "metric": "viability_pct",
+      "label": null,
+      "unit": "%",
+      "estimate_type": "derived",
+      "baseline": {
+        "value": 93.96333333333332,
+        "estimate_type": "measured",
+        "source_ref": "facs-mcsf-fixture",
+        "n": 3,
+        "sd": 0.5877144998494933,
+        "note": null
+      },
+      "candidate": {
+        "value": 91.04166666666667,
+        "estimate_type": "measured",
+        "source_ref": "facs-mcsf-fixture",
+        "n": 3,
+        "sd": 0.22507406188483203,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "decrease",
+      "absolute_change": -2.921667,
+      "change_unit": "percentage_points",
+      "relative_change_pct": -3.11,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": {
+        "lower": -3.518333333333331,
+        "upper": -2.34999999999998,
+        "type": "confidence_interval",
+        "level": 0.95,
+        "method": "percentile bootstrap, 4000 resamples, seed 0"
+      },
+      "higher_is_better": true,
+      "favourable": false,
+      "evidence_refs": [
+        "facs-mcsf-fixture"
+      ],
+      "limitations": [
+        "Welch's t-test, BH-q = 0.00686"
+      ]
+    },
+    {
+      "metric": "CD206_pos_pct",
+      "label": null,
+      "unit": "%",
+      "estimate_type": "derived",
+      "baseline": {
+        "value": 33.501666666666665,
+        "estimate_type": "measured",
+        "source_ref": "facs-mcsf-fixture",
+        "n": 3,
+        "sd": 1.7494308598322272,
+        "note": null
+      },
+      "candidate": {
+        "value": 57.51833333333334,
+        "estimate_type": "measured",
+        "source_ref": "facs-mcsf-fixture",
+        "n": 3,
+        "sd": 2.513574811564862,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 24.016667,
+      "change_unit": "percentage_points",
+      "relative_change_pct": 71.69,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": {
+        "lower": 21.35333333333333,
+        "upper": 26.72833333333333,
+        "type": "confidence_interval",
+        "level": 0.95,
+        "method": "percentile bootstrap, 4000 resamples, seed 0"
+      },
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [
+        "facs-mcsf-fixture"
+      ],
+      "limitations": [
+        "Welch's t-test, BH-q = 0.000671"
+      ]
+    },
+    {
+      "metric": "harvest_yield_per_input_ipsc",
+      "label": "Monocytes per input iPSC",
+      "unit": "cells/input_cell",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 17.9908,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 29.6618,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 11.671,
+      "change_unit": "cells/input_cell",
+      "relative_change_pct": 64.87,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "harvest_total_e6_per_ml",
+      "label": "Harvested cells",
+      "unit": "1e6 cells/mL",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 8.9954,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 14.8309,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 5.8355,
+      "change_unit": "1e6 cells/mL",
+      "relative_change_pct": 64.87,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "final_viability_pct",
+      "label": "Final viability",
+      "unit": "%",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 80.78,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 80.78,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "no_change",
+      "absolute_change": 0.0,
+      "change_unit": "percentage_points",
+      "relative_change_pct": 0.0,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": null,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "monocyte_gate_pct",
+      "label": "Cells in the monocyte gate",
+      "unit": "%",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 76.66,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 90.25,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 13.59,
+      "change_unit": "percentage_points",
+      "relative_change_pct": 17.73,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "peak_vcd_e6_per_ml",
+      "label": "Peak viable cell density",
+      "unit": "1e6 cells/mL",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 4.7619,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 4.7619,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "no_change",
+      "absolute_change": 0.0,
+      "change_unit": "1e6 cells/mL",
+      "relative_change_pct": 0.0,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": null,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "agg_diameter_mean_um",
+      "label": "Mean aggregate diameter",
+      "unit": "um",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 273.9,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 273.9,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "no_change",
+      "absolute_change": 0.0,
+      "change_unit": "um",
+      "relative_change_pct": 0.0,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": null,
+      "favourable": null,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "mean_condition_score",
+      "label": "Mean condition score",
+      "unit": "score",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 92.7,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 92.7,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "no_change",
+      "absolute_change": 0.0,
+      "change_unit": "score",
+      "relative_change_pct": 0.0,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": null,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    }
+  ],
+  "trade_offs": [
+    {
+      "summary": "6 outcome(s) improve and 1 worsen. This is a trade-off, not an improvement.",
+      "gains": [
+        "CD14_pos_pct: 41.2% → 67.6%  +26.4 percentage points (+64.1%) [DERIVED]",
+        "CD16_pos_pct: 16.9% → 31%  +14.06 percentage points (+83.04%) [DERIVED]",
+        "CD206_pos_pct: 33.5% → 57.5%  +24.02 percentage points (+71.69%) [DERIVED]",
+        "Monocytes per input iPSC: 18 cells/input_cell → 29.7 cells/input_cell  +11.67 cells/input_cell (+64.87%) [SIMULATED]",
+        "Harvested cells: 9 1e6 cells/mL → 14.8 1e6 cells/mL  +5.835 1e6 cells/mL (+64.87%) [SIMULATED]",
+        "Cells in the monocyte gate: 76.7% → 90.2%  +13.59 percentage points (+17.73%) [SIMULATED]"
+      ],
+      "costs": [
+        "viability_pct: 94% → 91%  -2.922 percentage points (-3.11%) [DERIVED]"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_class": "synthetic_fixture",
+      "stance": "supportive",
+      "strength": "moderate",
+      "summary": "CD14_pos_pct: 41.18 in control vs 67.58 in mcsf_high (+26.4)",
+      "ref": "analysis-macrophage_mcsf_demo-facs-mcsf-fixture",
+      "visibility": "public",
+      "context_match": "not_assessed",
+      "context_mismatch_note": null
+    },
+    {
+      "evidence_class": "simulation",
+      "stance": "supportive",
+      "strength": "weak",
+      "summary": "ipsc_monocyte_v1 predicts Monocytes per input iPSC: 18 cells/input_cell → 29.7 cells/input_cell  +11.67 cells/input_cell (+64.87%) [SIMULATED]; Harvested cells: 9 1e6 cells/mL → 14.8 1e6 cells/mL  +5.835 1e6 cells/mL (+64.87%) [SIMULATED]",
+      "ref": "ipsc_monocyte_v1",
+      "visibility": "public",
+      "context_match": "not_assessed",
+      "context_mismatch_note": null
+    }
+  ],
+  "confidence": "moderate",
+  "confidence_basis": [
+    "supported by 2 source(s) across 2 evidence class(es)",
+    "capped below high: no real experimental measurement of this process supports it yet"
+  ],
+  "status": "proposed",
+  "supersedes": null,
+  "superseded_reason": null,
+  "next_experiment": {
+    "summary": "Test M-CSF at 20, 50, 80 ng/mL against the current process, measuring monocytes per input ipsc, harvested cells, final viability.",
+    "test_points": [
+      20.0,
+      50.0,
+      80.0
+    ],
+    "measure": [
+      "harvest_yield_per_input_ipsc",
+      "harvest_total_e6_per_ml",
+      "final_viability_pct",
+      "monocyte_gate_pct"
+    ]
+  },
+  "may_change_protocol": false,
+  "limitations": []
+}

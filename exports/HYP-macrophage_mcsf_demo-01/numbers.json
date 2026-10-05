@@ -1,0 +1,324 @@
+[
+  {
+    "where": "expected_effect",
+    "metric": "CD14_pos_pct",
+    "unit": "%",
+    "estimate_type": "derived",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 26.398333,
+    "change_unit": "percentage_points",
+    "relative_change_pct": 64.1,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 41.181666666666665,
+      "estimate_type": "measured",
+      "source_ref": "facs-mcsf-fixture",
+      "n": 3,
+      "sd": 3.995492251692313,
+      "note": null
+    },
+    "candidate": {
+      "value": 67.58,
+      "estimate_type": "measured",
+      "source_ref": "facs-mcsf-fixture",
+      "n": 3,
+      "sd": 4.077686231185526,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "CD16_pos_pct",
+    "unit": "%",
+    "estimate_type": "derived",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 14.061667,
+    "change_unit": "percentage_points",
+    "relative_change_pct": 83.04,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 16.933333333333334,
+      "estimate_type": "measured",
+      "source_ref": "facs-mcsf-fixture",
+      "n": 3,
+      "sd": 1.1978139811061377,
+      "note": null
+    },
+    "candidate": {
+      "value": 30.995000000000005,
+      "estimate_type": "measured",
+      "source_ref": "facs-mcsf-fixture",
+      "n": 3,
+      "sd": 0.8660398374208891,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "viability_pct",
+    "unit": "%",
+    "estimate_type": "derived",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": -2.921667,
+    "change_unit": "percentage_points",
+    "relative_change_pct": -3.11,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 93.96333333333332,
+      "estimate_type": "measured",
+      "source_ref": "facs-mcsf-fixture",
+      "n": 3,
+      "sd": 0.5877144998494933,
+      "note": null
+    },
+    "candidate": {
+      "value": 91.04166666666667,
+      "estimate_type": "measured",
+      "source_ref": "facs-mcsf-fixture",
+      "n": 3,
+      "sd": 0.22507406188483203,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "CD206_pos_pct",
+    "unit": "%",
+    "estimate_type": "derived",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 24.016667,
+    "change_unit": "percentage_points",
+    "relative_change_pct": 71.69,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 33.501666666666665,
+      "estimate_type": "measured",
+      "source_ref": "facs-mcsf-fixture",
+      "n": 3,
+      "sd": 1.7494308598322272,
+      "note": null
+    },
+    "candidate": {
+      "value": 57.51833333333334,
+      "estimate_type": "measured",
+      "source_ref": "facs-mcsf-fixture",
+      "n": 3,
+      "sd": 2.513574811564862,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "harvest_yield_per_input_ipsc",
+    "unit": "cells/input_cell",
+    "estimate_type": "simulated",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 11.671,
+    "change_unit": "cells/input_cell",
+    "relative_change_pct": 64.87,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 17.9908,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:control",
+      "n": null,
+      "sd": null,
+      "note": null
+    },
+    "candidate": {
+      "value": 29.6618,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:candidate",
+      "n": null,
+      "sd": null,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "harvest_total_e6_per_ml",
+    "unit": "1e6 cells/mL",
+    "estimate_type": "simulated",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 5.8355,
+    "change_unit": "1e6 cells/mL",
+    "relative_change_pct": 64.87,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 8.9954,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:control",
+      "n": null,
+      "sd": null,
+      "note": null
+    },
+    "candidate": {
+      "value": 14.8309,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:candidate",
+      "n": null,
+      "sd": null,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "final_viability_pct",
+    "unit": "%",
+    "estimate_type": "simulated",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 0.0,
+    "change_unit": "percentage_points",
+    "relative_change_pct": 0.0,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 80.78,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:control",
+      "n": null,
+      "sd": null,
+      "note": null
+    },
+    "candidate": {
+      "value": 80.78,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:candidate",
+      "n": null,
+      "sd": null,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "monocyte_gate_pct",
+    "unit": "%",
+    "estimate_type": "simulated",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 13.59,
+    "change_unit": "percentage_points",
+    "relative_change_pct": 17.73,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 76.66,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:control",
+      "n": null,
+      "sd": null,
+      "note": null
+    },
+    "candidate": {
+      "value": 90.25,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:candidate",
+      "n": null,
+      "sd": null,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "peak_vcd_e6_per_ml",
+    "unit": "1e6 cells/mL",
+    "estimate_type": "simulated",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 0.0,
+    "change_unit": "1e6 cells/mL",
+    "relative_change_pct": 0.0,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 4.7619,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:control",
+      "n": null,
+      "sd": null,
+      "note": null
+    },
+    "candidate": {
+      "value": 4.7619,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:candidate",
+      "n": null,
+      "sd": null,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "agg_diameter_mean_um",
+    "unit": "um",
+    "estimate_type": "simulated",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 0.0,
+    "change_unit": "um",
+    "relative_change_pct": 0.0,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 273.9,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:control",
+      "n": null,
+      "sd": null,
+      "note": null
+    },
+    "candidate": {
+      "value": 273.9,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:candidate",
+      "n": null,
+      "sd": null,
+      "note": null
+    }
+  },
+  {
+    "where": "expected_effect",
+    "metric": "mean_condition_score",
+    "unit": "score",
+    "estimate_type": "simulated",
+    "magnitude_estimated": true,
+    "withheld_reason": null,
+    "absolute_change": 0.0,
+    "change_unit": "score",
+    "relative_change_pct": 0.0,
+    "relative_withheld_reason": null,
+    "baseline": {
+      "value": 92.7,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:control",
+      "n": null,
+      "sd": null,
+      "note": null
+    },
+    "candidate": {
+      "value": 92.7,
+      "estimate_type": "simulated",
+      "source_ref": "ipsc_monocyte_v1:candidate",
+      "n": null,
+      "sd": null,
+      "note": null
+    }
+  },
+  {
+    "where": "parameter.current_value",
+    "metric": "mcsf_ng_ml",
+    "unit": "ng/mL",
+    "estimate_type": "measured",
+    "value": 25.0
+  },
+  {
+    "where": "parameter.candidate_value",
+    "metric": "mcsf_ng_ml",
+    "unit": "ng/mL",
+    "estimate_type": "design_choice",
+    "value": 50
+  }
+]

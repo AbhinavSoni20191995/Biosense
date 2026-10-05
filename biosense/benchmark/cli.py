@@ -196,6 +196,33 @@ def cmd_export(a):
     return 0
 
 
+def cmd_export_hypothesis(a):
+    """Export one hypothesis and everything needed to check it.
+
+    --dry-run answers whether the export is permitted without creating anything,
+    so a refusal can be shown to someone rather than cleaned up afterwards.
+    """
+    from ..evidence import export as HX
+    result = K.read_json(a.benchmark)
+    wanted = [h for h in (result.get('hypotheses') or [])
+              if a.hypothesis in (None, h['hypothesis_id'])]
+    if not wanted:
+        raise K.ContractError(
+            f'no hypothesis {a.hypothesis!r} in {a.benchmark}; it holds: '
+            + ', '.join(h['hypothesis_id'] for h in (result.get('hypotheses') or [])))
+    out = []
+    for h in wanted:
+        kw = dict(policy=a.policy, datasets=result.get('datasets') or [],
+                  residuals=result.get('residuals') or [])
+        if a.dry_run:
+            out.append(HX.plan(h, **kw))
+        else:
+            d = Path(a.out) / h['hypothesis_id'] if a.out else None
+            out.append(HX.write(h, d, **kw))
+    _print(out if len(out) > 1 else out[0])
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='python -m biosense.benchmark.cli',
                                  description=__doc__.splitlines()[0])
@@ -214,6 +241,15 @@ def main(argv=None):
     p.add_argument('--benchmark', required=True)
     p.add_argument('--out')
     p.set_defaults(fn=cmd_export)
+    p = sub.add_parser('export-hypothesis',
+                       help='export one hypothesis and the evidence behind it')
+    p.add_argument('--benchmark', required=True)
+    p.add_argument('--hypothesis', help='hypothesis id; default every one in the benchmark')
+    p.add_argument('--policy', choices=('public_safe', 'private'), default='public_safe')
+    p.add_argument('--out', help='parent directory; each hypothesis gets its own folder')
+    p.add_argument('--dry-run', action='store_true',
+                   help='report whether the export is permitted, writing nothing')
+    p.set_defaults(fn=cmd_export_hypothesis)
     a = ap.parse_args(argv)
     try:
         return a.fn(a)

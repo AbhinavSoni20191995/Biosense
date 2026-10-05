@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "hypothesis_id": "HYP-macrophage_mcsf_demo-01",
+  "statement": "Changing M-CSF may improve the objective: Increase viable macrophage production while maintaining macrophage identity and viability.",
+  "project_id": "ipsc_macrophage",
+  "parameter_id": "mcsf_ng_ml",
+  "confidence": "moderate",
+  "simulator_coverage": "modelled",
+  "created_at": "2026-10-05T09:51:33.291802+00:00",
+  "biosense_version": "0.2.0",
+  "privacy": {
+    "export_policy": "public_safe",
+    "has_private_lineage": false,
+    "private_sources": [],
+    "safe_to_publish": true,
+    "refusal_reason": null
+  },
+  "files": {
+    "hypothesis.json": "d49c2bbdebcbbed159a30f3db4959f0c40f8450c9197e8baae1dc7e64e7b783d",
+    "evidence.md": "1b49822872cd7b53f96da42e72161955615c433b0210db9ed49ee16a488dc172",
+    "narrative.md": "771c35f14e2a81ed97b50b6c01f1dc5b0a6e4000f5988dff5b4a15590e08bdb1",
+    "numbers.json": "72fde04e99cfe52addc3635e2e31c711ae4a669f06336d2bd31e3597dbd87e9b",
+    "datasets.json": "3bd91c1474c647caeb25fd5afd94e07321770b33a7a51da81c1286b88a7db885",
+    "limitations.md": "b2dcf5410e0ef5f9e7ccc5541b96fe8f861f5ff496f05203da31200cff65fb9f"
+  },
+  "contains_dataset_contents": false,
+  "note": "Datasets appear by reference and checksum. This export never copies data."
+}

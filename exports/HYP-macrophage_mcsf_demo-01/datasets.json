@@ -1,0 +1,12 @@
+[
+  {
+    "dataset_id": "facs-mcsf-fixture",
+    "title": "SYNTHETIC: processed FACS populations under two M-CSF conditions",
+    "modality": "cytometry_summary",
+    "visibility": "public",
+    "sha256": null,
+    "accession": null,
+    "n_rows": null,
+    "note": "reference only; the export never copies dataset contents"
+  }
+]

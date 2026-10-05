@@ -151,6 +151,37 @@ uv run --frozen python -m biosense.benchmark.cli export --benchmark runs/<loop>/
 
 ---
 
+## Exporting one hypothesis
+
+A whole benchmark bundle is more than anyone needs when the question is about a
+single claim. A hypothesis is the unit people argue about — "raise M-CSF from 25
+to 50 ng/mL" is what gets taken to a meeting — and the question it has to survive
+is always *where did that number come from?*
+
+```bash
+# what would be exported, and whether it is permitted, writing nothing
+uv run --frozen python -m biosense.benchmark.cli export-hypothesis \
+  --benchmark benchmarks/public/macrophage_mcsf_demo/benchmark.json --dry-run
+
+# write it
+uv run --frozen python -m biosense.benchmark.cli export-hypothesis \
+  --benchmark benchmarks/public/macrophage_mcsf_demo/benchmark.json
+```
+
+The workspace holds the claim and its parameter, the evidence rows with their
+classes, every number flattened beside the estimate type that governs it, the
+plain-language account together with the facts it was validated against, the
+datasets **by reference and checksum**, any prediction residuals, and the
+limitations. It copies no dataset contents: that is what lets the export be
+checked without becoming a second, uncontrolled copy of somebody's experiment.
+
+The same privacy rule applies as to a whole bundle. A `public_safe` export of a
+hypothesis resting on private lineage refuses and writes nothing at all, rather
+than attempting to anonymise it; `--policy private` writes it under the private
+root instead.
+
+---
+
 ## Limitations
 
 - The public benchmark runs on **invented fixtures**. No number in it is a

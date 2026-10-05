@@ -84,7 +84,7 @@ def lineage(result):
     return sorted(set(sources))
 
 
-def check(result, policy, *, private_ids=()):
+def check(result, policy, *, private_ids=(), what='benchmark'):
     """Decide whether this result may be exported under *policy*.
 
     Returns the `privacy` block for the BenchmarkResult. A public_safe export
@@ -101,7 +101,7 @@ def check(result, policy, *, private_ids=()):
         return block
     if private:
         block['refusal_reason'] = (
-            f'This benchmark declares export_policy public_safe but its results depend on '
+            f'This {what} declares export_policy public_safe but its results depend on '
             f'private lineage ({", ".join(private)}). BioSense refuses rather than attempting '
             f'to anonymise: a population frequency from an unpublished experiment is still that '
             f'experiment\'s result, and removing a name does not change that. Re-run it against '

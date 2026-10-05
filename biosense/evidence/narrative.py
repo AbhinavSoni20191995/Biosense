@@ -168,8 +168,34 @@ def facts_from_hypothesis(h):
                         unit=p.get('unit')))
     for e in h['expected_effects']:
         out += facts_from_estimate(e, prefix='hyp.effect')
+    # The recommended experiment's test points are numbers the prose states, so
+    # they are facts. Without them the renderer's own sentence fails validation,
+    # which is the guard working: a level nobody recorded is a level nobody
+    # agreed to run.
+    for i, pt in enumerate(h['next_experiment'].get('test_points') or []):
+        out.append(Fact(f'hyp.test_point.{i}', f'{p["parameter_id"]} test point', pt,
+                        unit=p.get('unit')))
     out.append(Fact('hyp.evidence_count', 'evidence sources', len(h['evidence'])))
     return out
+
+
+def _without_unit_names(text, facts):
+    """Blank out unit strings that contain digits, before numerals are scanned.
+
+    Some units are spelled with a number in them: "1e6 cells/mL". That numeral is
+    part of the unit's name, not a claim anyone is making, and flagging it would
+    force every renderer to either avoid the unit or pass it in `allow`.
+
+    The unit strings come from the structured facts, never from the prose, and
+    only their exact spelling is blanked. A bare "1e6" written anywhere else in
+    the sentence still has to come from a fact.
+    """
+    units = sorted({(f.unit or '').strip() for f in facts
+                    if (f.unit or '').strip() and any(c.isdigit() for c in f.unit)},
+                   key=len, reverse=True)
+    for u in units:
+        text = text.replace(u, ' ')
+    return text
 
 
 def validate(text, facts, *, allow=()):
@@ -184,7 +210,7 @@ def validate(text, facts, *, allow=()):
         known |= f.numerals()
     known |= {_canon(a) for a in allow}
     problems = []
-    for m in _NUM.finditer(text or ''):
+    for m in _NUM.finditer(_without_unit_names(text or '', facts)):
         raw = m.group(0)
         if _matches(raw, known):
             continue
