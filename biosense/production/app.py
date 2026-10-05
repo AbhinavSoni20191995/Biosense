@@ -17,6 +17,9 @@ What a visitor cannot do, enforced in code and not by convention:
   that field, so there is no input that reaches a wet-lab path;
 * approve a protocol as a named person. The approver string every app run records
   says in words that no human approved it;
+* read the stand-in's hidden truth. Simulator mode runs the same reactor model
+  by hand and returns instrument channels only -- never the line's true growth
+  rate, death rate or clonal fraction;
 * read the stand-in's hidden truth. No handler serves a file whose name contains
   `truth`, which is the same rule `serve.py` applies;
 * spend model credits. Nothing on this path calls an LLM;
@@ -34,6 +37,10 @@ Endpoints
     GET  /api/runs/<id>           one run: status, events so far, summary
     GET  /api/runs/<id>/events    Server-Sent Events, live, from `?after=<n>`
     GET  /api/runs/<id>/report    the reasoning report as HTML
+    GET  /api/sim/config          simulator mode: the knobs, stages and limits
+    POST /api/sim/run             simulator mode: one condition, no loop, no decision
+    POST /api/sim/compare         simulator mode: two conditions side by side
+    POST /api/sim/brief           a sandbox condition as a carry-into-a-loop brief
     GET  /api/loops               every loop on disk (same shape as serve.py)
     GET  /api/loops/<id>          one loop on disk
     GET  /<path>                  static files from --static
@@ -58,6 +65,7 @@ from .. import contracts as K
 from . import engine as EN
 from . import prompt as PR
 from . import report as RP
+from . import sim_mode as SM
 from .serve import LOOP_ID, list_loops, load_loop, _is_forbidden
 
 MAX_PROMPT = 2000
@@ -68,6 +76,12 @@ MAX_EVENTS_PER_RUN = 4000
 POLL_SLEEP_S = 0.25
 SSE_IDLE_PING_S = 15
 RUN_ID = re.compile(r'^[0-9a-f]{8,32}$')
+MAX_BODY = MAX_PROMPT * 8       # a compare payload carries two full conditions
+MAX_CONCURRENT_SIM = 4          # simulator-mode requests served at once
+# A simulator-mode request is CPU-bound and about a tenth of a second, so it is
+# bounded by a semaphore rather than the registry: it starts no loop, writes
+# nothing to disk and holds no state between calls.
+SIM_GATE = threading.BoundedSemaphore(MAX_CONCURRENT_SIM)
 STANDINS = ('ipsc_tcell', 'tcell', 'monocyte')
 # Truth files for the stand-ins the app offers. The engine reads these; no
 # handler ever serves one.
@@ -250,7 +264,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _body(self):
         n = int(self.headers.get('Content-Length') or 0)
-        if n <= 0 or n > MAX_PROMPT * 4:
+        if n <= 0 or n > MAX_BODY:
             return {}
         try:
             return json.loads(self.rfile.read(n) or b'{}')
@@ -276,6 +290,18 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/runs':
                 run = self.registry.start(self._prompt())
                 return self._send(202, run.snapshot())
+            # Simulator mode. A person turns the knobs, so there is no decision to
+            # validate and no iteration to spend: these run the model and return
+            # what it read. They are capped like any other work this server starts.
+            if path == '/api/sim/run':
+                with SIM_GATE:
+                    return self._send(200, SM.simulate(self._body()))
+            if path == '/api/sim/compare':
+                with SIM_GATE:
+                    return self._send(200, SM.compare(self._body()))
+            if path == '/api/sim/brief':
+                with SIM_GATE:
+                    return self._send(200, SM.seed_brief(SM.simulate(self._body())))
             return self._send(404, {'error': 'no such endpoint'})
         except K.ContractError as e:
             return self._send(400, {'error': str(e), 'refused': True})
@@ -293,6 +319,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {
                 'max_prompt_chars': MAX_PROMPT, 'max_concurrent': MAX_CONCURRENT,
                 'standins': list(STANDINS),
+                'max_concurrent_sim': MAX_CONCURRENT_SIM,
+                'simulator_mode': '/api/sim/config',
                 'standins_with_hidden_truth': sorted(k for k, v in TRUTH_FOR.items()
                                                      if v.exists()),
                 'bioreactor_source': 'synthetic_standin',
@@ -304,6 +332,8 @@ class Handler(BaseHTTPRequestHandler):
                 ],
                 'note': 'This server starts work. Its runs are synthetic-stand-in only and no '
                         'number it produces is biological evidence.'})
+        if path == '/api/sim/config':
+            return self._send(200, SM.config())
         if path == '/api/runs':
             return self._send(200, self.registry.recent())
         m = re.fullmatch(r'/api/runs/([^/]+)', path)

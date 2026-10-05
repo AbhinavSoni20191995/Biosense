@@ -482,6 +482,40 @@ class AppServerTests(unittest.TestCase):
         self.assertIn(b'BioSense Console', body)
         self.assertEqual(200, self._get('/index.html')[0])
 
+    def test_simulator_mode_is_served_and_refuses_an_unknown_knob(self):
+        code, body = self._get('/api/sim/config')
+        self.assertEqual(200, code)
+        cfg = json.loads(body)
+        self.assertTrue(cfg['knobs'] and cfg['stages'])
+
+        code, d = self._post('/api/sim/run', {'setpoints': {'agitation_rpm': 70}})
+        self.assertEqual(200, code)
+        self.assertEqual('synthetic_demonstration', d['evidence_status'])
+        self.assertTrue(d['frames'])
+        self.assertNotIn('ground_truth', json.dumps(d))
+
+        code, d = self._post('/api/sim/run', {'setpoints': {'nonsense': 1}})
+        self.assertEqual(400, code)
+        self.assertTrue(d['refused'])
+
+    def test_simulator_mode_compares_and_hands_over_a_design_choice_brief(self):
+        code, d = self._post('/api/sim/compare',
+                             {'conditions': [{}, {'setpoints': {'mcsf': 95}}]})
+        self.assertEqual(200, code)
+        self.assertEqual(['mcsf'], [c['knob'] for c in d['changed']])
+
+        code, b = self._post('/api/sim/brief', {'setpoints': {'mcsf': 95}})
+        self.assertEqual(200, code)
+        self.assertEqual({'design_choice'}, {q['provenance'] for q in b['quantities']})
+
+    def test_the_simulator_page_and_the_shared_shell_are_served(self):
+        for path, needle in (('/simulator.html', b'BioSense Simulator'),
+                             ('/simulator.js', b'sim/config'),
+                             ('/brand.css', b'--brand')):
+            code, body = self._get(path)
+            self.assertEqual(200, code, path)
+            self.assertIn(needle, body, path)
+
     def test_a_run_streams_and_produces_a_report(self):
         import time
         code, d = self._post('/api/runs', {'prompt': 'T cells from iPSC by day 40, wild type only'})

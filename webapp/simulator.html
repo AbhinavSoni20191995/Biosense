@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BioSense Simulator</title>
+<meta name="description" content="Turn the bioreactor knobs yourself and watch an iPSC to monocyte culture respond, day by day, in the same model the loop optimises.">
+<link rel="icon" type="image/png" href="assets/biosense-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="brand.css">
+<style>
+/* ──────────────────────────────────────────────────────────────
+   Simulator mode. The vessel is the main object on the page, so it gets
+   the space; the knobs sit to its left and the instruments to its right,
+   which is the order someone actually works in.
+
+   Everything drawn is derived from one of the observation channels the
+   server returned. Nothing is decorative animation standing in for data:
+   if an aggregate is drawn with a dark core, agg_frac_over_300um said so.
+   ────────────────────────────────────────────────────────────── */
+.wrap{max-width:1500px}
+.lede{font-size:15px;color:var(--ink-2);max-width:66ch;margin:0 0 20px}
+
+.rig{display:grid;grid-template-columns:300px minmax(0,1fr) 320px;gap:18px;align-items:start}
+/* the vessel and its outcome share the middle column, so the page has no gap
+   under the reactor while the knob column runs on */
+.mid{min-width:0}
+@media (max-width:1240px){.rig{grid-template-columns:minmax(0,1fr) 320px}
+  .knobs{grid-column:1/-1}}
+@media (max-width:860px){.rig{grid-template-columns:minmax(0,1fr)}}
+
+.card{padding:18px 20px;margin-bottom:18px}
+.card>h3{font-size:14px;display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.card>h3 .eyebrow{font-size:10.5px}
+
+/* ── knobs ───────────────────────────────────────────────── */
+.stagegrp{margin-bottom:16px}
+.stagegrp>.lbl{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--brand);margin-bottom:9px;display:block}
+.knob{margin-bottom:13px}
+.knob .row{display:flex;align-items:baseline;gap:8px;justify-content:space-between}
+.knob .nm{font-size:13.5px;font-weight:600}
+.knob .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:14px;
+  font-weight:600;color:var(--brand)}
+.knob .un{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.knob .note{display:none;font-size:12.5px;line-height:1.45;color:var(--ink-3);margin-top:5px}
+.knob.open .note{display:block}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;
+  background:transparent;cursor:grab;margin:2px 0 0}
+input[type=range]:active{cursor:grabbing}
+input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;
+  background:color-mix(in srgb,var(--ink) 14%,transparent)}
+input[type=range]::-moz-range-track{height:5px;border-radius:999px;
+  background:color-mix(in srgb,var(--ink) 14%,transparent)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;
+  margin-top:-6px;border-radius:50%;background:var(--brand);border:2px solid var(--surface-solid);
+  box-shadow:0 1px 5px color-mix(in srgb,var(--brand) 55%,transparent)}
+input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;
+  background:var(--brand);border:2px solid var(--surface-solid)}
+input[type=range]:focus-visible{outline:2px solid var(--brand);outline-offset:3px}
+select{font-family:var(--sans);font-size:13.5px;width:100%;padding:9px 11px;
+  border-radius:10px;border:1px solid var(--line);background:var(--glass-2);color:var(--ink)}
+select:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* ── vessel ──────────────────────────────────────────────── */
+.vessel{padding:0;overflow:hidden}
+.vessel .views{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
+@media (max-width:700px){.vessel .views{grid-template-columns:minmax(0,1fr)}}
+.vessel svg{display:block;width:100%;height:auto}
+.vhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:14px 20px;border-bottom:1px solid var(--line)}
+.vhead .day{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;
+  font-weight:700;letter-spacing:-.02em}
+.vhead .stg{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+/* ── timeline ────────────────────────────────────────────── */
+.tl{padding:14px 20px 18px;border-top:1px solid var(--line)}
+.tl .bands{display:flex;height:9px;border-radius:999px;overflow:hidden;margin-bottom:7px}
+.tl .bands i{display:block;height:100%}
+.tl .marks{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:10.5px;color:var(--ink-3);margin-bottom:4px}
+.tl input[type=range]{margin:0}
+.tlctl{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+
+/* ── instruments ─────────────────────────────────────────── */
+.state{display:flex;align-items:center;gap:11px;padding:13px 15px;border-radius:var(--r-s);
+  margin-bottom:14px;border:1px solid currentColor;
+  background:color-mix(in srgb,currentColor 10%,transparent)}
+.state.good{color:var(--ok)} .state.strained{color:var(--warn)} .state.failing{color:var(--bad)}
+.state .t{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.state .s{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);font-weight:500}
+.chan{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  padding:7px 0;border-bottom:1px solid var(--line)}
+.chan:last-child{border-bottom:0}
+.chan .k{font-size:13px;color:var(--ink-2)}
+.chan .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:15px;
+  font-weight:600;white-space:nowrap}
+.chan.warn .v{color:var(--warn)} .chan.bad .v{color:var(--bad)}
+.chan .spark{flex:none;width:72px;height:20px}
+.flags{list-style:none;margin:12px 0 0;padding:0}
+.flags li{font-size:13px;line-height:1.5;padding:7px 0 7px 13px;border-left:2px solid currentColor;
+  margin-bottom:6px;color:var(--ink-2)}
+.flags li.warn{border-color:var(--warn)} .flags li.bad{border-color:var(--bad)}
+
+/* ── outcome + compare ──────────────────────────────────── */
+.nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}
+.num .n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:27px;
+  font-weight:700;letter-spacing:-.025em;line-height:1.1}
+.num .k{font-size:12.5px;color:var(--ink-2);margin-top:3px}
+.ab{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.slot{padding:14px 16px;border-radius:var(--r-s);border:1px solid var(--line);
+  background:var(--glass-2)}
+.slot.a{border-left:3px solid var(--s1)} .slot.b{border-left:3px solid var(--s2)}
+.slot .ttl{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;margin-bottom:9px}
+.slot.a .ttl{color:var(--s1)} .slot.b .ttl{color:var(--s2)}
+.dtab{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:14px}
+.dtab th,.dtab td{text-align:right;padding:7px 9px;border-bottom:1px solid var(--line)}
+.dtab th:first-child,.dtab td:first-child{text-align:left}
+.dtab th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600}
+.dtab td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600}
+.verdict{font-size:15px;line-height:1.6;margin:14px 0 0;color:var(--ink)}
+.caveat{font-size:12.5px;line-height:1.55;color:var(--ink-3);margin:12px 0 0;max-width:70ch}
+.acts{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+.hide{display:none!important}
+.err{color:var(--bad);font-size:13.5px;margin-top:10px}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+<header class="bar">
+  <a class="brand" href="console.html">
+    <img src="assets/biosense-mark.png" alt="">
+    <div>
+      <div class="nm">BioSense<span>AI</span></div>
+      <div class="sub">Simulator mode</div>
+    </div>
+  </a>
+  <nav class="modes" aria-label="Mode">
+    <a href="console.html">Console</a>
+    <a href="simulator.html" aria-current="page">Simulator</a>
+  </nav>
+  <span class="spacer"></span>
+  <span class="pill idle" id="status"><span class="led"></span><span id="statusTxt">ready</span></span>
+  <button class="btn" id="themeBtn" type="button" aria-label="Switch theme">theme</button>
+</header>
+
+<p class="lede">The same iPSC&nbsp;→&nbsp;monocyte reactor model the loop optimises, with the
+knobs in your hands. Every value on this page is derived from one instrument channel of a
+<strong>synthetic stand-in</strong>. It is a sandbox for building intuition, not a measurement,
+and nothing here decides anything.</p>
+
+<div class="rig">
+
+  <!-- ── knobs ─────────────────────────────────────────── -->
+  <section class="glass card knobs">
+    <h3><span class="eyebrow">Conditions</span></h3>
+    <div id="knobs"></div>
+    <div class="stagegrp">
+      <span class="lbl">Stage durations · days</span>
+      <div id="days"></div>
+    </div>
+    <div class="stagegrp">
+      <span class="lbl">Starting culture</span>
+      <select id="challenge" aria-label="Starting culture"></select>
+      <p class="note" id="chNote" style="display:block;font-size:12.5px;color:var(--ink-3);margin:8px 0 0"></p>
+    </div>
+    <div class="acts">
+      <button class="btn" id="resetBtn" type="button">reset</button>
+      <button class="btn" id="reseedBtn" type="button">new seed</button>
+    </div>
+  </section>
+
+  <div class="mid">
+  <!-- ── the vessel ────────────────────────────────────── -->
+  <section class="glass card vessel">
+    <div class="vhead">
+      <span class="day" id="dayLbl">day 0</span>
+      <span class="stg" id="stgLbl">—</span>
+      <span class="spacer"></span>
+      <span class="eyebrow">synthetic stand-in</span>
+    </div>
+    <div class="views">
+      <svg id="side" viewBox="0 0 440 420" role="img"
+           aria-label="Side view of the vessel: aggregates in suspension, their size and the
+           dark necrotic cores drawn from the imaging channels, and the harvest stream at the
+           outlet."></svg>
+      <svg id="top" viewBox="0 0 280 420" role="img"
+           aria-label="Top view of the vessel showing the impeller and the aggregate field."></svg>
+    </div>
+    <div class="tl">
+      <div class="marks"><span>day 0</span><span id="tlEnd">day 25</span></div>
+      <div class="bands" id="bands"></div>
+      <input type="range" id="scrub" min="0" max="0" step="1" value="0" aria-label="Day">
+      <div class="tlctl">
+        <button class="btn" id="playBtn" type="button">▶ play</button>
+        <span class="dim" style="font-size:12.5px" id="tlNote"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── outcome ─────────────────────────────────────────── -->
+<section class="glass card outcome">
+  <h3><span class="eyebrow">Run outcome</span></h3>
+  <div class="nums" id="outNums"></div>
+  <p class="caveat" id="outNote"></p>
+  <div class="acts">
+    <button class="btn" id="slotA" type="button">hold as A</button>
+    <button class="btn" id="slotB" type="button">hold as B</button>
+    <button class="btn" id="cmpBtn" type="button" disabled>compare A and B</button>
+    <button class="btn" id="exportBtn" type="button">export session</button>
+    <button class="btn go" id="carryBtn" type="button">carry into a loop run</button>
+  </div>
+  <p class="err hide" id="err"></p>
+</section>
+
+  </div>
+
+  <!-- ── instruments ───────────────────────────────────── -->
+  <section class="glass card">
+    <h3><span class="eyebrow">Instruments · this day</span></h3>
+    <div class="state good" id="stateBox">
+      <span><span class="t" id="stateTxt">good</span><br>
+        <span class="s" id="stateSub">condition score 100</span></span>
+    </div>
+    <div id="chans"></div>
+    <ul class="flags" id="flagList"></ul>
+    <p class="caveat">The read is arithmetic over these channels against stated thresholds.
+      A flag names what a channel says — not what is wrong with the culture. An instrument
+      fault and a failing culture can raise the same one.</p>
+  </section>
+</div>
+
+<!-- ── comparison ──────────────────────────────────────── -->
+<section class="glass card hide" id="cmpCard">
+  <h3><span class="eyebrow">A against B</span></h3>
+  <div class="ab" id="cmpSlots"></div>
+  <table class="dtab" id="cmpTab"></table>
+  <p class="verdict" id="cmpVerdict"></p>
+  <p class="caveat" id="cmpNote"></p>
+</section>
+
+<!-- ── carry brief ─────────────────────────────────────── -->
+<section class="glass card hide" id="briefCard">
+  <h3><span class="eyebrow">Carry into a loop run</span></h3>
+  <p class="caveat" id="briefCaveat"></p>
+  <div class="slot a" style="margin-top:12px">
+    <span class="ttl">Prompt for the console</span>
+    <p class="mono" id="briefPrompt" style="font-size:13px;line-height:1.6;margin:0"></p>
+  </div>
+  <div class="acts">
+    <button class="btn" id="copyBtn" type="button">copy prompt</button>
+    <a class="btn" href="console.html" id="openConsole">open the console</a>
+    <button class="btn" id="dlBrief" type="button">download brief (JSON)</button>
+  </div>
+  <p class="caveat">Every quantity leaves here as a <strong>design_choice</strong>: a person
+    turned a knob against a synthetic model, and no literature value supports it. The loop
+    carries that provenance, and a design_choice quantity blocks the wet lab until a named
+    reviewer accepts it.</p>
+</section>
+
+<footer style="margin-top:36px;padding-top:20px;border-top:1px solid var(--line)">
+  <p class="caveat" id="notModelled"></p>
+  <p class="caveat">Not clinical or manufacturing guidance. MIT licensed.</p>
+</footer>
+
+</div>
+<script src="simulator.js"></script>
+</body>
+</html>

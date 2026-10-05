@@ -142,6 +142,37 @@ Reports, committed and readable without running anything →
 
 ---
 
+## Or turn the knobs yourself
+
+The console asks the loop to find a condition. **Simulator mode** hands you the
+same reactor — ten setpoints, a vessel you can watch day by day, and the
+instrument readings each condition produces.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/simulator-dark.png">
+  <img alt="Simulator mode: setpoint sliders grouped by stage, a side and top view of the vessel with aggregates sized from the imaging channels, a day timeline, and the day's instrument readings." src="docs/assets/simulator-light.png" width="100%">
+</picture>
+
+Nothing in the drawing is decorative: circle size is the measured aggregate
+diameter, a dark core means that fraction of aggregates is past the diameter
+where the centre goes hypoxic, the specks are released LDH. Each day is scored
+`good` / `strained` / `failing` by arithmetic over stated thresholds, and the
+thresholds ship with the page.
+
+Pick a probe fault from the *Starting culture* menu and the same exercise the
+analysis agent faces appears: one channel says the culture is thinning, three
+others disagree, and nothing about the biology has changed.
+
+Hold two conditions, compare them, and carry one into a loop run — where every
+quantity arrives as a **`design_choice`**, the provenance class that blocks the
+wet lab until a named reviewer accepts it. A sandbox cannot launder a number
+into a protocol.
+
+Details, including what it does **not** model →
+**[docs/SIMULATOR_MODE.md](docs/SIMULATOR_MODE.md)**
+
+---
+
 ## Every run explains itself
 
 The console shows the answer. The exported report carries the justification:
@@ -198,7 +229,7 @@ Not conventions — things the software refuses to do:
 | An unannotated gene returns `found: false` with the public queries to run — never a guessed effect | `bioinformatics/tools.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 233 tests
+uv run --frozen python -m unittest     # 269 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 
@@ -209,6 +240,7 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 | Path | What it holds |
 |---|---|
 | [`webapp/console.html`](webapp/console.html) | the console you see above |
+| [`webapp/simulator.html`](webapp/simulator.html) | simulator mode: the knobs, the vessel, the timeline |
 | [`biosense/production/`](biosense/production/) | the loop: designer, optimiser, analysis, envelope, reports |
 | [`standins/`](standins/) | synthetic stand-in reactors |
 | [`discovery_loop/`](discovery_loop/) | the Omnigent agent bundle for the live, model-driven path |
@@ -217,6 +249,7 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 | [`docs/`](docs/) | setup, the worked example, the production loop in depth |
 
 **Deeper reading:** [the production loop](docs/PRODUCTION_LOOP.md) ·
+[simulator mode](docs/SIMULATOR_MODE.md) ·
 [the worked example](docs/IPSC_TCELL_EXAMPLE.md) ·
 [running it yourself](docs/RUN_ON_YOUR_PC.md) ·
 [the literature agent](docs/LITERATURE_AGENT.md) ·
