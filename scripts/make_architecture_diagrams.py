@@ -313,12 +313,15 @@ def loop(c):
 
 # ── 4. bioinformatics capabilities ────────────────────────────────────────
 def capabilities(c):
-    W, H = 980, 420
+    W, H = 980, 510
     s = [head(W, H, c,
               'Which analysis modalities run today and which are declared but not implemented. '
               'Phase 1 runs generic statistics, processed flow cytometry and a screening bulk '
-              'expression comparison; single cell, ChIP, ATAC, raw FCS and external R tools are '
-              'declared so a manifest written today stays valid, and calling one is refused.')]
+              'expression comparison. Phase 2 adds single-cell pseudobulk and peak overlap; '
+              'single cell needs the optional singlecell extra, and without it the tool is not '
+              'registered at all, so a plan is refused when it is planned rather than when it '
+              'runs. Raw FCS and external R tools stay declared so a manifest written today '
+              'stays valid, and calling one is refused.')]
     s.append(title(490, 30, c, 'WHAT RUNS, AND WHAT IS ONLY DECLARED'))
 
     rows = [
@@ -327,10 +330,14 @@ def capabilities(c):
         ('Flow cytometry / FACS', 'processed, gated population tables|frequency · intensity · '
                                   'viability', 'PHASE 1', True),
         ('Bulk RNA', 'screening comparison|of normalised expression', 'PHASE 1', True),
-        ('Single cell RNA', 'pseudobulk · cell state|needs h5ad + Scanpy', 'PLANNED', False),
-        ('ChIP-seq / ATAC-seq', 'peak overlap · annotation|peak-to-gene', 'PLANNED', False),
+        ('Single cell RNA', 'pseudobulk by sample · signatures|h5ad, needs [singlecell] extra',
+         'PHASE 2', True),
+        ('ChIP-seq / ATAC-seq', 'peak overlap · peak-to-gene|reads called peaks, never calls them',
+         'PHASE 2', True),
         ('Raw FCS / FlowSOM / UMAP', 'automated gating|high-dimensional cytometry', 'PLANNED',
          False),
+        ('External R / DESeq2', 'contract and mock ship now|runs as Rscript, never in-process',
+         'PLANNED', False),
     ]
     for i, (t, sub, status, live) in enumerate(rows):
         x = 30 + (i % 3) * 312
@@ -339,7 +346,7 @@ def capabilities(c):
         soft = c['brand_soft'] if live else c['plan_soft']
         s.append(box(x, y, 296, 90, t, sub, c, accent, soft, status, dash=not live))
 
-    s.append(box(30, 316, 920, 66, 'External-tool adapter',
+    s.append(box(30, 408, 920, 66, 'External-tool adapter',
                  'DESeq2 · edgeR · Scanpy · MACS — the contract and a mock ship now; the base '
                  'install needs no R,|and every record must carry its command, versions, '
                  'checksums and environment', c, c['code'], c['code_soft'], 'PHASE 1'))

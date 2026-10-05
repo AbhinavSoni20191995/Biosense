@@ -40,19 +40,57 @@ class DiagramTests(unittest.TestCase):
             self.assertIsNotNone(m, name)
             self.assertGreater(len(m.group(1)), 80, name)
 
+    # each box in the capabilities diagram, and the tool that has to be registered
+    # for that box to be drawn as running. Keyed on the tool rather than the
+    # modality because the planned boxes are tool gaps, not modality gaps: raw FCS
+    # is the flow_cytometry modality, which a registered tool already accepts, so a
+    # modality check would pass that row without ever looking at it.
+    CAPABILITY_BOXES = (
+        ('Flow cytometry / FACS', 'cytometry.population_comparison'),
+        ('Bulk RNA', 'bulk.expression_comparison'),
+        ('Single cell RNA', 'single_cell.pseudobulk_comparison'),
+        ('ChIP-seq / ATAC-seq', 'chromatin.peak_overlap'),
+        ('Raw FCS / FlowSOM / UMAP', 'cytometry.gating'),
+        ('External R / DESeq2', 'external.deseq2'),
+    )
+
+    def test_every_capability_box_names_a_tool_the_registry_knows(self):
+        """Guards the guard below: a box keyed on a tool name that is in neither
+        registry would be checked against nothing."""
+        known = set(TREG.TOOLS) | {p['name'] for p in TREG.PLANNED}
+        for label, tool in self.CAPABILITY_BOXES:
+            self.assertIn(tool, known, label)
+
     def test_the_capabilities_diagram_marks_unimplemented_tools_as_planned(self):
-        """The check that would catch a diagram going stale: anything drawn as
-        running must actually be in the registry."""
+        """The check that would catch the diagram going stale in either direction:
+        a box drawn as running whose tool is not registered would promise an
+        analysis that is refused, and a box still drawn as PLANNED after the tool
+        landed would hide one that works."""
         svg = (ASSETS / 'arch-capabilities-light.svg').read_text()
         self.assertIn('PLANNED', svg)
-        self.assertIn('Single cell RNA', svg)
-        self.assertIn('ChIP-seq', svg)
-        # the modalities drawn as PHASE 1 are ones a registered tool accepts
-        running = {m for spec in TREG.TOOLS.values() for m in spec.modalities}
-        self.assertIn('flow_cytometry', running)
-        self.assertIn('bulk_rna', running)
-        self.assertNotIn('single_cell_rna', running)
-        self.assertNotIn('chip_seq', running)
+        for label, tool in self.CAPABILITY_BOXES:
+            status = self._box_status(svg, label)
+            # the diagram is a committed artifact describing the project, so it is
+            # checked against whether the code exists, not against whether this
+            # machine happens to have the optional extra installed
+            if TREG.is_implemented(tool):
+                self.assertNotEqual('PLANNED', status,
+                                    f'{label} is drawn as PLANNED but {tool} is implemented')
+            else:
+                self.assertEqual('PLANNED', status,
+                                 f'{label} is drawn as {status} but {tool} does not exist')
+
+    @staticmethod
+    def _box_status(svg, label):
+        """The status badge of the box carrying this label.
+
+        box() writes the badge immediately before the title, so the nearest
+        preceding badge is this box's own.
+        """
+        i = svg.index(f'>{label}<')
+        badges = re.findall(r'letter-spacing="0.9">([A-Z0-9 ]+)</text>', svg[:i])
+        assert badges, f'no status badge precedes {label!r}'
+        return badges[-1]
 
     def test_the_regenerator_is_committed_and_reproduces_the_files(self):
         import subprocess

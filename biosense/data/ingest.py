@@ -51,6 +51,120 @@ def infer_modality(t):
                   'decide which tools may run over this file.')
 
 
+def ingest_h5ad(path, *, dataset_id, title, organism='Homo sapiens', cell_type=None,
+                perturbation=None, experimental_design=None, description=None,
+                registered_by=None, visibility='private', notes=None, register=True,
+                overwrite=False):
+    """Register a single-cell .h5ad.
+
+    The reader describes what is in the file; it never decides which obs column
+    holds the condition. `design_candidates` lists what a person could choose
+    from, and a plan that needs a field the design does not name is refused by
+    name rather than running against a guess.
+    """
+    from .readers import h5ad as H5
+    H5.require()
+    p = Path(path)
+    desc = H5.describe(p)
+    design = dict(experimental_design or {})
+    for key in ('condition_column', 'sample_id_column', 'donor_column', 'batch_column',
+                'replicate_column', 'timepoint_column'):
+        col = design.get(key)
+        if col and col not in desc['obs_keys']:
+            raise K.ContractError(
+                f'experimental_design.{key} names obs column {col!r}, which is not in '
+                f'{p.name}. Present: {", ".join(desc["obs_keys"])}')
+    cond = design.get('condition_column')
+    if cond:
+        levels = desc['obs_levels'].get(cond, [])
+        if design.get('control') and levels and design['control'] not in levels:
+            raise K.ContractError(
+                f'control {design["control"]!r} does not appear in obs[{cond!r}]. '
+                f'Values present: {", ".join(map(str, levels))}')
+        if levels and not design.get('treatments'):
+            design['treatments'] = [v for v in levels if v != design.get('control')]
+
+    files = [MF.file_entry(p, 'matrix', 'h5ad')]
+    files[0]['rows'] = desc['n_cells']
+    files[0]['columns'] = desc['obs_keys']
+    lims = ['Ingested from a local .h5ad. BioSense did not generate this matrix and cannot '
+            'verify how it was produced, filtered or normalised.',
+            f'Normalisation: {desc["normalization_status"]}. A tool that needs counts checks '
+            f'this and refuses rather than assuming.']
+    if visibility == 'private':
+        lims.append('Private user data: never served over HTTP, never committed, and never a '
+                    'literature citation.')
+
+    m = MF.build(dataset_id=dataset_id, title=title,
+                 source='user_upload' if visibility == 'private' else 'fixture',
+                 modality='single_cell_rna', organism=organism, files=files,
+                 visibility=visibility, cell_type=cell_type, perturbation=perturbation,
+                 conditions=desc['obs_levels'].get(cond, []) if cond else [],
+                 sample_metadata={'sample_count': desc['n_cells'],
+                                  'columns': desc['obs_keys'],
+                                  'levels': desc['obs_levels']},
+                 experimental_design=design,
+                 modality_detail={'n_cells': desc['n_cells'], 'n_genes': desc['n_genes'],
+                                  'obs_keys': desc['obs_keys'], 'var_keys': desc['var_keys'],
+                                  'layers': desc['layers'], 'obsm': desc['obsm'],
+                                  'normalization_status': desc['normalization_status'],
+                                  'design_candidates': desc['design_candidates']},
+                 description=description, registered_by=registered_by, notes=notes,
+                 limitations=lims)
+    path_out = None
+    if register:
+        if visibility == 'private':
+            roots.ensure_roots()
+        path_out = REG.register(m, overwrite=overwrite)
+    return m, path_out
+
+
+def ingest_peaks(path, *, dataset_id, title, modality='atac_seq', organism='Homo sapiens',
+                 cell_type=None, perturbation=None, experimental_design=None,
+                 peak_files=None, gene_anchors=None, description=None, registered_by=None,
+                 visibility='private', notes=None, register=True, overwrite=False,
+                 extra_files=()):
+    """Register processed peak files (BED / narrowPeak / broadPeak).
+
+    `peak_files` maps a condition to its file. It is required for a comparison
+    and is never inferred from a filename: guessing would silently compare the
+    wrong pair, and the mistake would look exactly like a result.
+    """
+    from .readers import peaks as PK
+    paths = [Path(path)] + [Path(x) for x in extra_files]
+    files, detail = [], {}
+    for pth in paths:
+        ft = pth.suffix.lstrip('.')
+        d = PK.describe(pth, ft)
+        e = MF.file_entry(pth, 'peaks', ft)
+        e['rows'] = d['n_peaks']
+        files.append(e)
+        detail[e['path']] = {k: d[k] for k in ('n_peaks', 'chromosomes', 'total_bp',
+                                               'median_width_bp', 'has_qvalues')}
+    stored = {MF.stored_path(k): v for k, v in (peak_files or {}).items()}
+    m = MF.build(dataset_id=dataset_id, title=title,
+                 source='user_upload' if visibility == 'private' else 'fixture',
+                 modality=modality, organism=organism, files=files, visibility=visibility,
+                 cell_type=cell_type, perturbation=perturbation,
+                 conditions=sorted(peak_files or {}),
+                 experimental_design=dict(experimental_design or {}),
+                 modality_detail={'peak_summaries': detail,
+                                  'peak_files': {k: MF.stored_path(v)
+                                                 for k, v in (peak_files or {}).items()},
+                                  'gene_anchors': (MF.stored_path(gene_anchors)
+                                                   if gene_anchors else None)},
+                 description=description, registered_by=registered_by, notes=notes,
+                 limitations=['BioSense did not call these peaks and cannot verify the calling '
+                              'parameters. A difference between peak sets may reflect calling '
+                              'thresholds rather than chromatin.'])
+    path_out = None
+    if register:
+        if visibility == 'private':
+            roots.ensure_roots()
+        path_out = REG.register(m, overwrite=overwrite)
+    return m, path_out
+
+
 def ingest_local(path, *, dataset_id, title, modality=None, organism='Homo sapiens',
                  cell_type=None, perturbation=None, experimental_design=None,
                  modality_detail=None, description=None, registered_by=None,
@@ -64,10 +178,17 @@ def ingest_local(path, *, dataset_id, title, modality=None, organism='Homo sapie
     if ft == 'txt':
         ft = 'tsv'
     if ft not in TB.DELIMS:
+        route = {'h5ad': 'ingest_h5ad', 'bed': 'ingest_peaks', 'narrowpeak': 'ingest_peaks',
+                 'broadpeak': 'ingest_peaks'}.get(ft)
+        if route:
+            raise K.ContractError(
+                f'{p.name}: use {route}() for {ft} files. They are read by a different reader '
+                f'and carry different metadata.')
         raise K.ContractError(
-            f'{p.name}: this version ingests {", ".join(sorted(TB.DELIMS))} tables. '
-            f'h5ad, FCS and peak files are describable in a manifest but have no reader yet, '
-            f'so ingesting one would register data nothing can open.')
+            f'{p.name}: this version ingests {", ".join(sorted(TB.DELIMS))} tables, .h5ad '
+            f'(via ingest_h5ad) and BED/narrowPeak (via ingest_peaks). Raw FCS has no reader: '
+            f'fcsparser cannot resolve against this project\'s numpy, so processed, gated '
+            f'tables are the supported cytometry input.')
 
     t = TB.read_table(p, ft)
     if modality is None:

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from .. import contracts as K
 from .toolkit.bulk import basic_de
+from .toolkit.chromatin import peak_overlap
 from .toolkit.cytometry import population_stats
 
 
@@ -26,6 +27,10 @@ class ToolSpec:
     analysis_types: tuple
     required_inputs: tuple
     required_metadata: tuple
+    # Which file types this tool can actually open. The readiness check asks the
+    # tool rather than assuming CSV, so adding a modality does not mean editing
+    # a hardcoded list somewhere else.
+    file_types: tuple = ('csv', 'tsv')
     optional_inputs: tuple = ()
     parameters: dict = field(default_factory=dict)
     outputs: tuple = ()
@@ -42,6 +47,7 @@ class ToolSpec:
         d['analysis_types'] = list(self.analysis_types)
         d['required_inputs'] = list(self.required_inputs)
         d['required_metadata'] = list(self.required_metadata)
+        d['file_types'] = list(self.file_types)
         d['optional_inputs'] = list(self.optional_inputs)
         d['outputs'] = list(self.outputs)
         return d
@@ -85,31 +91,109 @@ register(ToolSpec(
           'modelling, which belongs in the external-tool adapter.'))
 
 
+register(ToolSpec(
+    name=peak_overlap.NAME, label='Chromatin peak overlap and peak-to-gene association',
+    version=peak_overlap.VERSION,
+    modalities=peak_overlap.MODALITIES,
+    analysis_types=peak_overlap.ANALYSIS_TYPES,
+    required_inputs=('two processed peak files (BED / narrowPeak / broadPeak), one per condition',),
+    required_metadata=peak_overlap.REQUIRED_METADATA,
+    optional_inputs=('gene_anchors: a TSV of gene, chrom, tss, strand for annotation',),
+    parameters={'peak_files': 'modality_detail mapping condition -> file; never guessed from '
+                              'a filename'},
+    outputs=('overlap in both directions', 'peak width and q-value comparison',
+             'peak-to-gene annotation of condition-specific peaks'),
+    file_types=('bed', 'narrowPeak', 'broadPeak'),
+    runner=peak_overlap.run,
+    notes='Processed peaks only. Calling peaks from signal is outside what BioSense does: run '
+          'MACS or an established pipeline and register the result. This compares peak SETS, '
+          'not replicated samples, and says so in its QC.'))
+
+
+def _register_single_cell():
+    """Registered only when the optional environment is present.
+
+    A tool that is listed but cannot run is worse than one that is honestly
+    absent: a planner would select it and fail at execution instead of at
+    planning, which is the wrong end of the process to find out.
+    """
+    from ..data.readers import h5ad as H5
+    if not H5.available():
+        return None
+    from .toolkit.single_cell import pseudobulk
+    return register(ToolSpec(
+        name=pseudobulk.NAME, label='Single-cell pseudobulk comparison',
+        version=pseudobulk.VERSION,
+        modalities=pseudobulk.MODALITIES,
+        analysis_types=pseudobulk.ANALYSIS_TYPES,
+        required_inputs=('an .h5ad matrix with a sample column in obs',),
+        required_metadata=pseudobulk.REQUIRED_METADATA,
+        optional_inputs=('cell_type column for composition', 'donor_column'),
+        parameters={'readouts': 'genes to compare; default every gene in the matrix'},
+        outputs=('per-gene pseudobulk comparison with BH-q', 'signature scores',
+                 'cell composition per sample'),
+        software='numpy + scipy + anndata, in process',
+        file_types=('h5ad',),
+        external_dependency='singlecell',
+        runner=pseudobulk.run,
+        notes='Pseudobulk by sample, because the replication unit is the sample and not the '
+              'cell. No reclustering, re-annotation or UMAP: those change what the data says '
+              'and only run when they resolve the named uncertainty.'))
+
+
+_SINGLE_CELL = _register_single_cell()
+
+
 # Declared, not implemented. Listed so an interface and a planner can see the
 # shape of what is coming without anything pretending it can already run.
 PLANNED = (
-    {'name': 'single_cell.pseudobulk_de', 'label': 'Single-cell pseudobulk differential expression',
-     'modalities': ['single_cell_rna'], 'status': 'planned',
-     'notes': 'Needs an h5ad reader (h5py) and Scanpy; deliberately out of Phase 1.'},
-    {'name': 'chromatin.peak_overlap', 'label': 'Peak overlap and peak-to-gene association',
-     'modalities': ['chip_seq', 'atac_seq'], 'status': 'planned',
-     'notes': 'Needs BED/narrowPeak handling and an annotation source.'},
+    {'name': 'single_cell.pseudobulk_comparison',
+     'label': 'Single-cell pseudobulk comparison',
+     'modalities': ['single_cell_rna'],
+     'status': 'optional_environment' if _SINGLE_CELL is None else 'phase_2',
+     'notes': 'Needs biosense[singlecell] (anndata + h5py). Install it with '
+              '`uv sync --extra singlecell`; until then it is not registered, so a plan is '
+              'refused at planning rather than at execution.'},
     {'name': 'cytometry.gating', 'label': 'Automated gating / FlowSOM / UMAP',
      'modalities': ['flow_cytometry'], 'status': 'planned',
-     'notes': 'Needs an FCS reader and a clustering stack.'},
+     'notes': 'Needs an FCS reader and a clustering stack. fcsparser pins numpy below this '
+              'project\'s version and cannot resolve, so raw FCS stays deferred rather than '
+              'pinning the whole project backwards.'},
     {'name': 'external.deseq2', 'label': 'DESeq2 via the external-tool adapter',
      'modalities': ['bulk_rna'], 'status': 'planned',
-     'notes': 'Contract and a mock ship in Phase 1; running real R is out of scope and must stay '
-              'optional so ordinary CI needs no Bioconductor.'},
+     'notes': 'Contract and a mock ship now; running real R is out of scope for ordinary CI and '
+              'goes through the external-tool boundary as Rscript, never in-process.'},
 )
+
+
+#: statuses a PLANNED entry may carry. 'planned' is work nobody has done;
+#: 'optional_environment' and 'phase_2' are implemented and gated only on an
+#: optional extra, which is why the capabilities diagram may draw them as
+#: shipped even on a machine where the extra is absent.
+IMPLEMENTED_STATUSES = ('optional_environment', 'phase_2')
+
+
+def is_implemented(name):
+    """Whether the code for this tool exists, regardless of this install.
+
+    Distinct from ``name in TOOLS``, which answers whether it can run *here*.
+    Documents describe the project and must use this; a plan must use TOOLS.
+    """
+    if name in TOOLS:
+        return True
+    planned = next((p for p in PLANNED if p['name'] == name), None)
+    return bool(planned) and planned['status'] in IMPLEMENTED_STATUSES
 
 
 def get(name):
     if name not in TOOLS:
         planned = next((p for p in PLANNED if p['name'] == name), None)
         if planned:
+            kind = ('needs an optional environment'
+                    if planned['status'] == 'optional_environment' else
+                    'is declared but not implemented')
             raise K.ContractError(
-                f'{name!r} is declared but not implemented ({planned["notes"]}). '
+                f'{name!r} {kind} ({planned["notes"]}). '
                 f'Available now: {", ".join(sorted(TOOLS))}.')
         raise K.ContractError(f'unknown tool {name!r}; available: {", ".join(sorted(TOOLS))}')
     return TOOLS[name]
@@ -122,4 +206,11 @@ def for_analysis(analysis_type, modality):
 
 
 def describe():
-    return {'implemented': [t.to_dict() for t in TOOLS.values()], 'planned': list(PLANNED)}
+    """What can run here, and what cannot yet.
+
+    A tool whose optional extra is installed is registered, so it is reported as
+    implemented and dropped from the planned list: listing it as both would tell a
+    reader it is unavailable while a plan using it runs.
+    """
+    return {'implemented': [t.to_dict() for t in TOOLS.values()],
+            'planned': [dict(p) for p in PLANNED if p['name'] not in TOOLS]}

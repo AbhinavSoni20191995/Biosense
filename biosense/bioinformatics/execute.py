@@ -57,11 +57,16 @@ def execute(p, *, dirs=None, executed_by='bioinformatics_agent', analysis_id=Non
             'and a shared normalisation that nothing here does; run them separately and compare '
             'the results.')
     m = manifests[0]
-    readable = MF.readable_files(m)
-    if not readable:
-        raise K.ContractError(f'{m["dataset_id"]} has no readable table')
-    f = readable[0]
-    table = TB.read_table(MF.resolve_path(f['path']), f['file_type'])
+    # A tool that reads its own format (h5ad, peaks) gets no table: it opens the
+    # file itself from the manifest. Only the delimited-table tools need one, and
+    # the registry says which is which.
+    table = None
+    if {t.lower() for t in spec.file_types} & {'csv', 'tsv'}:
+        readable = MF.readable_files(m)
+        if not readable:
+            raise K.ContractError(f'{m["dataset_id"]} has no readable table')
+        f = readable[0]
+        table = TB.read_table(MF.resolve_path(f['path']), f['file_type'])
 
     frag = spec.runner(table, m, p)
     rows = frag['statistics']

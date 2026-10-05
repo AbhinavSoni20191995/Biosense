@@ -119,8 +119,23 @@ class ToolMatchingTests(PlanCase):
 
     def test_a_declared_but_unimplemented_tool_says_so(self):
         with self.assertRaises(K.ContractError) as e:
-            TREG.get('single_cell.pseudobulk_de')
+            TREG.get('external.deseq2')
         self.assertIn('declared but not implemented', str(e.exception))
+        self.assertIn('Available now', str(e.exception))
+
+    def test_a_tool_whose_optional_extra_is_absent_says_which_extra(self):
+        """The two refusals read differently on purpose: one is work nobody has
+        done, the other is an install line the reader can act on."""
+        planned = {p['name']: p for p in TREG.PLANNED}
+        name = 'single_cell.pseudobulk_comparison'
+        if name in TREG.TOOLS:
+            self.assertEqual('phase_2', planned[name]['status'])
+            self.assertIn('singlecell', planned[name]['notes'])
+            return
+        with self.assertRaises(K.ContractError) as e:
+            TREG.get(name)
+        self.assertIn('needs an optional environment', str(e.exception))
+        self.assertIn('uv sync --extra singlecell', str(e.exception))
 
     def test_a_tool_that_does_not_accept_this_modality_is_refused(self):
         with self.assertRaises(K.ContractError) as e:
@@ -141,11 +156,25 @@ class ToolMatchingTests(PlanCase):
             self.assertTrue(callable(spec.runner))
 
     def test_planned_tools_are_listed_but_not_runnable(self):
+        """Whatever a tool is waiting on, it is never in both lists: reporting one
+        as planned while a plan using it runs would be the misleading direction."""
         d = TREG.describe()
         names = {t['name'] for t in d['implemented']}
         for p in d['planned']:
             self.assertNotIn(p['name'], names)
-            self.assertEqual('planned', p['status'])
+            self.assertNotIn(p['name'], TREG.TOOLS)
+            self.assertIn(p['status'], ('planned',) + TREG.IMPLEMENTED_STATUSES)
+
+    def test_a_tool_waiting_on_an_extra_is_not_confused_with_unwritten_work(self):
+        """'planned' means nobody wrote it; the other statuses mean it is written
+        and gated on an install the reader can perform. Only the first is a reason
+        for a document to draw the capability as absent."""
+        self.assertFalse(TREG.is_implemented('cytometry.gating'))
+        self.assertFalse(TREG.is_implemented('external.deseq2'))
+        self.assertTrue(TREG.is_implemented('single_cell.pseudobulk_comparison'))
+        self.assertTrue(TREG.is_implemented('bulk.expression_comparison'))
+        for name in TREG.TOOLS:
+            self.assertTrue(TREG.is_implemented(name))
 
 
 class MissingMetadataRefusalTests(PlanCase):

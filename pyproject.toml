@@ -11,5 +11,32 @@ dependencies = [
     "scipy>=1.18.1",
 ]
 
+# Optional analysis environments. The base install stays at three dependencies
+# so ordinary CI is fast and a clone works everywhere; a modality that needs a
+# heavy stack declares an extra and REFUSES with the install line when it is
+# absent, rather than silently doing something cheaper and calling it the same
+# analysis.
+#
+#   uv sync --extra singlecell
+#   uv sync --all-extras
+[project.optional-dependencies]
+# anndata brings h5py and gives a real .h5ad reader. Scanpy is deliberately NOT
+# here: QC, proportions, pseudobulk and score computation are numpy/scipy work
+# this repository already does well, and clustering and UMAP are exactly the
+# steps that should not run unless they resolve the named uncertainty.
+singlecell = ["anndata>=0.12", "h5py>=3.14"]
+#
+# NOT declared, and why:
+#   cytometry (raw FCS)  fcsparser pins numpy below 2.5 and cannot resolve
+#                        against this project's numpy. Rather than pin the whole
+#                        project backwards for an optional reader, raw FCS stays
+#                        Phase 3 and the ingest path refuses an .fcs file with
+#                        that reason. Processed, gated tables need no extra.
+#   chromatin            BED and narrowPeak are columnar text; the stdlib reads
+#                        them.
+#   bulk RNA             DESeq2 and edgeR run through the external-tool adapter
+#                        as Rscript, never in-process, so there is no Python
+#                        dependency to declare.
+
 [tool.uv]
 package = false

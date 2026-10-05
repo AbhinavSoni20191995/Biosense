@@ -145,11 +145,13 @@ def check_ready(p, manifests=None, *, dirs=None):
                 why = next((x['why_it_matters'] for x in m.get('missing_metadata') or []
                             if x['field'] == fld), 'required by this tool')
                 problems.append(f'{m["dataset_id"]}: experimental_design.{fld} is missing — {why}')
-        if not any(f['file_type'] in ('csv', 'tsv') for f in m['files']):
-            kinds = ', '.join(sorted({f['file_type'] for f in m['files']}))
+        accepted = {t.lower() for t in spec.file_types}
+        present = {f['file_type'].lower() for f in m['files']}
+        if not (accepted & present):
             problems.append(
-                f'{m["dataset_id"]}: no readable table (has {kinds}). h5ad, FCS and peak files '
-                f'are describable but have no reader in this version.')
+                f'{m["dataset_id"]}: {spec.name} reads {", ".join(sorted(spec.file_types))} and '
+                f'this dataset carries {", ".join(sorted(present))}. Register the processed '
+                f'form the tool reads, or choose a tool that reads what you have.')
     if problems:
         raise K.ContractError(
             'the plan cannot run on these datasets: ' + '; '.join(problems) +
