@@ -139,8 +139,15 @@ def search(query, *, organism=None, modality=None, cell_type=None, perturbation=
                         index=str(index_path or INDEX))
 
 
-def _search_live(query, plan, limit, timeout):  # pragma: no cover - needs network
-    """Untested against the real service from this repository; see the module docstring."""
+def _search_live(query, plan, limit, timeout):
+    """Never run against the real service from this repository.
+
+    The parsing below IS covered, in tests/test_geo_live.py, by replacing the
+    transport and feeding recorded eutils response shapes through it: that is the
+    half most likely to be wrong, since a renamed field or a count arriving as a
+    string breaks it silently. What those tests cannot tell you is whether NCBI
+    is up or whether its schema still looks like this.
+    """
     out = []
     try:
         with urllib.request.urlopen(plan[0]['url'], timeout=timeout) as r:
