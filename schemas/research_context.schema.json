@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/research-context-v2.0",
+  "title": "ResearchContext 2.0: the biological scope evidence must fit",
+  "description": "A scientist narrowing the question before any search happens. 'Mature human alveolar macrophages in pulmonary fibrosis' is a different question from 'macrophages', and evidence from mouse bone-marrow-derived cells is not a weaker answer to the first question -- it is an answer to a different one. strictness decides what happens to evidence outside the scope: STRICT excludes it, PREFER shows it separately and labelled CONTEXT MISMATCH, OPEN applies no restriction. BioSense never silently generalises mouse to human, cell line to primary, or healthy to disease.",
+  "type": "object",
+  "required": ["schema_version", "strictness"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "context_id": {"type": ["string", "null"]},
+    "created_at": {"type": ["string", "null"]},
+    "strictness": {
+      "enum": ["strict", "prefer", "open"],
+      "description": "strict = evidence outside the scope is excluded. prefer = in-scope evidence ranks first; out-of-scope evidence is shown separately and labelled. open = no restriction."
+    },
+    "species": {"type": "array", "items": {"type": "string"}},
+    "cell_types": {"type": "array", "items": {"type": "string"}},
+    "tissues": {"type": "array", "items": {"type": "string"}},
+    "states": {"type": "array", "items": {"type": "string"}, "description": "developmental or activation state, e.g. mature, inflammatory, chronically stimulated"},
+    "disease_context": {"type": "array", "items": {"type": "string"}},
+    "modalities": {"type": "array", "items": {"type": "string"}},
+    "assays": {"type": "array", "items": {"type": "string"}},
+    "therapy_context": {"type": "array", "items": {"type": "string"}},
+    "time_range": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "from_hours": {"type": ["number", "null"]},
+        "to_hours": {"type": ["number", "null"]},
+        "label": {"type": ["string", "null"]}
+      }
+    },
+    "publication_from_year": {"type": ["integer", "null"]},
+    "publication_to_year": {"type": ["integer", "null"]},
+    "exclude": {"type": "array", "items": {"type": "string"}, "description": "Things explicitly ruled out, e.g. 'mouse-only evidence'"},
+    "notes": {"type": ["string", "null"]},
+    "applied": {
+      "type": ["object", "null"],
+      "description": "Provenance of the search itself: what was asked for, what was actually searched, and which restrictions could not be satisfied.",
+      "properties": {
+        "requested": {"type": "object"},
+        "searched": {"type": "array", "items": {"type": "string"}},
+        "query_terms": {"type": "array", "items": {"type": "string"}},
+        "unsatisfied": {"type": "array", "items": {"type": "object",
+          "required": ["restriction", "why"],
+          "properties": {"restriction": {"type": "string"}, "why": {"type": "string"}}}}
+      }
+    }
+  }
+}

@@ -304,7 +304,7 @@ Not conventions — things the software refuses to do:
 | An external-tool result with no software version is refused | `bioinformatics/external.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 421 tests
+uv run --frozen python -m unittest     # 497 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 

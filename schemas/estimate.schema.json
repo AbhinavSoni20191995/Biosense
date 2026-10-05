@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/estimate-v2.0",
+  "title": "Estimate 2.0: one number, and where it came from",
+  "description": "The unit of quantified evidence. Every number BioSense reports is an Estimate, and estimate_type travels WITH the number rather than with the object holding it -- in one statistics row a group mean is measured while the effect between groups is derived, so an object-level label would be wrong for both. The field that keeps this honest is magnitude_estimated: when no magnitude can be computed it is false, a withheld_reason is required, and the correct output is 'direction: increase, magnitude: not yet estimated' rather than invented precision.",
+  "$defs": {
+    "value": {
+      "type": "object",
+      "required": [
+        "value",
+        "estimate_type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "estimate_type": {
+          "enum": [
+            "measured",
+            "derived",
+            "simulated",
+            "predicted",
+            "target"
+          ],
+          "description": "measured = a real instrument produced it. derived = deterministic code computed it from measured or public data. simulated = a mechanistic model produced it. predicted = a model-based forecast that is not a full simulation. target = a desired outcome a person supplied."
+        },
+        "source_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "dataset_id, analysis_id, simulator run id, knowledge_id or claim id"
+        },
+        "n": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "independent observations behind it"
+        },
+        "sd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "interval": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "lower",
+        "upper",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "lower": {
+          "type": "number"
+        },
+        "upper": {
+          "type": "number"
+        },
+        "type": {
+          "enum": [
+            "confidence_interval",
+            "prediction_interval",
+            "range",
+            "search_range"
+          ]
+        },
+        "level": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "e.g. 0.95"
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "estimate": {
+      "type": "object",
+      "required": [
+        "metric",
+        "unit",
+        "estimate_type",
+        "magnitude_estimated"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "type": "string",
+          "description": "A readout_id of the project where one applies"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        },
+        "estimate_type": {
+          "enum": [
+            "measured",
+            "derived",
+            "simulated",
+            "predicted",
+            "target"
+          ],
+          "description": "The weakest link in the chain: an effect derived from measured data is derived; a difference between two simulated values is simulated."
+        },
+        "baseline": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null when only a direction is known"
+        },
+        "candidate": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null when only a direction is known"
+        },
+        "magnitude_estimated": {
+          "type": "boolean",
+          "description": "false when a direction is known but no magnitude can be computed. The honest output then is 'direction predicted: increase; magnitude: not yet estimated'."
+        },
+        "withheld_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Required when magnitude_estimated is false"
+        },
+        "direction": {
+          "enum": [
+            "increase",
+            "decrease",
+            "no_change",
+            "unknown"
+          ]
+        },
+        "absolute_change": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "change_unit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "'percentage_points' when both sides are percentages, otherwise the metric's own unit"
+        },
+        "relative_change_pct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "relative_withheld_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why a percentage was not computed, e.g. a baseline too near zero for the ratio to mean anything"
+        },
+        "fold_change": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "interval": {
+          "$ref": "#/$defs/interval"
+        },
+        "higher_is_better": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "favourable": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Whether the change moves the metric the way the project wants. null when the project does not say."
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "$ref": "#/$defs/estimate"
+}

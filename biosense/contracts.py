@@ -49,6 +49,11 @@ SCHEMAS = {
     'analysis_result': 'analysis_result.schema.json',
     # a project: which knobs a particular biological system actually has
     'project_profile': 'project_profile.schema.json',
+    # one number and where it came from; the unit of quantified evidence
+    'estimate': 'estimate.schema.json',
+    'quantified_hypothesis': 'quantified_hypothesis.schema.json',
+    'research_context': 'research_context.schema.json',
+    'expert_knowledge': 'expert_knowledge.schema.json',
 }
 
 # What a piece of evidence IS, kept separate from where it came from and from who
@@ -57,7 +62,7 @@ SCHEMAS = {
 # those three into one label is how provenance gets lost.
 EVIDENCE_CLASSES = ('published_literature', 'public_dataset', 'private_user_dataset',
                     'derived_analysis', 'simulation', 'real_measurement',
-                    'synthetic_fixture')
+                    'synthetic_fixture', 'expert_knowledge')
 VISIBILITIES = ('public', 'private')
 
 

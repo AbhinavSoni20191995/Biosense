@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/expert-knowledge-v2.0",
+  "title": "ExpertKnowledge 2.0: what the people running the process already know",
+  "description": "Unpublished observations, prior internal experiments, operational constraints and expert judgement, recorded as structure rather than buried in a prompt. It is a first-class private evidence class: it may change which hypothesis is worth testing, narrow a parameter search range, and change how a result is interpreted. It may never become a literature citation, a measured dataset, or a verified causal relationship, and the distinction between 'I know this from experiments' and 'this is my hypothesis' is kept, because they are not the same evidence.",
+  "type": "object",
+  "required": ["schema_version", "knowledge_id", "statement", "knowledge_type", "source",
+               "visibility", "evidence_class", "confidence", "citable", "created_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "knowledge_id": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{3,64}$"},
+    "statement": {"type": "string", "minLength": 10},
+    "knowledge_type": {
+      "enum": ["unpublished_observation", "prior_internal_experiment", "expert_judgement",
+               "process_constraint", "known_failure", "other"],
+      "description": "prior_internal_experiment means data was collected. expert_judgement means it was not. Treating them the same would let an opinion carry the weight of an experiment."
+    },
+    "source": {"type": "string", "description": "Who provided it"},
+    "visibility": {"const": "private"},
+    "evidence_class": {"const": "expert_knowledge"},
+    "confidence": {"enum": ["low", "moderate", "high"]},
+    "created_at": {"type": "string"},
+
+    "scope": {
+      "type": ["object", "null"],
+      "description": "Where this applies. Knowledge about one cell line at one stage is not knowledge about the process.",
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {"type": ["string", "null"]},
+        "cell_type": {"type": ["string", "null"]},
+        "cell_line": {"type": ["string", "null"]},
+        "stage": {"type": ["string", "null"]},
+        "donor": {"type": ["string", "null"]},
+        "equipment": {"type": ["string", "null"]}
+      }
+    },
+
+    "parameter_claims": {
+      "type": "array",
+      "description": "The structured part: a claim about a canonical parameter, which may narrow a search range or deprioritise a direction. Never a value to adopt.",
+      "items": {
+        "type": "object",
+        "required": ["parameter_id", "claim"],
+        "additionalProperties": false,
+        "properties": {
+          "parameter_id": {"type": "string", "description": "Must resolve in biosense/parameters.py"},
+          "claim": {"enum": ["avoid_above", "avoid_below", "prefer_range", "no_effect_seen",
+                             "effect_seen", "operational_limit"]},
+          "value": {"type": ["number", "null"]},
+          "lower": {"type": ["number", "null"]},
+          "upper": {"type": ["number", "null"]},
+          "unit": {"type": ["string", "null"]},
+          "consequence": {"type": ["string", "null"], "description": "What was observed to happen, in the user's words"}
+        }
+      }
+    },
+
+    "supporting_dataset_ids": {"type": "array", "items": {"type": "string"}},
+    "citable": {
+      "const": false,
+      "description": "Expert knowledge is never a literature citation. A claim needs a source, a paragraph and a verbatim quote; a recollection has none."
+    },
+    "may_set_protocol_value": {
+      "const": false,
+      "description": "It can change which parameter is investigated and over what range. It cannot supply the value, which stays a design choice until evidence supports it."
+    },
+    "notes": {"type": ["string", "null"]}
+  }
+}

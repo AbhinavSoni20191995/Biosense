@@ -74,7 +74,7 @@ Worth doing once, to confirm the clone is sound before you trust anything it
 prints:
 
 ```bash
-uv run --frozen python -m unittest          # expect: Ran 421 tests ... OK
+uv run --frozen python -m unittest          # expect: Ran 497 tests ... OK
 ```
 
 ### Notes that save time
@@ -211,7 +211,7 @@ Everything in **A** works natively in PowerShell. Two differences:
 | What you see | What it means |
 |---|---|
 | `uv: command not found` | uv installed to `~/.local/bin`; add it to PATH |
-| `Ran 421 tests ... FAILED` | the clone is not sound — do not trust its output; open an issue with the failure |
+| `Ran 497 tests ... FAILED` | the clone is not sound — do not trust its output; open an issue with the failure |
 | `no Chromium found` | PDF only. The HTML is complete; print it from a browser |
 | `address already in use` | something else holds the port; pass `--port 8080` |
 | `the engine declined to start` | a gate refused, not a crash. The message names which one |
