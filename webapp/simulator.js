@@ -81,6 +81,8 @@ async function boot() {
   sel.addEventListener('change', () => { noteFor(sel.value); run(); });
   noteFor('none');
 
+  $('#presetControl').addEventListener('click', () => applyPreset('control'));
+  $('#presetCandidate').addEventListener('click', () => applyPreset('candidate'));
   $('#resetBtn').addEventListener('click', () => {
     document.querySelectorAll('input[type=range][data-knob]').forEach(i => {
       i.value = i.dataset.default; i.dispatchEvent(new Event('input')); });
@@ -88,6 +90,8 @@ async function boot() {
   });
   $('#reseedBtn').addEventListener('click', () => {
     state.seed = (state.seed * 7 + 13) % 100000; run(); });
+  await candidates();
+  await projects();
   $('#playBtn').addEventListener('click', play);
   $('#scrub').addEventListener('input', e => { stop(); state.day = +e.target.value; draw(); });
   $('#slotA').addEventListener('click', () => hold('A'));
@@ -96,6 +100,135 @@ async function boot() {
   $('#exportBtn').addEventListener('click', exportSession);
   $('#carryBtn').addEventListener('click', carry);
   run();
+}
+
+/* ── which process is being simulated ─────────────────────── */
+/* The model is one project's model. A project that has no mechanistic model
+   says so and lists its knobs read-only, rather than borrowing this project's
+   sliders: an M-CSF control on a CAR-T process would invite a setpoint nobody
+   can run, and a prediction for it would be invented outright. */
+async function projects() {
+  let d;
+  try { d = await (await fetch('/api/projects')).json(); } catch (_) { return; }
+  state.projects = d.projects;
+  const sel = $('#project');
+  const simModel = (state.cfg && state.cfg.model_id) || 'ipsc_monocyte_v1';
+  d.projects.forEach(p => sel.append(Object.assign(
+    el('option', null, p.name + (p.has_simulator ? '' : '  (no model)')),
+    { value: p.project_id })));
+  const mine = d.projects.find(p => (p.simulator || {}).model_id === simModel)
+    || d.projects.find(p => p.has_simulator);
+  if (mine) sel.value = mine.project_id;
+  sel.addEventListener('change', () => showProject(sel.value));
+  showProject(sel.value);
+}
+
+function showProject(id) {
+  const p = (state.projects || []).find(x => x.project_id === id);
+  if (!p) return;
+  state.project = p;
+  const simModel = (state.cfg && state.cfg.model_id) || 'ipsc_monocyte_v1';
+  const servedByThisModel = (p.simulator || {}).model_id === simModel;
+
+  $('#projNote').textContent = [p.biological_system.species,
+    'from ' + p.biological_system.starting_cell, 'to ' + p.biological_system.target_cell,
+    p.biological_system.culture_format].filter(Boolean).join(' · ');
+
+  $('#modelled').hidden = !servedByThisModel;
+  $('#noModel').hidden = servedByThisModel;
+  if (servedByThisModel) { applyPreset('control'); return; }
+
+  $('#noModelWhy').textContent = p.has_simulator
+    ? 'This process has a model, but it is not the one this page runs. Its knobs are listed '
+      + 'below; no trajectory is produced for them here.'
+    : 'This process has no mechanistic model at all. Its knobs are real design variables you '
+      + 'can set in the lab, but nothing here predicts what they would do, and borrowing '
+      + "another process's model would produce a number rather than an answer.";
+  const host = $('#noModelKnobs'); host.textContent = '';
+  p.parameters.forEach(q => {
+    const r = el('div', 'knob');
+    const row = el('div', 'row');
+    row.append(el('span', 'nm', q.label || q.parameter_id));
+    const right = el('span');
+    right.append(el('span', 'val', fmtRange(q)), document.createTextNode(' '),
+      el('span', 'un', q.unit || ''));
+    row.append(right);
+    r.append(row);
+    if (q.bound_origin) r.append(el('p', 'note', 'limits from '
+      + q.bound_origin.source.replace(/_/g, ' ') + ': ' + q.bound_origin.basis));
+    host.append(r);
+  });
+}
+
+function fmtRange(q) {
+  return (q.minimum == null ? '?' : q.minimum) + ' – ' + (q.maximum == null ? '?' : q.maximum);
+}
+
+/* Candidates come from hypotheses the system actually formed, never from a
+   value invented for a button. If nothing has been proposed for this project
+   there is no candidate to offer, and the control says so rather than the
+   button quietly reproducing the control under a second name. */
+async function candidates() {
+  let d;
+  try { d = await (await fetch('/api/hypotheses')).json(); } catch (_) { return; }
+  state.candidates = {};
+  (d.hypotheses || []).forEach(r => {
+    const h = r.hypothesis, q = h.parameter;
+    if (q.candidate_value == null) return;
+    (state.candidates[h.project_id] = state.candidates[h.project_id] || []).push({
+      parameter_id: q.parameter_id, value: q.candidate_value,
+      label: q.label || q.parameter_id, from: h.hypothesis_id });
+  });
+}
+
+/* Control is this project's recorded current process, not the model's optimum.
+   That distinction is the whole point of a comparison: a control picked because
+   it flatters the candidate is not a control. */
+function applyPreset(which) {
+  const p = state.project;
+  if (!p) return;
+  const byKnob = {}, byId = {};
+  p.parameters.forEach(q => {
+    byId[q.parameter_id] = q;
+    if (q.simulator_mapping) byKnob[q.simulator_mapping] = q;
+  });
+  const props = (state.candidates || {})[p.project_id] || [];
+  const want = {};
+  if (which === 'candidate') {
+    props.forEach(c => {
+      const q = byId[c.parameter_id];
+      if (q && q.simulator_mapping) want[q.simulator_mapping] = c.value;
+    });
+  }
+
+  let changed = 0;
+  document.querySelectorAll('input[type=range][data-knob]').forEach(i => {
+    const k = i.dataset.knob;
+    const q = byKnob[k];
+    if (!q) return;
+    const v = which === 'candidate' && k in want ? want[k] : q.default_value;
+    if (v == null) return;
+    if (+i.value !== +v) changed++;
+    i.value = v; i.dispatchEvent(new Event('input'));
+  });
+
+  $('#presetControl').setAttribute('aria-pressed', String(which === 'control'));
+  $('#presetCandidate').setAttribute('aria-pressed', String(which === 'candidate'));
+  $('#presetCandidate').disabled = !props.length;
+  $('#presetNote').textContent = which === 'control'
+    ? (props.length ? "the process as recorded, not the model's optimum"
+                    : "the process as recorded; nothing has been proposed for it yet")
+    : props.map(c => c.label + ' → ' + c.value).join(', ')
+      + ' (from ' + props[0].from + ')';
+  if (changed) run();
+}
+
+/* Any manual move makes the condition custom: it is no longer either preset,
+   and leaving a preset highlighted would misdescribe what is on screen. */
+function markCustom() {
+  $('#presetControl').setAttribute('aria-pressed', 'false');
+  $('#presetCandidate').setAttribute('aria-pressed', 'false');
+  $('#presetNote').textContent = 'custom';
 }
 
 function noteFor(id) {
@@ -117,7 +250,7 @@ function knobRow(k) {
   sl.dataset.knob = k.id; sl.dataset.default = k.default;
   sl.setAttribute('aria-label', k.label + ' in ' + k.unit);
   sl.addEventListener('input', () => { val.textContent = (+sl.value).toString(); });
-  sl.addEventListener('change', run);
+  sl.addEventListener('change', () => { markCustom(); run(); });
   w.append(row, sl);
   if (k.note) {
     w.append(el('p', 'note', k.note));

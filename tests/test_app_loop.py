@@ -626,6 +626,39 @@ class AppServerTests(unittest.TestCase):
         self.assertEqual(1, len(temp))
         self.assertEqual('not_modelled', temp[0]['simulator_coverage'])
 
+    def test_the_simulator_config_names_the_project_whose_model_it_is(self):
+        """Stated rather than inferred from the knob names, so the interface can
+        tell which project this page serves instead of quietly guessing wrong."""
+        from biosense import projects as PJ
+        code, body = self._get('/api/sim/config')
+        model_id = json.loads(body)['model_id']
+        owners = [p.project_id for p in PJ.load_all()
+                  if (p.summary().get('simulator') or {}).get('model_id') == model_id]
+        self.assertEqual(1, len(owners), f'{model_id} should belong to exactly one project')
+
+    def test_the_simulator_page_refuses_a_project_it_has_no_model_for(self):
+        """An M-CSF control on a CAR-T process would invite a setpoint nobody can
+        run, and a prediction for it would be invented outright."""
+        code, body = self._get('/simulator.js')
+        js = body.decode()
+        self.assertIn('servedByThisModel', js)
+        self.assertIn('no mechanistic model at all', js)
+        # the knobs it lists for such a project come from that project, not this model
+        self.assertIn("p.parameters.forEach", js)
+
+    def test_the_candidate_preset_comes_from_a_hypothesis_not_a_constant(self):
+        """A value invented for a button is not a candidate, and a candidate
+        button that reproduces the control under a second name is worse."""
+        code, body = self._get('/simulator.js')
+        js = body.decode()
+        self.assertIn("fetch('/api/hypotheses')", js)
+        self.assertIn('candidate_value', js)
+        code, body = self._get('/api/hypotheses')
+        for row in json.loads(body)['hypotheses']:
+            q = row['hypothesis']['parameter']
+            if q.get('candidate_value') is not None:
+                self.assertNotEqual(q['candidate_value'], q.get('current_value'))
+
     def test_the_four_way_nav_is_the_same_on_every_page(self):
         """A nav that differs per page is how a section quietly becomes
         unreachable from the one place someone looks for it."""

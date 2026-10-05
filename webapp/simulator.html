@@ -161,7 +161,25 @@ and nothing here decides anything.</p>
 
   <!-- ── knobs ─────────────────────────────────────────── -->
   <section class="glass card knobs">
-    <h3><span class="eyebrow">Conditions</span></h3>
+    <h3><span class="eyebrow">Process</span></h3>
+    <select id="project" aria-label="Which process to simulate"></select>
+    <p class="note" id="projNote"
+       style="display:block;font-size:12.5px;color:var(--ink-3);margin:8px 0 0"></p>
+
+    <div id="noModel" hidden>
+      <p class="note" id="noModelWhy"
+         style="display:block;font-size:13px;color:var(--ink-2);margin:12px 0 8px"></p>
+      <div id="noModelKnobs"></div>
+    </div>
+
+    <div id="modelled">
+    <h3 style="margin-top:18px"><span class="eyebrow">Conditions</span></h3>
+    <div class="acts" id="presets" style="margin:0 0 12px">
+      <button class="btn" id="presetControl" type="button" aria-pressed="true">control</button>
+      <button class="btn" id="presetCandidate" type="button" aria-pressed="false">candidate</button>
+      <span class="note" id="presetNote"
+            style="font-size:12px;color:var(--ink-3);align-self:center"></span>
+    </div>
     <div id="knobs"></div>
     <div class="stagegrp">
       <span class="lbl">Stage durations · days</span>
@@ -175,6 +193,7 @@ and nothing here decides anything.</p>
     <div class="acts">
       <button class="btn" id="resetBtn" type="button">reset</button>
       <button class="btn" id="reseedBtn" type="button">new seed</button>
+    </div>
     </div>
   </section>
 

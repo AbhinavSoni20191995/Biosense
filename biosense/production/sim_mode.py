@@ -472,6 +472,10 @@ def config():
     return dict(
         process='ipsc_to_monocyte',
         process_label='iPSC → monocyte, four stages',
+        # The project profile whose simulator this is. Stated rather than left to
+        # be inferred from the knob names, so an interface can tell which project
+        # this page serves instead of guessing and quietly guessing wrong.
+        model_id='ipsc_monocyte_v1',
         knobs=[dict(k) for k in KNOBS],
         stages=[dict(s) for s in STAGES],
         challenges=[dict(c) for c in CHALLENGES],
