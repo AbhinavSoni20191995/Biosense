@@ -1,0 +1,145 @@
+[
+  {
+    "analysis_id": "analysis-disc_a682bc475a31-facs-mcsf-fixture",
+    "plan_ref": "disc_a682bc475a31-facs-mcsf-fixture",
+    "tool": "cytometry.population_comparison",
+    "tool_version": "1.0.0",
+    "software": "scipy 1.18.1, numpy 2.5.3",
+    "evidence_class": "derived_analysis",
+    "source_evidence_class": "synthetic_fixture",
+    "source_visibility": "public",
+    "confidence": "moderate",
+    "statistics": [
+      {
+        "readout": "CD14_pos_pct",
+        "group_a": "control",
+        "group_b": "mcsf_high",
+        "n_a": 3,
+        "n_b": 3,
+        "n": 6,
+        "mean_a": 41.181666666666665,
+        "mean_b": 67.58,
+        "sd_a": 3.995492251692313,
+        "sd_b": 4.077686231185526,
+        "effect": 26.398333333333333,
+        "effect_type": "difference",
+        "ci_low": 21.471666666666657,
+        "ci_high": 31.488333333333337,
+        "ci_method": "percentile bootstrap, 4000 resamples, seed 0",
+        "p_value": 0.0013204658571528134,
+        "q_value": 0.001760621142870418,
+        "test": "Welch's t-test",
+        "direction": "increase",
+        "note": "no rank test: it needs at least 4 per group and this has 3 and 3; n counted as 3 donors (donor); 6 rows averaged within each donor first, so repeated wells from one donor count once for control; n counted as 3 donors (donor); 6 rows averaged within each donor first, so repeated wells from one donor count once for mcsf_high"
+      },
+      {
+        "readout": "CD16_pos_pct",
+        "group_a": "control",
+        "group_b": "mcsf_high",
+        "n_a": 3,
+        "n_b": 3,
+        "n": 6,
+        "mean_a": 16.933333333333334,
+        "mean_b": 30.995000000000005,
+        "sd_a": 1.1978139811061377,
+        "sd_b": 0.8660398374208891,
+        "effect": 14.061666666666671,
+        "effect_type": "difference",
+        "ci_low": 12.761666666666667,
+        "ci_high": 15.361666666666668,
+        "ci_method": "percentile bootstrap, 4000 resamples, seed 0",
+        "p_value": 0.00014901244347994676,
+        "q_value": 0.0005960497739197871,
+        "test": "Welch's t-test",
+        "direction": "increase",
+        "note": "no rank test: it needs at least 4 per group and this has 3 and 3; n counted as 3 donors (donor); 6 rows averaged within each donor first, so repeated wells from one donor count once for control; n counted as 3 donors (donor); 6 rows averaged within each donor first, so repeated wells from one donor count once for mcsf_high"
+      },
+      {
+        "readout": "viability_pct",
+        "group_a": "control",
+        "group_b": "mcsf_high",
+        "n_a": 3,
+        "n_b": 3,
+        "n": 6,
+        "mean_a": 93.96333333333332,
+        "mean_b": 91.04166666666667,
+        "sd_a": 0.5877144998494933,
+        "sd_b": 0.22507406188483203,
+        "effect": -2.9216666666666526,
+        "effect_type": "difference",
+        "ci_low": -3.518333333333331,
+        "ci_high": -2.34999999999998,
+        "ci_method": "percentile bootstrap, 4000 resamples, seed 0",
+        "p_value": 0.006860086942429901,
+        "q_value": 0.006860086942429901,
+        "test": "Welch's t-test",
+        "direction": "decrease",
+        "note": "no rank test: it needs at least 4 per group and this has 3 and 3; n counted as 3 donors (donor); 6 rows averaged within each donor first, so repeated wells from one donor count once for control; n counted as 3 donors (donor); 6 rows averaged within each donor first, so repeated wells from one donor count once for mcsf_high"
+      },
+      {
+        "readout": "CD206_pos_pct",
+        "group_a": "control",
+        "group_b": "mcsf_high",
+        "n_a": 3,
+        "n_b": 3,
+        "n": 6,
+        "mean_a": 33.501666666666665,
+        "mean_b": 57.51833333333334,
+        "sd_a": 1.7494308598322272,
+        "sd_b": 2.513574811564862,
+        "effect": 24.016666666666673,
+        "effect_type": "difference",
+        "ci_low": 21.35333333333333,
+        "ci_high": 26.72833333333333,
+        "ci_method": "percentile bootstrap, 4000 resamples, seed 0",
+        "p_value": 0.0003353421651750053,
+        "q_value": 0.0006706843303500106,
+        "test": "Welch's t-test",
+        "direction": "increase",
+        "note": "no rank test: it needs at least 4 per group and this has 3 and 3; n counted as 3 donors (donor); 6 rows averaged within each donor first, so repeated wells from one donor count once for control; n counted as 3 donors (donor); 6 rows averaged within each donor first, so repeated wells from one donor count once for mcsf_high"
+      }
+    ],
+    "key_findings": [
+      {
+        "finding": "CD14_pos_pct: 41.18 in control vs 67.58 in mcsf_high (+26.4)",
+        "basis": "Welch's t-test, p=0.00132, BH-q=0.00176, n=3 vs 3, 95% CI [21.5, 31.5]"
+      },
+      {
+        "finding": "CD206_pos_pct: 33.5 in control vs 57.52 in mcsf_high (+24.02)",
+        "basis": "Welch's t-test, p=0.000335, BH-q=0.000671, n=3 vs 3, 95% CI [21.4, 26.7]"
+      },
+      {
+        "finding": "CD16_pos_pct: 16.93 in control vs 31 in mcsf_high (+14.06)",
+        "basis": "Welch's t-test, p=0.000149, BH-q=0.000596, n=3 vs 3, 95% CI [12.8, 15.4]"
+      },
+      {
+        "finding": "viability_pct: 93.96 in control vs 91.04 in mcsf_high (-2.922)",
+        "basis": "Welch's t-test, p=0.00686, BH-q=0.00686, n=3 vs 3, 95% CI [-3.52, -2.35]"
+      }
+    ],
+    "candidate_process_parameters": [
+      {
+        "parameter": "mcsf_ng_ml",
+        "direction": "increase",
+        "arm_scope": null,
+        "basis": "3 yield/identity readout(s) higher in the group with more of this factor (CD14_pos_pct, CD16_pos_pct, CD206_pos_pct). Source: a SYNTHETIC committed fixture, which is invented data and not a measurement of anything (facs-mcsf-fixture), which the dataset states that M-CSF concentration is what differs between its groups. This is evidence that mcsf_ng_ml is worth testing, not a value to adopt and not a conclusion that it must move. Counterweight: viability_pct moved unfavourably in the same comparison, so any move has to be read against that.",
+        "confidence": "moderate",
+        "suggested_range": null
+      }
+    ],
+    "provenance": {
+      "executed_at": "2026-10-05T14:36:28.636555+00:00",
+      "executed_by": "benchmark (deterministic path)",
+      "code_sha256": "9e35523bd0892780624168ce80f9030c833bc058a3042667bd305e9d0252ba9b",
+      "code_revision": {
+        "commit": "448ba822041536326bd6ccb5f480283623a3c231",
+        "package_dirty": true
+      },
+      "input_checksums": [
+        "78c05af0992cdbdce9f3164f24d9cd0fc4489e432a5082a7e6312029f694af6b"
+      ],
+      "plan_sha256": "86e4704d85de6183219a4c11a87986f6d11eb98272106c0a382baf6c6e99377d",
+      "duration_s": 0.021
+    }
+  }
+]

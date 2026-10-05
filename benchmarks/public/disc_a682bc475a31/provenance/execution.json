@@ -1,0 +1,22 @@
+{
+  "biosense_version": "0.2.0",
+  "git_commit": "448ba822041536326bd6ccb5f480283623a3c231",
+  "git_dirty": true,
+  "code_sha256": "9e35523bd0892780624168ce80f9030c833bc058a3042667bd305e9d0252ba9b",
+  "project_version": "1.0.0",
+  "simulator_model": "ipsc_monocyte_v1",
+  "simulator_model_version": "1.0.0",
+  "tool_versions": {
+    "cytometry.population_comparison": "1.0.0"
+  },
+  "dataset_checksums": {
+    "facs-mcsf-fixture": [
+      "78c05af0992cdbdce9f3164f24d9cd0fc4489e432a5082a7e6312029f694af6b"
+    ]
+  },
+  "seeds": {
+    "simulator": 7
+  },
+  "runtime_s": 0.082,
+  "ai": null
+}

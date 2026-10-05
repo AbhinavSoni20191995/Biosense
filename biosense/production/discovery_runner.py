@@ -153,6 +153,10 @@ def run_synthetic(request, out_dir, *, on_event=None, projects_dir=None, dirs=No
     emit({'kind': 'tool', 'stage': 'testing_simulator',
           'simple': sim.get('prediction_note') or 'Simulator coverage checked.',
           'technical': f'prediction={sim.get("prediction")}'})
+    emit({'kind': 'tool', 'stage': 'generating_report',
+          'simple': 'Report written: the summary, the limitations and the recommended next '
+                    'experiment.',
+          'technical': 'summary.md, tables/, figures/, detailed/ written beside the artifacts'})
     emit({'kind': 'terminal', 'stage': 'complete',
           'simple': 'The demonstration run finished.',
           'technical': f'scorecard {result["scorecard"]["passed"]} passed, '

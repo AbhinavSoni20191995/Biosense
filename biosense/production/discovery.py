@@ -183,6 +183,50 @@ def _constraints(c, project):
     return {'notes': notes, 'parameter_bounds': bounds}
 
 
+def from_benchmark_config(cfg, *, runtime_mode, projects_dir=None, request_id=None):
+    """A DiscoveryRequest from a committed BenchmarkConfig.
+
+    The two documents were always nearly the same thing — a benchmark
+    configuration is the structured form of "what shall we look into". This lets
+    a person run a published benchmark from the browser, under either runtime,
+    without the configuration being retyped into a different shape and drifting.
+    """
+    K.require_valid('benchmark_config', cfg)
+    return build(
+        project_id=cfg['project_id'], objective=cfg['objective'],
+        runtime_mode=runtime_mode,
+        research_context=_context_doc(cfg.get('research_context')),
+        dataset_ids=cfg.get('datasets') or [],
+        expert_knowledge_ids=cfg.get('expert_knowledge') or [],
+        uncertainty=cfg.get('uncertainty'), control=cfg.get('control'),
+        candidate_values=cfg.get('candidate_values'),
+        title=cfg.get('title'), notes=cfg.get('notes'),
+        request_id=request_id, projects_dir=projects_dir)
+
+
+def _context_doc(raw):
+    """A research context from a benchmark config's shorthand, or None.
+
+    A benchmark config carries the fields without the envelope the contract
+    wants, so it is rebuilt through `context()` rather than patched: that way the
+    strictness rule and the field validation apply to it exactly as they would to
+    one a person filled in.
+    """
+    if not raw:
+        return None
+    if raw.get('schema_version'):
+        K.require_valid('research_context', raw)
+        return raw
+    return CTX.context(
+        strictness=raw.get('strictness', 'prefer'),
+        species=raw.get('species') or (), cell_types=raw.get('cell_types') or (),
+        tissues=raw.get('tissues') or (), states=raw.get('states') or (),
+        disease_context=raw.get('disease_context') or (),
+        modalities=raw.get('modalities') or (), assays=raw.get('assays') or (),
+        therapy_context=raw.get('therapy_context') or (),
+        exclude=raw.get('exclude') or (), notes=raw.get('notes'))
+
+
 # ── what the person is told before anything runs ────────────────────────
 def summarise(req, *, projects_dir=None):
     """The request in plain language, for the confirmation step and the report."""

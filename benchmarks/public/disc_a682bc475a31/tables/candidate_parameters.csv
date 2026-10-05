@@ -1,0 +1,2 @@
+parameter_id,direction,confidence,simulator_coverage,basis
+mcsf_ng_ml,increase,moderate,modelled,"3 yield/identity readout(s) higher in the group with more of this factor (CD14_pos_pct, CD16_pos_pct, CD206_pos_pct). Source: a SYNTHETIC committed fixture, which is invented data and not a measurement of anything (facs-mcsf-fixture), which the dataset states that M-CSF concentration is what differs"

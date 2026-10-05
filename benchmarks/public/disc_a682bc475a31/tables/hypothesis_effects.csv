@@ -1,0 +1,12 @@
+hypothesis_id,metric,unit,estimate_type,baseline,candidate,absolute_change,change_unit,relative_change_pct,magnitude_estimated,withheld_reason
+HYP-disc_a682bc475a31-01,CD14_pos_pct,%,derived,41.181666666666665,67.58,26.398333,percentage_points,64.1,True,
+HYP-disc_a682bc475a31-01,CD16_pos_pct,%,derived,16.933333333333334,30.995000000000005,14.061667,percentage_points,83.04,True,
+HYP-disc_a682bc475a31-01,viability_pct,%,derived,93.96333333333332,91.04166666666667,-2.921667,percentage_points,-3.11,True,
+HYP-disc_a682bc475a31-01,CD206_pos_pct,%,derived,33.501666666666665,57.51833333333334,24.016667,percentage_points,71.69,True,
+HYP-disc_a682bc475a31-01,harvest_yield_per_input_ipsc,cells/input_cell,simulated,17.9908,29.6618,11.671,cells/input_cell,64.87,True,
+HYP-disc_a682bc475a31-01,harvest_total_e6_per_ml,1e6 cells/mL,simulated,8.9954,14.8309,5.8355,1e6 cells/mL,64.87,True,
+HYP-disc_a682bc475a31-01,final_viability_pct,%,simulated,80.78,80.78,0.0,percentage_points,0.0,True,
+HYP-disc_a682bc475a31-01,monocyte_gate_pct,%,simulated,76.66,90.25,13.59,percentage_points,17.73,True,
+HYP-disc_a682bc475a31-01,peak_vcd_e6_per_ml,1e6 cells/mL,simulated,4.7619,4.7619,0.0,1e6 cells/mL,0.0,True,
+HYP-disc_a682bc475a31-01,agg_diameter_mean_um,um,simulated,273.9,273.9,0.0,um,0.0,True,
+HYP-disc_a682bc475a31-01,mean_condition_score,score,simulated,92.7,92.7,0.0,score,0.0,True,

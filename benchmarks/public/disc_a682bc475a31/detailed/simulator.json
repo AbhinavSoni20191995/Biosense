@@ -1,0 +1,392 @@
+{
+  "project_id": "ipsc_macrophage",
+  "project_version": "1.0.0",
+  "model": {
+    "model_id": "ipsc_monocyte_v1",
+    "model_version": "1.0.0",
+    "status": "current",
+    "label": "iPSC → monocyte mechanistic stand-in",
+    "evidence_status": "synthetic_demonstration",
+    "not_modelled_note": "Temperature, medium composition beyond glucose/lactate/ammonia, and any factor without a term in the model produce no prediction."
+  },
+  "handoff": {
+    "applied": [
+      {
+        "parameter_id": "mcsf_ng_ml",
+        "direction": "increase",
+        "simulator_coverage": "modelled",
+        "label": "M-CSF",
+        "unit": "ng/mL",
+        "knob": "mcsf",
+        "current_value": 25.0,
+        "minimum": 0.0,
+        "maximum": 150.0
+      }
+    ],
+    "skipped": [],
+    "proposed": [],
+    "coverage": {
+      "modelled": 1,
+      "not_modelled": 0,
+      "proposed_terms": 0,
+      "has_model": true,
+      "model_id": "ipsc_monocyte_v1",
+      "model_version": "1.0.0"
+    }
+  },
+  "control": {
+    "setpoints": {
+      "seed_density": 0.5,
+      "agitation_rpm": 60.0,
+      "do_setpoint": 0.2,
+      "feed_fraction": 0.5,
+      "feed_interval_h": 24.0,
+      "rocki_hours": 24.0,
+      "passage_trigger": "day",
+      "passage_day": 4.0,
+      "passage_diameter_um": 250.0,
+      "bmp4": 25.0,
+      "vegf": 50.0,
+      "mcsf": 25.0,
+      "il3": 25.0
+    },
+    "signature": {
+      "harvest_per_input_ipsc": 17.9908,
+      "harvest_total_e6_per_ml": 8.9954,
+      "cumulative_differentiation_efficiency": 0.0112,
+      "final_viability_pct": 80.78,
+      "peak_vcd_e6_per_ml": 4.7619,
+      "peak_vcd_day": 15.0,
+      "worst_day": 22.08,
+      "worst_state": "strained",
+      "worst_score": 80.0,
+      "days_failing": 0,
+      "days_strained": 1,
+      "mean_score": 92.7,
+      "monocyte_gate_pct": 76.66,
+      "agg_diameter_final_um": 273.9
+    },
+    "label": "control"
+  },
+  "candidate": {
+    "setpoints": {
+      "seed_density": 0.5,
+      "agitation_rpm": 60.0,
+      "do_setpoint": 0.2,
+      "feed_fraction": 0.5,
+      "feed_interval_h": 24.0,
+      "rocki_hours": 24.0,
+      "passage_trigger": "day",
+      "passage_day": 4.0,
+      "passage_diameter_um": 250.0,
+      "bmp4": 25.0,
+      "vegf": 50.0,
+      "mcsf": 50.0,
+      "il3": 25.0
+    },
+    "signature": {
+      "harvest_per_input_ipsc": 29.6618,
+      "harvest_total_e6_per_ml": 14.8309,
+      "cumulative_differentiation_efficiency": 0.0185,
+      "final_viability_pct": 80.78,
+      "peak_vcd_e6_per_ml": 4.7619,
+      "peak_vcd_day": 15.0,
+      "worst_day": 22.08,
+      "worst_state": "strained",
+      "worst_score": 80.0,
+      "days_failing": 0,
+      "days_strained": 1,
+      "mean_score": 92.7,
+      "monocyte_gate_pct": 90.25,
+      "agg_diameter_final_um": 273.9
+    },
+    "label": "candidate",
+    "changed": [
+      {
+        "parameter_id": "mcsf_ng_ml",
+        "knob": "mcsf",
+        "from": 25.0,
+        "to": 50.0,
+        "unit": "ng/mL",
+        "label": "M-CSF"
+      }
+    ]
+  },
+  "clamped": [],
+  "effects": [
+    {
+      "metric": "harvest_yield_per_input_ipsc",
+      "label": "Monocytes per input iPSC",
+      "unit": "cells/input_cell",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 17.9908,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 29.6618,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 11.671,
+      "change_unit": "cells/input_cell",
+      "relative_change_pct": 64.87,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "harvest_total_e6_per_ml",
+      "label": "Harvested cells",
+      "unit": "1e6 cells/mL",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 8.9954,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 14.8309,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 5.8355,
+      "change_unit": "1e6 cells/mL",
+      "relative_change_pct": 64.87,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "final_viability_pct",
+      "label": "Final viability",
+      "unit": "%",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 80.78,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 80.78,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "no_change",
+      "absolute_change": 0.0,
+      "change_unit": "percentage_points",
+      "relative_change_pct": 0.0,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": null,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "monocyte_gate_pct",
+      "label": "Cells in the monocyte gate",
+      "unit": "%",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 76.66,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 90.25,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "increase",
+      "absolute_change": 13.59,
+      "change_unit": "percentage_points",
+      "relative_change_pct": 17.73,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": true,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "peak_vcd_e6_per_ml",
+      "label": "Peak viable cell density",
+      "unit": "1e6 cells/mL",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 4.7619,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 4.7619,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "no_change",
+      "absolute_change": 0.0,
+      "change_unit": "1e6 cells/mL",
+      "relative_change_pct": 0.0,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": null,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "agg_diameter_mean_um",
+      "label": "Mean aggregate diameter",
+      "unit": "um",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 273.9,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 273.9,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "no_change",
+      "absolute_change": 0.0,
+      "change_unit": "um",
+      "relative_change_pct": 0.0,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": null,
+      "favourable": null,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    },
+    {
+      "metric": "mean_condition_score",
+      "label": "Mean condition score",
+      "unit": "score",
+      "estimate_type": "simulated",
+      "baseline": {
+        "value": 92.7,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:control",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "candidate": {
+        "value": 92.7,
+        "estimate_type": "simulated",
+        "source_ref": "ipsc_monocyte_v1:candidate",
+        "n": null,
+        "sd": null,
+        "note": null
+      },
+      "magnitude_estimated": true,
+      "withheld_reason": null,
+      "direction": "no_change",
+      "absolute_change": 0.0,
+      "change_unit": "score",
+      "relative_change_pct": 0.0,
+      "relative_withheld_reason": null,
+      "fold_change": null,
+      "interval": null,
+      "higher_is_better": true,
+      "favourable": null,
+      "evidence_refs": [],
+      "limitations": [
+        "Simulated by ipsc_monocyte_v1 v1.0.0. synthetic_demonstration",
+        "A mechanistic stand-in, not a validated digital twin. No number here is a measurement of any real cell."
+      ]
+    }
+  ],
+  "proposed_terms": [],
+  "applied_terms": {},
+  "calibrated_candidate_signature": null,
+  "prediction": "simulated",
+  "prediction_note": "Every number in `effects` was produced by the project's mechanistic stand-in and is labelled SIMULATED. It is not a measurement and not a promise about a real culture.",
+  "evidence_status": "synthetic_demonstration",
+  "seed": 7,
+  "challenge": "none"
+}
