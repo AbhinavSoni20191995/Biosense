@@ -110,6 +110,15 @@ For most people there is nothing to install and no terminal to open.
 register an agent, or keep anybody's laptop switched on. The service runs the
 Omnigent runtime and the agent bundle inside itself.
 
+> **Which image is behind that link matters, and the page says so.** A service
+> deployed from `deploy/Dockerfile.ai` with a model key offers
+> **REAL AI — ONLINE**. One deployed from `deploy/Dockerfile` — the original,
+> credential-free image — offers **SYNTHETIC DEMO** only, and shows the real
+> option greyed with the reason. The badge on screen is always the truth about
+> which one you are using. Switching an existing service over is a Dockerfile
+> path, a volume mount at `/app/runs` and one secret:
+> [deploy/README.md](deploy/README.md).
+
 **What it costs you: nothing. What it costs the service: model credits** — which
 is why real runs on the public instance are capped, and the caps are shown in
 the page before you press anything:
