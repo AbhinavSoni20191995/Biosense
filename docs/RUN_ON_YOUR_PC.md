@@ -1,15 +1,20 @@
 # Running BioSense on your own computer
 
-Two things you can run, and they have very different requirements.
+**BioSense is a web application.** You start it once in a terminal and everything
+else happens in the browser.
 
-| | What you get | Needs an API key | Needs internet |
-|---|---|---|---|
-| **A. The console** | type a question, watch the loop, get a reasoning report | **no** | only to install, once |
-| **B. The Omnigent run** | the same loop, driven by a model, with live literature search | **yes** | yes |
+There are two paths, and the difference is only whether the AI is real.
 
-Start with **A**. It is the one to record for a demo, it costs nothing to run,
-and if it works you know the whole toolchain is sound before credentials enter
-the picture.
+| | **Simple path** | **Real AI** |
+|---|---|---|
+| What you get | the whole interface: projects, discovery, simulator, protocol, benchmarks | the same interface, with the discovery agents actually doing the work |
+| Needs an API key | no | yes |
+| Needs internet | only to install, once | yes |
+| Extra software | none | Omnigent, plus a model provider |
+
+Start with the **simple path**. It costs nothing, it needs no credentials, and if
+it works you know the whole toolchain is sound before credentials enter the
+picture.
 
 ---
 
@@ -45,7 +50,7 @@ export PATH="$HOME/.local/bin:$PATH"       # add to ~/.zshrc or ~/.bashrc to kee
 
 ---
 
-## A. The console
+## A. The simple path
 
 ```bash
 git clone https://github.com/AbhinavSoni20191995/Biosense.git
@@ -54,28 +59,46 @@ uv sync --locked
 uv run --frozen python -m biosense.production.app --runs runs --static webapp
 ```
 
+Open **<http://127.0.0.1:8000>**. That is the whole setup.
+
+Then, in the browser:
+
+1. **Pick a project** (or create one — see *Making your own process* below).
+2. **State your objective** in your own words.
+3. Optionally open *Research context, data and constraints* to set the evidence
+   scope, tick the datasets you want used, and name the values you want tested.
+4. Leave the runtime on **SYNTHETIC DEMO**.
+5. Press **Run AI discovery**.
+
+You will see the twelve stages tick through, then the hypothesis, the evidence,
+the analyses, the candidate parameters and one recommended protocol. From there
+you can open a candidate in the **Simulator**, export the protocol, or build a
+**benchmark** from the run.
+
+The other tabs:
+
+- **Quick loop** — the older free-text stand-in loop. Type a question, watch it
+  run in about a second and a half. Good for a demo.
+- **Simulator** — the same reactor with the knobs in your hands. Move a setpoint,
+  watch the vessel and the instruments respond day by day, compare two
+  conditions. See [SIMULATOR_MODE.md](SIMULATOR_MODE.md), and
+  [BIOSIMULATOR_MODEL.md](BIOSIMULATOR_MODEL.md) for how it computes an output.
+- **Data** — what is registered, what can be analysed, and what cannot.
+- **Runs** — everything on disk.
+
 No branch flag: the default branch is the current one. The repository also
 carries older branches from earlier in the project's history — `soni_demo2` and
-a session branch — and cloning either of those gets code that predates the
-console, the charts and the reports.
-
-Open **<http://127.0.0.1:8000>**, type a question, press *Run the loop*.
-
-The **Simulator** tab beside it is the same reactor with the knobs in your hands:
-move a setpoint, watch the vessel and the instruments respond day by day, compare
-two conditions. It runs in about a tenth of a second and needs nothing extra —
-see [docs/SIMULATOR_MODE.md](SIMULATOR_MODE.md).
-
-That is the whole setup. On a clean clone this takes about a minute, most of it
-downloading numpy and scipy, and a run of the BACH2 comparison then finishes in
-under two seconds.
+a session branch — and cloning either of those gets code that predates all of
+this.
 
 Worth doing once, to confirm the clone is sound before you trust anything it
 prints:
 
 ```bash
-uv run --frozen python -m unittest          # expect: Ran 563 tests ... OK
+uv run --frozen python -m unittest          # expect: Ran 785 tests ... OK
 ```
+
+---
 
 ### Notes that save time
 
@@ -119,52 +142,136 @@ numbers should come out identical — the whole path is deterministic.
 
 ---
 
-## B. The Omnigent-driven run
+## Making your own process
 
-Everything above still applies; this adds a model on top. Install Omnigent as a
-**separate tool**, not into this project's environment:
+The project that ships is an example. To make your own, press **create project**
+and you are offered:
+
+- **the universal bioreactor set** — impeller, dissolved oxygen, feed schedule,
+  feed interval, seeding density, temperature, stage length. Same meaning in
+  every project.
+- **your own parameters**, each with a declared relationship to the simulator:
+  *design variable only* (real, not predicted — the honest default), *AI-proposed
+  response* (the agents propose how it behaves from cited claims; predicts, and
+  says `DE NOVO · UNCALIBRATED`), or *you describe it* (your own experience;
+  predicts, and any value resting on it is a design choice).
+
+Projects you create live in your workspace under the private data root. They are
+never written into the repository and never served as files.
+
+---
+
+## B. Real AI
+
+Real AI needs an **Omnigent runtime**, because that is what orchestrates the
+specialist agents, and a **model provider**, because that is what they think
+with. BioSense never starts either for you: it detects them and tells you which
+part is missing.
+
+### 1. Install Omnigent
 
 ```bash
 uv tool install --python 3.12 omnigent
-export PATH="$HOME/.local/bin:$PATH"
-omnigent --version                          # expect 0.16.0 or later
+export PATH="$HOME/.local/bin:$PATH"      # add to ~/.zshrc or ~/.bashrc to keep it
 ```
 
-Give it credentials, either way round:
+### 2. Give it model credentials
 
 ```bash
-export ANTHROPIC_API_KEY=sk-...             # read straight from the environment
+export ANTHROPIC_API_KEY=sk-...           # read directly, no interactive setup
 # or, on a Claude subscription:
 curl -fsSL https://claude.ai/install.sh | bash
 claude auth login --claudeai
 ```
 
-On Windows, set the key with `$env:ANTHROPIC_API_KEY="sk-..."`, or use WSL —
-Omnigent's sandbox expects a Unix-like environment and WSL is the smoother path.
+### 3. Start the runtime, then BioSense
 
-Check everything that costs nothing **before** spending a token. This validates
-all six agent specs through Omnigent's own parser:
+From the repository root — the runner's working directory is where you launch
+it, and that is what makes `runs/` the one BioSense reads:
 
 ```bash
+omnigent start                            # local server + a runner, in the background
+
+BIOSENSE_RUNTIME_MODE=local \
+BIOSENSE_ALLOWED_RUNTIMES=synthetic,local \
+  uv run --frozen python -m biosense.production.app --runs runs --static webapp
+```
+
+Open <http://127.0.0.1:8000>, choose **REAL AI — LOCAL**, and press
+**Run AI discovery**. You never retype the question anywhere else.
+
+A loopback Omnigent server runs as a single local user and needs no login, so
+there is nothing else to configure.
+
+### If it says the runtime is unavailable
+
+It will say which of these it is, and the command that fixes it:
+
+| What it says | What to do |
+|---|---|
+| The Omnigent client library is not installed | `uv sync --extra omnigent` |
+| Nothing answered at the configured server | `omnigent start` |
+| No online runner | `omnigent host --server http://127.0.0.1:6767` |
+| The agent is not registered | `omnigent server --agent discovery_loop` |
+| The server requires authentication | `omnigent login <server>`, then set `BIOSENSE_OMNIGENT_TOKEN` |
+| The runs directory is outside the workspace | start BioSense with `--runs` inside the directory you launched `omnigent start` from |
+
+**It will not fall back to the synthetic path.** A synthetic answer presented as
+a real one is the one thing this product must never do.
+
+### A remote Omnigent server
+
+```bash
+export BIOSENSE_RUNTIME_MODE=remote
+export BIOSENSE_OMNIGENT_SERVER=https://your-omnigent-server
+export BIOSENSE_OMNIGENT_TOKEN="$(cat ~/.omnigent/token)"   # or BIOSENSE_..._TOKEN_FILE
+export BIOSENSE_ALLOWED_RUNTIMES=synthetic,remote
+uv run --frozen python -m biosense.production.app --runs runs --static webapp
+```
+
+The token is read once at startup, sent as an `Authorization: Bearer` header, and
+never reaches the browser, an event, a log line or an error message. BioSense
+stores no password of yours: signing in through the page forwards your
+credentials to that Omnigent server once and keeps only the session token it
+returns, server-side.
+
+One honest limitation: with a remote runtime the agents write their artifacts on
+the runner's filesystem, which is not yours. Progress, the stage timeline and the
+session reference all arrive; structured artifacts only do where they reach
+BioSense. A run whose artifacts never arrive is labelled as such rather than
+rendering an empty report that looks like a finding.
+
+---
+
+## C. The advanced CLI path
+
+Everything above is also reachable from a terminal, and these remain fully
+supported — they are simply no longer how you are expected to use the product.
+
+```bash
+# the orchestrator and its specialists, directly
+omnigent run discovery_loop
+
+# the deterministic loop, offline
+uv run --frozen python -m biosense.production.cli demo --out runs/prod-demo
+
+# benchmarks
+uv run --frozen python -m biosense.benchmark.cli list
+uv run --frozen python -m biosense.benchmark.cli run --config benchmarks/configs/<id>.json
+
+# everything that needs no credentials, in one command
 bash scripts/check.sh
 ```
 
-Then, from the repository root — this matters, the sub-agents call
-`.venv/bin/python` and the bundle's working directory is `.`:
-
-```bash
-uv sync --locked
-omnigent run discovery_loop
-```
-
-Hand it an existing request rather than negotiating one, so that a failure
-points at the runtime instead of at the conversation:
+For a first live session, hand the orchestrator an existing request rather than
+negotiating one, so a failure points at the runtime instead of at the
+conversation:
 
 ```
 Read discovery_loop/prompt.md. Initialise a loop from
-examples/ipsc_tcell/request.bach2_d40.json into runs/live-bach2-<date>/ and work it.
-It declares the synthetic stand-in, so use simulate-standin --standin ipsc_tcell.
-Use .venv/bin/python for all tools. Write the reasoning report when the loop ends.
+examples/cart/request.cart_d10.json into runs/live-cart-<date>/ and work it.
+It declares the synthetic stand-in reactor, so simulate-standin replaces the wet
+lab; label every number accordingly. Use .venv/bin/python for all tools.
 ```
 
 ### What a first live session is actually testing, in order

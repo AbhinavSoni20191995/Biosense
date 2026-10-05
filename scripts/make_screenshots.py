@@ -43,23 +43,34 @@ SCALE = 1
 # `run` drives a real loop first, for the panels that only exist once one has
 # finished. That is slower and it is the point: a screenshot of those taken any
 # other way would be a drawing of an interface rather than a photograph of one.
+# `discovery` drives the real structured form: pick the dataset, name a value to
+# test, press the button and wait for the panels that only exist after a run. A
+# screenshot of those taken any other way would be a drawing of an interface
+# rather than a photograph of one.
 SHOTS = {
-    'console': dict(page='console.html', w=1440, h=940, wait=2600),
-    'hypothesis-card': dict(page='console.html', w=1060, h=1200, sel='#hypPanel', wait=2600),
+    'console': dict(page='console.html', w=1440, h=1000, wait=2600),
+    'hypothesis-card': dict(page='console.html', w=1060, h=1200, sel='#resultPanel',
+                            wait=2200, discover=True),
+    'protocol-card': dict(page='console.html', w=1060, h=1400, sel='#protocolPanel',
+                          wait=2200, discover=True),
+    'analysis-card': dict(page='console.html', w=900, h=900, sel='#analysisPanel',
+                          wait=2200, discover=True),
+    'progress': dict(page='console.html', w=620, h=900, sel='#progressPanel',
+                     wait=2200, discover=True),
     'data-panel': dict(page='data.html', w=1340, h=1000, wait=2600),
     'simulator': dict(page='simulator.html', w=1500, h=1000, wait=3400),
     'simulator-no-model': dict(page='simulator.html', w=700, h=940, sel='.knobs', wait=3400,
                                select=('#project', 'cart_expansion')),
-    'agents': dict(page='console.html', w=1440, h=940, wait=2200, run=True, sel='#flowPanel'),
-    'trajectory': dict(page='console.html', w=1000, h=900, wait=2200, run=True, sel='#chartPanel'),
-    'analysis-card': dict(page='console.html', w=820, h=900, wait=2200, run=True,
-                          sel='#analysisPanel'),
+    'agents': dict(page='loop.html', w=1440, h=940, wait=2200, run=True, sel='#flowPanel'),
+    'trajectory': dict(page='loop.html', w=1000, h=900, wait=2200, run=True, sel='#chartPanel'),
 }
 
 # The two-arm comparison, so the trajectory shot actually shows two lines and
 # the alt text describing them stays true.
 PROMPT = ('Optimise the conditions for growing wild-type T cells from iPSC, and compare '
           'with a BACH2 knockout that must still be expanded.')
+OBJECTIVE = ('Increase viable macrophage production while maintaining macrophage identity '
+             'and viability.')
 
 
 def free_port():
@@ -120,6 +131,17 @@ def main(argv=None):
                         pg.click('#run')
                         pg.wait_for_selector(f'{cfg["sel"]}:not([hidden])', timeout=90_000)
                         pg.wait_for_timeout(2500)
+                    if cfg.get('discover'):
+                        pg.fill('#objective', OBJECTIVE)
+                        pg.eval_on_selector('details', 'd => d.open = true')
+                        pg.wait_for_timeout(250)
+                        pg.check('#datasetPicks input[value="facs-mcsf-fixture"]')
+                        pg.select_option('#candParam', 'mcsf_ng_ml')
+                        pg.fill('#candValue', '50')
+                        pg.click('#candAdd')
+                        pg.click('#runBtn')
+                        pg.wait_for_selector(f'{cfg["sel"]}:not([hidden])', timeout=90_000)
+                        pg.wait_for_timeout(2000)
                     out = ASSETS / f'{name}-{theme}.png'
                     if cfg.get('sel'):
                         pg.locator(cfg['sel']).screenshot(path=str(out))

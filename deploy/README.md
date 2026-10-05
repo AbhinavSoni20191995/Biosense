@@ -60,6 +60,42 @@ Not verified here: no Railway deploy has been run from this repository. The
 commands below follow Railway's documented flow and the image they build is the
 one that was tested, but the deploy itself is untested.
 
+## Which runtimes a deployment offers
+
+BioSense reads its runtime from the environment at startup, and offers the
+browser only what the deployment can actually serve. A button that cannot work
+is worse than one that is not there.
+
+| Variable | What it does |
+|---|---|
+| `BIOSENSE_RUNTIME_MODE` | `synthetic` (default), `local`, or `remote` |
+| `BIOSENSE_ALLOWED_RUNTIMES` | comma-separated, what the picker may offer |
+| `BIOSENSE_OMNIGENT_SERVER` | the Omnigent server URL; required for `remote` |
+| `BIOSENSE_OMNIGENT_TOKEN` / `_TOKEN_FILE` | bearer credential, read once at startup |
+| `BIOSENSE_OMNIGENT_AGENT` | registered agent name (default `biosense_discovery_loop`) |
+| `BIOSENSE_OMNIGENT_WORKSPACE` | the runner's working directory |
+| `BIOSENSE_OMNIGENT_ALLOW_INSECURE` | permit `http://` to a non-loopback host |
+
+**The default is synthetic-only, and that is what makes the hosted console
+defensible.** The image installs no extras, holds no Omnigent and no model
+credentials, and the runtime picker shows one option with the reason beside the
+others. Turning on real AI is a configuration change rather than different code:
+set the variables above, add the `omnigent` extra to the image, and point it at a
+server that has a registered host.
+
+Three things to get right before you do:
+
+- **The token never reaches the browser.** It is read at startup, sent as an
+  `Authorization: Bearer` header, and excluded from `/api/runtime`, every event
+  and every error message. Put it in a platform secret, not in the image.
+- **https, or say so.** A plaintext server that is not loopback is refused unless
+  `BIOSENSE_OMNIGENT_ALLOW_INSECURE=1` declares the hop already trusted.
+- **Sign-in is Omnigent's.** BioSense forwards a password to the configured
+  server once and keeps only the session token, server-side. It stores no
+  password and has no user database of its own. Without a configured server
+  there is one local workspace, and the interface says that it is private
+  because the machine is, not because anything checked.
+
 ## Console on Railway
 
 ```bash

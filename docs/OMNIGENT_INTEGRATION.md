@@ -690,3 +690,61 @@ compute over.
 Regenerated with `scripts/make_architecture_diagrams.py`, so
 `tests/test_docs_accuracy.py` still reproduces it byte for byte, and the README's
 alt text was rewritten to describe the corrected flow.
+
+---
+
+## 19. What was built, against what this review proposed
+
+Written after the implementation, so the two can be compared.
+
+**Built as reviewed.** The runtime abstraction with its three modes and reason
+codes; the structured `DiscoveryRequest` and the brief rendered from it; the
+adapter over the official SDK, lazily imported; the event-to-stage map;
+schema-validated artifact ingestion; one request answered by either runtime
+through the same contracts; benchmarks assembled from a finished run through the
+existing privacy validator; the HTTP surface; one page from objective to
+protocol; the docs.
+
+**Added during the work, from questions raised while building it.**
+
+- **A protocol summary** (§12a) — a run forms several hypotheses and some are
+  wrong, so one page carries the recommended process with per-value provenance
+  and the ledger of what did not survive, stamped `PROPOSED — NOT APPROVED`.
+- **Project creation** — the universal bioreactor set every stirred-tank process
+  shares, plus parameters a project declares for itself, each with a stated
+  relationship to the simulator.
+- **Proposed response terms** — `de_novo_ai` and `expert_declared` coverage, so a
+  parameter with evidence and no equation can still say which way and roughly
+  how far. The arithmetic is four closed-form shapes in code; what a proposal
+  supplies is a shape name and some constants, bounded by contract and clamped
+  again in code.
+- **Workspaces and sign-in** — through Omnigent's own accounts, because real AI
+  already requires one. BioSense stores no password and holds the session token
+  server-side.
+- **Campaign authorisation** — one named person, a bounded number of iterations,
+  a stated envelope, checked every round. A closed loop is a loop; a signature
+  between every round would not make it safer.
+- **A served glossary** — the vocabulary was in docstrings, where a scientist
+  looking at a number in a browser would have had to find a repository to learn
+  what the word beside it meant.
+
+**Found while building, and fixed rather than worked around.** The `arch-system`
+diagram drew datasets reaching synthesis without passing through the analysis
+(§18). The loop diagram implied a person between every iteration. `scripts/check.sh`
+had a stray prefix breaking its shebang. `ALLOW_INSECURE` was read from the
+process environment while its siblings came from the passed configuration. A
+project with no model silently downgraded a `modelled` claim instead of refusing.
+A benchmark built from a web run was written into the repository's committed
+public set. Stage duration is recorded on a project's stages rather than on the
+parameter, so reading the parameter alone reported a gap for something the
+profile states plainly. And `.term` set `font: inherit`, which beat the badge
+class it sat on.
+
+**Not built, and recorded as such.** Remote artifact ingestion beyond session
+files (§8); a PDF export, which the brief left optional; any physical actuation;
+and a complete live discovery session with model credentials. The adapter is
+verified against a real local Omnigent server — agent resolution, session
+creation, runner binding, the SSE stream and the no-runner refusal — with the
+`biosense_discovery_loop` bundle registered and all six agent specs passing
+Omnigent's own validator. What has not run end to end is a session with a model
+behind it, and the README says so.

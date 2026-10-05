@@ -91,9 +91,12 @@ decides, and the envelope can refuse.
 
 ---
 
-## Try it in three commands
+## Quick start
 
-Install [uv](https://docs.astral.sh/uv/) (it fetches Python for you), then:
+**BioSense is a web application.** Open it, pick a project, ask a scientific
+question, press one button. Everything below happens in the browser.
+
+### 1. Start it
 
 ```bash
 git clone https://github.com/AbhinavSoni20191995/Biosense.git
@@ -101,24 +104,136 @@ cd Biosense && uv sync --locked
 uv run --frozen python -m biosense.production.app --runs runs --static webapp
 ```
 
-Open **<http://127.0.0.1:8000>** and type a question.
+Open **<http://127.0.0.1:8000>**. That is the whole setup — [uv](https://docs.astral.sh/uv/)
+fetches Python for you, and nothing else is needed for the synthetic path:
+no API key, no internet after install, no model call.
 
-> No API key. No internet after install. Nothing calls a model. A full
-> 25-iteration run finishes in about **1.5 seconds**.
+### 2. Use it
+
+1. **Pick or create a project** — it decides which parameters exist, what their
+   bounds are, and whether anything can predict them.
+2. **State your objective** in your own words.
+3. Optionally add **research context, your datasets, the values you want tested,
+   and your process constraints**.
+4. **Choose a runtime** — *Synthetic demo* or *Real AI*.
+5. Press **Run AI discovery**.
+
+You then watch it work, and read the evidence, the analyses, the quantified
+hypothesis, the candidate parameters, the recommended protocol and the benchmark
+— all in the page.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/progress-dark.png">
+  <img alt="The progress panel during a run: twelve scientific stages as a tick list — understanding the objective, identifying the main uncertainty, searching the literature and the data, planning and running the analysis, synthesising evidence, building the hypothesis, testing it in the simulator, writing the report — each with a one-line explanation, the finished ones ticked and the current one marked." src="docs/assets/progress-light.png" width="420">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/console-dark.png">
-  <img alt="The BioSense console: a four-way nav across AI Discovery, Simulator, Data and Runs; a question box; the hypothesis card in the wide column showing M-CSF 25 to 50 ng per mL with every expected effect badged DERIVED or SIMULATED; and a sidebar of collapsible panels for the record, the datasets and earlier runs." src="docs/assets/console-light.png" width="100%">
+  <img alt="The BioSense discovery page: a project selector, an objective box, a runtime chooser offering Synthetic demo and Real AI, and a Run AI discovery button, with progress ticks and the hypothesis card alongside." src="docs/assets/console-light.png" width="100%">
 </picture>
 
-While it runs, the agents announce what they are doing:
+### 3. Turn on real AI (optional)
+
+The synthetic path needs nothing. **Real AI needs an Omnigent runtime**, because
+that is what orchestrates the specialist agents:
+
+```bash
+omnigent start                      # local server + a runner on this machine
+BIOSENSE_RUNTIME_MODE=local \
+BIOSENSE_ALLOWED_RUNTIMES=synthetic,local \
+  uv run --frozen python -m biosense.production.app --runs runs --static webapp
+```
+
+Then choose **REAL AI — LOCAL** in the runtime picker. If the runtime is not
+there, BioSense says which part is missing and the command that fixes it — it
+never quietly gives you a synthetic answer instead.
+
+Installing Omnigent, remote servers, signing in, and Windows →
+**[docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md)**
+
+---
+
+## Synthetic, or real
+
+These are different claims about the same question, and BioSense never
+substitutes one for the other. The runtime badge is on screen the whole time.
+
+| | **SYNTHETIC DEMO** | **REAL AI** |
+|---|---|---|
+| Who does the work | deterministic code over committed fixtures | the discovery agents, through Omnigent |
+| Literature search | a committed fixture index | real, against Europe PMC |
+| Data analysis | real statistics over fixture tables | real statistics over **your** datasets |
+| Needs credentials | no | yes — a model provider, via Omnigent |
+| Costs money | no | yes |
+| The bioreactor | a synthetic stand-in | **still a synthetic stand-in** |
+
+That last row is the one to read twice. With real AI, the *evidence*, the
+*analysis* and the *hypothesis* are real work over real data. The **reactor** is
+not: BioSense touches no actuator, and a prediction for a new project comes from
+one of three things, each labelled wherever it appears — the single calibrated
+stand-in model (`MODELLED`), a response the agents proposed from cited claims
+(`DE NOVO`, uncalibrated), or one you declared from experience
+(`EXPERT-DECLARED`, a design choice). Real measurements enter only when a person
+runs the experiment and brings the results back.
+
+How the simulator turns a setpoint into an output, term by term →
+**[docs/BIOSIMULATOR_MODEL.md](docs/BIOSIMULATOR_MODEL.md)**
+
+There is also a **Quick loop** tab: type a question in plain language and watch
+the deterministic stand-in loop run it in about a second and a half, with the
+agents announcing each step. It is the fastest way to see the shape of the thing
+and it calls no model at all.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/agents-dark.png">
   <img alt="Transient cards naming each agent as it works: the analysis agent reporting a verdict, the orchestrator committing a decision, the reporter writing the report." src="docs/assets/agents-light.png" width="100%">
 </picture>
 
-Full setup, including Windows → **[docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md)**
+---
+
+## Make it your own process
+
+BioSense has no universal control panel, and the Quick start's project is an
+example, not the product.
+
+**Every stirred-tank process shares the vessel** — impeller, dissolved oxygen,
+feed schedule, seeding density, temperature, stage length. Those are offered to
+every new project with the canonical registry's own bounds and meanings.
+
+**Nothing else is shared.** You add the parameters your biology actually has,
+and each arrives with a declared relationship to the simulator:
+
+| | What it means |
+|---|---|
+| **Design variable only** | real, usable in the lab, and not predicted. The honest default. |
+| **AI-proposed response** | the agents propose how it behaves from cited claims. It predicts, and every number says `DE NOVO · UNCALIBRATED`. |
+| **You describe it** | you supply the shape and the constants. Private expert knowledge: it predicts, and any value resting on it is a design choice, never a cited one. |
+
+`MODELLED` cannot be chosen from a form at all. That claim belongs to a fitted
+model, and no dropdown can confer it.
+
+Projects you create are stored in your workspace under the private data root —
+never written into this repository, never served as files. Sign in through your
+own Omnigent account and they belong to you; without a server configured there is
+one local workspace, private because the machine is, and the interface says so in
+those words rather than implying more.
+
+---
+
+## Benchmarks, in the app
+
+A benchmark records whether BioSense did its job — identified an uncertainty,
+planned an analysis, executed it deterministically, quantified what it could,
+checked simulator coverage and labelled every number. **It does not measure
+biological truth, and a run can pass every row while being biologically wrong.**
+
+You can read the built ones and re-run a published configuration from the
+browser, under either runtime, without cloning anything. A benchmark built from a
+finished run is assembled from the artifacts that run already produced — the
+biology is not run again — and one whose lineage touches private data is marked
+**PRIVATE — DO NOT PUBLISH** and refused a public export rather than anonymised.
+
+The benchmark CLI stays exactly as it is, for CI and automation.
 
 ---
 
@@ -325,6 +440,30 @@ Full bundle — report, figures, tables, provenance and the audit package → [`
 
 ---
 
+## One protocol at the end, and the ideas that did not survive
+
+A run forms several hypotheses and some of them are wrong. Reading eight cards
+and working out which survived is not the deliverable; one protocol is.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/protocol-card-dark.png">
+  <img alt="The recommended protocol: the process stage by stage, each parameter showing its current value, the recommended one where it changes, a provenance tag reading R reported, A adapted, D design choice or GAP, and the simulator coverage. Beneath it, a ledger of every hypothesis the run formed with its status, whether it is in the protocol, and why not where it is not. The whole card is stamped PROPOSED — NOT APPROVED." src="docs/assets/protocol-card-light.png" width="640">
+</picture>
+
+It is stamped **PROPOSED — NOT APPROVED** and names the act that would approve
+it: `approve-protocol --approved-by "<a person>"`, which is a command-line act
+with a human behind it. No part of the web application can do it on their behalf.
+
+Every value carries how firm it is — **R** reported, **A** adapted from cited
+claims, **D** a design choice, **GAP** no evidence at all. A gap is never filled
+with a plausible number; it is listed, and it blocks the wet lab.
+
+And the hypotheses that did not make it stay on the page with the reason.
+Showing only the winner would hide that three alternatives were considered and
+ruled out, which is the part a reviewer most needs.
+
+---
+
 ## Or turn the knobs yourself
 
 The console asks the loop to find a condition. **Simulator mode** hands you the
@@ -402,9 +541,22 @@ An evaluator should know the limits before the features.
 - **One replicate per arm.** Every between-arm difference is directional only.
 - **A loop that reaches a target has not produced a validated process.**
   Confirmation runs, replicate design and human QA sign-off are all outside it.
-- **Live model-driven orchestration has not been run yet.** The deterministic
-  path is fully exercised; the Omnigent path is set up and validated but a first
-  live session remains a genuine test.
+- **The reactor stays a stand-in even with real AI on.** Real AI makes the
+  evidence, the analysis and the hypothesis real work over real data. It does not
+  make the bioreactor real: nothing here actuates anything, and a prediction for
+  a new process comes from the one calibrated stand-in model, a response the
+  agents proposed, or one you declared — each labelled, none of them a
+  measurement.
+- **A proposed response is not a fitted one.** A `DE NOVO` or `EXPERT-DECLARED`
+  term predicts because deterministic code evaluates a shape somebody chose with
+  constants somebody supplied. Nothing was fitted to data, the effect it may have
+  is bounded in the contract and clamped again in code, and every number it
+  touches carries the calibrated value it started from.
+- **Live model-driven orchestration has not been run end to end yet.** The
+  deterministic path is fully exercised and the Omnigent adapter is verified
+  against a real local server — agent resolution, session creation, the SSE
+  stream and the no-runner refusal — but a complete live discovery session with
+  model credentials remains a genuine test.
 - **The dataset fixtures are invented.** Every committed example table is
   synthetic and every fixture accession begins with `SYNTHETIC-GSE`. BioSense has
   not downloaded or analysed a real public dataset.
@@ -419,8 +571,15 @@ An evaluator should know the limits before the features.
   reports `no_simulator` rather than borrowing one. A candidate parameter the
   model cannot predict is labelled `not_modelled`, never dropped and never
   predicted anyway.
-- **There is no multi-user isolation.** "Private" means "does not leave this
-  machine". Two people sharing a checkout share one private root.
+- **Sign-in is Omnigent's, and a local instance has none.** Signing in through
+  an Omnigent account gives you a workspace that is yours, because that server
+  checked a password. Without one there is a single local workspace, private
+  because the machine is private and not because anything verified it — which is
+  what the interface says, rather than implying more.
+- **A closed loop is authorised, not unattended.** A campaign authorisation is
+  one named person covering a bounded number of iterations inside a stated
+  envelope, checked every round. Past the count or outside the bounds the loop
+  stops and asks again, and it cannot authorise itself.
 - **A capability scorecard is not a measure of biological truth.** A benchmark
   can pass every row while being biologically wrong, and the artifact says so.
 
@@ -451,7 +610,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 680 tests
+uv run --frozen python -m unittest     # 785 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 

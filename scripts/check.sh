@@ -1,4 +1,4 @@
-ut#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Offline verification ladder for BioSense-AI. No model keys, no network.
 #   bash scripts/check.sh
 # Rungs 1-3 are what CI runs. Rung 4 is skipped unless omnigent is installed.
