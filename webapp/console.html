@@ -13,6 +13,41 @@
 /* small print under a panel: the thing that stops a badge being read as a claim */
 .caveat{font-size:12.5px;line-height:1.55;color:var(--ink-3);margin:12px 0 0;max-width:70ch}
 
+/* ── hypothesis card ─────────────────────────────────────── */
+/* The estimate type sits beside each number rather than on the card, because a
+   card can hold a measured baseline and a simulated candidate at once, and a
+   single badge over both would be a claim about neither. */
+.hyp{border:1px solid var(--line);border-radius:var(--r-s);padding:14px 16px;margin-bottom:12px}
+.hyp h4{margin:0 0 6px;font-size:14px;line-height:1.4}
+.hyp .move{font-family:var(--mono);font-size:13px;margin:8px 0;color:var(--ink)}
+.hyp .move b{color:var(--brand)}
+.eff{display:flex;justify-content:space-between;gap:10px;align-items:baseline;
+  padding:6px 0;border-top:1px dotted var(--line);font-size:13px}
+.eff .amt{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.eff .rel{color:var(--ink-3);font-size:12px}
+.et{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;padding:2px 6px;border-radius:4px;border:1px solid var(--line);
+  color:var(--ink-3);margin-left:6px;white-space:nowrap}
+.et.measured{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.et.derived{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent);opacity:.9}
+.et.simulated,.et.predicted{color:var(--warn);
+  border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.et.target{border-style:dashed}
+.hev{display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:12.5px;
+  border-top:1px dotted var(--line)}
+.hev .cls{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;padding:3px 7px;border-radius:999px;white-space:nowrap;
+  border:1px solid var(--line);color:var(--ink-3)}
+/* expert knowledge is private and not citable: it may narrow a search range,
+   never supply a protocol value, and the badge has to say so at a glance. */
+.hev .cls.expert{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent);
+  background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.hev .cls.sim{color:var(--warn);border-style:dashed}
+.hyp .lab{font-size:11px;font-family:var(--mono);letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-3);margin:12px 0 2px}
+body[data-view="simple"] .tech{display:none}
+.tech{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+
 /* ── hero + ask ──────────────────────────────────────────── */
 /* The input is the primary control, so it carries the largest type on the
    page. Headline copy was removed: it sold the tool to someone already using it. */
@@ -170,7 +205,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 }
 </style>
 </head>
-<body>
+<body data-view="simple">
 <div class="wrap">
 
 <header class="bar">
@@ -190,6 +225,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   <div class="spacer"></div>
   <span class="pill idle" id="status"><span class="led"></span><span id="statusText">ready</span></span>
   <span class="mono dim tnum" id="clock" style="min-width:4.2rem;text-align:right"></span>
+  <button class="btn" id="viewBtn" aria-pressed="false">Technical view</button>
   <button class="btn" id="theme" title="Switch light / dark">Theme</button>
 </header>
 
@@ -269,6 +305,12 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div class="head"><h3>Data</h3><span class="hint" id="dataHint">public only</span></div>
       <div id="datasets" class="dim">loading…</div>
       <p class="caveat" id="dataNote"></p>
+    </section>
+
+    <section class="glass card" id="hypPanel">
+      <div class="head"><h3>Hypotheses</h3><span class="hint" id="hypHint">evidence, not a decision</span></div>
+      <div id="hyps" class="dim">loading…</div>
+      <p class="caveat" id="hypNote"></p>
     </section>
 
     <section class="glass card" id="analysisPanel" hidden>
@@ -864,6 +906,132 @@ $('#prompt').addEventListener('keydown',e=>{
 });
 loadLoops();
 loadDatasets();
+
+/* ── hypotheses ───────────────────────────────────────────── */
+/* A hypothesis is the unit a person argues about, so the card has to answer
+   "where did that number come from?" without anybody opening a file. */
+/* the classes a hypothesis can cite that the dataset badges above did not need */
+Object.assign(EV_LABEL, { expert_knowledge: 'expert knowledge', prior_experiment: 'prior run',
+  internal_analysis: 'analysis' });
+
+function evClass(c) {
+  if (c === 'expert_knowledge') return 'expert';
+  if (c === 'simulation' || c === 'synthetic_fixture') return 'sim';
+  return '';
+}
+
+function effectRow(e) {
+  const r = document.createElement('div'); r.className = 'eff';
+  const left = document.createElement('div');
+  left.append(document.createTextNode(e.label || e.metric));
+  const amt = document.createElement('div'); amt.className = 'amt';
+
+  if (!e.magnitude_estimated) {
+    /* a representable state, not a missing field: direction known, size not */
+    amt.append(document.createTextNode(
+      'direction ' + (e.direction || 'unknown') + ', magnitude not estimated'));
+  } else {
+    const sign = e.absolute_change > 0 ? '+' : '';
+    amt.append(document.createTextNode(
+      sign + (+e.absolute_change).toPrecision(4).replace(/\.?0+$/, '')
+      + ' ' + (e.change_unit || '')));
+    /* percentage points and a relative change are different quantities, so the
+       card shows them as two figures and never collapses them into one */
+    const rel = document.createElement('span'); rel.className = 'rel';
+    rel.textContent = e.relative_change_pct != null
+      ? '  (' + (e.relative_change_pct > 0 ? '+' : '') + e.relative_change_pct + '%)'
+      : (e.relative_withheld_reason ? '  (relative change withheld)' : '');
+    if (rel.textContent) amt.append(rel);
+    if (e.relative_withheld_reason) rel.title = e.relative_withheld_reason;
+  }
+  const et = document.createElement('span');
+  et.className = 'et ' + e.estimate_type; et.textContent = e.estimate_type;
+  et.title = 'how this number was produced';
+  amt.append(et);
+  r.append(left, amt);
+  return r;
+}
+
+function hypCard(row) {
+  const h = row.hypothesis, w = document.createElement('div'); w.className = 'hyp';
+  const t = document.createElement('h4'); t.textContent = h.statement; w.append(t);
+
+  const p = h.parameter, move = document.createElement('div'); move.className = 'move';
+  if (p.current_value != null && p.candidate_value != null) {
+    move.innerHTML = (p.label || p.parameter_id) + ': ' + p.current_value
+      + ' → <b>' + p.candidate_value + '</b> ' + (p.unit || '');
+  } else {
+    move.textContent = (p.label || p.parameter_id) + ': ' + (p.direction || 'change');
+  }
+  w.append(move);
+  if (p.simulator_coverage && p.simulator_coverage !== 'modelled') {
+    const n = document.createElement('p'); n.className = 'caveat';
+    n.textContent = 'The model has no term for this parameter ('
+      + p.simulator_coverage.replace(/_/g, ' ') + '), so no effect is predicted for it. '
+      + 'It can still be set in the lab.';
+    w.append(n);
+  }
+
+  w.append(Object.assign(document.createElement('div'), { className: 'lab',
+    textContent: 'Expected effects' }));
+  (h.expected_effects || []).forEach(e => w.append(effectRow(e)));
+
+  w.append(Object.assign(document.createElement('div'), { className: 'lab',
+    textContent: 'Evidence · confidence ' + h.confidence }));
+  (h.evidence || []).forEach(e => {
+    const r = document.createElement('div'); r.className = 'hev';
+    const c = document.createElement('span');
+    c.className = 'cls ' + evClass(e.evidence_class);
+    c.textContent = EV_LABEL[e.evidence_class] || e.evidence_class;
+    if (e.evidence_class === 'expert_knowledge') {
+      c.title = 'private and not citable: it may narrow a search range, never supply a '
+        + 'protocol value';
+    }
+    const txt = document.createElement('div'); txt.textContent = e.summary;
+    r.append(c, txt); w.append(r);
+  });
+
+  const nx = h.next_experiment || {};
+  if (nx.summary) {
+    w.append(Object.assign(document.createElement('div'), { className: 'lab',
+      textContent: 'Recommended next' }));
+    w.append(Object.assign(document.createElement('div'),
+      { style: 'font-size:13px', textContent: nx.summary }));
+  }
+  w.append(Object.assign(document.createElement('p'),
+    { className: 'caveat tech', textContent: h.hypothesis_id + ' · ' + row.source
+      + ' · inputs: ' + row.inputs }));
+  return w;
+}
+
+async function loadHypotheses() {
+  const box = $('#hyps');
+  try {
+    const d = await (await fetch('/api/hypotheses')).json();
+    box.textContent = ''; $('#hypNote').textContent = d.note || '';
+    if (!d.hypotheses.length) {
+      box.className = 'dim';
+      box.textContent = 'No hypothesis has been formed yet. Run a loop, or build a benchmark.';
+      return;
+    }
+    box.className = '';
+    $('#hypHint').textContent = d.hypotheses.length + ' on disk';
+    d.hypotheses.forEach(r => box.append(hypCard(r)));
+  } catch (_) { box.textContent = 'the hypothesis service did not answer'; }
+}
+loadHypotheses();
+
+/* Simple and Technical are the same facts at two levels of detail, never two
+   sets of facts: Technical adds ids and provenance lines, and hides nothing. */
+(function () {
+  const b = $('#viewBtn');
+  b.addEventListener('click', () => {
+    const tech = document.body.dataset.view !== 'technical';
+    document.body.dataset.view = tech ? 'technical' : 'simple';
+    b.textContent = tech ? 'Simple view' : 'Technical view';
+    b.setAttribute('aria-pressed', String(tech));
+  });
+})();
 </script>
 </body>
 </html>

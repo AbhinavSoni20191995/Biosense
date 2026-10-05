@@ -44,6 +44,7 @@ Endpoints
                                   never listed here and never served
     GET  /api/analysis-tools      the tool registry: what can run, over what, and
                                   what is declared but not implemented
+    GET  /api/hypotheses          quantified hypotheses from built benchmark bundles
     GET  /api/projects            project profiles: which knobs each process has,
                                   with per-project bounds and simulator coverage
     GET  /api/sim/config          simulator mode: the knobs, stages and limits
@@ -379,6 +380,27 @@ class Handler(BaseHTTPRequestHandler):
                         'the origin of any bound narrower than the global one. A parameter the '
                         "project's model has no term for is marked not_modelled: it can still "
                         'be set in the lab, but no prediction is produced for it.'})
+        if path == '/api/hypotheses':
+            # Read from built benchmark bundles on disk. Every row carries where
+            # it came from and whether its inputs were synthetic, because a
+            # hypothesis card is exactly the place a demonstration figure would
+            # otherwise be mistaken for a finding.
+            from ..benchmark import cli as BCLI
+            rows = []
+            for d in sorted(BCLI.PUBLIC_DIR.glob('*/benchmark.json')):
+                try:
+                    b = K.read_json(d)
+                except (ValueError, OSError):
+                    continue
+                for h in b.get('hypotheses') or []:
+                    rows.append({'hypothesis': h, 'source': f'benchmark:{b["benchmark_id"]}',
+                                 'inputs': b.get('inputs_kind') or 'synthetic_demo',
+                                 'bundle': str(d.parent.relative_to(K.ROOT))})
+            return self._send(200, {
+                'hypotheses': rows,
+                'note': 'Hypotheses from benchmark bundles built on this machine. The public '
+                        'benchmark runs on invented fixtures: its numbers demonstrate what the '
+                        'system can express, and none of them measures any real cell.'})
         if path == '/api/sim/config':
             return self._send(200, SM.config())
         if path == '/api/runs':

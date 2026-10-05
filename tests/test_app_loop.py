@@ -526,6 +526,60 @@ class AppServerTests(unittest.TestCase):
         for p in d['planned']:
             self.assertNotIn(p['name'], implemented)
 
+    def test_the_hypothesis_endpoint_says_where_each_one_came_from(self):
+        """A hypothesis card is exactly the place a demonstration figure would
+        otherwise be mistaken for a finding."""
+        code, body = self._get('/api/hypotheses')
+        self.assertEqual(200, code)
+        d = json.loads(body)
+        self.assertIn('none of them measures any real cell', d['note'])
+        for row in d['hypotheses']:
+            self.assertTrue(row['source'])
+            self.assertTrue(row['inputs'])
+            h = row['hypothesis']
+            self.assertEqual([], K.schema_errors('quantified_hypothesis', h))
+
+    def test_every_expected_effect_carries_its_own_estimate_type(self):
+        """Per number, not per card: a card can hold a measured baseline and a
+        simulated candidate at once, and one badge over both would be a claim
+        about neither."""
+        code, body = self._get('/api/hypotheses')
+        rows = json.loads(body)['hypotheses']
+        if not rows:
+            self.skipTest('no benchmark bundle is built on this machine')
+        for row in rows:
+            for e in row['hypothesis']['expected_effects']:
+                self.assertIn(e['estimate_type'],
+                              ('measured', 'derived', 'simulated', 'predicted', 'target'))
+                if e['magnitude_estimated']:
+                    self.assertIsNotNone(e['change_unit'])
+                else:
+                    self.assertTrue(e['withheld_reason'])
+
+    def test_percentage_points_and_relative_change_stay_separate(self):
+        """42% to 68% is +26 points and +62%. Collapsing them into one figure is
+        a different and much larger-sounding claim."""
+        code, body = self._get('/api/hypotheses')
+        effects = [e for r in json.loads(body)['hypotheses']
+                   for e in r['hypothesis']['expected_effects']
+                   if e.get('change_unit') == 'percentage_points']
+        if not effects:
+            self.skipTest('no percentage effect in the built bundles')
+        for e in effects:
+            self.assertTrue(e['relative_change_pct'] is not None
+                            or e['relative_withheld_reason'])
+            # a zero change is zero on both scales; only a real move distinguishes them
+            if e['relative_change_pct'] not in (None, 0) and e['absolute_change']:
+                self.assertNotEqual(e['absolute_change'], e['relative_change_pct'])
+
+    def test_the_console_renders_the_card_from_the_endpoint_not_from_markup(self):
+        """No hardcoded hypothesis in the page: a card that survives the data
+        being removed is a mockup."""
+        code, body = self._get('/console.html')
+        text = body.decode()
+        self.assertIn("fetch('/api/hypotheses')", text)
+        self.assertNotIn('HYP-macrophage_mcsf_demo', text)
+
     def test_the_project_endpoint_gives_each_process_its_own_knobs(self):
         """The reason this is served per project rather than as one global knob
         list: offering a CAR-T process an M-CSF slider because macrophages have
