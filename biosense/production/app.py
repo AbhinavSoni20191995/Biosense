@@ -32,7 +32,9 @@ What a visitor cannot do, enforced in code and not by convention:
 
 Endpoints
 
-    GET  /healthz                 liveness
+    GET  /healthz                 liveness: the web process answers
+    GET  /readyz                  readiness: whether the runtime this deployment offers
+                                  can actually run, in named parts, with no secrets
     GET  /api/config              limits, the stand-ins on offer, what is refused
     POST /api/parse               prompt -> request plus what was assumed, runs nothing
     POST /api/runs                prompt -> start a loop, returns a run id
@@ -40,6 +42,7 @@ Endpoints
     GET  /api/runs/<id>           one run: status, events so far, summary
     GET  /api/runs/<id>/events    Server-Sent Events, live, from `?after=<n>`
     GET  /api/runs/<id>/report    the reasoning report as HTML
+    POST /api/discovery/<id>/cancel   stop a run in flight, and its Omnigent session
     GET  /api/datasets            registered PUBLIC datasets only; private ones are
                                   never listed here and never served
     GET  /api/analysis-tools      the tool registry: what can run, over what, and
@@ -55,9 +58,12 @@ Endpoints
     GET  /api/loops/<id>          one loop on disk
     GET  /<path>                  static files from --static
 
-Runs live in this process's memory and their artifacts on disk under --runs. A
-restart loses the event streams and keeps the artifacts, which is the right way
-round: the files are the durable record.
+Runs live in this process's memory and their artifacts on disk under --runs.
+Every discovery run also journals its own snapshot and events beside those
+artifacts (`run_store.py`), so a reloaded browser, or a replaced process, can get
+a run back from its id alone — and a run that was in flight when the process went
+away comes back as `interrupted` rather than as finished or running. The files are
+the durable record; this memory is a view of them.
 """
 from __future__ import annotations
 
@@ -74,14 +80,17 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .. import contracts as K
 from .. import glossary as GL
 from .. import workspace as WS
+from . import budget as BU
 from . import discovery as DISC
 from . import discovery_runner as DRUN
 from . import engine as EN
+from . import health as HL
 from . import ingest as IN
 from . import project_builder as PB
 from . import prompt as PR
 from . import protocol_summary as PSUM
 from . import report as RP
+from . import run_store as RS
 from . import runtime as RT
 from . import sim_mode as SM
 from . import stages as ST
@@ -105,6 +114,19 @@ SIM_GATE = threading.BoundedSemaphore(MAX_CONCURRENT_SIM)
 # A real-AI run costs money and lasts minutes rather than a second, so it gets a
 # tighter cap than the synthetic loop and its own queue.
 MAX_CONCURRENT_REAL = 1
+# Why a run stopped short, in the words the person reading it needs. Both are
+# recorded as `stopped`, never as a result: a run that was halted produced no
+# answer, and saying otherwise is the one thing this product must never do.
+STOP_MESSAGES = {
+    'cancelled': 'You stopped this run. The agents were interrupted, so nothing here is a '
+                 'finished answer.',
+    'timed_out': 'This run reached the deployment\'s time limit for a single real AI run and '
+                 'was stopped. Nothing here is a finished answer.',
+    'shutdown': 'The server shut down while this run was in flight.',
+}
+# How long a readiness probe is believed before the server asks the runtime
+# again. A health page that re-probes on every request becomes its own load.
+READY_CACHE_S = 10
 DISCOVERY_ID = re.compile(r'^[0-9a-f]{8,32}$')
 MAX_BODY_DISCOVERY = 256 * 1024     # a request carries a context and constraints
 STANDINS = ('ipsc_tcell', 'tcell', 'monocyte')
@@ -181,11 +203,17 @@ class DiscoveryRun:
     cheapest way to keep that true.
     """
 
-    def __init__(self, run_id, request, out_dir, runtime_mode):
+    def __init__(self, run_id, request, out_dir, runtime_mode, *, runtime_label=None,
+                 deadline=None):
         self.id = run_id
         self.request = request
         self.out_dir = Path(out_dir)
         self.runtime_mode = runtime_mode
+        # The badge as this deployment says it: a hosted service's loopback
+        # runtime is ONLINE to the person reading it, not LOCAL.
+        self.runtime_label = runtime_label or RT.LABELS[runtime_mode]
+        self.deadline = deadline
+        self.cancelled = None       # the reason it was stopped, once it is
         self.events = []
         self.stages_reached = set()
         self.status = 'queued'
@@ -202,12 +230,20 @@ class DiscoveryRun:
 
     def add(self, event):
         with self.cv:
+            new_stage = bool(event.get('stage')) and event['stage'] not in self.stages_reached
             if event.get('stage'):
                 self.stages_reached.add(event['stage'])
+            row = None
             if len(self.events) < MAX_EVENTS_PER_RUN:
-                self.events.append(dict(event, seq=len(self.events),
-                                        t=round(time.time() - self.started_at, 2)))
+                row = dict(event, seq=len(self.events),
+                           t=round(time.time() - self.started_at, 2))
+                self.events.append(row)
             self.cv.notify_all()
+        # Journalled outside the lock: a slow disk must not stall the stream.
+        if row is not None:
+            RS.append_event(self.out_dir, row)
+        if new_stage:
+            self.persist()
 
     def finish(self, status, result=None, error=None, reason=None, next_step=None):
         with self.cv:
@@ -218,10 +254,47 @@ class DiscoveryRun:
             self.next_step = next_step
             self.finished_at = time.time()
             self.cv.notify_all()
+        self.persist()
+
+    def persist(self):
+        """Write the snapshot beside the artifacts, so a reload can find it.
+
+        Events are already journalled line by line; this is the header. Failure
+        is survivable and silent on purpose: losing recoverability is bad, and
+        killing a paid-for run because a disk was full would be worse.
+        """
+        snap = self.snapshot(after=-1)
+        snap['events'] = []            # the journal holds those
+        RS.write_state(self.out_dir, snap)
+
+    def stop(self, reason, message):
+        """Ask this run to stop. The worker notices between events."""
+        with self.cv:
+            if self.finished_at is not None:
+                return False
+            self.cancelled = reason
+            self.cv.notify_all()
+        self.add({'kind': 'note', 'stage': None, 'simple': message, 'technical': reason})
+        return True
+
+    def should_stop(self):
+        """Polled by the adapter between stream events.
+
+        Two reasons a run stops without finishing, and they are recorded
+        differently because they mean different things: somebody pressed stop,
+        or the deployment's wall-clock budget ran out.
+        """
+        if self.cancelled:
+            return True
+        if self.deadline and time.time() > self.deadline:
+            self.cancelled = 'timed_out'
+            return True
+        return False
 
     def progress(self):
         terminal = ('complete' if self.status == 'done'
-                    else 'failed' if self.status in ('error', 'refused', 'unavailable')
+                    else 'failed' if self.status in ('error', 'refused', 'unavailable',
+                                                     'stopped', 'interrupted')
                     else None)
         return ST.progress(self.stages_reached, terminal=terminal)
 
@@ -230,7 +303,7 @@ class DiscoveryRun:
             return {
                 'run_id': self.id, 'status': self.status,
                 'runtime_mode': self.runtime_mode,
-                'runtime_label': RT.LABELS[self.runtime_mode],
+                'runtime_label': self.runtime_label,
                 'is_real': self.runtime_mode in RT.REAL_MODES,
                 'request_id': self.request['request_id'],
                 'project_id': self.request['project_id'],
@@ -244,15 +317,22 @@ class DiscoveryRun:
                 'next_step': self.next_step,
                 'result': self.result if include_result else None,
                 'elapsed_s': round((self.finished_at or time.time()) - self.started_at, 1),
+                'started_at': self.started_at,
+                'deadline_in_s': (round(self.deadline - time.time(), 1)
+                                  if self.deadline and not self.finished_at else None),
+                'cancellable': self.finished_at is None,
+                'recovered': False,
             }
 
 
 class DiscoveryRegistry:
     """Discovery runs in this process, and the caps that bound them."""
 
-    def __init__(self, runs_dir, runtime_config):
+    def __init__(self, runs_dir, runtime_config, limits=None):
         self.runs_dir = Path(runs_dir)
         self.cfg = runtime_config
+        self.limits = limits or BU.Limits()
+        self.ledger = BU.Ledger(self.limits)
         self.runs = {}
         self.order = []
         self.lock = threading.Lock()
@@ -273,16 +353,19 @@ class DiscoveryRegistry:
         while len(self.order) > MAX_RUNS_TRACKED:
             self.runs.pop(self.order.pop(0), None)
 
-    def start(self, request, *, identity=None):
+    def start(self, request, *, identity=None, client=None):
         mode = request['runtime_mode']
         target = self.cfg.for_mode(mode)
         if mode not in self.cfg.allowed:
-            raise RT.RuntimeUnavailable('not_configured')
+            raise RT.RuntimeUnavailable('not_configured', hosted=self.cfg.hosted)
         if target.is_real:
             # Checked before anything is written, so a run that cannot possibly
             # work never appears in the list as if it might.
             from . import omnigent_runtime as OMNI
             OMNI.ensure_available(target)
+            # And then the budget, which refuses by name and never downgrades the
+            # request into a synthetic run.
+            self.ledger.authorise(client or 'unknown', is_real=True)
         with self.lock:
             self._evict()
             if target.is_real and self.active_real >= MAX_CONCURRENT_REAL:
@@ -297,13 +380,17 @@ class DiscoveryRegistry:
             stamp = time.strftime('%Y%m%d-%H%M%S')
             prefix = 'ai' if target.is_real else 'demo'
             out = self.runs_dir / f'{prefix}-{stamp}-{rid[:6]}'
-            run = DiscoveryRun(rid, request, out, mode)
+            run = DiscoveryRun(rid, request, out, mode,
+                               runtime_label=self.cfg.label_for(mode),
+                               deadline=(self.limits.deadline_from(time.time())
+                                         if target.is_real else None))
             self.runs[rid] = run
             self.order.append(rid)
             if target.is_real:
                 self.active_real += 1
             else:
                 self.active_synthetic += 1
+        run.persist()
         t = threading.Thread(target=self._work, args=(run, target), daemon=True,
                              name=f'discovery-{rid[:6]}')
         t.start()
@@ -315,14 +402,33 @@ class DiscoveryRegistry:
             if target.is_real:
                 res = DRUN.run_real(target, run.request, run.out_dir, on_event=run.add,
                                     on_session=lambda sess: setattr(run, 'session',
-                                                                    sess.public()))
+                                                                    sess.public()),
+                                    should_stop=run.should_stop)
                 summary = res['omnigent']
                 run.session = summary['session']
                 final = DRUN.finish(run.request, run.out_dir, runtime_mode=run.runtime_mode,
                                     session=run.session)
+                if run.cancelled:
+                    # Stopped, not finished. Whatever the agents wrote is kept
+                    # and reported as what it is; no partial run is a result.
+                    run.finish('stopped', final, STOP_MESSAGES[run.cancelled],
+                               reason=run.cancelled,
+                               next_step='Start the run again when you want the whole answer.')
+                    return
                 if summary.get('terminal') == 'failed':
-                    run.finish('error', final, summary.get('error') or 'the run failed',
-                               reason='run_failed')
+                    # A provider 401 arrives as an ordinary task error. It is not
+                    # an ordinary task error: it is the one failure here that has
+                    # a specific remedy, and saying "the run failed" instead
+                    # sends the reader looking at their question.
+                    from . import omnigent_runtime as OMNI
+                    err = summary.get('error') or 'the run failed'
+                    code = OMNI.model_auth_reason(err)
+                    if code:
+                        run.finish('unavailable', final, str(RT.RuntimeUnavailable(
+                            code, hosted=self.cfg.hosted)), reason=code,
+                            next_step=RT.next_step_for(code, hosted=self.cfg.hosted))
+                        return
+                    run.finish('error', final, err, reason='run_failed')
                     return
             else:
                 res = DRUN.run_synthetic(run.request, run.out_dir, on_event=run.add)
@@ -354,6 +460,37 @@ class DiscoveryRegistry:
 
     def get(self, rid):
         return self.runs.get(rid) if DISCOVERY_ID.match(rid or '') else None
+
+    def restore(self, rid, *, after=-1):
+        """A run this process no longer holds, read back from its own directory.
+
+        This is what makes a browser refresh survivable: the run id is enough,
+        the journal is beside the artifacts, and a run that was in flight when
+        the process went away is reported as interrupted rather than as either
+        finished or running.
+        """
+        if not DISCOVERY_ID.match(rid or ''):
+            return None
+        return RS.restore(self.runs_dir, rid, after=after)
+
+    def cancel(self, rid, *, reason='cancelled'):
+        """Stop a run in flight. Returns the run, or None if there is nothing to stop.
+
+        A real run is money per minute, so stopping one has to be available to
+        whoever started it without waiting for a timeout. The Omnigent session is
+        interrupted as well as the local loop, because stopping the stream alone
+        would leave the agents working and the bill running.
+        """
+        run = self.get(rid)
+        if run is None or run.finished_at is not None:
+            return None
+        if not run.stop(reason, STOP_MESSAGES[reason]):
+            return None
+        sess = (run.session or {}).get('omnigent_session_id')
+        if sess and run.runtime_mode in RT.REAL_MODES:
+            from . import omnigent_runtime as OMNI
+            OMNI.interrupt(self.cfg.for_mode(run.runtime_mode), sess)
+        return run
 
     def recent(self):
         with self.lock:
@@ -459,6 +596,9 @@ class Handler(BaseHTTPRequestHandler):
     runtime_cfg = None
     sessions = None
     default_identity = None
+    limits = BU.Limits()
+    _ready = {'at': 0.0, 'body': None, 'code': 503}
+    _ready_lock = threading.Lock()
 
     def log_message(self, fmt, *args):
         sys.stderr.write(f'{self.address_string()} {fmt % args}\n')
@@ -521,6 +661,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/benchmark', path)
             if m:
                 return self._make_benchmark(m.group(1))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/cancel', path)
+            if m:
+                return self._cancel_discovery(m.group(1))
             if path == '/api/benchmarks/run':
                 return self._run_benchmark(self._body(MAX_BODY_DISCOVERY))
             if path == '/api/projects':
@@ -542,10 +685,23 @@ class Handler(BaseHTTPRequestHandler):
                 with SIM_GATE:
                     return self._send(200, SM.seed_brief(SM.simulate(self._body())))
             return self._send(404, {'error': 'no such endpoint'})
+        except BU.BudgetExceeded as e:
+            # 429, and the limit is named: a cap that refuses without saying
+            # which cap or when to come back reads like a fault.
+            extra = [('Retry-After', str(e.retry_after_s))] if e.retry_after_s else []
+            return self._send(429, {'error': str(e), 'refused': True, 'reason': 'budget',
+                                    'limit': e.limit, 'retry_after_s': e.retry_after_s,
+                                    'headline': 'Run limit reached',
+                                    'limits': self.limits.describe()}, extra=extra)
         except K.ContractError as e:
             return self._send(400, {'error': str(e), 'refused': True})
         except Exception as e:  # noqa: BLE001
             return self._send(500, {'error': f'{type(e).__name__}: {e}'})
+
+    def _client(self):
+        """The counting bucket for rate limits. Not an identity, never logged."""
+        return BU.client_key(self.client_address[0] if self.client_address else None,
+                             self.headers.get('X-Forwarded-For'))
 
     # ── identity ────────────────────────────────────────────
     def _identity(self):
@@ -624,7 +780,8 @@ class Handler(BaseHTTPRequestHandler):
     def _start_discovery(self, body):
         req = self._discovery_request(body)
         try:
-            run = self.discovery.start(req, identity=self._identity())
+            run = self.discovery.start(req, identity=self._identity(),
+                                       client=self._client())
         except RT.RuntimeUnavailable as e:
             # 503, not 500: the request was fine, the runtime is not there. The
             # browser shows the reason and the command that fixes it, and it
@@ -634,6 +791,24 @@ class Handler(BaseHTTPRequestHandler):
                                     'runtime_mode': req['runtime_mode'],
                                     'runtime_label': RT.LABELS[req['runtime_mode']]})
         return self._send(202, run.snapshot())
+
+    def _cancel_discovery(self, rid):
+        """Stop a run in flight.
+
+        Deliberately unauthenticated on an instance that has no accounts, for the
+        same reason the run is visible by id: whoever holds the id is whoever
+        started it. On a real run this also interrupts the Omnigent session,
+        because the cost is in the agents, not in the stream.
+        """
+        run = self.discovery.cancel(rid)
+        if run is None:
+            live = self.discovery.get(rid)
+            if live is not None:
+                return self._send(409, {'error': 'that run has already finished',
+                                        'status': live.status})
+            return self._send(404, {'error': 'no such discovery run in this process'})
+        return self._send(202, {'run_id': run.id, 'status': 'stopping',
+                                'note': STOP_MESSAGES['cancelled']})
 
     def _make_benchmark(self, rid):
         from ..benchmark import from_run as FR
@@ -665,7 +840,8 @@ class Handler(BaseHTTPRequestHandler):
         req = DISC.from_benchmark_config(
             cfg, runtime_mode=body.get('runtime_mode') or 'synthetic_demo')
         try:
-            run = self.discovery.start(req, identity=self._identity())
+            run = self.discovery.start(req, identity=self._identity(),
+                                       client=self._client())
         except RT.RuntimeUnavailable as e:
             return self._send(503, {'error': str(e), 'refused': True, 'reason': e.reason,
                                     'headline': e.headline, 'next_step': e.next_step})
@@ -700,6 +876,8 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(u.query)
         if path == '/healthz':
             return self._send(200, {'ok': True, 'active': self.registry.active})
+        if path == '/readyz':
+            return self._readyz()
         if path == '/api/config':
             return self._send(200, {
                 'max_prompt_chars': MAX_PROMPT, 'max_concurrent': MAX_CONCURRENT,
@@ -709,6 +887,7 @@ class Handler(BaseHTTPRequestHandler):
                 'standins_with_hidden_truth': sorted(k for k, v in TRUTH_FOR.items()
                                                      if v.exists()),
                 'bioreactor_source': 'synthetic_standin',
+                'limits': self.limits.describe(),
                 'refuses': [
                     'any request whose bioreactor_source is not synthetic_standin',
                     'self-approving a protocol when the gates require a named human',
@@ -807,25 +986,39 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self.discovery.recent())
         m = re.fullmatch(r'/api/discovery/([^/]+)', path)
         if m:
-            run = self.discovery.get(m.group(1))
-            if not run:
-                return self._send(404, {'error': 'no such discovery run in this process'})
             after = int((q.get('after') or ['-1'])[0] or -1)
-            return self._send(200, run.snapshot(after=after))
+            run = self.discovery.get(m.group(1))
+            if run:
+                return self._send(200, run.snapshot(after=after))
+            # Not in memory: the browser was reloaded, or this process was
+            # replaced. The run wrote its own record beside its artifacts, so the
+            # id is enough to get it back — and a run that was interrupted says so
+            # rather than being reported as finished.
+            found = self.discovery.restore(m.group(1), after=after)
+            if found:
+                return self._send(200, found)
+            return self._send(404, {'error': 'no record of that discovery run',
+                                    'run_id': m.group(1)})
         m = re.fullmatch(r'/api/discovery/([^/]+)/events', path)
         if m:
             return self._sse_discovery(m.group(1), int((q.get('after') or ['-1'])[0] or -1))
         m = re.fullmatch(r'/api/discovery/([^/]+)/protocol', path)
         if m:
             run = self.discovery.get(m.group(1))
-            if not run or not run.result or not run.result.get('protocol'):
+            # A finished run's protocol is in the record it wrote, so exporting
+            # it works after a reload or a restart, not only while the process
+            # that produced it is still alive.
+            result = (run.result if run
+                      else (self.discovery.restore(m.group(1)) or {}).get('result'))
+            protocol = (result or {}).get('protocol')
+            if not protocol:
                 return self._send(404, {'error': 'no protocol summary for that run'})
             fmt = (q.get('format') or ['json'])[0]
             if fmt == 'md':
-                doc = {k: v for k, v in run.result['protocol'].items()
+                doc = {k: v for k, v in protocol.items()
                        if k not in ('summary_counts', 'changed_parameters', 'badge')}
                 return self._send(200, PSUM.markdown(doc), 'text/markdown; charset=utf-8')
-            return self._send(200, run.result['protocol'])
+            return self._send(200, protocol)
         if path == '/api/runs':
             return self._send(200, self.registry.recent())
         m = re.fullmatch(r'/api/runs/([^/]+)', path)
@@ -864,6 +1057,35 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {'error': 'no such endpoint'})
         return self._static(path)
 
+    def _readyz(self):
+        """Is this deployment actually able to run what it offers?
+
+        The judgement lives in `health.readiness`, which is where it can be
+        tested; this method is the cache and the response. The probe is cached
+        briefly so a monitor cannot turn this page into load on the runtime.
+        """
+        now = time.time()
+        with self._ready_lock:
+            cached = Handler._ready
+            if cached['body'] is not None and now - cached['at'] < READY_CACHE_S:
+                return self._send(cached['code'], dict(cached['body'], cached=True))
+        code, body = HL.readiness(self.runtime_cfg, limits=self.limits,
+                                  usage=self.discovery.ledger.state(),
+                                  runs_writable=self._runs_writable())
+        with self._ready_lock:
+            Handler._ready = {'at': now, 'body': body, 'code': code}
+        return self._send(code, body)
+
+    def _runs_writable(self):
+        """Whether artifacts can actually be written. A real run needs this."""
+        try:
+            probe = Path(self.runs_dir) / '.write-probe'
+            probe.write_text('ok', encoding='utf-8')
+            probe.unlink()
+            return True
+        except OSError:
+            return False
+
     def _runtime_state(self, q):
         """What runtimes this deployment offers, and whether each can run now.
 
@@ -882,6 +1104,8 @@ class Handler(BaseHTTPRequestHandler):
                     checks[mode] = RT.reason('probe_failed', str(e))
             out['availability'] = checks
         out['identity'] = self._identity().public()
+        out['limits'] = self.limits.describe()
+        out['usage'] = self.discovery.ledger.state()
         out['note'] = (
             'A synthetic run and a real one are different claims about the same question. '
             'BioSense never substitutes one for the other: if a real runtime is unavailable '
@@ -918,7 +1142,7 @@ class Handler(BaseHTTPRequestHandler):
                             'datasets': c.get('datasets') or [],
                             'export_policy': c['export_policy']})
         return {'built': built, 'configs': configs,
-                'runtimes': [{'mode': m, 'label': RT.LABELS[m],
+                'runtimes': [{'mode': m, 'label': self.runtime_cfg.label_for(m),
                               'offered': m in self.runtime_cfg.allowed} for m in RT.MODES],
                 'note': 'A benchmark measures system capability, not biological truth. You can '
                         'read the ones already built and run a configuration again under either '
@@ -1032,22 +1256,25 @@ def main(argv=None):
     # Read once, at startup: a misconfiguration should stop the server with a
     # reason rather than let it start and refuse every run.
     cfg = RT.from_env(runs_dir=runs)
+    limits = BU.from_env()
     Handler.runs_dir = runs
     Handler.static_dir = Path(a.static) if a.static else None
     Handler.registry = Registry(runs)
     Handler.runtime_cfg = cfg
-    Handler.discovery = DiscoveryRegistry(runs, cfg)
+    Handler.limits = limits
+    Handler.discovery = DiscoveryRegistry(runs, cfg, limits)
     Handler.sessions = WS.SessionStore()
     Handler.default_identity = WS.identity_from_env()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     srv.daemon_threads = True
-    offered = ', '.join(RT.LABELS[m] for m in cfg.allowed)
+    offered = ', '.join(cfg.label_for(m) for m in cfg.allowed)
     print(f'BioSense app on http://{a.host}:{a.port}  (runs: {a.runs}, static: {a.static})\n'
           f'runtimes offered: {offered}\n'
           + (f'real AI via {cfg.server_display} as {cfg.agent}'
              + ('  (token configured)' if cfg.token else '  (no token: loopback single-user)')
              if cfg.is_real else
-             'synthetic stand-in only; nothing on this path calls a model'),
+             'synthetic stand-in only; nothing on this path calls a model')
+          + (f'\ncaps: {limits.describe()}' if limits.any_cap else ''),
           flush=True)
     try:
         srv.serve_forever()
