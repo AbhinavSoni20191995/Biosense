@@ -20,6 +20,21 @@ const el = (t, c, x) => { const n = document.createElement(t); if (c) n.classNam
 const num = (v, nd = 3) => (typeof v === 'number' && isFinite(v))
   ? (Math.abs(v) >= 1e6 ? v.toExponential(2) : (+v.toFixed(nd)).toString()) : '—';
 
+/* The one thing this page keeps in the browser: which run you were watching.
+   A real AI run outlives a page load, and losing the only reference to one you
+   are paying for because you reloaded a tab is not acceptable. The id is enough
+   — the run journals itself beside its artifacts on the server. */
+const LAST_RUN_KEY = 'bs-last-discovery-run';
+function rememberRun(id) {
+  try { localStorage.setItem(LAST_RUN_KEY, id); } catch (_) { /* private mode */ }
+}
+function forgetRun() {
+  try { localStorage.removeItem(LAST_RUN_KEY); } catch (_) { /* private mode */ }
+}
+function rememberedRun() {
+  try { return localStorage.getItem(LAST_RUN_KEY); } catch (_) { return null; }
+}
+
 const state = {
   glossary: null, runtime: null, projects: [], project: null, datasets: [],
   run: null, es: null, result: null, benchmark: null,
@@ -97,6 +112,48 @@ async function boot() {
   await Promise.all([loadRuntime(), loadProjects(), loadDatasets(), loadBenchmarks()]);
   wire();
   renderStages(null);
+  await resume();
+}
+
+/* ── picking a run back up ───────────────────────────────────────────────
+   Three outcomes, and the difference between them is the point: a run still
+   going is re-attached to its live stream; a finished one is rendered from the
+   record it wrote; one the server has no record of is forgotten rather than
+   reported as anything. */
+async function resume() {
+  const id = (new URLSearchParams(location.search)).get('run') || rememberedRun();
+  if (!id) return;
+  let snap;
+  try { snap = await get(`/api/discovery/${id}`); }
+  catch (_) { forgetRun(); return; }
+  state.run = snap;
+  $('#progressPanel').hidden = false;
+  $('#runBadge').textContent = snap.runtime_label;
+  $('#runBadge').className = 'rt-badge ' + snap.runtime_mode;
+  (snap.events || []).forEach(pushEvent);
+  renderStages(snap.progress);
+  if (snap.status === 'running' || snap.status === 'queued') {
+    renderRunState(snap);
+    attach(id, (snap.events || []).reduce((m, e) => Math.max(m, e.seq), -1));
+    return;
+  }
+  if (snap.status === 'done' && snap.result) {
+    state.result = snap.result;
+    renderResult(snap);
+    note(snap.recovered ? 'This is the run you were last watching, read back from its own '
+      + 'record on the server.' : null);
+  } else {
+    fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
+      message: snap.error });
+  }
+}
+
+function note(text) {
+  const box = $('#runState');
+  if (!box) return;
+  if (!text) { box.hidden = true; return; }
+  box.hidden = false; box.textContent = '';
+  const w = el('div', 'state'); w.append(el('p', 'dim', text)); box.append(w);
 }
 
 async function loadRuntime() {
@@ -131,7 +188,16 @@ function renderRuntimePicker() {
   const host = $('#runtimes'); if (!host || !state.runtime) return;
   host.textContent = '';
   const avail = state.runtime.availability || {};
-  state.runtime.modes.forEach(m => {
+  /* The real runtime first where this deployment offers one. On the hosted
+     service that is the product: pressing the button runs the actual agents, and
+     the demonstration path is the deliberate second choice, not the default a
+     visitor lands on by accident. */
+  const def = state.runtime.default_mode;
+  const order = state.runtime.modes.slice().sort((a, b) => {
+    const rank = m => (m.mode === def && m.offered ? 0 : m.offered ? 1 : 2);
+    return rank(a) - rank(b);
+  });
+  order.forEach(m => {
     const a = avail[m.mode] || {};
     const usable = m.offered && (a.ok !== false);
     const lab = el('label', 'rt-opt' + (usable ? '' : ' off'));
@@ -153,7 +219,41 @@ function renderRuntimePicker() {
     const first = host.querySelector('input:not(:disabled)');
     if (first) first.checked = true;
   }
+  renderLimits();
   updateBadge();
+}
+
+/* What a visitor is allowed to spend, before they are refused rather than
+   after. A cap nobody could read first reads like a fault. */
+function renderLimits() {
+  const lim = state.runtime && state.runtime.limits;
+  const host = $('#limits');
+  if (!host) return;
+  host.textContent = '';
+  if (!lim || !lim.public_demo) { host.hidden = true; return; }
+  host.hidden = false;
+  host.append(el('span', 'rt-badge demo-limits', 'DEMO LIMITS'));
+  const bits = [];
+  if (lim.max_real_runs_per_client_per_day)
+    bits.push(`${lim.max_real_runs_per_client_per_day} real AI runs per visitor per day`);
+  if (lim.max_real_runs_per_day)
+    bits.push(`${lim.max_real_runs_per_day} across the service per day`);
+  if (lim.real_run_timeout_s)
+    bits.push(`each run stops after ${Math.round(lim.real_run_timeout_s / 60)} minutes`);
+  if (lim.real_run_cooldown_s)
+    bits.push(`${lim.real_run_cooldown_s}s between runs`);
+  host.append(el('span', 'dim', bits.join(' · ')));
+  host.append(el('div', 'note', 'This service runs real AI on its own model credentials, so '
+    + 'real runs are capped. The demonstration path has no cap, and running BioSense '
+    + 'yourself has none either: ./scripts/start_local_ai.sh'));
+}
+
+/* The badge this deployment uses for a mode. A hosted service runs its own
+   runtime on its own loopback, which is `local_real_ai` in the code and ONLINE
+   to the person reading it: "LOCAL" in a browser means "your laptop". */
+function modeLabel(mode) {
+  const m = ((state.runtime && state.runtime.modes) || []).find(x => x.mode === mode);
+  return (m && m.label) || mode;
 }
 
 function chosenRuntime() {
@@ -167,8 +267,7 @@ function updateBadge() {
   host.textContent = '';
   host.className = 'rt-badge ' + mode;
   host.append(el('span', 'dot'));
-  const t = term('runtime_mode', mode);
-  host.append(t);
+  host.append(term('runtime_mode', mode, modeLabel(mode)));
 }
 
 async function loadProjects() {
@@ -343,10 +442,17 @@ function fail(e) {
   const box = $('#runState');
   box.hidden = false; box.textContent = '';
   const w = el('div', 'state');
-  w.append(el('h4', null, e.reason === 'not_configured' ? 'Runtime not offered'
-    : e.headline ? 'Real AI runtime unavailable' : 'Refused'));
+  w.append(el('h4', null,
+    e.reason === 'not_configured' ? 'Runtime not offered'
+      : e.reason === 'budget' ? 'Run limit reached'
+      : e.reason === 'cancelled' || e.reason === 'timed_out' ? 'Run stopped'
+      : e.reason === 'interrupted' ? 'Run interrupted'
+      : e.headline ? 'Real AI runtime unavailable' : 'Refused'));
   w.append(el('p', null, e.headline || e.message || String(e)));
   if (e.next_step) w.append(el('code', null, e.next_step));
+  if (e.retry_after_s) {
+    w.append(el('p', 'dim', `Try again in about ${Math.ceil(e.retry_after_s / 60)} minute(s).`));
+  }
   if (e.reason) w.append(el('p', 'dim mono', e.reason));
   box.append(w);
 }
@@ -372,19 +478,58 @@ async function start() {
 
 function startWatching(run) {
   state.run = run;
+  rememberRun(run.run_id);
   $('#progressPanel').hidden = false;
   $('#runBadge').textContent = run.runtime_label;
   $('#runBadge').className = 'rt-badge ' + run.runtime_mode;
   renderStages(run.progress);
+  renderRunState(run);
+  attach(run.run_id, -1);
+}
+
+/* The live stream, from a given sequence number. Separated from starting a run
+   because re-attaching after a reload is the same operation from a later point,
+   and the server replays the events it has journalled. */
+function attach(id, after) {
   if (state.es) state.es.close();
-  state.es = new EventSource(`/api/discovery/${run.run_id}/events`);
+  state.es = new EventSource(`/api/discovery/${id}/events?after=${after}`);
   state.es.onmessage = ev => {
     try { pushEvent(JSON.parse(ev.data)); } catch (_) { /* a malformed frame is not fatal */ }
   };
   state.es.addEventListener('closed', () => {
-    state.es.close(); state.es = null; refresh(run.run_id);
+    state.es.close(); state.es = null; refresh(id);
   });
-  state.es.onerror = () => { refresh(run.run_id); };
+  state.es.onerror = () => { refresh(id); };
+}
+
+/* While it runs: what is running, how long it may run, and how to stop it.
+   A real run is money per minute, so stopping one is a button and not a wait. */
+function renderRunState(run) {
+  const box = $('#runState');
+  if (!box) return;
+  box.hidden = false; box.textContent = '';
+  const w = el('div', 'state');
+  const head = el('div', 'row');
+  head.append(el('span', 'rt-badge ' + run.runtime_mode, run.runtime_label),
+    el('span', 'dim', run.is_real
+      ? 'Running. The agents are working; this page follows them live.'
+      : 'Running the deterministic demonstration path.'));
+  w.append(head);
+  if (run.deadline_in_s) {
+    w.append(el('p', 'dim', `This deployment stops a single real run after `
+      + `${Math.round(run.deadline_in_s / 60)} more minutes.`));
+  }
+  if (run.cancellable !== false) {
+    const stop = el('button', 'btn', 'Stop this run');
+    stop.addEventListener('click', async () => {
+      stop.disabled = true; stop.textContent = 'stopping…';
+      try { await post(`/api/discovery/${run.run_id}/cancel`); }
+      catch (e) { fail(e); }
+    });
+    w.append(stop);
+  }
+  w.append(el('p', 'dim mono', `run ${run.run_id} · reload this page and it comes back`));
+  box.append(w);
 }
 
 async function refresh(id) {
@@ -393,7 +538,11 @@ async function refresh(id) {
     renderStages(snap.progress);
     $('#runBtn').disabled = false;
     if (snap.status === 'done' && snap.result) { state.result = snap.result; renderResult(snap); }
-    else if (snap.status !== 'running' && snap.status !== 'queued') {
+    else if (snap.status === 'running' || snap.status === 'queued') {
+      renderRunState(snap);
+    } else {
+      /* Stopped, interrupted, refused or failed. Each says what it was. None of
+         them renders a result, because none of them produced one. */
       fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
         message: snap.error });
     }

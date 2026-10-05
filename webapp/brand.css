@@ -235,6 +235,13 @@ button{font-family:inherit}
 .rt-badge.local_real_ai,.rt-badge.remote_real_ai{color:var(--brand);
   border-color:color-mix(in srgb,var(--brand) 55%,transparent);
   background:color-mix(in srgb,var(--brand) 12%,transparent)}
+/* The caps a hosted deployment runs under. Neutral, not alarming: a limit the
+   reader can see before they hit it is information, not a warning. */
+.rt-badge.demo-limits{color:var(--ink-dim);border-color:var(--line);
+  background:var(--glass-2)}
+.limits{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;
+  font-size:12.5px}
+.limits .note{flex:0 0 100%;font-size:12px;color:var(--ink-dim);margin:0}
 
 /* Runtime chooser: radio cards, because the choice costs money in one case and
    nothing in another, and a dropdown hides that. */
