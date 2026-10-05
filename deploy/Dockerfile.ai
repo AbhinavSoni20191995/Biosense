@@ -1,0 +1,98 @@
+# BioSense with the real agents, in one container: this is the hosted product.
+#
+# The difference from deploy/Dockerfile is the whole point of the file. That
+# image holds no model credentials and cannot call an LLM; it serves the
+# deterministic demonstration path and is safe on a public URL for that reason.
+# This image runs the actual discovery agents, so it holds a model key — and
+# therefore it also carries the caps in biosense/production/budget.py, which the
+# other image has no need of.
+#
+# Three processes, one filesystem, one service:
+#
+#   BioSense app      0.0.0.0:$PORT        the only thing exposed
+#   Omnigent server   127.0.0.1:6767       --agent discovery_loop at boot
+#   Omnigent host     -> loopback server   the server launches runners on demand
+#
+# Why one container rather than a service each: the agents write their artifacts
+# to the filesystem and BioSense reads them from the filesystem
+# (biosense/production/ingest.py). Co-locating the three processes removes the
+# artifact-transport problem instead of solving it, and the runner gets
+# BioSense's code, dependencies, deterministic tools and simulator by
+# construction, because it is the same image. A managed sandbox host would need
+# all of that bootstrapped into a generic image on every launch, plus a paid
+# third-party provider account, to arrive at the same place.
+#
+# Cost of that choice, stated plainly: one crash takes all three processes, and
+# this container holds a model key. deploy/start-ai.sh restarts the runtime
+# processes, and the caps bound what the key can spend.
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir uv==0.12.23
+
+WORKDIR /app
+ENV UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    PYTHONUNBUFFERED=1
+
+# Dependencies first. `--extra omnigent` is the one line that makes this image
+# different in kind: it installs the client library BioSense imports AND the
+# `omnigent` command this container runs, from the same lockfile, so there is
+# nothing to install by hand and no version to drift.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --extra omnigent --no-install-project
+
+COPY agent_tools.py output.schema.json agent_prompt.md ./
+COPY biosense/ ./biosense/
+COPY standins/ ./standins/
+COPY schemas/ ./schemas/
+COPY qc_profiles/ ./qc_profiles/
+COPY bioinfo_knowledge/ ./bioinfo_knowledge/
+COPY analysis_agent/ ./analysis_agent/
+COPY examples/ ./examples/
+COPY webapp/ ./webapp/
+COPY benchmarks/ ./benchmarks/
+COPY scripts/ ./scripts/
+COPY docs/ ./docs/
+# The agent bundle itself: the orchestrator prompt and its five specialists.
+# This is what `--agent` registers, and the reason this image can do the work.
+COPY discovery_loop/ ./discovery_loop/
+COPY deploy/start-ai.sh ./deploy/start-ai.sh
+RUN uv sync --locked --extra omnigent
+
+# RUNS_DIR is inside the runner's workspace, and that is not cosmetic: the agents
+# write under ./runs relative to the workspace, and runtime.check_workspace
+# REFUSES to start a real run if BioSense is reading anywhere else — because such
+# a run would succeed and produce artifacts nobody ever sees. Mount the Railway
+# volume at /app/runs. Mounting it at /data/runs instead will make the service
+# refuse every real run, by design, with that reason.
+ENV RUNS_DIR=/app/runs \
+    PORT=8000 \
+    BIOSENSE_OMNIGENT_PORT=6767 \
+    BIOSENSE_RUNTIME_MODE=local \
+    BIOSENSE_ALLOWED_RUNTIMES=synthetic,local \
+    BIOSENSE_OMNIGENT_WORKSPACE=/app \
+    BIOSENSE_HOSTED=1 \
+    BIOSENSE_PUBLIC_DEMO=1 \
+    OMNIGENT_LOCAL_SINGLE_USER=1 \
+    OMNIGENT_HOST_NO_OPEN=1
+RUN mkdir -p /app/runs
+
+# A non-root user, as in the other image: this process accepts input from the
+# internet and starts work. uid 1000 for the same reason.
+ENV UV_CACHE_DIR=/home/biosense/.cache/uv \
+    HOME=/home/biosense
+RUN useradd --uid 1000 --create-home --home-dir /home/biosense biosense \
+ && mkdir -p "$UV_CACHE_DIR" \
+ && chmod +x /app/deploy/start-ai.sh \
+ && chown -R biosense /app /home/biosense
+USER biosense
+
+EXPOSE 8000
+# Liveness only, and deliberately so: /healthz answers as soon as the web process
+# is up. Pointing a platform healthcheck at /readyz instead would restart the
+# container while the runtime is still coming up, and keep restarting it if a
+# model key were missing — taking the demonstration path down with it.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+  CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",8000)}/healthz')"
+
+CMD ["/app/deploy/start-ai.sh"]
