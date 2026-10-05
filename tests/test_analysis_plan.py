@@ -119,7 +119,7 @@ class ToolMatchingTests(PlanCase):
 
     def test_a_declared_but_unimplemented_tool_says_so(self):
         with self.assertRaises(K.ContractError) as e:
-            TREG.get('external.deseq2')
+            TREG.get('cytometry.gating')
         self.assertIn('declared but not implemented', str(e.exception))
         self.assertIn('Available now', str(e.exception))
 
@@ -170,8 +170,8 @@ class ToolMatchingTests(PlanCase):
         and gated on an install the reader can perform. Only the first is a reason
         for a document to draw the capability as absent."""
         self.assertFalse(TREG.is_implemented('cytometry.gating'))
-        self.assertFalse(TREG.is_implemented('external.deseq2'))
         self.assertTrue(TREG.is_implemented('single_cell.pseudobulk_comparison'))
+        self.assertTrue(TREG.is_implemented('external.deseq2'))
         self.assertTrue(TREG.is_implemented('bulk.expression_comparison'))
         for name in TREG.TOOLS:
             self.assertTrue(TREG.is_implemented(name))

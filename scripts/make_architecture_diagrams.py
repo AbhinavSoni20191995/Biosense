@@ -336,8 +336,8 @@ def capabilities(c):
          'PHASE 2', True),
         ('Raw FCS / FlowSOM / UMAP', 'automated gating|high-dimensional cytometry', 'PLANNED',
          False),
-        ('External R / DESeq2', 'contract and mock ship now|runs as Rscript, never in-process',
-         'PLANNED', False),
+        ('External R / DESeq2', 'count-level DE with shrinkage|needs Rscript + DESeq2',
+         'NEEDS R', False),
     ]
     for i, (t, sub, status, live) in enumerate(rows):
         x = 30 + (i % 3) * 312

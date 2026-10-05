@@ -144,6 +144,45 @@ def _register_single_cell():
 _SINGLE_CELL = _register_single_cell()
 
 
+def _register_deseq2():
+    """Registered only where Rscript and DESeq2 actually are.
+
+    Same reasoning as the single-cell tool, with a sharper edge: the alternative
+    to DESeq2 is not a slower DESeq2, it is a Welch test over counts, which is
+    the wrong answer rather than a cheaper one. So this is never silently
+    substituted; without R the tool is absent and a plan naming it is refused.
+    """
+    from . import external as EXT
+    from .toolkit.bulk import deseq2
+    if not (EXT.available('deseq2') and deseq2.SCRIPT.is_file()):
+        return None
+    return register(ToolSpec(
+        name=deseq2.NAME, label='DESeq2 count-level differential expression',
+        version=deseq2.VERSION,
+        modalities=deseq2.MODALITIES,
+        analysis_types=deseq2.ANALYSIS_TYPES,
+        required_inputs=('a long-format table of raw integer counts with a feature column, '
+                         'a count column and a sample column',),
+        required_metadata=deseq2.REQUIRED_METADATA,
+        parameters={'feature_column': 'auto-detected from a known set, or named in the plan',
+                    'count_column': 'auto-detected; must be raw counts, not normalised',
+                    'design': 'always ~ condition; a covariate needs a stated reason'},
+        outputs=('per-feature log2 fold change with lfcSE, Wald p and BH-q',
+                 'the external execution record', 'QC checks'),
+        software='DESeq2 (Bioconductor) via Rscript, as a subprocess',
+        external_dependency='Rscript + DESeq2',
+        resource='subprocess, seconds to minutes',
+        status='phase_2',
+        runner=deseq2.run,
+        notes='Count-level dispersion modelling and shrinkage: what bulk.expression_comparison '
+              'refuses raw counts in favour of. Runs out of process through the external-tool '
+              'adapter, and every result carries the command, versions and checksums that '
+              'produced it. A mock record is refused rather than reported as a result.'))
+
+
+_DESEQ2 = _register_deseq2()
+
+
 # Declared, not implemented. Listed so an interface and a planner can see the
 # shape of what is coming without anything pretending it can already run.
 PLANNED = (
@@ -160,17 +199,27 @@ PLANNED = (
               'project\'s version and cannot resolve, so raw FCS stays deferred rather than '
               'pinning the whole project backwards.'},
     {'name': 'external.deseq2', 'label': 'DESeq2 via the external-tool adapter',
-     'modalities': ['bulk_rna'], 'status': 'planned',
-     'notes': 'Contract and a mock ship now; running real R is out of scope for ordinary CI and '
-              'goes through the external-tool boundary as Rscript, never in-process.'},
+     'modalities': ['bulk_rna'],
+     'status': 'external_binary' if _DESEQ2 is None else 'phase_2',
+     'notes': 'Needs Rscript with the DESeq2 Bioconductor package. The adapter, the R script and '
+              'the counts handoff ship now and are tested without R; where R is absent the tool '
+              'is not registered, so a plan is refused at planning rather than part-way through. '
+              'It never runs in-process, and ordinary CI never needs it.'},
 )
 
 
-#: statuses a PLANNED entry may carry. 'planned' is work nobody has done;
-#: 'optional_environment' and 'phase_2' are implemented and gated only on an
-#: optional extra, which is why the capabilities diagram may draw them as
-#: shipped even on a machine where the extra is absent.
-IMPLEMENTED_STATUSES = ('optional_environment', 'phase_2')
+#: statuses a PLANNED entry may carry, and what each one is waiting on.
+#: 'planned' is work nobody has written. The others are written and gated on
+#: something the reader can install, which is why the capabilities diagram may
+#: draw them as existing even where they cannot run. They are kept apart because
+#: the refusals read differently: one has no remedy, the others name one.
+WAITING_ON = {
+    'planned': 'is declared but not implemented',
+    'optional_environment': 'needs an optional environment',
+    'external_binary': 'needs an external program that is not on this machine',
+    'phase_2': None,
+}
+IMPLEMENTED_STATUSES = ('optional_environment', 'external_binary', 'phase_2')
 
 
 def is_implemented(name):
@@ -189,9 +238,7 @@ def get(name):
     if name not in TOOLS:
         planned = next((p for p in PLANNED if p['name'] == name), None)
         if planned:
-            kind = ('needs an optional environment'
-                    if planned['status'] == 'optional_environment' else
-                    'is declared but not implemented')
+            kind = WAITING_ON.get(planned['status']) or 'is declared but not implemented'
             raise K.ContractError(
                 f'{name!r} {kind} ({planned["notes"]}). '
                 f'Available now: {", ".join(sorted(TOOLS))}.')
