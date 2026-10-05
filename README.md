@@ -97,7 +97,7 @@ decides, and the envelope can refuse.
 
 ### Just use it
 
-> **Open the hosted app:** <!-- BIOSENSE_HOSTED_URL -->`https://<your-biosense>.up.railway.app`
+> **Open the hosted app:** <!-- BIOSENSE_HOSTED_URL -->`https://biosense-production-e48f.up.railway.app`
 >
 > Pick a project, state your objective, press **Run AI discovery**. Nothing to
 > clone, nothing to configure.
