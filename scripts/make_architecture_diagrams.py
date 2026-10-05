@@ -270,14 +270,18 @@ def evidence(c):
 def loop(c):
     W, H = 980, 470
     s = [head(W, H, c,
-              'The closed loop: an objective raises an uncertainty, evidence is collected and '
+              'The closed loop. A person states the objective once and authorises the campaign '
+              'once, by name, with an envelope and stop conditions. After that each iteration '
+              'runs without a signature: an uncertainty is raised, evidence is collected and '
               'analysed, a candidate parameter is proposed, a validated decision reaches the '
-              'simulator or the bioreactor, measurements return, and the loop either optimises '
-              'again or finishes.')]
+              'simulator or the bioreactor, and the instruments feed their readings straight '
+              'back to the orchestrator. Every round is checked against the authorised '
+              'envelope; stepping outside it stops the loop and asks again.')]
     s.append(title(490, 28, c, 'ONE ITERATION'))
 
     nodes = [
-        (30, 60, 'Objective', 'stated once', c['human'], c['human_soft']),
+        (30, 60, 'Objective', 'stated once · campaign|authorised once, by name',
+         c['human'], c['human_soft']),
         (222, 60, 'Uncertainty', 'hypothesis or gap', c['brand'], c['brand_soft']),
         (414, 60, 'Evidence', 'literature · data', c['brand'], c['brand_soft']),
         (606, 60, 'Analysis', 'deterministic', c['code'], c['code_soft']),
@@ -295,13 +299,21 @@ def loop(c):
     s.append(arrow(874, 116, 874, 170, c, '', color=c['stop']))
 
     s.append(box(606, 262, 152, 56, 'Simulator', 'simulation', c, c['code'], c['code_soft']))
-    s.append(box(798, 262, 152, 56, 'Bioreactor', 'people run it', c, c['human'],
-                 c['human_soft'], dash=True))
+    s.append(box(798, 262, 152, 56, 'Bioreactor', 'setpoints applied', c, c['human'],
+                 c['human_soft'], 'PLANNED', dash=True))
     s.append(arrow(682, 226, 682, 262, c, '', color=c['code']))
     s.append(arrow(874, 226, 874, 262, c, '', color=c['human']))
+    # The bioreactor's own return path, dashed because the actuation half is not
+    # built. The reading half is: the instrument modules are modelled already.
+    s.append(elbow([(874, 318), (874, 340), (470, 340), (470, 318)], c, '',
+                   color=c['human'], dash=True))
 
-    s.append(box(222, 262, 344, 56, 'Measurements',
-                 'density · viability · pH · DO · FACS · omics', c, c['brand'], c['brand_soft']))
+    # The return path is the instruments, not a person retyping numbers. The
+    # stand-in already models them module by module, with their own noise, cost
+    # and latency; that is what makes this a loop rather than a batch job.
+    s.append(box(222, 262, 344, 56, 'Detectors feed back',
+                 'density · viability · pH · DO · FACS · omics|'
+                 'in-line, no one retypes a number', c, c['brand'], c['brand_soft']))
     s.append(arrow(606, 290, 566, 290, c, '', color=c['brand']))
 
     s.append(box(222, 364, 344, 60, 'Objective met?',
@@ -318,8 +330,8 @@ def loop(c):
     s.append(arrow(566, 394, 606, 394, c, '', color=c['brand']))
 
     s.append(caption(490, H - 14, c,
-                     'An analysis never changes a parameter. It produces evidence; the '
-                     'orchestrator decides, and the envelope can refuse.'))
+                     'The campaign is authorised once, by name. Every round is checked '
+                     'against it, and an analysis never changes a parameter by itself.'))
     s.append('</svg>')
     return ''.join(s)
 
