@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BioSense Data</title>
+<meta name="description" content="What data this machine can analyse, which analyses can actually run, and which processes BioSense knows how to tune.">
+<link rel="icon" type="image/png" href="assets/biosense-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="brand.css">
+<style>
+.wrap{display:flex;flex-direction:column;gap:20px}
+.card{padding:20px 22px}
+.caveat{font-size:12.5px;line-height:1.55;color:var(--ink-3);margin:12px 0 0;max-width:74ch}
+.head{display:flex;align-items:baseline;gap:12px;margin:0 0 4px}
+.head h2{font-size:15px;margin:0;letter-spacing:-.01em}
+.sub{font-size:12.5px;color:var(--ink-3);margin:0 0 14px;max-width:74ch;line-height:1.55}
+
+.row{display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.row .main{flex:1;min-width:0}
+.row .nm{font-weight:600;font-size:14px}
+.row .meta{font-size:12.5px;color:var(--ink-3);margin-top:3px;line-height:1.5}
+
+.tag{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;padding:4px 9px;border-radius:999px;white-space:nowrap;
+  border:1px solid var(--line);color:var(--ink-3)}
+.tag.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 42%,transparent);
+  background:color-mix(in srgb,var(--ok) 10%,transparent)}
+.tag.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 42%,transparent);
+  background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.tag.off{opacity:.75;border-style:dashed}
+.tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+/* a knob the project owns but the model has no term for. Deliberately not red:
+   it is a real design variable, it simply gets no prediction. */
+.knob{display:flex;justify-content:space-between;gap:10px;padding:7px 0;
+  border-top:1px dotted var(--line);font-size:13px}
+.knob:first-child{border-top:0}
+.knob .rng{font-family:var(--mono);font-size:12px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.knob .why{font-size:12px;color:var(--ink-3);margin:2px 0 0;line-height:1.5}
+.proj{border:1px solid var(--line);border-radius:var(--r-s);padding:14px 16px;margin-top:12px}
+.proj h3{margin:0 0 2px;font-size:14px}
+
+/* TECHNICAL view only: ids, mappings, bound origins */
+body[data-view="simple"] .tech{display:none}
+.tech{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.dim{color:var(--ink-3)}
+</style>
+</head>
+<body data-view="simple">
+<header class="bar">
+  <div class="brand">
+    <img src="assets/biosense-mark.png" alt="">
+    <div>
+      <div class="nm">BioSense<span>AI</span></div>
+      <div class="sub">What this machine can analyse</div>
+    </div>
+  </div>
+  <nav class="modes" aria-label="Section">
+    <a href="console.html">AI Discovery</a>
+    <a href="simulator.html">Simulator</a>
+    <a href="data.html" aria-current="page">Data</a>
+    <a href="index.html">Runs</a>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn" id="viewBtn" aria-pressed="false">Technical view</button>
+  <button class="btn" id="theme" title="Switch light / dark">Theme</button>
+</header>
+
+<div class="wrap">
+
+  <section class="glass card">
+    <div class="head"><h2>Datasets</h2><span class="dim" id="dsCount"></span></div>
+    <p class="sub">Registered data this server can see. Datasets someone registered privately
+      are never listed or served here: they stay on the machine that holds them and are
+      reachable only from the command line there.</p>
+    <div id="datasets" class="dim">loading…</div>
+  </section>
+
+  <section class="glass card">
+    <div class="head"><h2>Analyses that can run</h2><span class="dim" id="toolCount"></span></div>
+    <p class="sub">A tool that cannot run here is not offered. That is deliberate: an analysis
+      refused while it is being planned is a decision you can act on, and one that fails
+      half-way through a run is a wasted afternoon.</p>
+    <div id="tools" class="dim">loading…</div>
+    <div id="planned"></div>
+  </section>
+
+  <section class="glass card">
+    <div class="head"><h2>Processes BioSense knows</h2><span class="dim" id="projCount"></span></div>
+    <p class="sub">Each process exposes the knobs it actually has, with its own limits. A
+      parameter marked <b>not modelled</b> is still a real design variable you can set in the
+      lab — the model simply has no term for it, so it produces no prediction for it, rather
+      than a number that would be invented.</p>
+    <div id="projects" class="dim">loading…</div>
+  </section>
+
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* theme: the same remembered preference the other pages use */
+(function () {
+  let saved = null; try { saved = localStorage.getItem('bs-theme'); } catch (_) {}
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+  $('#theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme')
+      || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('bs-theme', next); } catch (_) {}
+  });
+})();
+
+const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c;
+  if (x != null) n.textContent = x; return n; };
+const tag = (text, cls) => el('span', 'tag' + (cls ? ' ' + cls : ''), text);
+const num = n => (n == null ? '—' : (+n).toLocaleString());
+
+/* SIMPLE hides ids, simulator mappings and bound origins. It is a different
+   amount of detail about the same facts, never a different set of facts. */
+const view = $('#viewBtn');
+view.addEventListener('click', () => {
+  const tech = document.body.dataset.view !== 'technical';
+  document.body.dataset.view = tech ? 'technical' : 'simple';
+  view.textContent = tech ? 'Simple view' : 'Technical view';
+  view.setAttribute('aria-pressed', String(tech));
+});
+
+async function get(p) { const r = await fetch(p); if (!r.ok) throw new Error(p); return r.json(); }
+
+function row(name, meta, tags, techLine) {
+  const r = el('div', 'row'), m = el('div', 'main');
+  m.append(el('div', 'nm', name));
+  if (meta) m.append(el('div', 'meta', meta));
+  if (techLine) m.append(Object.assign(el('div', 'meta tech', techLine), {}));
+  const t = el('div', 'tags');
+  (tags || []).forEach(([txt, cls]) => t.append(tag(txt, cls)));
+  r.append(m, t);
+  return r;
+}
+
+async function datasets() {
+  const host = $('#datasets');
+  try {
+    const d = await get('/api/datasets');
+    host.textContent = '';
+    $('#dsCount').textContent = d.datasets.length + ' registered';
+    if (!d.datasets.length) host.append(el('p', 'dim', 'Nothing registered on this machine yet.'));
+    d.datasets.forEach(x => host.append(row(
+      x.title || x.dataset_id,
+      [x.modality, x.cell_type, x.n_rows != null ? num(x.n_rows) + ' rows' : null]
+        .filter(Boolean).join(' · '),
+      [[x.visibility || 'public', x.visibility === 'private' ? 'warn' : 'ok']],
+      x.dataset_id + (x.sha256 ? '  sha256:' + x.sha256.slice(0, 12) : ''))));
+    host.append(Object.assign(el('p', 'caveat', d.note), {}));
+  } catch (_) { host.textContent = 'the data service did not answer'; }
+}
+
+async function tools() {
+  const host = $('#tools'), host2 = $('#planned');
+  try {
+    const d = await get('/api/analysis-tools');
+    host.textContent = ''; host2.textContent = '';
+    $('#toolCount').textContent = d.implemented.length + ' available here';
+    d.implemented.forEach(t => host.append(row(
+      t.label, t.notes,
+      [['runs here', 'ok'], ...(t.external_dependency ? [[t.external_dependency, '']] : [])],
+      t.name + '  ·  ' + (t.modalities || []).join(', '))));
+
+    if (d.planned.length) {
+      const h = el('div', 'head'); h.style.margin = '22px 0 4px';
+      h.append(el('h2', null, 'Not available here'));
+      host2.append(h);
+      host2.append(el('p', 'sub', 'Named so the shape of what is coming is visible. Asking for '
+        + 'one of these is refused, with the reason and, where there is one, the remedy.'));
+      d.planned.forEach(p => host2.append(row(
+        p.label, p.notes,
+        [[{ planned: 'not written yet', optional_environment: 'needs an install',
+            external_binary: 'needs a program', phase_2: 'available' }[p.status] || p.status,
+          p.status === 'planned' ? 'off' : 'warn']],
+        p.name)));
+    }
+  } catch (_) { host.textContent = 'the tool registry did not answer'; }
+}
+
+async function projects() {
+  const host = $('#projects');
+  try {
+    const d = await get('/api/projects');
+    host.textContent = '';
+    $('#projCount').textContent = d.projects.length + ' known';
+    d.projects.forEach(p => {
+      const box = el('div', 'proj');
+      box.append(el('h3', null, p.name));
+      const bio = p.biological_system || {};
+      box.append(el('p', 'meta', [bio.species, bio.starting_cell && ('from ' + bio.starting_cell),
+        bio.target_cell && ('to ' + bio.target_cell), bio.culture_format]
+        .filter(Boolean).join(' · ')));
+      const t = el('div', 'tags'); t.style.margin = '8px 0 10px';
+      t.append(tag(p.parameters.length + ' knobs'));
+      t.append(p.has_simulator
+        ? tag(p.modelled_parameter_ids.length + ' modelled', 'ok')
+        : tag('no simulator', 'off'));
+      box.append(t);
+      p.parameters.forEach(q => {
+        const k = el('div', 'knob'), left = el('div');
+        left.append(el('span', null, q.label || q.parameter_id));
+        if (q.simulator_coverage !== 'modelled') {
+          left.append(document.createTextNode(' '));
+          left.append(tag(q.simulator_coverage.replace(/_/g, ' '), 'off'));
+        }
+        left.append(el('p', 'why tech', q.parameter_id
+          + (q.simulator_mapping ? '  →  model knob ' + q.simulator_mapping : '')));
+        if (q.bound_origin) {
+          left.append(el('p', 'why tech',
+            'limits from ' + q.bound_origin.source.replace(/_/g, ' ') + ': ' + q.bound_origin.basis));
+        }
+        const r = el('span', 'rng', num(q.minimum) + ' – ' + num(q.maximum) +
+          (q.unit ? ' ' + q.unit : ''));
+        k.append(left, r);
+        box.append(k);
+      });
+      host.append(box);
+    });
+    host.append(Object.assign(el('p', 'caveat', d.note), {}));
+  } catch (_) { host.textContent = 'the project service did not answer'; }
+}
+
+datasets(); tools(); projects();
+</script>
+</body>
+</html>

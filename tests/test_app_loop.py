@@ -526,6 +526,64 @@ class AppServerTests(unittest.TestCase):
         for p in d['planned']:
             self.assertNotIn(p['name'], implemented)
 
+    def test_the_project_endpoint_gives_each_process_its_own_knobs(self):
+        """The reason this is served per project rather than as one global knob
+        list: offering a CAR-T process an M-CSF slider because macrophages have
+        one would invite a setpoint nobody can run."""
+        code, body = self._get('/api/projects')
+        self.assertEqual(200, code)
+        by_id = {p['project_id']: p for p in json.loads(body)['projects']}
+        self.assertIn('ipsc_macrophage', by_id)
+        self.assertIn('cart_expansion', by_id)
+        mac = {q['parameter_id'] for q in by_id['ipsc_macrophage']['parameters']}
+        cart = {q['parameter_id'] for q in by_id['cart_expansion']['parameters']}
+        self.assertIn('mcsf_ng_ml', mac)
+        self.assertNotIn('mcsf_ng_ml', cart)
+        self.assertIn('il7_ng_ml', cart)
+        self.assertNotIn('il7_ng_ml', mac)
+
+    def test_a_project_without_a_model_declares_nothing_modelled(self):
+        code, body = self._get('/api/projects')
+        by_id = {p['project_id']: p for p in json.loads(body)['projects']}
+        cart = by_id['cart_expansion']
+        self.assertFalse(cart['has_simulator'])
+        self.assertEqual([], cart['modelled_parameter_ids'])
+        for q in cart['parameters']:
+            self.assertEqual('no_simulator', q['simulator_coverage'])
+
+    def test_a_shared_parameter_may_carry_different_bounds_per_project(self):
+        """Agitation in a rocking bag is not agitation in a stirred tank, and a
+        range borrowed from the other one would be unrunnable."""
+        code, body = self._get('/api/projects')
+        by_id = {p['project_id']: p for p in json.loads(body)['projects']}
+        rng = {}
+        for pid in ('ipsc_macrophage', 'cart_expansion'):
+            q = [x for x in by_id[pid]['parameters'] if x['parameter_id'] == 'agitation_rpm'][0]
+            rng[pid] = (q['minimum'], q['maximum'])
+            self.assertTrue(q['bound_origin'], f'{pid} narrows the bound without saying why')
+        self.assertNotEqual(rng['ipsc_macrophage'], rng['cart_expansion'])
+
+    def test_an_unmodelled_knob_is_served_as_such_rather_than_hidden(self):
+        """It is a real design variable; what it lacks is a prediction."""
+        code, body = self._get('/api/projects')
+        by_id = {p['project_id']: p for p in json.loads(body)['projects']}
+        temp = [q for q in by_id['ipsc_macrophage']['parameters']
+                if q['parameter_id'] == 'temperature_c']
+        self.assertEqual(1, len(temp))
+        self.assertEqual('not_modelled', temp[0]['simulator_coverage'])
+
+    def test_the_four_way_nav_is_the_same_on_every_page(self):
+        """A nav that differs per page is how a section quietly becomes
+        unreachable from the one place someone looks for it."""
+        want = ['console.html', 'simulator.html', 'data.html', 'index.html']
+        for page in want:
+            code, body = self._get('/' + page)
+            self.assertEqual(200, code, page)
+            text = body.decode()
+            for href in want:
+                self.assertIn(f'href="{href}"', text, f'{page} does not link to {href}')
+            self.assertEqual(1, text.count('aria-current="page"'), page)
+
     def test_the_dataset_endpoint_says_it_lists_public_data_only(self):
         code, body = self._get('/api/datasets')
         self.assertEqual(200, code)

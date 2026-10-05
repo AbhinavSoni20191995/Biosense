@@ -34,6 +34,16 @@ h1,h2,h3,h4 { font-family: var(--display); margin: 0; letter-spacing: -0.015em; 
 .brand { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
 .brand h1 { font-size: 1.08rem; font-weight: 800; }
 .loopid { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+/* the shared four-way nav. This page predates brand.css and does not load it,
+   so the pill group is restated here against this page's own tokens rather
+   than pulling in a second stylesheet for one component. */
+.modes { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--sunk); }
+.modes a { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; padding: 6px 12px; border-radius: 999px; color: var(--ink-2);
+  text-decoration: none; }
+.modes a:hover { color: var(--orch); }
+.modes a[aria-current] { background: var(--orch); color: #fff; }
 .pill { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 5px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .pill .led { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 .pill.run { background: var(--orch-s); color: var(--orch); } .pill.ok { background: var(--lab-s); color: var(--lab); }
@@ -203,6 +213,12 @@ pre .k { color: var(--orch); } pre .s { color: var(--lab); } pre .c { color: var
 <div class="app">
   <div class="bar">
     <div class="brand"><h1>Agent Tracker</h1><span class="loopid" id="loopid">loop-cart-20260404-0930</span></div>
+  <nav class="modes" aria-label="Section">
+    <a href="console.html">AI Discovery</a>
+    <a href="simulator.html">Simulator</a>
+    <a href="data.html">Data</a>
+    <a href="index.html" aria-current="page">Runs</a>
+  </nav>
     <span class="pill run live" id="statuspill"><span class="led"></span><span id="statustext">idle</span></span>
     <span class="pill warn" id="autonomypill">checkpoints</span>
     <span class="pill idle" id="iterpill">iteration 0</span>

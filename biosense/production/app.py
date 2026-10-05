@@ -44,6 +44,8 @@ Endpoints
                                   never listed here and never served
     GET  /api/analysis-tools      the tool registry: what can run, over what, and
                                   what is declared but not implemented
+    GET  /api/projects            project profiles: which knobs each process has,
+                                  with per-project bounds and simulator coverage
     GET  /api/sim/config          simulator mode: the knobs, stages and limits
     POST /api/sim/run             simulator mode: one condition, no loop, no decision
     POST /api/sim/compare         simulator mode: two conditions side by side
@@ -359,6 +361,24 @@ class Handler(BaseHTTPRequestHandler):
             d['note'] = ('Implemented tools run in process on numpy and scipy. Planned entries '
                          'are declared so the shape is visible; calling one is refused.')
             return self._send(200, d)
+        if path == '/api/projects':
+            # What drives the simulator panel. Served per project rather than as
+            # one global knob list, because a project exposes the knobs its own
+            # process actually has: offering a CAR-T project an M-CSF slider
+            # because macrophages have one would invite a setpoint nobody can run.
+            from .. import projects as PJ
+            out = []
+            for pr in PJ.load_all():
+                d = pr.summary()
+                d['modelled_parameter_ids'] = sorted(pr.modelled_ids())
+                d['has_simulator'] = bool(d.get('simulator', {}).get('model_id'))
+                out.append(d)
+            return self._send(200, {
+                'projects': out,
+                'note': 'Each project exposes only its own parameters, with its own bounds and '
+                        'the origin of any bound narrower than the global one. A parameter the '
+                        "project's model has no term for is marked not_modelled: it can still "
+                        'be set in the lab, but no prediction is produced for it.'})
         if path == '/api/sim/config':
             return self._send(200, SM.config())
         if path == '/api/runs':
