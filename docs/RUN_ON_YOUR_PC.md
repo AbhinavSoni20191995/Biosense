@@ -1,5 +1,10 @@
 # Running BioSense on your own computer
 
+**You may not need to.** The hosted app runs the real discovery agents with no
+install and no terminal — see the [README](../README.md). Run it yourself when
+you want real AI with no run caps on your own key, your own private data
+analysed on the machine that holds it, or to develop the code.
+
 **BioSense is a web application.** You start it once in a terminal and everything
 else happens in the browser.
 
@@ -10,11 +15,14 @@ There are two paths, and the difference is only whether the AI is real.
 | What you get | the whole interface: projects, discovery, simulator, protocol, benchmarks | the same interface, with the discovery agents actually doing the work |
 | Needs an API key | no | yes |
 | Needs internet | only to install, once | yes |
-| Extra software | none | Omnigent, plus a model provider |
+| Extra software | none | one command installs it: `./scripts/start_local_ai.sh` |
 
 Start with the **simple path**. It costs nothing, it needs no credentials, and if
 it works you know the whole toolchain is sound before credentials enter the
 picture.
+
+In a hurry, with a key in your shell: `./scripts/start_local_ai.sh` is the
+whole of section B.
 
 ---
 
@@ -95,7 +103,7 @@ Worth doing once, to confirm the clone is sound before you trust anything it
 prints:
 
 ```bash
-uv run --frozen python -m unittest          # expect: Ran 792 tests ... OK
+uv run --frozen python -m unittest          # expect: Ran 848 tests ... OK
 ```
 
 ---
@@ -165,17 +173,9 @@ never written into the repository and never served as files.
 
 Real AI needs an **Omnigent runtime**, because that is what orchestrates the
 specialist agents, and a **model provider**, because that is what they think
-with. BioSense never starts either for you: it detects them and tells you which
-part is missing.
+with. One script does all of it.
 
-### 1. Install Omnigent
-
-```bash
-uv tool install --python 3.12 omnigent
-export PATH="$HOME/.local/bin:$PATH"      # add to ~/.zshrc or ~/.bashrc to keep it
-```
-
-### 2. Give it model credentials
+### 1. Give the shell model credentials
 
 ```bash
 export ANTHROPIC_API_KEY=sk-...           # read directly, no interactive setup
@@ -184,48 +184,103 @@ curl -fsSL https://claude.ai/install.sh | bash
 claude auth login --claudeai
 ```
 
-### 3. Start the runtime, then BioSense
-
-From the repository root — the runner's working directory is where you launch
-it, and that is what makes `runs/` the one BioSense reads:
+### 2. Run one command
 
 ```bash
-omnigent start                            # local server + a runner, in the background
+./scripts/start_local_ai.sh
+```
+
+That is the whole setup. It:
+
+1. checks `uv` and `curl`, then installs the Omnigent extra into this project's
+   `.venv` — which carries **both** the client library BioSense imports and the
+   `omnigent` command itself, so there is nothing to install globally and no
+   version to drift;
+2. says whether it found model credentials, without printing them;
+3. starts an Omnigent server on `127.0.0.1:6767` **with the discovery_loop agent
+   registered at boot**, or reuses one that is already answering;
+4. registers your machine as an executor, from this directory — which is what
+   makes `runs/` the directory BioSense reads;
+5. asks **BioSense itself** whether a session could start, because "the
+   processes are up" is not the same question;
+6. starts BioSense on <http://127.0.0.1:8000> with the right environment.
+
+Open it, and the runtime is already **REAL AI — LOCAL**. Press **Run AI
+discovery**. You never retype the question anywhere else.
+
+```bash
+./scripts/check_local_ai.sh          # READY, or the one thing to fix
+./scripts/start_local_ai.sh stop     # stop the runtime it started
+```
+
+The script is **loopback only** — it starts BioSense in `local` mode, which
+refuses any Omnigent server that is not this machine — so it can never attach
+your laptop to somebody else's runtime by accident. Its logs are in
+`.local-ai/` (git-ignored).
+
+**If it cannot make the runtime ready it stops and says why.** It does not start
+BioSense in a state where pressing the button quietly produces a deterministic
+demonstration: a synthetic answer presented as a real one is the one thing this
+product must never do.
+
+### The long way round, if you want to see the parts
+
+```bash
+uv sync --locked --extra omnigent
+uv run --frozen --extra omnigent omnigent server --host 127.0.0.1 --port 6767 \
+  --no-open --agent ./discovery_loop &
+uv run --frozen --extra omnigent omnigent host --server http://127.0.0.1:6767 \
+  --no-open --non-interactive &
 
 BIOSENSE_RUNTIME_MODE=local \
 BIOSENSE_ALLOWED_RUNTIMES=synthetic,local \
-  uv run --frozen python -m biosense.production.app --runs runs --static webapp
+  uv run --frozen --extra omnigent python -m biosense.production.app \
+  --runs runs --static webapp
 ```
-
-Open <http://127.0.0.1:8000>, choose **REAL AI — LOCAL**, and press
-**Run AI discovery**. You never retype the question anywhere else.
 
 A loopback Omnigent server runs as a single local user and needs no login, so
 there is nothing else to configure.
 
-**Two topologies, both supported.** `omnigent start` registers this machine as a
-**host**; no runner exists until a session needs one, and the server launches it.
-`omnigent run` instead spawns a **runner** directly. BioSense looks for a runner
-first and falls back to an online host that advertises the agent's harness, so
-either way of starting Omnigent works. If the host is there but reports the
-harness as `needs-auth`, it says *that* — the machine is ready and the model key
-is what is missing.
+**Two topologies, both supported.** `omnigent host` (and `omnigent start`)
+registers this machine as a **host**; no runner exists until a session needs one,
+and the server launches it. `omnigent run` instead spawns a **runner** directly.
+BioSense looks for a runner first and falls back to an online host that
+advertises the agent's harness, so either way of starting Omnigent works. If the
+host is there but reports the harness as `needs-auth`, it says *that* — the
+machine is ready and the model key is what is missing.
 
 ### If it says the runtime is unavailable
 
-It will say which of these it is, and the command that fixes it:
+It will say which of these it is, and the one thing that fixes it:
 
 | What it says | What to do |
 |---|---|
-| The Omnigent client library is not installed | `uv sync --extra omnigent` |
-| Nothing answered at the configured server | `omnigent start` |
-| No online runner | `omnigent host --server http://127.0.0.1:6767` |
-| The agent is not registered | `omnigent server --agent discovery_loop` |
+| The Omnigent client library is not installed | `uv sync --locked --extra omnigent` |
+| Nothing answered at the configured server | `./scripts/start_local_ai.sh` |
+| No online runner | `./scripts/start_local_ai.sh` (it registers this machine) |
+| The agent is not registered | `./scripts/start_local_ai.sh` (it registers it at boot) |
+| The runtime has no model credentials | `export ANTHROPIC_API_KEY=...`, or `claude auth login` |
 | The server requires authentication | `omnigent login <server>`, then set `BIOSENSE_OMNIGENT_TOKEN` |
-| The runs directory is outside the workspace | start BioSense with `--runs` inside the directory you launched `omnigent start` from |
+| The runs directory is outside the workspace | start BioSense with `--runs` inside the directory the executor was launched from |
+
+`GET /readyz` answers the same question as JSON, in four parts — runtime
+reachable, agent registered, executor available, model credentials present —
+with no secrets in it.
 
 **It will not fall back to the synthetic path.** A synthetic answer presented as
 a real one is the one thing this product must never do.
+
+### Stopping a run, and losing the tab
+
+A real run costs money per minute, so two things are true in the page:
+
+- **Stop this run** interrupts the Omnigent session, not just the stream. The run
+  is recorded as stopped, with whatever the agents had written, and never as a
+  finished answer.
+- **Reload and it comes back.** Every discovery run journals its snapshot and its
+  events beside its artifacts, so a refresh, a lost network or a restarted server
+  does not lose a run. One that was in flight when the process went away comes
+  back as *interrupted* — not as finished, and not as still running.
 
 ### A remote Omnigent server
 
@@ -234,7 +289,8 @@ export BIOSENSE_RUNTIME_MODE=remote
 export BIOSENSE_OMNIGENT_SERVER=https://your-omnigent-server
 export BIOSENSE_OMNIGENT_TOKEN="$(cat ~/.omnigent/token)"   # or BIOSENSE_..._TOKEN_FILE
 export BIOSENSE_ALLOWED_RUNTIMES=synthetic,remote
-uv run --frozen python -m biosense.production.app --runs runs --static webapp
+uv run --frozen --extra omnigent python -m biosense.production.app \
+  --runs runs --static webapp
 ```
 
 The token is read once at startup, sent as an `Authorization: Bearer` header, and
@@ -247,7 +303,9 @@ One honest limitation: with a remote runtime the agents write their artifacts on
 the runner's filesystem, which is not yours. Progress, the stage timeline and the
 session reference all arrive; structured artifacts only do where they reach
 BioSense. A run whose artifacts never arrive is labelled as such rather than
-rendering an empty report that looks like a finding.
+rendering an empty report that looks like a finding. This is exactly why the
+hosted deployment runs the runtime beside the app in one container — see
+[deploy/README.md](../deploy/README.md).
 
 ---
 
@@ -317,7 +375,7 @@ Everything in **A** works natively in PowerShell. Two differences:
   `uv run --frozen python -m unittest` instead, which is most of what it covers.
 - Paths inside the agent prompts use `.venv/bin/python`; on native Windows the
   interpreter is at `.venv\Scripts\python.exe`. For **B**, use WSL and avoid the
-  problem entirely.
+  problem entirely. `start_local_ai.sh` is a bash script for the same reason.
 
 ---
 
@@ -326,9 +384,12 @@ Everything in **A** works natively in PowerShell. Two differences:
 | What you see | What it means |
 |---|---|
 | `uv: command not found` | uv installed to `~/.local/bin`; add it to PATH |
-| `Ran 563 tests ... FAILED` | the clone is not sound — do not trust its output; open an issue with the failure |
+| `Ran 848 tests ... FAILED` | the clone is not sound — do not trust its output; open an issue with the failure |
 | `no Chromium found` | PDF only. The HTML is complete; print it from a browser |
 | `address already in use` | something else holds the port; pass `--port 8080` |
 | `the engine declined to start` | a gate refused, not a crash. The message names which one |
 | `decision refused: ...` | the envelope rejected a decision. Working as designed |
 | Omnigent cannot find a tool | you are not in the repository root, or `uv sync` has not been run |
+| `NOT READY — nothing is answering at http://127.0.0.1:6767` | the runtime is not running: `./scripts/start_local_ai.sh` |
+| `Run limit reached` on the hosted app | its caps, not a fault. Run it yourself for none: `./scripts/start_local_ai.sh` |
+| A run says **interrupted** | the server was replaced while it ran. It was stopped, not completed; start it again |

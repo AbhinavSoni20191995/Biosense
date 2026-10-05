@@ -8,6 +8,7 @@ Four pictures, each making one claim:
   evidence     where evidence comes from and what provenance it keeps
   loop         the closed loop, and where it is allowed to stop
   capabilities which modalities run today and which are declared
+  deployment   where the three processes run, and why they share a filesystem
 
 Two files per diagram rather than one `currentColor` drawing, because GitHub
 renders a README SVG inside an `<img>` where `currentColor` resolves to black
@@ -445,8 +446,87 @@ def provenance(c):
     return ''.join(s)
 
 
+# ── 6. where it actually runs ─────────────────────────────────────────────
+def deployment(c):
+    """Phase 3: the hosted service, and the one constraint that shaped it.
+
+    Drawn because the interesting fact about this deployment is not that it has
+    three processes but that they share a filesystem on purpose: the agents write
+    artifacts and BioSense reads artifacts, so a machine boundary between them
+    would need a transport that does not exist in the runtime today.
+    """
+    W, H = 980, 560
+    s = [head(W, H, c,
+              'The hosted BioSense service. A browser reaches only the BioSense web app, on the '
+              'platform port. Inside the same container, the app talks to an Omnigent server on '
+              'loopback, which launches a runner inside the container through a registered host. '
+              'The runner executes the discovery_loop agents, which write their artifacts to the '
+              'mounted volume at /app/runs; BioSense reads the same directory, which is why the '
+              'volume must be mounted inside the runner workspace. The model key lives only in '
+              'this container environment and never reaches the browser. On a laptop the same '
+              'three processes are started by one script. A separate synthetic-only image holds '
+              'no credentials at all.')]
+    s.append(title(490, 30, c, 'WHERE IT RUNS: ONE SERVICE, THREE PROCESSES, ONE FILESYSTEM'))
+
+    s.append(box(30, 54, 200, 66, 'Anyone, in a browser',
+                 'no install · no terminal|no laptop of yours', c, c['human'],
+                 c['human_soft'], 'CURRENT'))
+    s.append(arrow(130, 120, 130, 158, c, 'https', color=c['human'], lx=152, ly=145,
+                   anchor='start'))
+
+    # the container
+    s.append(f'<rect x="20" y="158" width="940" height="320" rx="13" fill="{c["panel"]}" '
+             f'stroke="{c["line"]}" stroke-width="1.6" stroke-dasharray="7 5"/>')
+    s.append(caption(40, 180, c, 'one Railway service · deploy/Dockerfile.ai', anchor='start',
+                     size=10.5))
+
+    s.append(box(40, 194, 250, 84, 'BioSense web app',
+                 'the only thing exposed|0.0.0.0:$PORT', c, c['brand'], c['brand_soft'],
+                 'CURRENT'))
+    s.append(box(355, 194, 250, 84, 'Omnigent server',
+                 '127.0.0.1:6767 · loopback only|--agent discovery_loop at boot', c, c['code'],
+                 c['code_soft'], 'CURRENT'))
+    s.append(box(670, 194, 250, 84, 'Runner, via a host',
+                 'launched per session|workspace /app', c, c['code'], c['code_soft'],
+                 'CURRENT'))
+    s.append(arrow(290, 236, 355, 236, c, 'sessions', color=c['brand'], ly=229))
+    s.append(arrow(605, 236, 670, 236, c, 'launch', color=c['code'], ly=229))
+
+    s.append(box(670, 300, 250, 74, 'discovery_loop agents',
+                 'orchestrator + 5 specialists|in the same image', c, c['brand'],
+                 c['brand_soft'], 'CURRENT'))
+    s.append(arrow(795, 278, 795, 300, c, '', color=c['code']))
+
+    s.append(box(285, 300, 315, 74, '/app/runs  — the mounted volume',
+                 'the runner writes · the app reads|no transport, because no boundary', c,
+                 c['data'], c['data_soft'], 'CURRENT'))
+    s.append(arrow(668, 337, 605, 337, c, 'artifacts', color=c['data'], lx=637, ly=330))
+    s.append(elbow([(165, 278), (165, 337), (283, 337)], c, 'ingest', color=c['data'],
+                   lx=175, ly=330, anchor='start'))
+
+    s.append(box(40, 394, 250, 66, 'ANTHROPIC_API_KEY',
+                 'this container only|never in the image, never sent', c, c['stop'],
+                 c['stop_soft'], 'SECRET'))
+    s.append(box(355, 394, 250, 66, 'Run caps',
+                 'per caller · per day · per run|a cap refuses, never downgrades', c,
+                 c['stop'], c['stop_soft'], 'CURRENT'))
+    s.append(box(670, 394, 250, 66, '/readyz',
+                 'reachable · agent · executor · key|no token, no key, no path', c,
+                 c['brand'], c['brand_soft'], 'CURRENT'))
+
+    s.append(box(30, 496, 450, 50, 'Same three processes on a laptop',
+                 './scripts/start_local_ai.sh — one command, loopback only', c, c['code'],
+                 c['code_soft'], 'CURRENT'))
+    s.append(box(500, 496, 450, 50, 'Synthetic-only image, unchanged',
+                 'deploy/Dockerfile — no Omnigent, no credentials, no model call', c,
+                 c['ink3'], c['plan_soft'], 'CURRENT', dash=True))
+    s.append('</svg>')
+    return ''.join(s)
+
+
 DIAGRAMS = {'system': system, 'evidence': evidence, 'loop': loop,
-            'capabilities': capabilities, 'provenance': provenance}
+            'capabilities': capabilities, 'provenance': provenance,
+            'deployment': deployment}
 
 
 def main(argv=None):

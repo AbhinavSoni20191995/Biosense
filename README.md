@@ -5,7 +5,8 @@
 ### Accelerating cell-based therapy with agentic orchestration and real time evidence detection.
 ### Define your purpose. Watch agents work it. Read why every choice was made.
 
-<a href="docs/RUN_ON_YOUR_PC.md"><b>Run it on your PC</b></a> ·
+<a href="deploy/README.md"><b>Use the hosted app</b></a> ·
+<a href="docs/RUN_ON_YOUR_PC.md"><b>Run it yourself</b></a> ·
 <a href="docs/IPSC_TCELL_EXAMPLE.md"><b>Worked example</b></a> ·
 <a href="reports/"><b>Example reports</b></a> ·
 <a href="docs/BIOINFORMATICS.md"><b>Data &amp; evidence</b></a> ·
@@ -93,41 +94,78 @@ decides, and the envelope can refuse.
 
 ## Quick start
 
-**BioSense is a web application.** For most people there is nothing to install.
+**BioSense is a web application, and the hosted one runs the real agents.**
+For most people there is nothing to install and no terminal to open.
 
 ### Just use it
 
 > **Open the hosted app:** <!-- BIOSENSE_HOSTED_URL -->`https://<your-biosense>.up.railway.app`
 >
-> Pick a project, state your objective, press **Run AI discovery**. Nothing to
-> clone, nothing to configure.
+> Pick a project, state your objective, press **Run AI discovery**. The badge on
+> screen says **REAL AI — ONLINE**, and the discovery agents do the work:
+> real literature search, real analyses over the data you selected, a real
+> quantified hypothesis, one recommended protocol.
 
-The hosted instance runs the **synthetic demonstration** path: every stage, every
-card, the protocol, the simulator and the benchmarks, with deterministic code
-over committed fixtures. It holds no model credentials and calls no model, which
-is exactly what makes a public URL defensible.
+**Zero terminal commands.** You do not install Omnigent, start a server,
+register an agent, or keep anybody's laptop switched on. The service runs the
+Omnigent runtime and the agent bundle inside itself.
+
+**What it costs you: nothing. What it costs the service: model credits** — which
+is why real runs on the public instance are capped, and the caps are shown in
+the page before you press anything:
+
+| Cap | Default on the hosted instance |
+|---|---|
+| Real AI runs per visitor per day | 3 |
+| Real AI runs across the service per day | 40 |
+| One run's wall clock | 30 minutes, then it is stopped |
+| Between one visitor's runs | 60 seconds |
+
+Reaching a cap **refuses the run and says when to come back**. It never hands
+you a synthetic run wearing a real badge — that substitution does not exist
+anywhere in this codebase.
+
+Also in the page, with no cap at all: the **synthetic demonstration** path
+(deterministic code over committed fixtures — every stage, every card, the
+protocol, the simulator, the benchmarks), simulator mode, and the benchmarks.
+
+If the hosted runtime is down, the page says **which part** is missing and that
+the demonstration path still works. It never disappears and never pretends.
 
 ### Run it yourself, if you need one of these
 
-| You want | Why hosting cannot give it to you |
+| You want | Why the hosted app cannot give it to you |
 |---|---|
-| **Real AI** | the agents need a model provider, under *your* key and *your* bill |
+| **Real AI with no caps, on your own key** | the hosted instance pays for its own runs, so it limits them |
 | **Your own private data analysed** | a private dataset never leaves the machine that ingested it, by design |
 | **To develop or evaluate the code** | — |
 
+Two commands, and the second one is optional:
+
 ```bash
 git clone https://github.com/AbhinavSoni20191995/Biosense.git
-cd Biosense && uv sync --locked
-uv run --frozen python -m biosense.production.app --runs runs --static webapp
+cd Biosense
+./scripts/start_local_ai.sh          # real AI: installs, starts and verifies everything
+./scripts/check_local_ai.sh          # "READY", or the one thing to fix
 ```
 
-Open **<http://127.0.0.1:8000>** — [uv](https://docs.astral.sh/uv/) fetches
-Python for you, and the synthetic path needs nothing else: no API key, no
-internet after install, no model call.
+`start_local_ai.sh` installs the Omnigent extra into the project, starts a
+loopback Omnigent server with the agent registered, registers your machine as an
+executor, asks BioSense itself whether a session could run, and only then opens
+the app on **<http://127.0.0.1:8000>**. If any step fails it stops with the
+reason and the fix — it never starts BioSense in a state where the button
+quietly produces a demonstration instead.
 
-A hosted instance *can* serve real AI — it is a configuration change rather than
-different code — but it then needs an Omnigent server, a runner and model
-credentials behind it. See [deploy/README.md](deploy/README.md).
+It needs model credentials in the shell you run it from
+(`export ANTHROPIC_API_KEY=sk-...`, or `claude auth login` on a subscription).
+Without them it still starts, and tells you that the key is the missing part.
+
+For the synthetic path alone, nothing but uv is needed:
+
+```bash
+uv sync --locked
+uv run --frozen python -m biosense.production.app --runs runs --static webapp
+```
 
 ### Using it
 
@@ -136,12 +174,15 @@ credentials behind it. See [deploy/README.md](deploy/README.md).
 2. **State your objective** in your own words.
 3. Optionally add **research context, your datasets, the values you want tested,
    and your process constraints**.
-4. **Choose a runtime** — *Synthetic demo* or *Real AI*.
+4. **Choose a runtime** — real AI, or the synthetic demonstration.
 5. Press **Run AI discovery**.
 
 You then watch it work, and read the evidence, the analyses, the quantified
 hypothesis, the candidate parameters, the recommended protocol and the benchmark
-— all in the page.
+— all in the page. **Reload the tab and the run comes back**: a run journals
+itself beside its artifacts, so a refresh, a lost network or a redeploy does not
+lose one. A run that was stopped mid-flight says so; it is never shown as
+finished.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/progress-dark.png">
@@ -150,27 +191,35 @@ hypothesis, the candidate parameters, the recommended protocol and the benchmark
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/console-dark.png">
-  <img alt="The BioSense discovery page: a project selector, an objective box, a runtime chooser offering Synthetic demo and Real AI, and a Run AI discovery button, with progress ticks and the hypothesis card alongside." src="docs/assets/console-light.png" width="100%">
+  <img alt="The BioSense discovery page as the hosted service shows it: a project selector, an objective box, and a runtime chooser whose first and selected option is REAL AI — ONLINE, with SYNTHETIC DEMO beside it and REAL AI — REMOTE greyed out with the reason. Below them a DEMO LIMITS line states the run caps in words, and the primary button says Run AI discovery." src="docs/assets/console-light.png" width="100%">
 </picture>
 
-### Turning on real AI
+### Hosting your own
 
-**Real AI needs an Omnigent runtime**, because that is what orchestrates the
-specialist agents, and a model provider, because that is what they think with:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-deployment-dark.svg">
+  <img alt="Anyone, in a browser, reaches only the BioSense web app over https. Inside one Railway service the app creates sessions on an Omnigent server bound to loopback, which launches a runner through a registered host with /app as its workspace. The runner executes the discovery_loop agents, which write artifacts to the mounted volume at /app/runs; the app ingests from the same directory, so there is no transport because there is no boundary. The model key lives only in that container's environment, run caps bound what it can spend, and /readyz reports whether the runtime is reachable, the agent registered, an executor available and credentials present, without exposing any of them. The same three processes run on a laptop from one script, and the separate synthetic-only image holds no credentials at all." src="docs/assets/arch-deployment-light.svg" width="100%">
+</picture>
+
+One Railway service, one Dockerfile, one secret:
 
 ```bash
-omnigent start                      # local server + a runner on this machine
-BIOSENSE_RUNTIME_MODE=local \
-BIOSENSE_ALLOWED_RUNTIMES=synthetic,local \
-  uv run --frozen python -m biosense.production.app --runs runs --static webapp
+# deploy/Dockerfile.ai — BioSense + Omnigent server + executor, one container
+ANTHROPIC_API_KEY=sk-...             # the only secret
+# mount the volume at /app/runs, not /data/runs
 ```
 
-Then choose **REAL AI — LOCAL** in the runtime picker. If the runtime is not
-there, BioSense says which part is missing and the command that fixes it — it
-never quietly gives you a synthetic answer instead.
+`GET /readyz` then answers, without exposing anything: is the runtime reachable,
+is the agent registered, is there an executor, does it have model credentials.
+Full instructions, the environment variables and the reasoning:
+**[deploy/README.md](deploy/README.md)**.
 
-Installing Omnigent, remote servers, signing in, and Windows →
+Running it on your own machine, remote Omnigent servers, signing in, Windows →
 **[docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md)**
+
+What was built for the hosted service, what was verified by running it, and what
+was explicitly **not** verified →
+**[docs/PHASE3_DELIVERABLES.md](docs/PHASE3_DELIVERABLES.md)**
 
 ---
 
@@ -178,6 +227,11 @@ Installing Omnigent, remote servers, signing in, and Windows →
 
 These are different claims about the same question, and BioSense never
 substitutes one for the other. The runtime badge is on screen the whole time.
+
+The badge reads **SYNTHETIC DEMO**, **REAL AI — ONLINE** (the hosted service
+runs the runtime itself) or **REAL AI — LOCAL** (your own machine). The middle
+one is the same runtime as the last: *local* in a browser would mean *your
+computer*, which it is not.
 
 | | **SYNTHETIC DEMO** | **REAL AI** |
 |---|---|---|
@@ -631,7 +685,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 792 tests
+uv run --frozen python -m unittest     # 848 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 
@@ -646,6 +700,12 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 | [`biosense/production/`](biosense/production/) | the loop: designer, optimiser, analysis, envelope, reports |
 | [`standins/`](standins/) | synthetic stand-in reactors |
 | [`discovery_loop/`](discovery_loop/) | the Omnigent agent bundle for the live, model-driven path |
+| [`biosense/production/runtime.py`](biosense/production/runtime.py) | which runtime answers, and why one cannot |
+| [`biosense/production/health.py`](biosense/production/health.py) | `/readyz`: the four-part readiness truth, with no secrets |
+| [`biosense/production/budget.py`](biosense/production/budget.py) | what a visitor may spend on real AI |
+| [`biosense/production/run_store.py`](biosense/production/run_store.py) | a run's own record, so a reload is not a loss |
+| [`scripts/start_local_ai.sh`](scripts/start_local_ai.sh) | one command to real AI on your machine |
+| [`deploy/Dockerfile.ai`](deploy/Dockerfile.ai) | the hosted image: app + Omnigent server + executor |
 | [`biosense/parameters.py`](biosense/parameters.py) | the canonical identity of every process parameter |
 | [`projects/`](projects/) | project profiles: which knobs a biological system actually has |
 | [`biosense/evidence/`](biosense/evidence/) | quantified estimates, hypotheses, context, expert knowledge, narrative |

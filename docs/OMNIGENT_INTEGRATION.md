@@ -497,24 +497,20 @@ exactly as it is for CI and automation.
 
 ## 14. Railway implications
 
-**The hosted deployment does not change behaviour, and that is deliberate.**
+> **Superseded by §21.** This section described the deployment as it was while
+> the hosted app offered the synthetic path only. It is kept because the argument
+> it makes is still the argument for `deploy/Dockerfile`, which still exists and
+> is still the right image when the claim you want is that the service holds
+> nothing. The hosted product is now `deploy/Dockerfile.ai`.
 
 - `deploy/Dockerfile` keeps `uv sync --locked` with no extras, so the image does
-  not grow by a hundred packages and holds no Omnigent and no model credentials —
-  the property `deploy/README.md` rests its public-URL argument on.
+  not grow by a hundred packages and holds no Omnigent and no model credentials.
 - `deploy/railway.json`, the healthcheck (`/healthz`), the start command, the
   static serving, `RUNS_DIR=/data/runs` and the volume all stay as they are.
 - `BIOSENSE_RUNTIME_MODE` defaults to `synthetic`, and
   `BIOSENSE_ALLOWED_RUNTIMES` defaults to the modes the deployment can actually
-  serve. On Railway as configured today that is `synthetic` alone, so the
-  runtime selector shows one option with a reason beside the others rather than
-  offering a button that cannot work.
-- Turning the hosted app into a real-AI front end is then a configuration
-  change, not a redeploy of different code: set
-  `BIOSENSE_RUNTIME_MODE=remote`, `BIOSENSE_OMNIGENT_SERVER`,
-  `BIOSENSE_OMNIGENT_TOKEN`, add the `omnigent` extra to the image, and point it
-  at an Omnigent server with a registered host. `deploy/README.md` already
-  documents that server+host container; it gains the BioSense-side settings.
+  serve, so the runtime selector shows one option with a reason beside the others
+  rather than offering a button that cannot work.
 
 ## 15. Failure modes
 
@@ -787,3 +783,102 @@ thing entirely.
 
 Had this stayed as reviewed, real AI would have refused every time on the setup
 the documentation tells people to use.
+
+---
+
+## 21. Running the agents in the cloud, with nothing on anybody's laptop
+
+The question this section answers is not "can BioSense talk to Omnigent" — §19
+and §20 settled that — but "can a stranger with a browser get a real run,
+without a terminal and without my machine being on". The answer required one
+architectural decision and no new protocol.
+
+### The constraint that decided it
+
+`ingest.run_bundle` reads the agents' artifacts **off the local filesystem**, and
+`runtime.check_workspace` refuses a real run unless BioSense's runs directory is
+inside the runner's workspace — because such a run would otherwise succeed and
+produce artifacts nobody ever sees. So artifacts cannot cross a machine
+boundary, and the options were:
+
+| | Option | Verdict |
+|---|---|---|
+| A | the runner POSTs artifacts to a BioSense route | a new inbound write route, a new token, and an LLM that reliably posts. Fragile. |
+| B | shared object storage | new infrastructure and credentials for a problem that can be deleted |
+| C | a database | same, and a worse fit for file-shaped artifacts |
+| D | Omnigent session files | `OutputFileDoneEvent` is in the schema, but **0.16.0 has no agent-side emission path**. Not a mechanism to build on today. |
+| **E** | **no boundary** | **chosen** |
+
+E: the Omnigent server, the executor and BioSense run in one container, so the
+runner writes `/app/runs` and BioSense reads `/app/runs`. It removes the problem
+rather than moving it, and the runner gets BioSense's code, dependencies,
+deterministic tools and simulator by construction — it is the same image. If a
+separate runtime service is ever genuinely needed, A is the migration, and the
+contracts already exist to carry it.
+
+### Why not a managed sandbox
+
+Omnigent does support it: `host_type: "managed"` makes the server provision a
+sandbox, start `omnigent host` inside it and bind the session, across providers
+(`modal`, `daytona`, `e2b`, `kubernetes`, …). Two reasons it is not the answer
+here: each provider needs its own paid account and credentials, and the default
+sandbox image is a **generic** `omnigent-host`, which has none of BioSense's
+code, `.venv`, deterministic tools or simulator. Everything E gets for free
+would have to be bootstrapped into that image on every launch.
+
+### The measurement that mattered
+
+On one machine, same server, the only difference being a model key:
+
+```
+no ANTHROPIC_API_KEY   → /v1/hosts configured_harnesses {"claude-sdk": "needs-auth"}
+                         BioSense probe → model_auth_missing
+with ANTHROPIC_API_KEY → {"claude-sdk": true}
+                         BioSense probe → ok   (executor: host, agent registered)
+```
+
+That `ok` is the whole acceptance condition, reached with **no sandbox provider
+and no laptop** — a server, a host and a key in one environment. It was then
+reproduced through `deploy/start-ai.sh`, which is the container's boot sequence,
+and through `scripts/start_local_ai.sh`, which is the same topology in one
+command on a developer's machine.
+
+### What that cost, stated plainly
+
+The public container now holds a model key. The old argument — defensible
+because it holds nothing — is replaced by *defensible because what it can spend
+is bounded*, which is why `biosense/production/budget.py` exists and is not
+optional: per-caller and per-deployment daily caps, a cooldown, one real run at a
+time, a wall-clock deadline with cancellation that interrupts the Omnigent
+session rather than just the stream, and a 429 that names the cap and the
+uncapped alternatives. One container also means one crash takes all three
+processes; the boot script supervises the runtime and the platform restarts the
+container.
+
+### Two things that are now true of a run, and were not
+
+**A run outlives its page.** Each discovery run journals its snapshot and its
+events beside its artifacts (`run_store.py`), so a reload, a lost network or a
+replaced process does not lose one; the run id is enough to get it back. A run
+that was in flight when the process went away comes back as `interrupted` — not
+as finished, and not as still running. The substitution rule cuts both ways: a
+halted run is not a result either.
+
+**"LOCAL" is wrong in a browser.** The hosted service's runtime is
+`local_real_ai` — a loopback server inside its own container — and *local* in a
+browser means *your computer*. `BIOSENSE_HOSTED=1` keeps the mode name, which is
+recorded, exported and tested, and changes only the word the reader sees to
+`REAL AI — ONLINE`. The same flag rewrites the remedies: telling a visitor to
+run `omnigent host` is useless, so a hosted failure says whose fault it is and
+that the demonstration path still works.
+
+### `/readyz`
+
+`/healthz` stays liveness and nothing more, because a platform healthcheck on
+readiness would restart the container while the runtime comes up and keep
+restarting it if a key were missing — taking the demonstration path down with
+it. `/readyz` answers the four parts somebody actually wants when the button does
+not work: runtime reachable, agent registered, executor available, model
+credentials present. All four are derived from the **single** reason code the
+same probe returns, so the health page cannot disagree with the run that follows
+it, and the body carries no token, no key and no path.
