@@ -44,14 +44,37 @@ kill "$SERVE_PID" 2>/dev/null || true
 trap - EXIT
 
 echo
+echo "=== 3c. launcher and boot scripts parse, and the checker answers offline ==="
+for f in scripts/start_local_ai.sh scripts/check_local_ai.sh deploy/start-ai.sh; do
+  bash -n "$f" && echo "  $f OK"
+done
+# Expected to fail: nothing is running, and saying so with the one fix is the
+# behaviour under test. A zero exit here would mean it answered READY with no
+# runtime, which is the only wrong answer it could give.
+if ./scripts/check_local_ai.sh >/tmp/biosense-check-local.log 2>&1; then
+  echo "  check_local_ai.sh reported READY (a runtime is up on this machine)"
+else
+  echo "  check_local_ai.sh: $(head -2 /tmp/biosense-check-local.log | tail -1)"
+fi
+
+echo
 echo "=== 4. Omnigent agent-bundle validation (no session, no tokens) ==="
-if ! command -v omnigent >/dev/null 2>&1; then
-  echo "SKIPPED: omnigent not on PATH"
+# Prefer the project's own extra over a global install: `uv sync --extra omnigent`
+# puts both the client library and the omnigent command in .venv, so this rung
+# runs for anyone who has installed it, without a tool install.
+if uv run --frozen --extra omnigent python -c 'import omnigent' >/dev/null 2>&1; then
+  OMNI_PY=(uv run --frozen --extra omnigent python)
+  uv run --frozen --extra omnigent omnigent --version
+elif command -v omnigent >/dev/null 2>&1; then
+  # A global `uv tool install omnigent`: run the heredoc under that tool's own
+  # interpreter, which is the only one that can import it.
+  OMNI_PY=("$(head -1 "$(command -v omnigent)" | sed 's|^#!||')")
+  omnigent --version
+else
+  echo "SKIPPED: the omnigent extra is not installed (uv sync --extra omnigent)"
   exit 0
 fi
-omnigent --version
-OMNI_PY="$(head -1 "$(command -v omnigent)" | sed 's|^#!||')"
-"$OMNI_PY" - <<'PY'
+"${OMNI_PY[@]}" - <<'PY'
 from pathlib import Path
 from omnigent.spec import parser, validator
 bad = False
