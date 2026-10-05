@@ -25,6 +25,7 @@ const hash = (i) => { let x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x
 const state = {
   cfg: null, result: null, day: 0, playing: null,
   A: null, B: null, inflight: 0, seed: 7,
+  handoff: null, projects: null, project: null, candidates: null,
 };
 
 /* theme — same key as the console, so the choice follows you across modes */
@@ -99,6 +100,9 @@ async function boot() {
   $('#cmpBtn').addEventListener('click', compare);
   $('#exportBtn').addEventListener('click', exportSession);
   $('#carryBtn').addEventListener('click', carry);
+  $('#useAsCandidate').addEventListener('click', useAsCandidate);
+  const h = readHandoff();
+  if (h) applyHandoff(h);
   run();
 }
 
@@ -229,6 +233,84 @@ function markCustom() {
   $('#presetControl').setAttribute('aria-pressed', 'false');
   $('#presetCandidate').setAttribute('aria-pressed', 'false');
   $('#presetNote').textContent = 'custom';
+}
+
+/* A candidate carried over from a discovery run. Read once and cleared, so a
+   reload does not silently re-apply a setpoint the person has since moved. */
+function readHandoff() {
+  let raw = null;
+  try { raw = localStorage.getItem('bs-sim-candidate'); } catch (_) { return null; }
+  if (!raw) return null;
+  try { localStorage.removeItem('bs-sim-candidate'); } catch (_) {}
+  try { return JSON.parse(raw); } catch (_) { return null; }
+}
+
+function applyHandoff(h) {
+  if (!h || !h.parameter_id) return;
+  const box = $('#handoff');
+  box.hidden = false;
+  box.textContent = '';
+  const t = el('div');
+  t.style.cssText = 'font-weight:600;color:var(--ink)';
+  t.textContent = `Carried from a discovery run: ${h.label || h.parameter_id} `
+    + `${h.control != null ? h.control : '?'} → ${h.candidate != null ? h.candidate : '?'}`
+    + `${h.unit ? ' ' + h.unit : ''}`;
+  box.append(t);
+  if (h.reason) box.append(el('div', null, h.reason));
+  if (h.confidence) box.append(el('div', 'dim', 'confidence ' + h.confidence));
+  box.append(el('div', 'dim',
+    'Control and candidate are loaded below. Nothing was approved by loading it.'));
+  /* The run proposed this for a project; honour that rather than applying a
+     setpoint to whichever process happened to be selected. */
+  if (h.project_id && state.projects) {
+    const sel = $('#project');
+    if (Array.from(sel.options).some(o => o.value === h.project_id)) {
+      sel.value = h.project_id;
+      showProject(h.project_id);
+    }
+  }
+  state.handoff = h;
+  const p = state.project;
+  if (!p) return;
+  const q = (p.parameters || []).find(x => x.parameter_id === h.parameter_id);
+  if (!q || !q.simulator_mapping) {
+    box.append(el('div', 'warnc',
+      'This project\u2019s model has no term for that parameter, so the sliders below cannot '
+      + 'represent it and no prediction is produced for it.'));
+    return;
+  }
+  (state.candidates = state.candidates || {});
+  state.candidates[p.project_id] = [{
+    parameter_id: h.parameter_id, value: h.candidate,
+    label: h.label || h.parameter_id, from: h.from_run || 'discovery run',
+  }];
+  applyPreset('candidate');
+}
+
+/* A condition the person built by hand, offered back to the loop as a candidate.
+   Recorded as a design choice with that origin: a setpoint somebody liked in a
+   sandbox is not evidence, and it is certainly not an approved protocol. */
+function useAsCandidate() {
+  const c = condition();
+  const payload = {
+    origin: 'user_design_choice',
+    created_at: new Date().toISOString(),
+    project_id: state.project ? state.project.project_id : null,
+    setpoints: c.setpoints,
+    challenge: c.challenge,
+    note: 'Chosen by a person in the simulator sandbox. It is a design choice, not evidence, '
+          + 'and it is not an approved protocol: a wet-lab run still needs a named human '
+          + 'approver.',
+  };
+  try { localStorage.setItem('bs-user-candidate', JSON.stringify(payload)); } catch (_) {}
+  const box = $('#handoff');
+  box.hidden = false; box.textContent = '';
+  const t = el('div'); t.style.cssText = 'font-weight:600;color:var(--ink)';
+  t.textContent = 'Saved as a candidate — origin: user design choice';
+  box.append(t, el('div', null, payload.note));
+  const go = el('a', 'btn', 'Take it to AI discovery');
+  go.href = 'console.html';
+  box.append(go);
 }
 
 function noteFor(id) {

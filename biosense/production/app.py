@@ -646,7 +646,12 @@ class Handler(BaseHTTPRequestHandler):
         result = FR.build(request=run.request, bundle=run.result['bundle'],
                           out_dir_name=run.out_dir.name, runtime_mode=run.runtime_mode,
                           session=run.session, benchmark=run.benchmark)
-        written = FR.write(result)
+        # Beside the run that produced it, never into the repository's committed
+        # public set: those are the project's own demonstrations, and a visitor's
+        # run is not one of them. A private lineage still refuses to be written
+        # anywhere public, which `FR.write` decides, not this handler.
+        out = (run.out_dir / 'benchmark') if result['privacy']['safe_to_publish'] else None
+        written = FR.write(result, out=out)
         return self._send(201, {'benchmark': FR.display(result), 'written': written})
 
     def _run_benchmark(self, body):

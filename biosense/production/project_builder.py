@@ -157,6 +157,13 @@ def _parameter(raw, *, stage_ids, simulator_status, model_knobs):
             f'{pid} names stage {stage!r}, which this project does not have '
             f'({", ".join(sorted(stage_ids))})')
     coverage = raw.get('simulator_coverage') or 'not_modelled'
+    if coverage == 'modelled' and simulator_status != 'current':
+        # Downgrading this silently would answer "make it modelled" with
+        # "fine" and then quietly not do it.
+        raise K.ContractError(
+            f'{PR.resolve(raw["parameter_id"])} cannot be marked "modelled": this project has '
+            f'no calibrated model to have a term in it. Choose "design variable only", or have '
+            f'the response proposed or declared.')
     if simulator_status == 'none' and coverage not in PJ.UNCALIBRATED:
         # No calibrated model: an ordinary parameter is simply not predicted.
         # A proposed response survives, because it is the thing that lets a brand

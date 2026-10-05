@@ -265,13 +265,19 @@ def is_loopback(url):
         return False
 
 
-def validate_server(url, mode):
+def validate_server(url, mode, *, env=None):
     """Refuse a server URL that is malformed, or plaintext where it must not be.
 
     Validation happens once, at configuration time, rather than at each request:
     a URL that would send a bearer token over plaintext to a third party is a
     deployment mistake, and refusing to start with it is the right outcome.
+
+    *env* is the mapping the configuration came from, so the insecure-transport
+    opt-out is read from the same place as everything else. Reading it from the
+    process environment instead would mean a deployment that sets it in its own
+    config is told its setting does not exist.
     """
+    env = os.environ if env is None else env
     u = urlsplit(url or '')
     if u.scheme not in ('http', 'https'):
         raise K.ContractError(
@@ -288,7 +294,7 @@ def validate_server(url, mode):
             f'Use remote mode for a server elsewhere, so its authentication is required '
             f'rather than assumed.')
     if (u.scheme == 'http' and not is_loopback(url)
-            and (os.environ.get(ENV_INSECURE) or '').strip().lower() not in ('1', 'true', 'yes')):
+            and (env.get(ENV_INSECURE) or '').strip().lower() not in ('1', 'true', 'yes')):
         raise K.ContractError(
             f'refusing to send a bearer token to {url!r} over plaintext http. Use https, '
             f'or set {ENV_INSECURE}=1 if the hop is already inside a trusted network.')
@@ -329,7 +335,7 @@ def from_env(*, runs_dir=None, env=None):
         raise K.ContractError(
             f'{ENV_MODE}=remote needs {ENV_SERVER}. BioSense does not guess a server '
             f'address, and it does not fall back to the synthetic path.')
-    server = validate_server(server, mode) if mode in REAL_MODES else None
+    server = validate_server(server, mode, env=env) if mode in REAL_MODES else None
     allowed = _allowed_from_env(env, mode)
     if mode not in allowed:
         allowed = tuple(dict.fromkeys(list(allowed) + [mode]))

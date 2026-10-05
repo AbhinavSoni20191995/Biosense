@@ -1,5 +1,0 @@
-analysis_id,readout,group_a,group_b,mean_a,mean_b,effect,effect_type,p_value,q_value,n_a,n_b,test
-analysis-disc_a682bc475a31-facs-mcsf-fixture,CD14_pos_pct,control,mcsf_high,41.181666666666665,67.58,26.398333333333333,difference,0.0013204658571528134,0.001760621142870418,3,3,Welch's t-test
-analysis-disc_a682bc475a31-facs-mcsf-fixture,CD16_pos_pct,control,mcsf_high,16.933333333333334,30.995000000000005,14.061666666666671,difference,0.00014901244347994676,0.0005960497739197871,3,3,Welch's t-test
-analysis-disc_a682bc475a31-facs-mcsf-fixture,viability_pct,control,mcsf_high,93.96333333333332,91.04166666666667,-2.9216666666666526,difference,0.006860086942429901,0.006860086942429901,3,3,Welch's t-test
-analysis-disc_a682bc475a31-facs-mcsf-fixture,CD206_pos_pct,control,mcsf_high,33.501666666666665,57.51833333333334,24.016666666666673,difference,0.0003353421651750053,0.0006706843303500106,3,3,Welch's t-test

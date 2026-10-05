@@ -21,3 +21,7 @@ file.pdf
 # Cached public dataset downloads. Reproducible from the accession, so the
 # manifest is the artifact worth keeping, not the payload.
 /data_cache/
+
+# Benchmarks a visitor built from a web run. They belong beside their run, not
+# in the project's committed public set.
+benchmarks/public/disc_*/
