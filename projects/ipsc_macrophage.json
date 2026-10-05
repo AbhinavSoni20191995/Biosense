@@ -1,0 +1,330 @@
+{
+  "schema_version": "2.0",
+  "project_id": "ipsc_macrophage",
+  "name": "iPSC → monocyte / macrophage production",
+  "version": "1.0.0",
+  "created_at": "2026-10-05T00:00:00+00:00",
+  "template_of": "ipsc_monocyte_v1",
+  "description": "Suspension differentiation of human iPSC to CD14+ monocytes and macrophages in a stirred vessel, four stages, with continuous harvest during the myeloid stage. This is the project the existing mechanistic simulator models.",
+  "biological_system": {
+    "species": "human",
+    "starting_cell": "iPSC",
+    "target_cell": "monocyte / macrophage",
+    "target_subtype": "CD14+ monocyte",
+    "cell_line": null,
+    "donor_system": null,
+    "culture_format": "stirred-tank suspension, aggregate culture",
+    "identity_markers": [
+      "CD14",
+      "CD16",
+      "CD206",
+      "CD11b"
+    ]
+  },
+  "stages": [
+    {
+      "stage_id": "expansion",
+      "label": "Expansion",
+      "default_days": 4.0,
+      "min_days": 2.0,
+      "max_days": 10.0,
+      "wants": "aggregates near 150 um, DO 0.20"
+    },
+    {
+      "stage_id": "mesoderm",
+      "label": "Mesoderm",
+      "default_days": 3.0,
+      "min_days": 2.0,
+      "max_days": 8.0,
+      "wants": "aggregates near 200 um, DO 0.10"
+    },
+    {
+      "stage_id": "hemato",
+      "label": "Hemogenic endothelium",
+      "default_days": 4.0,
+      "min_days": 2.0,
+      "max_days": 10.0,
+      "wants": "aggregates near 300 um, DO 0.12"
+    },
+    {
+      "stage_id": "myeloid",
+      "label": "Myeloid harvest",
+      "default_days": 14.0,
+      "min_days": 4.0,
+      "max_days": 24.0,
+      "wants": "aggregates near 400 um, DO 0.18, continuous release"
+    }
+  ],
+  "parameters": [
+    {
+      "parameter_id": "seed_density",
+      "stage": "expansion",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "seed_density",
+      "default_value": 0.5,
+      "minimum": 0.1,
+      "maximum": 2.0,
+      "step": 0.05,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "agitation_rpm",
+      "stage": "all",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "agitation_rpm",
+      "default_value": 60.0,
+      "minimum": 20.0,
+      "maximum": 140.0,
+      "step": 1.0,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "do_setpoint",
+      "stage": "all",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "do_setpoint",
+      "default_value": 0.2,
+      "minimum": 0.05,
+      "maximum": 0.4,
+      "step": 0.01,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "feed_fraction",
+      "stage": "all",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "feed_fraction",
+      "default_value": 0.5,
+      "minimum": 0.1,
+      "maximum": 0.9,
+      "step": 0.05,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "feed_interval_h",
+      "stage": "all",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "feed_interval_h",
+      "default_value": 24.0,
+      "minimum": 12.0,
+      "maximum": 72.0,
+      "step": 2.0,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "rocki_hours",
+      "stage": "expansion",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "rocki_hours",
+      "default_value": 24.0,
+      "minimum": 0.0,
+      "maximum": 48.0,
+      "step": 2.0,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "bmp4_ng_ml",
+      "stage": "mesoderm",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "bmp4",
+      "default_value": 25.0,
+      "minimum": 0.0,
+      "maximum": 80.0,
+      "step": 1.0,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "vegf_ng_ml",
+      "stage": "mesoderm",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "vegf",
+      "default_value": 50.0,
+      "minimum": 0.0,
+      "maximum": 150.0,
+      "step": 2.0,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "mcsf_ng_ml",
+      "stage": "myeloid",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "mcsf",
+      "default_value": 50.0,
+      "minimum": 0.0,
+      "maximum": 150.0,
+      "step": 2.0,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "il3_ng_ml",
+      "stage": "myeloid",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "il3",
+      "default_value": 25.0,
+      "minimum": 0.0,
+      "maximum": 80.0,
+      "step": 1.0,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "stage_duration_days",
+      "stage": "all",
+      "simulator_coverage": "modelled",
+      "simulator_mapping": "stage_days",
+      "minimum": 0.5,
+      "maximum": 24.0,
+      "step": 0.5,
+      "bound_origin": {
+        "source": "model_validity",
+        "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
+      }
+    },
+    {
+      "parameter_id": "temperature_c",
+      "stage": "all",
+      "simulator_coverage": "not_modelled",
+      "default_value": 37.0,
+      "minimum": 35.0,
+      "maximum": 39.0,
+      "step": 0.5,
+      "bound_origin": {
+        "source": "process_design",
+        "basis": "the incubator is held at 37 C; this project does not vary it"
+      },
+      "notes": "A real process parameter. The model holds temperature fixed, so changing it here produces no prediction."
+    }
+  ],
+  "readouts": [
+    {
+      "readout_id": "harvest_yield_per_input_ipsc",
+      "label": "Monocytes per input iPSC",
+      "unit": "cells/input_cell",
+      "kind": "yield",
+      "simulator_metric": "harvest_per_input_ipsc",
+      "higher_is_better": true,
+      "instrument": "M4 in-line harvest counter"
+    },
+    {
+      "readout_id": "harvest_total_e6_per_ml",
+      "label": "Harvested cells",
+      "unit": "1e6 cells/mL",
+      "kind": "yield",
+      "simulator_metric": "harvest_total_e6_per_ml",
+      "higher_is_better": true,
+      "instrument": "M4 in-line harvest counter"
+    },
+    {
+      "readout_id": "final_viability_pct",
+      "label": "Final viability",
+      "unit": "%",
+      "kind": "viability",
+      "simulator_metric": "final_viability_pct",
+      "higher_is_better": true,
+      "instrument": "M3c image cytometer"
+    },
+    {
+      "readout_id": "monocyte_gate_pct",
+      "label": "Cells in the monocyte gate",
+      "unit": "%",
+      "kind": "phenotype",
+      "simulator_metric": "monocyte_gate_pct",
+      "higher_is_better": true,
+      "instrument": "M3d impedance cytometer + M3e 3-colour panel"
+    },
+    {
+      "readout_id": "peak_vcd_e6_per_ml",
+      "label": "Peak viable cell density",
+      "unit": "1e6 cells/mL",
+      "kind": "yield",
+      "simulator_metric": "peak_vcd_e6_per_ml",
+      "higher_is_better": true,
+      "instrument": "M3c image cytometer"
+    },
+    {
+      "readout_id": "agg_diameter_mean_um",
+      "label": "Mean aggregate diameter",
+      "unit": "um",
+      "kind": "physical",
+      "simulator_metric": "agg_diameter_final_um",
+      "higher_is_better": null,
+      "instrument": "M3b in-situ microscope"
+    },
+    {
+      "readout_id": "mean_condition_score",
+      "label": "Mean condition score",
+      "unit": "score",
+      "kind": "process",
+      "simulator_metric": "mean_score",
+      "higher_is_better": true,
+      "instrument": "computed from the instrument channels"
+    }
+  ],
+  "simulator": {
+    "model_id": "ipsc_monocyte_v1",
+    "model_version": "1.0.0",
+    "status": "current",
+    "label": "iPSC → monocyte mechanistic stand-in",
+    "evidence_status": "synthetic_demonstration",
+    "not_modelled_note": "Temperature, medium composition beyond glucose/lactate/ammonia, and any factor without a term in the model produce no prediction."
+  },
+  "research_context": {
+    "species": [
+      "human"
+    ],
+    "cell_types": [
+      "monocyte",
+      "macrophage",
+      "iPSC-derived macrophage"
+    ],
+    "states": [
+      "differentiating",
+      "mature"
+    ],
+    "strictness": "prefer",
+    "exclude": [
+      "mouse-only evidence"
+    ]
+  },
+  "constraints": [
+    {
+      "constraint": "Harvest is continuous during the myeloid stage",
+      "basis": "the vessel has an in-line harvest counter and a cell-retention device",
+      "source": "process_design"
+    }
+  ],
+  "limitations": [
+    "The simulator is a mechanistic stand-in calibrated to published protocol ranges. It is not a validated digital twin and no number it produces is a measurement of any real cell.",
+    "The model rewards the levers it was built to reward; a real culture may not."
+  ],
+  "created_by": "repository template"
+}

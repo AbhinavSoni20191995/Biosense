@@ -1,0 +1,251 @@
+{
+  "schema_version": "2.0",
+  "project_id": "cart_expansion",
+  "name": "CAR-T expansion",
+  "version": "1.0.0",
+  "created_at": "2026-10-05T00:00:00+00:00",
+  "template_of": null,
+  "description": "Activation, transduction and expansion of primary human T cells to a CAR-positive product. BioSense has NO mechanistic model for this process: the project exists so that evidence, analysis and hypotheses can be recorded against the right knobs, and every parameter reports no_simulator rather than borrowing a macrophage model's prediction.",
+  "biological_system": {
+    "species": "human",
+    "starting_cell": "peripheral blood T cell",
+    "target_cell": "CAR-positive T cell",
+    "target_subtype": "CD8+ memory phenotype",
+    "cell_line": null,
+    "donor_system": "apheresis donor",
+    "culture_format": "static bag or rocking-motion bioreactor",
+    "identity_markers": [
+      "CD3",
+      "CD8",
+      "CAR"
+    ]
+  },
+  "stages": [
+    {
+      "stage_id": "activation",
+      "label": "Activation",
+      "default_days": 2.0,
+      "min_days": 1.0,
+      "max_days": 4.0,
+      "wants": "uniform blasting without over-stimulation"
+    },
+    {
+      "stage_id": "transduction",
+      "label": "Transduction",
+      "default_days": 1.0,
+      "min_days": 1.0,
+      "max_days": 2.0,
+      "wants": "transduction efficiency without vector toxicity"
+    },
+    {
+      "stage_id": "expansion",
+      "label": "Expansion",
+      "default_days": 8.0,
+      "min_days": 4.0,
+      "max_days": 14.0,
+      "wants": "expansion without driving exhaustion"
+    }
+  ],
+  "parameters": [
+    {
+      "parameter_id": "il7_ng_ml",
+      "stage": "expansion",
+      "simulator_coverage": "no_simulator",
+      "default_value": 10.0,
+      "minimum": 0.0,
+      "maximum": 50.0,
+      "step": 1.0,
+      "bound_origin": {
+        "source": "literature",
+        "basis": "commonly reported IL-7 range for memory-phenotype T-cell expansion; no value here is cited evidence"
+      },
+      "notes": "Real, usable as a design and evidence variable. BioSense has no model of T-cell expansion, so no prediction is produced for it."
+    },
+    {
+      "parameter_id": "il15_ng_ml",
+      "stage": "expansion",
+      "simulator_coverage": "no_simulator",
+      "default_value": 5.0,
+      "minimum": 0.0,
+      "maximum": 50.0,
+      "step": 1.0,
+      "bound_origin": {
+        "source": "literature",
+        "basis": "commonly reported IL-15 range; not a cited value"
+      }
+    },
+    {
+      "parameter_id": "il2_ng_ml",
+      "stage": "expansion",
+      "simulator_coverage": "no_simulator",
+      "default_value": 100.0,
+      "minimum": 0.0,
+      "maximum": 500.0,
+      "step": 10.0,
+      "bound_origin": {
+        "source": "literature",
+        "basis": "commonly reported IL-2 range; not a cited value"
+      }
+    },
+    {
+      "parameter_id": "activation_duration_h",
+      "stage": "activation",
+      "simulator_coverage": "no_simulator",
+      "default_value": 48.0,
+      "minimum": 12.0,
+      "maximum": 96.0,
+      "step": 6.0,
+      "bound_origin": {
+        "source": "process_design",
+        "basis": "the bead removal step is scheduled at the end of activation"
+      }
+    },
+    {
+      "parameter_id": "transduction_moi",
+      "stage": "transduction",
+      "simulator_coverage": "no_simulator",
+      "default_value": 5.0,
+      "minimum": 0.5,
+      "maximum": 20.0,
+      "step": 0.5,
+      "bound_origin": {
+        "source": "safety_constraint",
+        "basis": "vector copy number limits in the product specification"
+      }
+    },
+    {
+      "parameter_id": "seed_density",
+      "stage": "activation",
+      "simulator_coverage": "no_simulator",
+      "default_value": 1.0,
+      "minimum": 0.2,
+      "maximum": 3.0,
+      "step": 0.1,
+      "bound_origin": {
+        "source": "process_design",
+        "basis": "bag working volume and cell availability"
+      }
+    },
+    {
+      "parameter_id": "feed_interval_h",
+      "stage": "expansion",
+      "simulator_coverage": "no_simulator",
+      "default_value": 48.0,
+      "minimum": 24.0,
+      "maximum": 96.0,
+      "step": 12.0,
+      "bound_origin": {
+        "source": "process_design",
+        "basis": "the operator feeds on a fixed schedule"
+      }
+    },
+    {
+      "parameter_id": "agitation_rpm",
+      "stage": "expansion",
+      "simulator_coverage": "no_simulator",
+      "default_value": 6.0,
+      "minimum": 2.0,
+      "maximum": 12.0,
+      "step": 1.0,
+      "bound_origin": {
+        "source": "equipment_limit",
+        "basis": "rocking-motion platform; its rocking rate is not a stirred-tank impeller speed and the two ranges are not comparable"
+      },
+      "notes": "Same canonical parameter as the macrophage project, a completely different range. This is why project bounds exist."
+    }
+  ],
+  "readouts": [
+    {
+      "readout_id": "car_positive_pct",
+      "label": "CAR-positive fraction",
+      "unit": "%",
+      "kind": "identity",
+      "simulator_metric": null,
+      "higher_is_better": true,
+      "instrument": "flow cytometry"
+    },
+    {
+      "readout_id": "viable_cells_total",
+      "label": "Total viable cells",
+      "unit": "cells",
+      "kind": "yield",
+      "simulator_metric": null,
+      "higher_is_better": true,
+      "instrument": "automated cell counter"
+    },
+    {
+      "readout_id": "viability_pct",
+      "label": "Viability",
+      "unit": "%",
+      "kind": "viability",
+      "simulator_metric": null,
+      "higher_is_better": true,
+      "instrument": "automated cell counter"
+    },
+    {
+      "readout_id": "exhaustion_pct",
+      "label": "Exhaustion-marker positive",
+      "unit": "%",
+      "kind": "exhaustion",
+      "simulator_metric": null,
+      "higher_is_better": false,
+      "instrument": "flow cytometry (PD-1 / LAG-3 / TIM-3)"
+    },
+    {
+      "readout_id": "cd4_cd8_ratio",
+      "label": "CD4:CD8 ratio",
+      "unit": "dimensionless",
+      "kind": "phenotype",
+      "simulator_metric": null,
+      "higher_is_better": null,
+      "instrument": "flow cytometry"
+    },
+    {
+      "readout_id": "memory_phenotype_pct",
+      "label": "Memory phenotype",
+      "unit": "%",
+      "kind": "phenotype",
+      "simulator_metric": null,
+      "higher_is_better": true,
+      "instrument": "flow cytometry (CCR7 / CD45RA)"
+    }
+  ],
+  "simulator": {
+    "model_id": null,
+    "model_version": null,
+    "status": "none",
+    "label": null,
+    "evidence_status": null,
+    "not_modelled_note": "BioSense has no mechanistic model of CAR-T expansion. Evidence, analysis and hypotheses work normally; predictions do not exist, and none is produced by borrowing another project's model."
+  },
+  "research_context": {
+    "species": [
+      "human"
+    ],
+    "cell_types": [
+      "T cell",
+      "CD8 T cell",
+      "CAR-T"
+    ],
+    "states": [
+      "activated",
+      "expanded"
+    ],
+    "strictness": "prefer",
+    "exclude": [
+      "mouse-only evidence"
+    ]
+  },
+  "constraints": [
+    {
+      "constraint": "Vector copy number must stay within the product specification",
+      "basis": "regulatory requirement for an engineered cell product",
+      "source": "safety_constraint"
+    }
+  ],
+  "limitations": [
+    "No mechanistic model exists for this project, so every parameter reports no_simulator and no predicted improvement can be produced.",
+    "The parameter ranges come from process design and general literature, not from cited evidence in this repository."
+  ],
+  "created_by": "repository template"
+}

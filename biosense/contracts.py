@@ -47,6 +47,8 @@ SCHEMAS = {
     'dataset_manifest': 'dataset_manifest.schema.json',
     'analysis_plan': 'analysis_plan.schema.json',
     'analysis_result': 'analysis_result.schema.json',
+    # a project: which knobs a particular biological system actually has
+    'project_profile': 'project_profile.schema.json',
 }
 
 # What a piece of evidence IS, kept separate from where it came from and from who

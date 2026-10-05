@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/project-profile-v2.0",
+  "title": "ProjectProfile 2.0: one biological/process system, and the knobs it actually has",
+  "description": "There is no universal BioSense control panel. A CAR-T expansion and an iPSC-to-macrophage process share an orchestrator and share nothing else: different stages, different parameters, different readouts, different simulator. A ProjectProfile says which of the canonical parameters THIS system exposes, what range is sensible for it HERE and on whose authority, and whether the project's simulator models it at all. Parameters are referenced by canonical parameter_id from biosense/parameters.py, so a project narrows a shared vocabulary rather than inventing a private one.",
+  "type": "object",
+  "required": ["schema_version", "project_id", "name", "version", "created_at",
+               "biological_system", "stages", "parameters", "readouts", "simulator",
+               "limitations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "project_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$"},
+    "name": {"type": "string", "minLength": 3},
+    "version": {"type": "string", "description": "Profile version, recorded in every artifact that used it"},
+    "created_at": {"type": "string"},
+    "description": {"type": ["string", "null"]},
+    "template_of": {"type": ["string", "null"], "description": "The template this was created from, if any"},
+
+    "biological_system": {
+      "type": "object",
+      "required": ["species", "starting_cell", "target_cell"],
+      "additionalProperties": false,
+      "properties": {
+        "species": {"type": "string"},
+        "starting_cell": {"type": "string"},
+        "target_cell": {"type": "string"},
+        "target_subtype": {"type": ["string", "null"]},
+        "cell_line": {"type": ["string", "null"], "description": "null means unknown, not unrestricted"},
+        "donor_system": {"type": ["string", "null"]},
+        "culture_format": {"type": ["string", "null"]},
+        "identity_markers": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["stage_id", "label"],
+        "additionalProperties": false,
+        "properties": {
+          "stage_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"},
+          "label": {"type": "string"},
+          "default_days": {"type": ["number", "null"]},
+          "min_days": {"type": ["number", "null"]},
+          "max_days": {"type": ["number", "null"]},
+          "wants": {"type": ["string", "null"], "description": "What good looks like at this stage"}
+        }
+      }
+    },
+
+    "parameters": {
+      "type": "array",
+      "description": "The knobs THIS project has. A project does not inherit a parameter merely because the canonical registry defines it.",
+      "items": {
+        "type": "object",
+        "required": ["parameter_id", "stage", "simulator_coverage"],
+        "additionalProperties": false,
+        "properties": {
+          "parameter_id": {"type": "string", "description": "Must resolve in biosense/parameters.py"},
+          "display_name": {"type": ["string", "null"], "description": "Overrides the canonical label only when this project genuinely calls it something else"},
+          "stage": {"type": "string", "description": "A stage_id of this project, or 'all'"},
+          "default_value": {},
+          "minimum": {"type": ["number", "null"]},
+          "maximum": {"type": ["number", "null"]},
+          "step": {"type": ["number", "null"]},
+          "editable": {"type": "boolean", "default": true},
+          "bound_origin": {
+            "type": ["object", "null"],
+            "required": ["source", "basis"],
+            "description": "Where this project's narrower range came from. A bound with no origin is a design choice pretending to be a constraint.",
+            "properties": {
+              "source": {"enum": ["process_design", "literature", "expert_knowledge",
+                                  "prior_experiment", "equipment_limit", "safety_constraint",
+                                  "model_validity", "design_choice"]},
+              "basis": {"type": "string"},
+              "reference": {"type": ["string", "null"], "description": "claim id, dataset id, expert knowledge id or equipment name"}
+            }
+          },
+          "simulator_mapping": {
+            "type": ["string", "null"],
+            "description": "The knob name in THIS project's simulator model. null when the model has no term for it."
+          },
+          "simulator_coverage": {
+            "enum": ["modelled", "not_modelled", "no_simulator"],
+            "description": "modelled = the project's model has a term for it and a prediction is meaningful. not_modelled = the parameter is real and usable as a design/evidence variable, but this project's model has no equation for it, so no prediction is produced. no_simulator = the project has no simulator at all."
+          },
+          "notes": {"type": ["string", "null"]}
+        }
+      }
+    },
+
+    "readouts": {
+      "type": "array",
+      "description": "What this project measures. A CAR-T project does not display aggregate diameter because a macrophage project does.",
+      "items": {
+        "type": "object",
+        "required": ["readout_id", "label", "unit", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "readout_id": {"type": "string"},
+          "label": {"type": "string"},
+          "unit": {"type": "string"},
+          "kind": {"enum": ["yield", "viability", "identity", "phenotype", "purity",
+                            "stress", "exhaustion", "metabolic", "physical", "process"]},
+          "simulator_metric": {"type": ["string", "null"], "description": "Where to read it from a simulator result, when the model produces it"},
+          "higher_is_better": {"type": ["boolean", "null"]},
+          "target": {"type": ["number", "null"]},
+          "instrument": {"type": ["string", "null"]}
+        }
+      }
+    },
+
+    "simulator": {
+      "type": "object",
+      "required": ["model_id", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "model_id": {"type": ["string", "null"], "description": "null when this project has no mechanistic model"},
+        "model_version": {"type": ["string", "null"]},
+        "status": {
+          "enum": ["current", "planned", "none"],
+          "description": "'current' only when a model actually exists and runs. A template is never marked current to advertise an intention."
+        },
+        "label": {"type": ["string", "null"]},
+        "evidence_status": {"type": ["string", "null"], "description": "e.g. synthetic_demonstration: what a prediction from this model is worth"},
+        "not_modelled_note": {"type": ["string", "null"]}
+      }
+    },
+
+    "research_context": {"type": ["object", "null"], "description": "Default evidence scope for this project; a run may narrow it further"},
+    "constraints": {
+      "type": "array",
+      "items": {"type": "object", "required": ["constraint", "basis"],
+                "properties": {"constraint": {"type": "string"}, "basis": {"type": "string"},
+                               "source": {"type": ["string", "null"]}}}
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "created_by": {"type": ["string", "null"]}
+  }
+}
