@@ -93,10 +93,27 @@ decides, and the envelope can refuse.
 
 ## Quick start
 
-**BioSense is a web application.** Open it, pick a project, ask a scientific
-question, press one button. Everything below happens in the browser.
+**BioSense is a web application.** For most people there is nothing to install.
 
-### 1. Start it
+### Just use it
+
+> **Open the hosted app:** <!-- BIOSENSE_HOSTED_URL -->`https://<your-biosense>.up.railway.app`
+>
+> Pick a project, state your objective, press **Run AI discovery**. Nothing to
+> clone, nothing to configure.
+
+The hosted instance runs the **synthetic demonstration** path: every stage, every
+card, the protocol, the simulator and the benchmarks, with deterministic code
+over committed fixtures. It holds no model credentials and calls no model, which
+is exactly what makes a public URL defensible.
+
+### Run it yourself, if you need one of these
+
+| You want | Why hosting cannot give it to you |
+|---|---|
+| **Real AI** | the agents need a model provider, under *your* key and *your* bill |
+| **Your own private data analysed** | a private dataset never leaves the machine that ingested it, by design |
+| **To develop or evaluate the code** | — |
 
 ```bash
 git clone https://github.com/AbhinavSoni20191995/Biosense.git
@@ -104,11 +121,15 @@ cd Biosense && uv sync --locked
 uv run --frozen python -m biosense.production.app --runs runs --static webapp
 ```
 
-Open **<http://127.0.0.1:8000>**. That is the whole setup — [uv](https://docs.astral.sh/uv/)
-fetches Python for you, and nothing else is needed for the synthetic path:
-no API key, no internet after install, no model call.
+Open **<http://127.0.0.1:8000>** — [uv](https://docs.astral.sh/uv/) fetches
+Python for you, and the synthetic path needs nothing else: no API key, no
+internet after install, no model call.
 
-### 2. Use it
+A hosted instance *can* serve real AI — it is a configuration change rather than
+different code — but it then needs an Omnigent server, a runner and model
+credentials behind it. See [deploy/README.md](deploy/README.md).
+
+### Using it
 
 1. **Pick or create a project** — it decides which parameters exist, what their
    bounds are, and whether anything can predict them.
@@ -132,10 +153,10 @@ hypothesis, the candidate parameters, the recommended protocol and the benchmark
   <img alt="The BioSense discovery page: a project selector, an objective box, a runtime chooser offering Synthetic demo and Real AI, and a Run AI discovery button, with progress ticks and the hypothesis card alongside." src="docs/assets/console-light.png" width="100%">
 </picture>
 
-### 3. Turn on real AI (optional)
+### Turning on real AI
 
-The synthetic path needs nothing. **Real AI needs an Omnigent runtime**, because
-that is what orchestrates the specialist agents:
+**Real AI needs an Omnigent runtime**, because that is what orchestrates the
+specialist agents, and a model provider, because that is what they think with:
 
 ```bash
 omnigent start                      # local server + a runner on this machine
@@ -610,7 +631,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 785 tests
+uv run --frozen python -m unittest     # 792 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 

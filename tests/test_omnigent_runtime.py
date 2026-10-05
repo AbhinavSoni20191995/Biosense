@@ -11,6 +11,7 @@ to become syntax. There is no subprocess on this path, and the test asserts both
 the absence of the import and the arrival of the exact bytes.
 """
 import inspect
+import json
 import sys
 import types
 import unittest
@@ -43,12 +44,43 @@ class _Session:
         self.last_task_error = None
 
 
+class _Resp:
+    def __init__(self, status, body):
+        self.status_code = status
+        self._body = body
+        self.text = json.dumps(body)
+
+    def json(self):
+        return self._body
+
+
+class _Http:
+    """The shared httpx client, as much of it as the adapter uses."""
+
+    def __init__(self, outer):
+        self.outer = outer
+
+    async def get(self, url):
+        if url.endswith('/v1/hosts'):
+            return _Resp(200, {'hosts': self.outer.hosts})
+        return _Resp(404, {})
+
+    async def post(self, url, json=None):
+        self.outer.posted_create = json
+        if self.outer.host_create_status >= 400:
+            return _Resp(self.outer.host_create_status, {'error': 'refused'})
+        return _Resp(200, {'id': 'conv_host_1', 'harness': 'claude-sdk',
+                           'llm_model': 'anthropic/claude'})
+
+
 class _Sessions:
     """Records what the adapter did, so the sequence can be asserted."""
 
     def __init__(self, outer):
         self.outer = outer
         self.calls = []
+        self._http = _Http(outer)
+        self._base = "http://127.0.0.1:6767"
 
     async def resolve_agent(self, name):
         self.calls.append(('resolve_agent', name))
@@ -107,6 +139,9 @@ class _Harness:
         self.agent_missing = False
         self.post_raises = None
         self.last_client = None
+        self.hosts = []
+        self.posted_create = None
+        self.host_create_status = 200
 
     def install(self, test):
         mod = types.ModuleType('omnigent_client')
@@ -361,3 +396,79 @@ class StageMappingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class HostTopologyTests(unittest.TestCase):
+    """`omnigent host` registers a host, not a runner.
+
+    Checked against a real local server: after `omnigent host`, /v1/runners is
+    empty and /v1/hosts holds an online host with a configured_harnesses map.
+    An adapter that looks only for a runner refuses the documented `omnigent
+    start` flow with a host sitting right there.
+    """
+
+    ONLINE = {'host_id': 'host_1', 'name': 'vm', 'status': 'online',
+              'configured_harnesses': {'claude_sdk': True, 'codex-native': 'binary-missing'}}
+
+    def test_an_online_host_is_an_executor_even_with_no_runner(self):
+        h = _Harness().install(self)
+        h.no_runner = True
+        h.hosts = [self.ONLINE]
+        found = OMNI.probe(cfg_for())
+        self.assertTrue(found['ok'], found)
+        self.assertEqual('host', found['executor'])
+        self.assertEqual('host_1', found['host_id'])
+
+    def test_a_host_session_is_created_with_the_host_and_the_workspace(self):
+        """The server launches the runner from those two fields."""
+        h = _Harness().install(self)
+        h.no_runner = True
+        h.hosts = [self.ONLINE]
+        h.events = [ev('response.completed')]
+        out = OMNI.drive(cfg_for(), 'brief text')
+        self.assertEqual('host_1', h.posted_create['host_id'])
+        self.assertEqual(str(K.ROOT), h.posted_create['workspace'])
+        self.assertEqual('conv_host_1', out['session']['omnigent_session_id'])
+        # and the brief still travelled as data
+        posted = next(c for c in h.last_client.sessions.calls if c[0] == 'post_event')
+        self.assertEqual('brief text', posted[2]['data']['content'][0]['text'])
+
+    def test_a_host_whose_harness_needs_authentication_says_exactly_that(self):
+        """Much better than 'no runner': the machine is there, the key is not."""
+        h = _Harness().install(self)
+        h.no_runner = True
+        h.hosts = [{**self.ONLINE, 'configured_harnesses': {'claude_sdk': 'needs-auth'}}]
+        found = OMNI.probe(cfg_for())
+        self.assertEqual('model_auth_missing', found['reason'])
+        self.assertIn('ANTHROPIC_API_KEY', found['next_step'])
+        self.assertIn('needs-auth', found['detail'])
+
+    def test_an_offline_host_is_not_an_executor(self):
+        h = _Harness().install(self)
+        h.no_runner = True
+        h.hosts = [{**self.ONLINE, 'status': 'offline'}]
+        self.assertEqual('no_runner_available', OMNI.probe(cfg_for())['reason'])
+
+    def test_a_host_without_the_agents_harness_is_not_an_executor(self):
+        h = _Harness().install(self)
+        h.no_runner = True
+        h.hosts = [{**self.ONLINE, 'configured_harnesses': {'codex-native': True}}]
+        found = OMNI.probe(cfg_for())
+        self.assertEqual('no_runner_available', found['reason'])
+        self.assertIn('claude-sdk', found['detail'])
+
+    def test_a_bound_runner_still_takes_precedence(self):
+        h = _Harness().install(self)
+        h.hosts = [self.ONLINE]
+        found = OMNI.probe(cfg_for())
+        self.assertEqual('runner', found['executor'])
+        self.assertEqual('runner_1', found['runner_id'])
+
+    def test_a_refused_host_launch_is_reported_rather_than_swallowed(self):
+        h = _Harness().install(self)
+        h.no_runner = True
+        h.hosts = [self.ONLINE]
+        h.host_create_status = 422
+        with self.assertRaises(RT.RuntimeUnavailable) as e:
+            OMNI.drive(cfg_for(), 'brief')
+        self.assertIn('422', str(e.exception))

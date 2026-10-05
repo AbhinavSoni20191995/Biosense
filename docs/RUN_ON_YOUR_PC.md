@@ -95,7 +95,7 @@ Worth doing once, to confirm the clone is sound before you trust anything it
 prints:
 
 ```bash
-uv run --frozen python -m unittest          # expect: Ran 785 tests ... OK
+uv run --frozen python -m unittest          # expect: Ran 792 tests ... OK
 ```
 
 ---
@@ -202,6 +202,14 @@ Open <http://127.0.0.1:8000>, choose **REAL AI — LOCAL**, and press
 
 A loopback Omnigent server runs as a single local user and needs no login, so
 there is nothing else to configure.
+
+**Two topologies, both supported.** `omnigent start` registers this machine as a
+**host**; no runner exists until a session needs one, and the server launches it.
+`omnigent run` instead spawns a **runner** directly. BioSense looks for a runner
+first and falls back to an online host that advertises the agent's harness, so
+either way of starting Omnigent works. If the host is there but reports the
+harness as `needs-auth`, it says *that* — the machine is ready and the model key
+is what is missing.
 
 ### If it says the runtime is unavailable
 

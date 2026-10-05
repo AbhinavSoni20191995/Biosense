@@ -748,3 +748,42 @@ creation, runner binding, the SSE stream and the no-runner refusal — with the
 `biosense_discovery_loop` bundle registered and all six agent specs passing
 Omnigent's own validator. What has not run end to end is a session with a model
 behind it, and the README says so.
+
+
+---
+
+## 20. A correction found by running it: hosts are not runners
+
+The review said a session needs an online **runner** bound before a turn can
+dispatch, and that `resolve_online_runner() -> None` is the `no_runner_available`
+state. That is true of one topology and wrong about the other, and the wrong one
+is what `omnigent start` gives you.
+
+Verified against a real local server. After `omnigent host --server
+http://127.0.0.1:6767`:
+
+```
+GET /v1/runners   {"data":[]}
+GET /v1/hosts     {"hosts":[{"host_id":"401dae...","name":"vm","status":"online",
+                             "configured_harnesses":{"claude_sdk":"needs-auth", ...}}]}
+```
+
+The host is online and no runner exists, because a host-backed session gets its
+runner **when it is created**: Omnigent's own `SessionCreateMetadata` documents
+`host_id` as "the server triggers the host launch flow (generate binding token,
+write runner_id, send launch frame)", with `workspace` required alongside it.
+
+So the adapter now looks for an executor rather than a runner: a bound runner
+first (the `omnigent run` topology, where the client binds it itself), then an
+online host whose `configured_harnesses` advertises the agent's harness, created
+with `host_id` and `workspace` so the server launches the runner. Only when
+neither exists is it `no_runner_available`.
+
+The same listing improved the error. A host that reports its harness as
+`needs-auth` — which is exactly what a machine with no `ANTHROPIC_API_KEY` says —
+now produces `model_auth_missing` and the command that fixes it, instead of
+"no runner available", which would have sent somebody looking for the wrong
+thing entirely.
+
+Had this stayed as reviewed, real AI would have refused every time on the setup
+the documentation tells people to use.

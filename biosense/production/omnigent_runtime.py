@@ -143,17 +143,114 @@ async def _probe(cfg):
     client = _client(cfg, timeout=PROBE_TIMEOUT_S)
     try:
         agent = await client.sessions.resolve_agent(cfg.agent)
-        runner = await client.sessions.resolve_online_runner(
-            harness=agent.harness, canonicalize=_canonicalize())
-        if runner is None:
-            return RT.reason(
-                'no_runner_available',
-                f'The server has the {cfg.agent!r} agent but no online runner for its '
-                f'{agent.harness!r} harness.')
+        where = await _find_executor(client, agent.harness)
+        if where['kind'] == 'none':
+            return RT.reason(where['reason'], where['detail'])
         return {**RT.reason('ok'), 'agent_id': agent.id, 'harness': agent.harness,
-                'runner_id': runner}
+                'runner_id': where.get('runner_id'), 'host_id': where.get('host_id'),
+                'executor': where['kind']}
     finally:
         await client.close()
+
+
+async def _find_executor(client, harness):
+    """Who would actually run this session: a bound runner, or a host that spawns one.
+
+    Omnigent has two topologies and they look different from the outside.
+
+    * `omnigent run` spawns a **runner** itself, which registers at
+      `/v1/runners`, and the client binds the session to it.
+    * `omnigent start` / `omnigent host` registers a **host** at `/v1/hosts`.
+      No runner exists until one is needed: creating a session with that
+      `host_id` makes the server generate a binding token and tell the host to
+      launch one.
+
+    Checking only for a runner — which this adapter did at first — refuses the
+    documented `omnigent start` flow, with a host sitting right there online.
+    Verified against a real local server: after `omnigent host`, `/v1/runners`
+    is `{"data": []}` and `/v1/hosts` holds an online host.
+    """
+    runner = await client.sessions.resolve_online_runner(
+        harness=harness, canonicalize=_canonicalize())
+    if runner is not None:
+        return {'kind': 'runner', 'runner_id': runner}
+
+    hosts = await _list_hosts(client)
+    online = [h for h in hosts if h.get('status') == 'online']
+    if not online:
+        return {'kind': 'none', 'reason': 'no_runner_available',
+                'detail': 'No online runner and no registered host, so nothing can execute '
+                          'a session.'}
+    canon = _canonicalize()
+    wanted = {harness} | ({canon(harness)} if canon else set())
+    # The harness name as a host reports it: `claude-sdk` becomes `claude_sdk`.
+    wanted |= {w.replace('-', '_') for w in wanted}
+    needs_auth = []
+    for h in online:
+        configured = h.get('configured_harnesses') or {}
+        for name in wanted:
+            state = configured.get(name)
+            if state is True:
+                return {'kind': 'host', 'host_id': h.get('host_id'), 'host_name': h.get('name')}
+            if isinstance(state, str) and 'auth' in state:
+                needs_auth.append((h.get('name'), name, state))
+    if needs_auth:
+        # A much better answer than "no runner": the machine is there and the
+        # model provider is what is missing.
+        name, hn, state = needs_auth[0]
+        return {'kind': 'none', 'reason': 'model_auth_missing',
+                'detail': f'Host {name!r} has the {hn!r} harness but reports {state!r}.'}
+    return {'kind': 'none', 'reason': 'no_runner_available',
+            'detail': f'{len(online)} host(s) are online but none has the {harness!r} '
+                      f'harness configured.'}
+
+
+async def _list_hosts(client):
+    """Online hosts, from the server's documented `/v1/hosts` listing.
+
+    The typed SDK has no helper for this one, so the call goes through the same
+    client's HTTP session rather than a second transport: same base URL, same
+    auth header, same redirect and proxy rules.
+    """
+    try:
+        resp = await client.sessions._http.get(f'{client.sessions._base}/v1/hosts')
+    except Exception:  # noqa: BLE001 - a server without the route is simply not host-based
+        return []
+    if resp.status_code != 200:
+        return []
+    try:
+        body = resp.json()
+    except ValueError:
+        return []
+    hosts = body.get('hosts') if isinstance(body, dict) else None
+    return [h for h in (hosts or []) if isinstance(h, dict)]
+
+
+async def _create_session(client, cfg, agent, where, title):
+    """Create the session on whichever executor was found.
+
+    With a host, `host_id` and `workspace` go in the create body and the server
+    runs its launch flow; `workspace` is required there and the server validates
+    it. With a caller-managed runner the typed helper is used and the runner is
+    bound afterwards, which is the sequence the REPL itself follows.
+    """
+    if where['kind'] == 'host':
+        resp = await client.sessions._http.post(
+            f'{client.sessions._base}/v1/sessions',
+            json={'agent_id': agent.id, 'title': title, 'host_id': where['host_id'],
+                  'workspace': cfg.workspace})
+        if resp.status_code >= 400:
+            raise RT.RuntimeUnavailable(
+                'probe_failed',
+                f'the server refused to launch a session on host '
+                f'{where.get("host_name") or where["host_id"]}: '
+                f'{resp.status_code} {resp.text[:300]}')
+        return resp.json(), None
+    session = await client.sessions.create_from_agent_id(
+        agent.id, title=title, workspace=cfg.workspace)
+    bound = await client.sessions.bind_runner(session.id, runner_id=where['runner_id'])
+    return {'id': session.id, 'harness': bound.harness or session.harness,
+            'llm_model': bound.llm_model}, where['runner_id']
 
 
 def _canonicalize():
@@ -223,37 +320,35 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
     emit = on_event or (lambda _e: None)
     try:
         agent = await client.sessions.resolve_agent(cfg.agent)
-        runner = await client.sessions.resolve_online_runner(
-            harness=agent.harness, canonicalize=_canonicalize())
-        if runner is None:
-            raise RT.RuntimeUnavailable(
-                'no_runner_available',
-                f'No online runner advertises the {agent.harness!r} harness.')
+        where = await _find_executor(client, agent.harness)
+        if where['kind'] == 'none':
+            raise RT.RuntimeUnavailable(where['reason'], where['detail'])
 
-        session = await client.sessions.create_from_agent_id(
-            agent.id, title=(title or 'BioSense discovery')[:SESSION_TITLE_LIMIT],
-            workspace=cfg.workspace)
-        bound = await client.sessions.bind_runner(session.id, runner_id=runner)
-        rec = Session(session.id, agent.id, runner, bound.harness or agent.harness,
-                      bound.llm_model)
+        created, runner = await _create_session(
+            client, cfg, agent, where,
+            (title or 'BioSense discovery')[:SESSION_TITLE_LIMIT])
+        session_id = str(created['id'])
+        rec = Session(session_id, agent.id, runner or where.get('host_id'),
+                      created.get('harness') or agent.harness, created.get('llm_model'))
         if on_session:
             on_session(rec)
         emit({'kind': 'accepted', 'stage': 'understanding_objective',
               'simple': 'Your question reached the discovery agents.',
-              'technical': f'omnigent session {session.id} on runner {runner} '
+              'technical': f'omnigent session {session_id} on '
+                           f'{where["kind"]} {runner or where.get("host_id")} '
                            f'({rec.harness})'})
 
         # The one place the person's words cross into Omnigent: as a string value
         # in a JSON body. No argv, no shell, no template.
-        await client.sessions.post_event(session.id, {
+        await client.sessions.post_event(session_id, {
             'type': 'message',
             'data': {'role': 'user',
                      'content': [{'type': 'input_text', 'text': brief}]}})
 
         reached, terminal, error = set(), None, None
-        async for raw in client.sessions.stream(session.id):
+        async for raw in client.sessions.stream(session_id):
             if should_stop and should_stop():
-                await client.sessions.interrupt(session.id)
+                await client.sessions.interrupt(session_id)
                 terminal = terminal or 'failed'
                 error = error or 'the server stopped while the run was in flight'
                 break
@@ -270,7 +365,7 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
             if terminal:
                 break
 
-        snapshot = await client.sessions.get(session.id)
+        snapshot = await client.sessions.get(session_id)
         if snapshot.last_task_error and terminal != 'complete':
             terminal = 'failed'
             error = error or _task_error(snapshot.last_task_error)
