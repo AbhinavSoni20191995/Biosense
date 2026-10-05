@@ -26,6 +26,19 @@ dependencies = [
 # steps that should not run unless they resolve the named uncertainty.
 singlecell = ["anndata>=0.12", "h5py>=3.14"]
 #
+# The Omnigent client SDK, needed by exactly one module
+# (biosense/production/omnigent_runtime.py) and only when a real-AI runtime is
+# configured. It is an extra rather than a base dependency because it pulls the
+# whole Omnigent server stack, and the synthetic and deterministic paths — which
+# is all ordinary CI runs — must stay a three-dependency install.
+#
+# A deployment that serves real AI installs it; nobody should have to run
+# `uv add` by hand after cloning:
+#
+#   uv sync --extra omnigent
+#
+omnigent = ["omnigent-client>=0.16.0,<0.17"]
+#
 # NOT declared, and why:
 #   cytometry (raw FCS)  fcsparser pins numpy below 2.5 and cannot resolve
 #                        against this project's numpy. Rather than pin the whole

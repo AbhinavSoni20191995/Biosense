@@ -25,3 +25,4 @@ file.pdf
 # Benchmarks a visitor built from a web run. They belong beside their run, not
 # in the project's committed public set.
 benchmarks/public/disc_*/
+.local-ai/
