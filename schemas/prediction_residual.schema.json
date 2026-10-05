@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/prediction-residual-v2.0",
+  "title": "PredictionResidual",
+  "description": "What the model said would happen, what was actually measured, and the gap between them. The loop closes here. A residual is only meaningful if the prediction existed before the measurement, so a commitment recorded before the run is required rather than optional: without it the comparison is a model fitted to a result and then congratulated for matching it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "residual_id", "commitment", "measurement", "readout", "unit",
+               "predicted", "measured", "residual", "counts_as_model_evidence",
+               "why_it_does_or_does_not", "limitations", "created_at"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "residual_id": {"type": "string", "minLength": 1},
+    "readout": {"type": "string", "minLength": 1},
+    "unit": {"type": "string"},
+    "commitment": {"$ref": "#/$defs/commitment"},
+    "measurement": {"$ref": "#/$defs/measurement"},
+    "predicted": {"$ref": "https://example.org/biosense/estimate-v2.0#/$defs/value"},
+    "measured": {"$ref": "https://example.org/biosense/estimate-v2.0#/$defs/value"},
+    "residual": {
+      "description": "measured - predicted, as an Estimate. Always derived: no instrument measured a gap.",
+      "$ref": "https://example.org/biosense/estimate-v2.0"
+    },
+    "interval": {
+      "description": "The prediction interval the model gave, if it gave one.",
+      "$ref": "https://example.org/biosense/estimate-v2.0#/$defs/interval"
+    },
+    "within_interval": {
+      "description": "Whether the measurement fell inside that interval. Null when no interval was committed to, which is itself worth seeing: a point prediction with no interval cannot be wrong in a way anyone agreed on beforehand.",
+      "type": ["boolean", "null"]
+    },
+    "counts_as_model_evidence": {
+      "type": "boolean",
+      "description": "Whether this residual says anything about whether the model is right. False for a synthetic stand-in, for a measurement with no replication, and for a prediction of a parameter the model does not cover."
+    },
+    "why_it_does_or_does_not": {"type": "string", "minLength": 1},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "created_at": {"type": "string"}
+  },
+  "$defs": {
+    "commitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["committed_at", "source", "model_id", "simulator_coverage", "values_sha256"],
+      "properties": {
+        "committed_at": {"type": "string", "minLength": 1},
+        "source": {
+          "enum": ["biosimulator", "quantified_hypothesis", "human_expectation"],
+          "description": "Where the prediction came from. A human expectation is recorded the same way and is held to the same before-the-run rule."
+        },
+        "model_id": {"type": ["string", "null"]},
+        "simulator_coverage": {"enum": ["modelled", "not_modelled", "no_simulator"]},
+        "scenario_ref": {"type": ["string", "null"]},
+        "hypothesis_ref": {"type": ["string", "null"]},
+        "values_sha256": {
+          "type": "string",
+          "description": "Hash of the predicted values as committed. A prediction that is edited after the result is in is a different prediction, and this is what makes that visible."
+        },
+        "note": {"type": ["string", "null"]}
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "source", "measured_at", "n"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "source": {
+          "enum": ["wet_lab", "synthetic_standin"],
+          "description": "synthetic_standin is a workflow demonstration and never biological evidence, so a residual against one never counts as model evidence."
+        },
+        "measured_at": {"type": "string", "minLength": 1},
+        "n": {"type": ["integer", "null"], "minimum": 0},
+        "sd": {"type": ["number", "null"]},
+        "arm_id": {"type": ["string", "null"]},
+        "instrument": {"type": ["string", "null"]},
+        "operator": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

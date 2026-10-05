@@ -53,6 +53,8 @@ SCHEMAS = {
     'estimate': 'estimate.schema.json',
     'quantified_hypothesis': 'quantified_hypothesis.schema.json',
     'research_context': 'research_context.schema.json',
+    # what the model said, what was measured, and the gap: where the loop closes
+    'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',
     # benchmarks: a reproducible demonstration and its capability scorecard
     'benchmark_config': 'benchmark_config.schema.json',
