@@ -99,7 +99,7 @@ For most people there is nothing to install and no terminal to open.
 
 ### Just use it
 
-> **Open the hosted app:** <!-- BIOSENSE_HOSTED_URL -->`https://<your-biosense>.up.railway.app`
+> **Open the hosted app:** <!-- BIOSENSE_HOSTED_URL -->`https://biosense-production-e48f.up.railway.app`
 >
 > Pick a project, state your objective, press **Run AI discovery**. The badge on
 > screen says **REAL AI — ONLINE**, and the discovery agents do the work:
