@@ -129,13 +129,16 @@ def title(x, y, c, text, color=None):
 
 # ── 1. system architecture ────────────────────────────────────────────────
 def system(c):
-    W, H = 980, 640
+    W, H = 980, 770
     s = [head(W, H, c,
               'A person states an objective. The orchestrator asks the literature and '
-              'bioinformatics specialists for evidence, the bioinformatics agent plans an '
-              'analysis against a named uncertainty and deterministic tools execute it, the '
-              'evidence is synthesised into candidate parameters, and only a validated decision '
-              'reaches the simulator or the bioreactor. Measurements return to the orchestrator.')]
+              'bioinformatics specialists for evidence. The bioinformatics agent discovers a '
+              'public dataset or registers a private one and plans an analysis against a named '
+              'uncertainty; deterministic tools then execute that plan over the data itself and '
+              'return an AnalysisResult. Only those results, never the raw datasets, enter '
+              'evidence synthesis, which produces candidate parameters; a validated decision '
+              'reaches the simulator or the bioreactor, and measurements return to the '
+              'orchestrator.')]
 
     s.append(box(390, 24, 200, 48, 'Person', 'objective · constraints', c,
                  c['human'], c['human_soft'], 'CURRENT'))
@@ -152,47 +155,57 @@ def system(c):
     s.append(arrow(330, 166, 200, 206, c, '', color=c['brand']))
     s.append(arrow(490, 166, 490, 206, c, '', color=c['brand']))
 
+    # The datasets the agent found, and the plan it wrote. Neither is evidence on
+    # its own: the plan says what to compute and against which uncertainty, the
+    # datasets are what it is computed over, and only the result below is cited.
     s.append(box(300, 300, 176, 54, 'Public datasets', 'GEO · ENCODE · EBI|accession + checksum',
                  c, c['data'], c['data_soft'], 'PHASE 1'))
     s.append(box(504, 300, 176, 54, 'Private datasets', 'never served, never|a citation', c,
                  c['human'], c['human_soft'], 'PHASE 1'))
     s.append(box(708, 206, 216, 58, 'Analysis planner', 'needs a named|uncertainty', c,
                  c['code'], c['code_soft'], 'PHASE 1'))
-    s.append(box(708, 300, 216, 54, 'Deterministic tools',
-                 'statistics · cytometry|bulk expression', c, c['code'], c['code_soft'],
-                 'PHASE 1'))
-    s.append(arrow(388, 264, 388, 300, c, '', color=c['data']))
-    s.append(arrow(592, 264, 592, 300, c, '', color=c['human']))
+    s.append(arrow(388, 264, 388, 300, c, 'fetches', color=c['data'], lx=382, ly=288,
+                   anchor='end'))
+    s.append(arrow(592, 264, 592, 300, c, 'registers', color=c['human'], lx=598, ly=288,
+                   anchor='start'))
     s.append(arrow(662, 234, 708, 234, c, 'plans', color=c['code'], ly=228))
-    s.append(arrow(816, 264, 816, 300, c, '', color=c['code']))
 
-    s.append(box(300, 396, 380, 56, 'Evidence synthesis',
+    # The join the earlier drawing got wrong: the data goes INTO the tools, and
+    # what leaves is a computed result. A dataset never reaches synthesis itself.
+    s.append(box(300, 396, 624, 58, 'Deterministic analysis',
+                 'the plan, executed over the data · statistics · cytometry · bulk expression|'
+                 'refuses a dataset whose metadata does not say what it is', c,
+                 c['code'], c['code_soft'], 'PHASE 1'))
+    s.append(arrow(388, 354, 388, 396, c, '', color=c['data']))
+    s.append(arrow(592, 354, 592, 396, c, '', color=c['human']))
+    s.append(arrow(816, 264, 816, 396, c, '', color=c['code']))
+
+    s.append(box(300, 500, 380, 56, 'Evidence synthesis',
                  'every source keeps its class, its visibility|and its parent', c,
                  c['code'], c['code_soft'], 'PHASE 1'))
-    s.append(elbow([(170, 264), (170, 424), (300, 424)], c, '', color=c['brand']))
-    s.append(elbow([(816, 354), (816, 424), (680, 424)], c, '', color=c['code']))
-    s.append(arrow(388, 354, 420, 396, c, '', color=c['data']))
-    s.append(arrow(592, 354, 560, 396, c, '', color=c['human']))
+    s.append(arrow(490, 454, 490, 500, c, 'AnalysisResult — derived analysis', color=c['code'],
+                   ly=478))
+    s.append(elbow([(170, 264), (170, 528), (300, 528)], c, '', color=c['brand']))
 
-    s.append(box(300, 480, 380, 52, 'Candidate parameters',
+    s.append(box(300, 592, 380, 52, 'Candidate parameters',
                  'suggestions in the loop’s lever vocabulary', c, c['code'], c['code_soft'],
                  'PHASE 1'))
-    s.append(arrow(490, 452, 490, 480, c, '', color=c['code']))
+    s.append(arrow(490, 556, 490, 592, c, '', color=c['code']))
 
-    s.append(box(96, 566, 212, 50, 'Simulator', 'labelled simulation', c, c['code'],
+    s.append(box(96, 678, 212, 50, 'Simulator', 'labelled simulation', c, c['code'],
                  c['code_soft'], 'CURRENT'))
-    s.append(box(672, 566, 212, 50, 'Bioreactor', 'people run it', c, c['human'],
+    s.append(box(672, 678, 212, 50, 'Bioreactor', 'people run it', c, c['human'],
                  c['human_soft'], 'PLANNED', dash=True))
-    s.append(box(344, 566, 292, 50, 'Decision envelope', 'refuses anything outside the verdict',
+    s.append(box(344, 678, 292, 50, 'Decision envelope', 'refuses anything outside the verdict',
                  c, c['stop'], c['stop_soft'], 'CURRENT'))
-    s.append(arrow(490, 532, 490, 566, c, 'validated', color=c['stop'], ly=552))
-    s.append(arrow(344, 591, 308, 591, c, '', color=c['code']))
-    s.append(arrow(636, 591, 672, 591, c, '', color=c['human']))
+    s.append(arrow(490, 644, 490, 678, c, 'validated', color=c['stop'], ly=664))
+    s.append(arrow(344, 703, 308, 703, c, '', color=c['code']))
+    s.append(arrow(636, 703, 672, 703, c, '', color=c['human']))
 
-    s.append(elbow([(96, 591), (40, 591), (40, 135), (330, 135)], c,
-                   'sensors · FACS · omics', color=c['brand'], lx=48, ly=400, anchor='start'))
-    s.append(elbow([(884, 591), (944, 591), (944, 135), (650, 135)], c,
-                   'measurements', color=c['human'], lx=936, ly=400, anchor='end'))
+    s.append(elbow([(96, 703), (40, 703), (40, 135), (330, 135)], c,
+                   'sensors · FACS · omics', color=c['brand'], lx=48, ly=612, anchor='start'))
+    s.append(elbow([(884, 703), (944, 703), (944, 135), (650, 135)], c,
+                   'measurements', color=c['human'], lx=936, ly=612, anchor='end'))
 
     s.append(legend(62, H - 14, c, [(c['brand'], 'reasoning agent'), (c['code'], 'deterministic'),
                                     (c['data'], 'public data'), (c['human'], 'person / private'),

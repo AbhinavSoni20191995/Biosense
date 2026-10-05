@@ -62,7 +62,7 @@ choose — and refuses the rest.**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-system-dark.svg">
-  <img alt="A person states an objective. The orchestrator asks the literature and bioinformatics specialists what evidence is missing. The bioinformatics agent discovers public and private datasets and plans an analysis that deterministic tools execute. Evidence is synthesised into candidate parameters, a decision envelope validates or refuses, and the simulator or bioreactor returns sensor, FACS and omics measurements to the orchestrator. Each box is marked Current, Phase 1 or Planned." src="docs/assets/arch-system-light.svg" width="100%">
+  <img alt="A person states an objective. The orchestrator asks the literature and bioinformatics specialists what evidence is missing. The bioinformatics agent fetches a public dataset or registers a private one, and plans an analysis against a named uncertainty. Deterministic tools execute that plan over the data itself and return an AnalysisResult, and only those results — never the raw datasets — enter evidence synthesis, which produces candidate parameters. A decision envelope validates or refuses, and the simulator or bioreactor returns sensor, FACS and omics measurements to the orchestrator. Each box is marked Current, Phase 1 or Planned." src="docs/assets/arch-system-light.svg" width="100%">
 </picture>
 
 Everything a model writes is a **proposal**. Everything that counts as a fact —
