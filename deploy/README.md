@@ -1,70 +1,217 @@
 # Hosting BioSense-AI
 
-Three different things can be hosted, and keeping them apart is the whole design.
+There are two ways to host this, and the difference between them is whether the
+service holds a model key.
 
-| | What it is | Holds model credentials | Can start work | Safe behind a public URL |
-|---|---|---|---|---|
-| **Console** | `biosense.production.app` + `webapp/console.html` — type a question, watch a loop, read its reasoning report | no | yes, **synthetic stand-in only** | yes, with the caveats below |
-| **Dashboard** | `biosense.production.serve` + `webapp/index.html` — a strictly read-only view of what a loop has written | no | no | yes |
-| **Loop runtime** | `omnigent run discovery_loop` — the orchestrator and its specialists | **yes** | yes, for real | **only behind authentication** |
+| | `deploy/Dockerfile.ai` | `deploy/Dockerfile` |
+|---|---|---|
+| What a visitor can run | **the real discovery agents**, plus the demonstration path | the demonstration path only |
+| Holds model credentials | **yes**, one secret | no |
+| Processes in the container | BioSense + Omnigent server + executor | BioSense |
+| Needs run caps | **yes**, and it sets them | no |
+| Badge in the browser | `REAL AI — ONLINE` | `SYNTHETIC DEMO` |
+| Image size, boot time | larger, ~20s | small, ~3s |
 
-The console starts work, so it has a different threat model from the dashboard.
-That is why it is a separate server rather than a few extra routes on
-`serve.py`: the read-only guarantees of the dashboard stay intact and provable.
+Pick the first one if the point is that people can use the product. Pick the
+second if the point is a public URL that provably holds nothing.
 
-## Why hosting the console is reasonable
+Both serve `webapp/console.html` at `/`, keep the read-only tracker at
+`/index.html`, and write their artifacts to one volume.
 
-Not by policy, but because the code refuses:
+---
 
-- **It cannot reach a bioreactor.** `engine.preflight` refuses any request whose
-  `bioreactor_source` is not `synthetic_standin`, and `prompt.parse` sets that
-  field itself, so there is no text a visitor can type that reaches a wet-lab
-  path. A wet-lab run always needs a named human approver regardless of mode,
-  and the engine refuses to self-approve when the gates require one.
-- **It cannot pretend a person approved anything.** The approver string every
-  app run records says in words that no human approved it and that no wet-lab
-  run is authorised.
-- **It cannot read the stand-in's hidden answers.** No handler serves a file
-  whose name contains `truth`, and the report generator will not read one
-  either. The file ships inside the image and is still unreachable over HTTP.
-- **It cannot spend money.** Nothing on this path calls a model. There are no
-  model credentials in the image.
-- **It cannot be made to run forever.** Concurrency, queue depth, prompt length,
-  events per run and the time a finished run's events are kept are all capped in
-  `biosense/production/app.py`.
+## A. The real-AI service (the hosted product)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/arch-deployment-dark.svg">
+  <img alt="Anyone, in a browser, reaches only the BioSense web app over https. Inside one Railway service the app creates sessions on an Omnigent server bound to loopback, which launches a runner through a registered host with /app as its workspace. The runner executes the discovery_loop agents, which write artifacts to the mounted volume at /app/runs; the app ingests from the same directory, so there is no transport because there is no boundary. The model key lives only in that container's environment, run caps bound what it can spend, and /readyz reports whether the runtime is reachable, the agent registered, an executor available and credentials present, without exposing any of them. The same three processes run on a laptop from one script, and the separate synthetic-only image holds no credentials at all." src="../docs/assets/arch-deployment-light.svg" width="100%">
+</picture>
+
+**One Railway service. Three processes. One filesystem.**
+
+```
+Browser
+  │  https
+  ▼
+┌───────────────── Railway service ─────────────────┐
+│  BioSense app       0.0.0.0:$PORT   ← exposed     │
+│       │ BIOSENSE_RUNTIME_MODE=local               │
+│  Omnigent server    127.0.0.1:6767  --agent …     │
+│  Omnigent host      → loopback                    │
+│                                                   │
+│  /app        code, .venv, discovery_loop, tools   │
+│  /app/runs   ← the volume. Agents write, app reads│
+│  ANTHROPIC_API_KEY  in this service's env only    │
+└───────────────────────────────────────────────────┘
+```
+
+### Why one container and not a service each
+
+Because the artifact-transport problem disappears instead of being solved. The
+agents write their artifacts to the filesystem and BioSense reads them from the
+filesystem (`biosense/production/ingest.py`). Co-locating the processes means:
+
+- there is no machine boundary, so there is no transport to invent, no new
+  credential to mint and no object store to run;
+- the runner has BioSense's code, dependencies, deterministic tools and
+  simulator **by construction**, because it is the same image.
+
+The alternatives were weighed and rejected for this version: an inbound artifact
+POST needs a new write route, a token, and an LLM that reliably posts; shared
+object storage and a database are new infrastructure for a problem that can be
+deleted; and Omnigent's session-file events have no agent-side emission path in
+0.16.0. A managed sandbox host (`host_type: managed`) would need a paid
+third-party provider account **and** BioSense bootstrapped into a generic host
+image on every launch.
+
+**The honest cost.** This container holds a model key, which the synthetic image
+does not — so the argument "defensible because it holds nothing" is replaced by
+"defensible because what it can spend is bounded", which is why the caps below
+are not optional. And one container means one crash takes all three processes;
+`deploy/start-ai.sh` supervises and restarts the runtime, and the platform
+restarts the container.
+
+### Deploy it
+
+```bash
+railway init
+railway up                                  # deploy/railway.ai.json -> Dockerfile.ai
+railway volume add --mount-path /app/runs    # NOT /data/runs. See below.
+railway variables set ANTHROPIC_API_KEY=sk-...
+```
+
+**The mount path is load-bearing.** The agents write under `./runs` relative to
+the runner's workspace (`/app`), and `runtime.check_workspace` **refuses** a real
+run when BioSense is reading anywhere else — because that run would otherwise
+succeed and produce artifacts nobody ever sees. Mount the volume at `/app/runs`.
+Mounting it at `/data/runs` makes the service refuse every real run, by design,
+with that reason. `tests/test_cloud_runtime.py` asserts the image's own
+`RUNS_DIR` is inside its workspace, so the image cannot drift out of agreement
+with itself.
+
+### Is it working? `GET /readyz`
+
+`/healthz` is liveness: the web process answers. That is what the platform
+healthcheck uses, and all it should ever use — pointing a healthcheck at
+readiness restarts the container while the runtime is coming up, and keeps
+restarting it if a key is missing, taking the demonstration path down with it.
+
+`/readyz` is the question a person has when the button does not work, in four
+named parts:
+
+```json
+{ "ok": true, "label": "REAL AI — ONLINE", "runs_dir_writable": true,
+  "checks": { "local_real_ai": {
+      "omnigent_reachable": true, "agent_registered": true,
+      "executor_available": true, "model_credentials": true,
+      "reason": "ok", "executor": "host" } } }
+```
+
+It returns 503 when the runtime this deployment offers cannot run, or when the
+runs directory is not writable. It carries no token, no model key, no filesystem
+path and no server URL beyond scheme and host — asserted in the tests, not
+reviewed by eye. Each failing part carries a remedy written for whoever is
+reading it: a visitor is never told to run `omnigent host`.
+
+### Run caps
+
+A public URL that can spend model credits needs an answer to "how much may a
+stranger spend", and `biosense/production/budget.py` is it. Defaults with
+`BIOSENSE_PUBLIC_DEMO=1`:
+
+| Cap | Variable | Default |
+|---|---|---|
+| Real runs per caller per day | `BIOSENSE_MAX_REAL_RUNS_PER_CLIENT` | 3 |
+| Real runs per deployment per day | `BIOSENSE_MAX_REAL_RUNS_PER_DAY` | 40 |
+| One run's wall clock | `BIOSENSE_REAL_RUN_TIMEOUT_S` | 1800 |
+| Between one caller's runs | `BIOSENSE_REAL_RUN_COOLDOWN_S` | 60 |
+| Real runs at once | `MAX_CONCURRENT_REAL` in `app.py` | 1 |
+
+Set any of them to `0` to remove that cap — the only way to remove one, so it
+cannot happen by accident. Reaching a cap answers **429** naming the cap and when
+to retry, and points at the two uncapped paths (the demonstration run, and
+running BioSense yourself). It never substitutes a synthetic run.
+
+Worth knowing:
+
+- A caller is a **bucket, not an identity**: a hash of the left-most
+  `X-Forwarded-For` hop, in memory, used for counting and nothing else. A shared
+  NAT shares a bucket; that is the accepted cost of not tracking people.
+- The ledger is in memory, so a redeploy forgets the counts. Correct for a cap
+  that exists to stop waste rather than to enforce an entitlement.
+- A run can be **stopped** from the page (`POST /api/discovery/<id>/cancel`),
+  which interrupts the Omnigent session as well as the local stream — the cost
+  is in the agents, not in the stream.
+- A stopped or timed-out run is recorded as `stopped`, with whatever the agents
+  had written. It is never reported as a finished answer.
+
+### What a visitor can and cannot do
+
+Still enforced in code, exactly as in the synthetic image:
+
+- **No bioreactor.** `engine.preflight` refuses any request whose
+  `bioreactor_source` is not `synthetic_standin`; a wet-lab run always needs a
+  named human approver.
+- **No self-approval.** The approver string an app run records says in words
+  that no human approved it.
+- **No hidden truth.** No handler serves a file whose name contains `truth`.
+- **No private data.** `/api/datasets` reads the public roots only, the static
+  handler refuses any path inside the private data root, and the server refuses
+  to start rooted inside it.
+- **No agent of their choosing.** One agent bundle is registered at boot from a
+  path inside the image. A request cannot name an agent, an executable or a
+  command: the objective travels as a JSON string value in an HTTP body, and
+  there is no subprocess, no argv and no shell anywhere on the discovery path.
+- **No unbounded work.** Concurrency, queue depth, prompt length, body size,
+  events per run and the caps above.
+
+### Environment
+
+| Category | Variable | Set by the image | Notes |
+|---|---|---|---|
+| App | `BIOSENSE_RUNTIME_MODE` | `local` | the container's own loopback |
+| | `BIOSENSE_ALLOWED_RUNTIMES` | `synthetic,local` | what the picker may offer |
+| | `BIOSENSE_OMNIGENT_WORKSPACE` | `/app` | the runner's working directory |
+| | `RUNS_DIR` | `/app/runs` | must be inside the workspace |
+| | `BIOSENSE_HOSTED` | `1` | badge reads ONLINE, remedies are a visitor's |
+| | `BIOSENSE_PUBLIC_DEMO` | `1` | turns the caps on |
+| | `PORT` | `8000` | the platform overrides it |
+| Omnigent | `BIOSENSE_OMNIGENT_PORT` | `6767` | loopback only |
+| | `OMNIGENT_LOCAL_SINGLE_USER` | `1` | loopback, no login |
+| Model | `ANTHROPIC_API_KEY` | **no — you set it** | a platform secret, never in the image |
+| Remote | `BIOSENSE_OMNIGENT_TOKEN` / `_TOKEN_FILE` | no | only for `remote` mode |
+
+`tests/test_cloud_runtime.py` asserts that no image or script bakes in a
+credential.
+
+---
+
+## B. The synthetic-only service
+
+Unchanged, and still the right choice when the claim you want to make is that
+the service holds nothing:
+
+```bash
+railway init
+railway up                      # deploy/railway.json -> deploy/Dockerfile
+railway volume add --mount-path /data
+```
+
+The image installs no extras, holds no Omnigent and no model credentials, and
+the runtime picker shows one option with the reason beside the others. `RUNS_DIR`
+defaults to `/data/runs`; without a volume every redeploy discards the artifacts.
 
 What it still is: a public URL that runs CPU work on demand. Put it behind
 whatever rate limiting your platform offers, and treat `MAX_CONCURRENT` as the
 real cost control.
 
-## Verified, and not
-
-Verified on 2026-10-04, in this repository:
-
-- `deploy/Dockerfile` **builds**, and the image **runs** under a non-root user.
-  (The previous note here said the Dockerfile had never been built. It had not,
-  and building it found two real faults: `agent_tools.py` and
-  `output.schema.json` live at the repository root and are reached from inside
-  the package, so the image started and then failed on the first request. Both
-  are now copied.)
-- A full prompt-driven run inside the container: 214 events, terminal
-  `protocol_succeeded`, both arms meeting the target, reasoning report served.
-- Artifacts survive `docker restart` on a mounted volume, and the report for a
-  loop written before the restart is still served afterwards.
-- Path traversal, `/standin_truth.synthetic.json` and an unknown run id all
-  return 404 from inside the container.
-- `tests/test_app_loop.py` covers the same refusals against a live server on a
-  loopback port, so they are regression-tested rather than checked once.
-
-Not verified here: no Railway deploy has been run from this repository. The
-commands below follow Railway's documented flow and the image they build is the
-one that was tested, but the deploy itself is untested.
+---
 
 ## Which runtimes a deployment offers
 
-BioSense reads its runtime from the environment at startup, and offers the
-browser only what the deployment can actually serve. A button that cannot work
-is worse than one that is not there.
+BioSense reads its runtime from the environment at startup and offers the
+browser only what the deployment can actually serve. A button that cannot work is
+worse than one that is not there.
 
 | Variable | What it does |
 |---|---|
@@ -75,73 +222,64 @@ is worse than one that is not there.
 | `BIOSENSE_OMNIGENT_AGENT` | registered agent name (default `biosense_discovery_loop`) |
 | `BIOSENSE_OMNIGENT_WORKSPACE` | the runner's working directory |
 | `BIOSENSE_OMNIGENT_ALLOW_INSECURE` | permit `http://` to a non-loopback host |
+| `BIOSENSE_HOSTED` | this service runs the runtime itself |
 
-**The default is synthetic-only, and that is what makes the hosted console
-defensible.** The image installs no extras, holds no Omnigent and no model
-credentials, and the runtime picker shows one option with the reason beside the
-others. Turning on real AI is a configuration change rather than different code:
-set the variables above, add the `omnigent` extra to the image, and point it at a
-server that has a registered host.
-
-Three things to get right before you do:
+Three things to get right for `remote`:
 
 - **The token never reaches the browser.** It is read at startup, sent as an
-  `Authorization: Bearer` header, and excluded from `/api/runtime`, every event
-  and every error message. Put it in a platform secret, not in the image.
+  `Authorization: Bearer` header, and excluded from `/api/runtime`, `/readyz`,
+  every event and every error message. Put it in a platform secret.
 - **https, or say so.** A plaintext server that is not loopback is refused unless
   `BIOSENSE_OMNIGENT_ALLOW_INSECURE=1` declares the hop already trusted.
 - **Sign-in is Omnigent's.** BioSense forwards a password to the configured
   server once and keeps only the session token, server-side. It stores no
-  password and has no user database of its own. Without a configured server
-  there is one local workspace, and the interface says that it is private
-  because the machine is, not because anything checked.
+  password and has no user database of its own.
 
-## Console on Railway
+One honest limitation of `remote`: the agents write their artifacts on the
+runner's filesystem, which is not BioSense's. Progress, the stage timeline and
+the session reference all arrive; structured artifacts only do where they reach
+BioSense. That is the reason option A co-locates the processes.
+
+---
+
+## Verified, and not
+
+Verified in this repository:
+
+- `deploy/Dockerfile` **builds**, and the image **runs** under a non-root user
+  (2026-10-04). A full prompt-driven run inside the container: 214 events,
+  terminal `protocol_succeeded`, both arms meeting the target, reasoning report
+  served. Artifacts survive `docker restart` on a mounted volume. Path
+  traversal, `/standin_truth.synthetic.json` and an unknown run id all return
+  404 from inside the container.
+- The **boot sequence in `deploy/start-ai.sh` was exercised end to end** from a
+  checkout (2026-10-05): Omnigent server up and answering `/health`, the agent
+  registered from source, the container registered as a host, BioSense's own
+  probe returning `ok` with `executor: host`, `/readyz` answering 200 with all
+  four parts true, the badge reading `REAL AI — ONLINE`, the caps in force (a
+  second run inside the cooldown answered 429), and a real session started,
+  reaching the agents and failing honestly on a deliberately invalid model key
+  with `model_auth_missing` rather than any fabricated result.
+- Run recovery: a finished run read back from its own record after the process
+  was replaced, with its protocol still exportable.
+- `tests/test_app_loop.py`, `tests/test_discovery.py` and
+  `tests/test_cloud_runtime.py` cover the refusals, the caps, the readiness
+  mapping and the recovery against a live server on a loopback port.
+
+**Not verified here:** `deploy/Dockerfile.ai` has **not been built** — the
+environment this was written in has no Docker daemon — and no Railway deploy has
+been run from this repository. The boot script it runs was exercised directly, as
+above, and the image's own invariants are asserted in the tests, but the build
+itself is untested. Build it once locally before pointing a URL at it:
 
 ```bash
-railway init
-railway up                      # uses deploy/railway.json -> deploy/Dockerfile
-railway volume add --mount-path /data
+docker build -f deploy/Dockerfile.ai -t biosense-ai .
+docker run --rm -p 8000:8000 -e ANTHROPIC_API_KEY=sk-... \
+  -v "$PWD/runs:/app/runs" biosense-ai
+curl -s localhost:8000/readyz | python3 -m json.tool
 ```
 
-Railway sets `$PORT` and the image binds `0.0.0.0`. Two things matter:
-
-1. **The volume.** Railway's container filesystem is ephemeral. Without a volume
-   at `/data`, every redeploy discards the loop artifacts and the reports
-   written beside them. `RUNS_DIR` defaults to `/data/runs`.
-2. **What the console writes is what the dashboard reads.** They share the same
-   `runs/` layout, so pointing both at one volume gives you a console that
-   starts runs and a dashboard that only ever reads them.
-
-To bring in loops produced elsewhere — a real session on a lab machine, say —
-sync the directory in:
-
-```bash
-rsync -a --delete runs/loop-20261004-0930/ <host>:/data/runs/loop-20261004-0930/
-```
-
-A loop directory is append-mostly JSON, so a plain sync is enough.
-
-### Why Railway and not Databricks
-
-Both were on the table. Railway, for this piece, because:
-
-- The thing being hosted is a small, stateless HTTP service with one volume.
-  Railway's unit of deployment is exactly that; the image here is 
-  self-contained and needs no workspace, no cluster and no catalog.
-- It needs no credentials at all, which is the property that makes a public URL
-  defensible. A managed Databricks workspace is the wrong shape for a service
-  whose main security claim is that it holds nothing.
-- Anyone can reproduce it: `docker build` and `docker run` locally are the same
-  path, and both were exercised here.
-
-Databricks is the better host for the **loop runtime** rather than the console,
-and for the same reasons in reverse: it is where governed data, credentials and
-scheduled jobs already live, and Omnigent has a documented quickstart there
-(<https://docs.databricks.com/aws/en/omnigent/quickstart>). If your evidence and
-your people are already in a Databricks workspace, run the agents there and host
-the console separately — the loop's own artifacts are the integration surface
-between them.
+---
 
 ## Dashboard only
 
@@ -150,50 +288,43 @@ other server against the same volume:
 
 ```bash
 uv run --frozen python -m biosense.production.serve \
-  --runs /data/runs --static webapp --host 0.0.0.0 --port "$PORT"
+  --runs /app/runs --static webapp --host 0.0.0.0 --port "$PORT"
 ```
 
-It serves `webapp/index.html` at `/`. The console image serves
-`webapp/console.html` at `/` and keeps the tracker at `/index.html`.
+It serves `webapp/index.html` at `/` and cannot approve a protocol, commit a
+decision or start anything.
 
-## Loop runtime in a container
+---
 
-`omnigent server` is built for this: it runs in the foreground, takes
-`--host 0.0.0.0 --port $PORT`, pre-registers a bundle with
-`--agent discovery_loop`, serves its own bundled web UI (no Node build — the
-wheel ships it), and takes `--no-open` for headless boots. State goes in
-`--database-uri` and artifacts in `--artifact-location`, both of which belong on
-a volume.
+## Why Railway, and where Databricks fits
 
-Omnigent splits state from execution: the server holds conversations, a
-registered **host** runs the harnesses. One container can be both:
+Railway, for this piece, because the thing being hosted is a small HTTP service
+with one volume, which is exactly Railway's unit of deployment, and because
+anyone can reproduce it: `docker build` and `docker run` locally are the same
+path.
 
-```bash
-omnigent server --host 0.0.0.0 --port "$PORT" --agent discovery_loop \
-  --no-open --database-uri "sqlite:////data/chat.db" \
-  --artifact-location /data/artifacts --admin-password "$ADMIN_PASSWORD" &
-omnigent host --server "http://127.0.0.1:$PORT" --non-interactive
-```
+Databricks remains the better host for a **lab's own** loop runtime, and for the
+same reasons in reverse: it is where governed data, credentials and scheduled
+jobs already live, and Omnigent has a documented quickstart there
+(<https://docs.databricks.com/aws/en/omnigent/quickstart>). If your evidence and
+your people are already in a Databricks workspace, run the agents there, point
+BioSense at it with `BIOSENSE_RUNTIME_MODE=remote`, and read the artifact
+limitation above before you rely on it.
 
-Four things to settle before this is worth deploying:
+Four things to settle before running the agents anywhere with real data:
 
-- **Credentials.** `ANTHROPIC_API_KEY` (or `OMNIGENT_ANTHROPIC_API_KEY`) in the
-  environment is read directly, so no interactive `omnigent setup` is needed.
-  The `claude-sdk` harness also shells out to the Claude CLI, so the image needs
-  it: `curl -fsSL https://claude.ai/install.sh | bash`.
-- **Authentication.** A public URL that can run shell commands under your API
-  key must not be open. Set `--admin-password` on first boot and keep the
-  service private until you have confirmed the login works.
+- **Credentials.** `ANTHROPIC_API_KEY` in the environment is read directly, so no
+  interactive `omnigent setup` is needed. The `claude-sdk` harness also shells
+  out to the Claude CLI where it is configured that way.
+- **Authentication.** A runtime that can run commands under your API key must not
+  be reachable. In option A it is bound to loopback inside the container and
+  nothing routes to it; anywhere else, put it behind authentication.
 - **The sandbox.** Every agent config uses `os_env.sandbox.type: auto`, which on
   Linux expects bubblewrap. In a container it may be unavailable or need
-  privileges it should not have. Check what the sandbox actually resolves to
-  before trusting the isolation, and do not relax `write_paths` to make a deploy
+  privileges it should not have. Check what the sandbox resolves to before
+  trusting the isolation, and do not relax `write_paths` to make a deploy
   succeed.
 - **Session lifetime.** A real loop spans days: a protocol goes to a person for
-  approval, a bioreactor runs, results come back. Railway redeploys kill
-  processes, so the durable record must be the files on the volume — which it is.
-  Do not rely on a live session surviving.
-
-For a lab, the honest split is: run the loop where the data and the people are,
-host the console and the dashboard. The loop's own artifacts are the integration
-surface.
+  approval, a bioreactor runs, results come back. Redeploys kill processes, so
+  the durable record must be the files on the volume — which it is, and which is
+  now also true of a run's own event journal.
