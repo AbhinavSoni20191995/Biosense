@@ -173,14 +173,15 @@
       "stage": "myeloid",
       "simulator_coverage": "modelled",
       "simulator_mapping": "mcsf",
-      "default_value": 50.0,
+      "default_value": 25.0,
       "minimum": 0.0,
       "maximum": 150.0,
       "step": 2.0,
       "bound_origin": {
         "source": "model_validity",
         "basis": "the range the ipsc_monocyte_v1 model was calibrated over; outside it the mechanistic terms are extrapolation rather than prediction"
-      }
+      },
+      "notes": "The value the current process runs at. Whether 25 ng/mL is limiting the monocyte yield is exactly the open question this project starts with; it is a process-design baseline, not a value any evidence in this repository supports."
     },
     {
       "parameter_id": "il3_ng_ml",
