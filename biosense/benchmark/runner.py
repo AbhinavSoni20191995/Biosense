@@ -69,8 +69,15 @@ def _row(cap, ok, detail):
     return {'capability': cap, 'status': 'PASS' if ok else 'FAIL', 'detail': detail}
 
 
-def run(config, *, dirs=None, private_root=None):
-    """Execute a benchmark configuration. Returns the BenchmarkResult."""
+def run(config, *, dirs=None, private_root=None, artifacts_out=None):
+    """Execute a benchmark configuration. Returns the BenchmarkResult.
+
+    *artifacts_out* additionally writes each full AnalysisPlan and AnalysisResult
+    to that directory as it goes. The BenchmarkResult keeps a projection of them —
+    enough to score the run — and the whole documents are what the interface
+    renders and what a reader checks, so a run that produces them in memory and
+    drops them is a run nobody can audit.
+    """
     K.require_valid('benchmark_config', config)
     t0 = time.time()
     rows, warnings, notes = [], [], []
@@ -156,6 +163,11 @@ def run(config, *, dirs=None, private_root=None):
                            analysis_id=f'analysis-{config["benchmark_id"]}-{m["dataset_id"]}')
             plans.append(p)
             analyses.append(r)
+            if artifacts_out is not None:
+                d = Path(artifacts_out)
+                d.mkdir(parents=True, exist_ok=True)
+                K.write_json_atomic(d / f'analysis_plan-{m["dataset_id"]}.json', p)
+                K.write_json_atomic(d / f'analysis_result-{m["dataset_id"]}.json', r)
         except K.ContractError as e:
             warnings.append(f'{m["dataset_id"]}: {e}')
 

@@ -147,22 +147,40 @@ def analysis_card(result):
     """
     K.require_valid('analysis_result', result)
     comparison = result.get('comparison') or {}
-    findings = [{'text': f.get('statement') or f.get('summary') or str(f),
-                 'metric': f.get('metric'), 'direction': f.get('direction')}
-                if isinstance(f, dict) else {'text': str(f)}
+    method = result.get('method') or {}
+    # The finding carries the number; the basis carries the statistics that make
+    # it checkable. They are shown as two lines rather than one, so the simple
+    # view can read the first without the second disappearing.
+    findings = [{'text': f.get('finding') or f.get('statement') or f.get('summary') or str(f),
+                 'basis': f.get('basis')}
+                if isinstance(f, dict) else {'text': str(f), 'basis': None}
                 for f in (result.get('key_findings') or [])]
+    implications = [{'text': i.get('implication') or str(i), 'rests_on': i.get('rests_on'),
+                     'alternatives': i.get('alternative_explanations') or []}
+                    if isinstance(i, dict) else {'text': str(i), 'rests_on': None,
+                                                 'alternatives': []}
+                    for i in (result.get('process_implications') or [])]
     return {
         'analysis_id': result['analysis_id'],
         'question': result['question'],
         'uncertainty': (result.get('uncertainty_ref') or {}).get('statement'),
-        'datasets': result.get('datasets') or [],
-        'method': (result.get('method') or {}).get('label')
-                  or (result.get('method') or {}).get('name'),
-        'comparison': {'groups': comparison.get('groups'),
-                       'baseline': comparison.get('baseline_label'),
-                       'candidate': comparison.get('candidate_label')} if comparison else None,
+        'datasets': [{'dataset_id': d.get('dataset_id'), 'title': d.get('title'),
+                      'visibility': d.get('visibility'),
+                      'evidence_class': d.get('evidence_class')}
+                     for d in (result.get('datasets') or [])],
+        'method': {'tool': method.get('tool'), 'version': method.get('tool_version'),
+                   'software': method.get('software'),
+                   'analysis_type': method.get('analysis_type'),
+                   'label': _method_label(method)},
+        'comparison': {'group_column': comparison.get('group_column'),
+                       'control': comparison.get('control'),
+                       'treatment': comparison.get('treatment'),
+                       'readouts': comparison.get('readouts') or [],
+                       'independent_units': comparison.get('independent_units'),
+                       'independence_note': comparison.get('independence_note'),
+                       'paired': comparison.get('paired')} if comparison else None,
         'findings': findings,
-        'implications': result.get('process_implications') or [],
+        'implications': implications,
         'candidates': [_candidate_row(c) for c in
                        (result.get('candidate_process_parameters') or [])],
         'confidence': result.get('confidence'),
@@ -180,6 +198,24 @@ def analysis_card(result):
             'parent_datasets': result.get('parent_dataset_ids') or [],
         },
     }
+
+
+_METHOD_LABELS = {
+    'population_comparison': 'Population comparison',
+    'expression_comparison': 'Differential expression',
+    'pseudobulk_comparison': 'Pseudobulk comparison',
+    'peak_overlap': 'Peak overlap',
+}
+
+
+def _method_label(method):
+    """A readable name for the method, falling back to the tool's own id.
+
+    Falls back rather than inventing: a tool this table does not know about shows
+    its real name, which is still something a reader can look up.
+    """
+    t = method.get('analysis_type') or ''
+    return _METHOD_LABELS.get(t) or (method.get('tool') or t or None)
 
 
 def _candidate_row(c):

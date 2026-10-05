@@ -49,6 +49,10 @@ SCHEMAS = {
     'analysis_result': 'analysis_result.schema.json',
     # a project: which knobs a particular biological system actually has
     'project_profile': 'project_profile.schema.json',
+    # what a person asked the discovery loop, as structure rather than a blob
+    'discovery_request': 'discovery_request.schema.json',
+    # one recommended protocol, and the ledger of every hypothesis behind it
+    'protocol_summary': 'protocol_summary.schema.json',
     # one number and where it came from; the unit of quantified evidence
     'estimate': 'estimate.schema.json',
     'quantified_hypothesis': 'quantified_hypothesis.schema.json',
