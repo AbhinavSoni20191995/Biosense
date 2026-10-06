@@ -95,6 +95,20 @@ class RequestTests(unittest.TestCase):
         blob = brief.split('```json', 1)[1].split('```', 1)[0]
         self.assertEqual(req['request_id'], json.loads(blob)['request_id'])
 
+    def test_the_brief_says_nobody_will_answer_and_to_dispatch_first(self):
+        """The orchestrator's loop prompt opens by settling the request with the
+        person. A web run has no person, and a run that waited for one ended
+        having asked no specialist anything."""
+        brief = DISC.render_brief(a_request(), loop_dir='ai-x')
+        self.assertIn('Nobody will answer', brief)
+        self.assertIn('Do not settle the request with the person', brief)
+        self.assertIn('`sys_session_send`', brief)
+        self.assertIn('agent: "literature"', brief)
+        prompt = (K.ROOT / 'discovery_loop' / 'prompt.md').read_text()
+        self.assertIn('# BioSense web discovery', prompt)
+        self.assertIn('Skip "Start of a loop" entirely', prompt)
+        self.assertTrue(brief.startswith('# BioSense web discovery run'))
+
     def test_a_benchmark_config_converts_rather_than_being_retyped(self):
         cfg = K.read_json(K.ROOT / 'benchmarks' / 'configs' / 'macrophage_mcsf_demo.json')
         req = DISC.from_benchmark_config(cfg, runtime_mode='synthetic_demo')

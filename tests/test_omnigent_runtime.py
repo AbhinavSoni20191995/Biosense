@@ -343,6 +343,45 @@ class _TreeSessions(_Sessions):
                 yield e
 
 
+class AutoContinueTests(unittest.TestCase):
+    """The orchestrator's loop prompt says to settle the request with the person
+    first. In a web run nobody is there, so a turn that ends on a question ended
+    the run empty — the reported "no specialist agent was asked"."""
+
+    def test_an_orchestrator_waiting_for_a_person_is_told_once_to_proceed(self):
+        h = _Harness().install(self)
+        h.events = [
+            ev('response.output_item.done',
+               item={'type': 'message', 'role': 'assistant',
+                     'content': [{'type': 'output_text',
+                                  'text': 'What target yield and QC profile do you want?'}]}),
+            ev('response.completed')]
+        events = []
+        out = OMNI.drive(cfg_for(), 'brief', on_event=events.append)
+        posts = [c for c in h.last_client.sessions.calls if c[0] == 'post_event']
+        self.assertEqual(2, len(posts), 'told more or less than once')
+        text = posts[1][2]['data']['content'][0]['text']
+        self.assertIn('nobody can answer', text)
+        self.assertIn('sys_session_send', text)
+        self.assertEqual(1, out['auto_continued'])
+        self.assertIn('QC profile', out['last_message'])
+        note = [e for e in events if e.get('omnigent_type') == 'biosense.auto_continue']
+        self.assertEqual(1, len(note))
+        self.assertIn('QC profile', note[0]['technical'])
+        self.assertEqual('complete', out['terminal'])
+
+    def test_an_orchestrator_that_dispatched_is_left_alone(self):
+        h = _Harness().install(self)
+        h.events = [ev('response.output_item.done',
+                       item={'type': 'function_call', 'name': 'sys_session_send',
+                             'arguments': '{"agent": "literature", "title": "literature-it1"}'}),
+                    ev('response.completed')]
+        out = OMNI.drive(cfg_for(), 'brief')
+        posts = [c for c in h.last_client.sessions.calls if c[0] == 'post_event']
+        self.assertEqual(1, len(posts))
+        self.assertEqual(0, out['auto_continued'])
+
+
 class SubAgentTests(unittest.TestCase):
     """A parent reads idle while its specialists work, and their work is not on
     its stream. Watching the parent alone ended runs early and showed nothing of
@@ -429,7 +468,10 @@ class SessionTests(unittest.TestCase):
         names = [c[0] for c in h.last_client.sessions.calls]
         self.assertEqual(['resolve_agent', 'resolve_online_runner', 'create', 'bind',
                           'post_event', 'stream'], names[:6])
-        self.assertEqual({'get'}, set(names[6:]), names)
+        # This orchestrator never dispatches, so it is told once that nobody will
+        # answer (one more post_event, and a fresh tail). Nothing else is sent.
+        self.assertEqual({'get', 'post_event', 'stream'}, set(names[6:]), names)
+        self.assertEqual(2, names.count('post_event'))
 
     def test_the_session_records_what_a_run_needs_to_be_found_again(self):
         h = _Harness().install(self)

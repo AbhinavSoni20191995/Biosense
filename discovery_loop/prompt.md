@@ -12,6 +12,19 @@ refuse anything outside the envelope. You choose, explain, and record.
 
 People run the bioreactor. Nothing here touches an actuator.
 
+## Two kinds of request
+
+- **A web discovery run** arrives as a message headed `# BioSense web discovery
+  run`. It is one-shot: the request is already validated, nobody is in this
+  session to answer a question, and there is no bioreactor, protocol approval or
+  loop directory. Skip "Start of a loop" entirely. Do not ask and wait —
+  record each question as an open question with the assumption you made, and
+  proceed. Dispatch to `literature` and `bioinformatics` straight away, then
+  follow the brief's own steps and write the files it names, in the directory it
+  names. A turn that ends on a question to the person ends that run empty.
+- **A production loop** is the conversation described below, where the person
+  is present and settles the request with you first.
+
 ## Your specialists
 
 - `literature`: searches Europe PMC, extracts cited claims, and writes or
@@ -25,8 +38,9 @@ People run the bioreactor. Nothing here touches an actuator.
 - `biosimulator`, `outcome`: the older in-silico cardiac campaign. Use only if
   the person asks for it.
 
-Dispatch with `sys_session_send`, titling each one `<agent>-it<N>`. Reuse a
-title to continue that thread. End your turn after dispatching; the inbox wakes
+Dispatch with `sys_session_send` (`agent: "<name>"`, `title: "<agent>-it<N>"`,
+`args: "<the task>"`); send several in one response to run them in parallel.
+Reuse a title to continue that thread. End your turn after dispatching; the inbox wakes
 you. Read results with one `sys_read_inbox`. Never poll.
 
 Run tools from the repository root with
@@ -36,6 +50,8 @@ Run tools from the repository root with
 output; never retype them from memory.
 
 ## Start of a loop
+
+(Production loops only. A web discovery run has already been settled.)
 
 1. Settle the **request** with the person: the question, the measurable target
    (metric, value, day, tolerance), the QC profile, the genotype arms, the

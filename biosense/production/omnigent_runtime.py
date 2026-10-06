@@ -80,6 +80,19 @@ CHILD_TASK_DONE = ('completed', 'failed', 'cancelled')
 # A child's own lifecycle is not the run's: its turn ending, its deltas and its
 # reasoning are not shown. Its tool calls, results and messages are.
 CHILD_DROPPED = ('delta', 'reasoning', 'status', 'waiting', 'accepted', 'terminal')
+# A web run has nobody to answer the orchestrator. If it ends its turn without
+# having asked any specialist anything — usually because it stopped to ask the
+# person a question — it is told so, once, and the run carries on. Once only: a
+# second stop is the orchestrator's decision and the run ends on it.
+AUTO_CONTINUE_LIMIT = 1
+AUTO_CONTINUE_TEXT = (
+    'BioSense: nobody can answer in this session. This is a one-shot web discovery '
+    'run (see the brief you were given), so a question to the person ends it with '
+    'nothing to show. Do not wait for a reply. Write each question you would have '
+    'asked down as an open question, with the assumption you are making instead, '
+    'and proceed: dispatch to `literature` and `bioinformatics` with '
+    '`sys_session_send`, then follow the brief\'s steps and write the files it '
+    'names. If you genuinely cannot proceed, write down why in the run directory.')
 
 
 
@@ -385,6 +398,7 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
 
         reached, terminal, error = set(), None, None
         turns, last_event, stopped_because, settled = 0, time.monotonic(), None, 0
+        dispatched, nudges, said = False, 0, None
 
         def out(ev):
             if ev.get('stage'):
@@ -449,6 +463,10 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
                                     f'whether a specialist answers or it continues.',
                           'technical': f'turn {turns} complete; session still being watched'})
                     continue
+                if mapped['kind'] == 'tool' and mapped.get('tool') in ST.DISPATCH_TOOLS:
+                    dispatched = True
+                if mapped['kind'] == 'message' and mapped.get('role') == 'assistant':
+                    said = mapped.get('technical')
                 emit(mapped)
                 continue
 
@@ -488,6 +506,14 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
                 # inbox; that wake is given the full quiet period to arrive.
                 if settled >= IDLE_CONFIRMATIONS and (
                         (stream is None and not children.count()) or quiet >= TURN_QUIET_S):
+                    if not dispatched and not children.count() \
+                            and nudges < AUTO_CONTINUE_LIMIT:
+                        nudges += 1
+                        await _continue(client, session_id, emit, said)
+                        last_event, settled = time.monotonic(), 0
+                        if stream is None:
+                            stream = await _reopen(client, session_id)
+                        continue
                     terminal = 'complete'
                     break
             if quiet >= MAX_SILENCE_S and not kids:
@@ -504,7 +530,8 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
             error = error or _task_error(snapshot.last_task_error)
         return {'session': rec.public(), 'terminal': terminal or 'complete',
                 'error': error, 'stages_reached': sorted(reached),
-                'status': snapshot.status, 'sub_agents': children.count()}
+                'status': snapshot.status, 'sub_agents': children.count(),
+                'auto_continued': nudges, 'last_message': said}
     finally:
         if children is not None:
             await children.close()
@@ -654,6 +681,24 @@ class _Children:
         if tails:
             await asyncio.gather(*tails, return_exceptions=True)
         self.tails.clear()
+
+
+async def _continue(client, session_id, emit, said):
+    """Tell an orchestrator that stopped to wait for a person that nobody is there.
+
+    Recorded in the run's own stream, with what it last said, so the record shows
+    BioSense spoke and what it was answering. It approves nothing and decides
+    nothing: it restates what the brief already said, once.
+    """
+    emit({'kind': 'note', 'stage': None, 'omnigent_type': 'biosense.auto_continue',
+          'simple': 'The orchestrator stopped without asking any specialist, usually to '
+                    'wait for an answer nobody can give in a web run. BioSense told it '
+                    'once to proceed on stated assumptions.',
+          'technical': 'auto-continue: ' + ((said or '(no closing message)')[:600])})
+    await client.sessions.post_event(session_id, {
+        'type': 'message',
+        'data': {'role': 'user',
+                 'content': [{'type': 'input_text', 'text': AUTO_CONTINUE_TEXT}]}})
 
 
 async def _reopen(client, session_id):

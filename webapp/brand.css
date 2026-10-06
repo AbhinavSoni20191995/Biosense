@@ -493,3 +493,5 @@ button{font-family:inherit}
   padding:14px 16px;background:color-mix(in srgb,var(--warn) 6%,transparent)}
 .diag h4{margin:0 0 6px;font-size:14.5px;line-height:1.4}
 .diag p{margin:6px 0;font-size:13.5px;line-height:1.5}
+.diag .said{margin:6px 0 10px;padding:8px 12px;border-left:3px solid var(--line);
+  font-size:13.5px;line-height:1.5;white-space:pre-wrap;color:var(--ink-2)}

@@ -759,7 +759,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 949 tests
+uv run --frozen python -m unittest     # 953 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 

@@ -166,6 +166,32 @@ finished or failed. Stopping a run interrupts its working children as well as th
 orchestrator. A server without the tree endpoint behaves as before, on the
 parent's status alone.
 
+### A web run has nobody to answer the orchestrator
+
+The orchestrator's prompt (`discovery_loop/prompt.md`) was written for the
+interactive production loop, and its first instruction is to *settle the request
+with the person*. Given a web discovery brief it did exactly that: looked around,
+asked a question, and ended its turn to wait. Nobody is in a web run to reply, so
+the run finished with "the orchestrator ended without asking any specialist".
+
+Three changes, from the cause outwards:
+
+* the prompt now distinguishes a **web discovery run** (one-shot, already
+  validated, no person, no bioreactor: skip "Start of a loop", record questions as
+  open questions with the assumption made, dispatch straight away) from a
+  **production loop**;
+* the brief says the same in its own section, and names the exact dispatch call
+  (`sys_session_send` with `agent`, `title` and `args`);
+* as a safety net, if the orchestrator still ends a turn having asked no
+  specialist anything, BioSense tells it **once** that nobody can answer and to
+  proceed on stated assumptions. That message and what the orchestrator last said
+  are both recorded in the run's stream. A second stop is the orchestrator's
+  decision and the run ends on it. The message approves nothing and decides
+  nothing; it restates the brief.
+
+When a run still comes back empty, the diagnosis shows what the orchestrator said
+last (its message, never its reasoning), so "asked nobody" comes with the reason.
+
 A run read back from disk carries `finished_at`, so its elapsed time stops where
 the run did (older records without one use the last time they were written), and
 its stage count is recomputed from the tick list beside it.

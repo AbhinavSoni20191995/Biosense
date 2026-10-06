@@ -101,6 +101,7 @@ class Activity:
         self.limitations = []
         self.artifacts = []
         self.turns = 0              # orchestrator turns that have ended
+        self.last_said = None       # the orchestrator's latest message, verbatim but short
         self._pending = []          # agents dispatched and not yet returned, newest last
         self._seen_artifacts = set()
 
@@ -124,6 +125,10 @@ class Activity:
             self._note(at, 'started', event.get('simple') or 'Run started.')
         if event.get('omnigent_type') == 'turn.completed':
             self.turns += 1
+        if kind == 'message' and event.get('role') == 'assistant' and who is None:
+            # What it said, not what it thought: reasoning is never kept here.
+            self.last_said = _short(event.get('technical'), 800) or self.last_said
+            self._note(at, 'said', event.get('technical'))
         if kind == 'tool':
             self._on_tool(event, at, text)
         elif kind == 'tool_result':
@@ -306,6 +311,10 @@ class Activity:
             why = ('No dispatch to the literature, bioinformatics or analysis agents was '
                    'observed, so no evidence was gathered and there was nothing to form a '
                    'hypothesis from.')
+            if self.last_said:
+                why += (' Its last message is below — when it is a question, the '
+                        'orchestrator was waiting for a person, and nobody can answer '
+                        'inside a web run.')
         elif not wrote:
             headline = (f'{", ".join(dispatched)} ran, and no artifact was written to the '
                         f'run directory.')
@@ -319,6 +328,7 @@ class Activity:
             'headline': headline,
             'why': why,
             'turns': self.turns,
+            'orchestrator_said': self.last_said,
             'agents_dispatched': dispatched,
             'files_written': wrote,
             'limitations': [limit['text'] for limit in self.limitations[-5:]],

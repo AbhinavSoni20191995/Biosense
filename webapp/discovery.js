@@ -859,6 +859,10 @@ function renderHypothesis(selected, all) {
         ? `files written: ${diag.files_written.join(', ')}`
         : 'no file written to the run directory');
       box.append(el('p', 'dim mono', facts.join(' · ')));
+      if (diag.orchestrator_said) {
+        box.append(el('div', 'lab', 'What the orchestrator said last'));
+        box.append(el('blockquote', 'said', diag.orchestrator_said));
+      }
       (diag.limitations || []).forEach(l => box.append(el('p', 'caveat', l)));
       if ((diag.next_steps || []).length) {
         const ul = el('ul', 'tight');

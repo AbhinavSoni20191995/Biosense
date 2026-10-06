@@ -306,6 +306,27 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None)
 A person started this from the BioSense web application. They are not watching a
 terminal, so everything they need has to end up in the files named below.
 
+## Nobody will answer in this session
+
+This is a **one-shot discovery run**, not the interactive production loop. There
+is no conversation: nothing you ask here reaches a person, and a turn that ends
+on a question ends the run with nothing to show. So:
+
+- **Do not settle the request with the person, and do not wait for a reply.** Do
+  not run `validate-request`, `autonomy` or `loop-init`; this request is already
+  validated, and there is no bioreactor and no approval step in this run.
+- Where you would have asked, decide what you can from the request, write the
+  question down as an **open question** with the assumption you made instead,
+  and carry on. Missing context is a limitation to report, never a reason to stop.
+- **Your first substantive action is a dispatch.** Send the literature agent its
+  task with `sys_session_send` — `agent: "literature"`, `title: "literature-it1"`,
+  `args:` the objective, the project, the scope and what to bring back — and the
+  bioinformatics agent its own (`agent: "bioinformatics"`, `title:
+  "bioinformatics-it1"`) in the same response, so they run in parallel. Then end
+  your turn; the inbox wakes you with their answers.
+- Only end the run once the files below are written, or once you have written
+  down why they could not be.
+
 ## The request
 
 This is the whole request, as the structured document BioSense validated. Treat

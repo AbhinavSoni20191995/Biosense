@@ -260,6 +260,22 @@ class EmptyRunDiagnosisTests(unittest.TestCase):
         self.assertEqual(1, d['turns'])
         self.assertTrue(d['next_steps'])
 
+    def test_what_the_orchestrator_last_said_is_shown_with_the_diagnosis(self):
+        """Usually a question for a person nobody is there to answer. Without
+        it, "asked nobody" is a fact with no explanation."""
+        a = self._activity(
+            {'kind': 'reasoning', 'at': 2, 'technical': 'private thinking'},
+            {'kind': 'message', 'role': 'assistant', 'at': 8,
+             'technical': 'Before I start: which QC profile and target day?'})
+        d = a.diagnose(artifacts_ingested=1, hypotheses=0)
+        self.assertIn('QC profile', d['orchestrator_said'])
+        self.assertIn('waiting for a person', d['why'])
+        self.assertNotIn('private thinking', json.dumps(a.snapshot()))
+        # A specialist's message is the specialist's, not the orchestrator's.
+        a.observe({'kind': 'message', 'role': 'assistant', 'agent': 'literature', 'at': 9,
+                   'technical': 'a specialist talking'})
+        self.assertIn('QC profile', a.last_said)
+
     def test_specialists_that_wrote_nothing_are_named_too(self):
         a = self._activity(
             {'kind': 'tool', 'tool': 'sys_session_send', 'at': 5,
