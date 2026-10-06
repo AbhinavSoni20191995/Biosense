@@ -98,6 +98,12 @@ order is fixed, and the first step is the one that matters.
      --out <runs/.../analysis_result.json>
    ```
 
+   In a **web discovery run** there is no bioreactor analysis report to cite: name
+   the gap the orchestrator gave you instead, with `--evidence-gap <id>` in place
+   of `--hypothesis` and `--analysis-report`, and write the plan and result into
+   the run directory the orchestrator named (`analysis_plan.json`,
+   `analysis_result.json`). `plan` refuses without one or the other.
+
 5. **Report it as evidence.** Give the three provenance facts separately —
    `evidence_class`, `source_evidence_class`, `source_visibility` — the findings
    with their numbers, the candidate parameter with its confidence, and the

@@ -142,6 +142,11 @@ def cmd_datasets_search(a):
 
 def cmd_analyse_plan(a):
     from . import plan as PLAN
+    if not a.hypothesis and not a.evidence_gap:
+        raise K.ContractError(
+            'name what this analysis resolves: --evidence-gap <id> for a gap you are recording '
+            'now (with --uncertainty saying what is unknown), or --hypothesis <id> for one from '
+            'an analysis report. --uncertainty alone is the words without the reference.')
     unc = ({'kind': 'hypothesis', 'ref': a.hypothesis, 'statement': a.uncertainty,
             'raised_by': a.created_by, 'source_artifact': a.analysis_report}
            if a.hypothesis else

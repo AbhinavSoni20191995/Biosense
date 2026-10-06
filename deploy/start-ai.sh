@@ -49,6 +49,23 @@ else
   log '                   the deterministic demonstration path still works.'
 fi
 
+# The agents' OS sandbox, decided before Omnigent starts, because the runner reads
+# its environment once. biosense.production.sandbox runs the exact bwrap command
+# Omnigent would build and prints the variables that make it work here — today,
+# the /proc bind a container needs when a fresh procfs mount is refused. If no
+# form of the sandbox can start, it says why and real runs are refused; the
+# agents are never run without it.
+# Its output is NAME=VALUE lines; only the two names below are ever exported, and
+# nothing is evaluated as shell.
+while IFS='=' read -r name value; do
+  case "$name" in
+    OMNIGENT_HOST_SANDBOX_BACKEND|OMNIGENT_RUNNER_ENV_PASSTHROUGH)
+      export "$name=$value"
+      log "sandbox: ${name}=${value}" ;;
+  esac
+done < <("${UV[@]}" python -m biosense.production.sandbox --env 2>"$LOGS/sandbox.log")
+sed 's/^/[boot] /' "$LOGS/sandbox.log" 2>/dev/null
+
 server_up() { python -c "
 import sys,urllib.request
 try:
@@ -126,6 +143,14 @@ start_host
   done
   log 'runtime NOT READY after boot wait. The app is serving; /readyz says why:'
   printf '%s\n' "$out" | sed 's/^/[boot] /'
+) &
+
+# The offline system check, once per boot, in the log: does a prompt have every
+# command, tool, builder and file it needs to become a protocol? It uses synthetic
+# fixtures and no model. The live variant is on the Runs page, for operators.
+(
+  sleep 20
+  "${UV[@]}" python -m biosense.production.selfcheck --runs "$RUNS" 2>&1 | sed 's/^/[selfcheck] /'
 ) &
 
 # The supervisor. It restarts the runtime processes only; the web app is the

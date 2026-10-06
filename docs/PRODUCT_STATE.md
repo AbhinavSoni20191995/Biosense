@@ -202,6 +202,34 @@ refused up front with `agent_sandbox_unavailable` when bwrap cannot start, inste
 of being spent discovering it. The agents are never run without the sandbox as a
 fallback.
 
+### Sandbox, commands and builders: checked before a run, not by one
+
+The hosted run after the bubblewrap install was refused with
+`agent_sandbox_unavailable`. Reproduced in Docker:
+
+| container | user namespaces | fresh `/proc` | what happens now |
+|---|---|---|---|
+| Docker default seccomp | refused | — | refused before a run, with bwrap's own words; no in-container fix exists, and the agents are never run unsandboxed (with `type: none` Omnigent hands the tools the full environment, model key included, with the network open) |
+| namespaces allowed | yes | refused (masked `/proc`) | fixed automatically: `biosense.production.sandbox` detects it at boot and sets Omnigent's own `/proc`-bind switch for the runner |
+| VM or permissive host | yes | yes | Omnigent's default sandbox, unchanged |
+
+The same audit found three things no sandbox would have fixed:
+
+* the brief told the agents to run `bioinformatics.cli execute`, which never
+  existed (it is `analyse run`), and `analyse plan` refused the arguments the
+  brief gave it (it needs `--evidence-gap`);
+* **no command wrote `quantified_hypothesis.json` or `research_context.json`**,
+  while the brief forbade hand-writing them — so even a perfect run could not
+  produce a hypothesis. `biosense.evidence.cli` now builds both from an agent's
+  small draft, through the same validated builders the deterministic path uses,
+  and runs the simulator comparison (`simulate`);
+* the stage tracker looked for `cli execute`, so "Running the analysis" could
+  never tick.
+
+`biosense.production.selfcheck` now runs that whole chain in seconds, offline,
+in CI and at every boot; `--live` adds a real session in which the orchestrator
+dispatches to the bioinformatics agent, which runs a tool inside the sandbox.
+
 A run read back from disk carries `finished_at`, so its elapsed time stops where
 the run did (older records without one use the last time they were written), and
 its stage count is recomputed from the tick list beside it.

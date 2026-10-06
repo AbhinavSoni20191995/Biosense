@@ -76,6 +76,26 @@
   <div id="detail"></div>
 </section>
 
+<!-- Operators only: the server answers 403 to anyone else, and the card stays hidden. -->
+<section class="glass card" id="syscheckCard" hidden>
+  <div class="head">
+    <h3>System check</h3>
+    <span class="hint">does a prompt have everything it needs to become a protocol?</span>
+  </div>
+  <p class="caveat">Runs the chain the agents depend on, as they run it: the sandbox, the agent
+    bundle, every command the brief names, the bioinformatics tools, the simulator, the
+    hypothesis and context builders, the protocol and the stand-in bioreactor loop — on
+    SYNTHETIC fixtures, in a few seconds, with no model. The live check also starts a real
+    session in which the orchestrator asks a specialist to run a tool, and spends model
+    credit.</p>
+  <div class="row" style="margin-top:12px">
+    <button class="btn go" id="syscheckRun" type="button">Run system check</button>
+    <button class="btn" id="syscheckLive" type="button">Run live check (spends credit)</button>
+    <span class="dim" id="syscheckState"></span>
+  </div>
+  <div id="syscheckRows" style="margin-top:12px"></div>
+</section>
+
 <footer class="foot">
   <span>BioSense · runs are durable server-side jobs</span>
 </footer>

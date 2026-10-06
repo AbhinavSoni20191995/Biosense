@@ -447,6 +447,35 @@ class ApiTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b'{}')
 
+    def test_the_system_check_runs_for_an_operator_and_reports_its_rows(self):
+        from unittest import mock
+        from biosense.production import selfcheck as SCK
+        fake = {'ok': True, 'rows': [{'id': 'sandbox', 'label': 'Agents\' sandbox',
+                                      'status': 'ok', 'detail': 'fine', 'seconds': 0.0}],
+                'sandboxed': True, 'live': False}
+        with mock.patch.object(SCK, 'run', lambda **kw: dict(fake, live=kw.get('live'))):
+            code, d = self._req('POST', '/api/admin/selfcheck', {'live': False})
+            self.assertEqual(202, code, d)
+            for _ in range(80):
+                code, d = self._req('GET', '/api/admin/selfcheck')
+                if d.get('state') == 'done':
+                    break
+                time.sleep(0.05)
+        self.assertEqual('done', d['state'])
+        self.assertTrue(d['report']['ok'])
+        self.assertEqual('sandbox', d['report']['rows'][0]['id'])
+
+    def test_a_hosted_visitor_may_not_run_the_system_check(self):
+        """The live variant spends the deployment's model credit."""
+        hosted = RT.from_env(runs_dir=self.tmp / 'runs', env={'BIOSENSE_HOSTED': '1'})
+        saved = self.APP.Handler.runtime_cfg
+        self.APP.Handler.runtime_cfg = hosted
+        try:
+            self.assertEqual(403, self._req('GET', '/api/admin/selfcheck')[0])
+            self.assertEqual(403, self._req('POST', '/api/admin/selfcheck', {'live': True})[0])
+        finally:
+            self.APP.Handler.runtime_cfg = saved
+
     def _project(self, name):
         code, d = self._req('POST', '/api/projects',
                             {'name': name, 'species': 'Human', 'target_cell': 'Macrophage',

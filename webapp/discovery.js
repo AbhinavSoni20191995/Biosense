@@ -233,6 +233,11 @@ function renderRuntimePicker() {
       const why = el('div', 'why', a.headline || 'Not offered by this deployment.');
       if (a.next_step) { why.append(document.createElement('br'));
         why.append(el('code', null, a.next_step)); }
+      // The sandbox's own words (e.g. "this host does not let bwrap create a user
+      // namespace") are what an operator needs to fix it, and carry no secret.
+      if (a.reason === 'agent_sandbox_unavailable' && a.detail) {
+        why.append(el('div', 'dim mono', a.detail));
+      }
       lab.append(why);
     }
     lab.addEventListener('change', updateBadge);
@@ -616,6 +621,7 @@ function watchRun(runId) {
       renderStages(snap.progress);
       (snap.events || []).forEach(seedEvent);
       $('#runBtn').disabled = RV.isLive(snap);
+      showStop(snap);
       if (snap.status === 'done' && snap.result) {
         state.result = snap.result; renderResult(snap);
         note(snap.recovered ? 'Reopened from the server: this is the run you were last '
@@ -629,6 +635,7 @@ function watchRun(runId) {
     event(e) { pushEvent(e); },
     error() {
       $('#runBtn').disabled = false;
+      showStop(null);
       forgetRun();
       $('#progressPanel').hidden = true;
     },
@@ -638,6 +645,27 @@ function watchRun(runId) {
 async function stopRun(runId) {
   try { await post(`/api/discovery/${runId}/cancel`); }
   catch (e) { fail(e); }
+}
+
+/* The stop button beside "Run", visible exactly while the watched run is live —
+   so stopping a run never depends on scrolling to the live panel. */
+function showStop(snap) {
+  const b = $('#stopBtn'); if (!b) return;
+  const live = !!snap && RV.isLive(snap) && snap.cancellable !== false;
+  b.hidden = !live;
+  if (!live) { b.disabled = false; b.textContent = 'Stop run'; delete b.dataset.run; return; }
+  if (b.dataset.run !== snap.run_id) { b.disabled = false; b.textContent = 'Stop run'; }
+  b.dataset.run = snap.run_id;
+}
+
+function stopFromButton() {
+  const b = $('#stopBtn'); const id = b && b.dataset.run;
+  if (!id) return;
+  if (!confirm('Stop this run?\n\nThe orchestrator and every specialist still working are '
+    + 'interrupted. Whatever they have already written is kept, and the run is recorded as '
+    + 'stopped — not as an answer.')) return;
+  b.disabled = true; b.textContent = 'stopping…';
+  stopRun(id);
 }
 
 /* Events seen in a snapshot are replayed into the record feed once each, so a
@@ -1204,6 +1232,7 @@ function wire() {
     });
   }
   $('#runBtn').addEventListener('click', start);
+  $('#stopBtn').addEventListener('click', stopFromButton);
   const add = $('#candAdd');
   if (add) {
     add.addEventListener('click', () => {

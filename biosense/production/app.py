@@ -219,6 +219,13 @@ class Run:
             }
 
 
+# The last system check this process ran, for the operator's page. One at a time:
+# the live variant starts a real session and spends model credit.
+SELFCHECK = {'state': 'idle', 'live': False, 'report': None, 'error': None,
+             'started_at': None, 'finished_at': None}
+SELFCHECK_LOCK = threading.Lock()
+
+
 class DiscoveryRun:
     """One discovery run in flight: its request, its events, and what it produced.
 
@@ -310,6 +317,9 @@ class DiscoveryRun:
             self.error_reason = reason
             self.next_step = next_step
             self.finished_at = time.time()
+            self.activity.close('complete' if status == 'done'
+                                else 'cancelled' if status == 'stopped' else 'failed',
+                                at=self.finished_at)
             self.cv.notify_all()
         self.persist()
 
@@ -927,6 +937,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._login(self._body())
             if path == '/api/auth/logout':
                 return self._logout()
+            if path == '/api/admin/selfcheck':
+                return self._start_selfcheck(self._body())
             # Simulator mode. A person turns the knobs, so there is no decision to
             # validate and no iteration to spend: these run the model and return
             # what it read. They are capped like any other work this server starts.
@@ -1006,6 +1018,42 @@ class Handler(BaseHTTPRequestHandler):
             self._set_cookie(f'{WS.ANON_COOKIE}={value}; Path=/; HttpOnly; SameSite=Lax'
                              f'; Max-Age={WS.ANON_TTL_S}{secure}')
         return WS.anon_identity(value)
+
+    def _require_operator(self, what):
+        """An admin, or anyone on a single-user local instance. Never a visitor.
+
+        A hosted deployment with no admin configured has nobody who may run it:
+        the live check spends the deployment's model credit.
+        """
+        identity = self._identity()
+        if self.policy.has_admins or self.runtime_cfg.hosted:
+            self.policy.require_admin(identity, what)
+        return identity
+
+    def _start_selfcheck(self, body):
+        self._require_operator('the system check')
+        live = bool((body or {}).get('live'))
+        with SELFCHECK_LOCK:
+            if SELFCHECK['state'] == 'running':
+                return self._send(409, {'error': 'a system check is already running',
+                                        **SELFCHECK})
+            SELFCHECK.update(state='running', live=live, started_at=time.time(),
+                             report=None, error=None)
+        cfg, runs_dir = self.runtime_cfg, self.discovery.runs_dir
+
+        def work():
+            from . import selfcheck as SC
+            try:
+                report, error = SC.run(live=live, runs_dir=runs_dir, cfg=cfg), None
+            except Exception as e:  # noqa: BLE001 - reported, never raised into a thread
+                report, error = None, f'{type(e).__name__}: {e}'
+            with SELFCHECK_LOCK:
+                SELFCHECK.update(state='done', report=report, error=error,
+                                 finished_at=time.time())
+
+        threading.Thread(target=work, name='biosense-selfcheck', daemon=True).start()
+        with SELFCHECK_LOCK:
+            return self._send(202, dict(SELFCHECK))
 
     def _role(self, identity=None):
         return self.policy.role_for(identity if identity is not None else self._identity())
@@ -1225,6 +1273,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {'ok': True, 'active': self.registry.active})
         if path == '/readyz':
             return self._readyz()
+        if path == '/api/admin/selfcheck':
+            try:
+                self._require_operator('the system check')
+            except AZ.Forbidden as e:
+                return self._send(403, {'error': str(e), 'refused': True, 'reason': 'forbidden'})
+            with SELFCHECK_LOCK:
+                return self._send(200, dict(SELFCHECK))
         if path == '/api/config':
             return self._send(200, {
                 'max_prompt_chars': MAX_PROMPT, 'max_concurrent': MAX_CONCURRENT,

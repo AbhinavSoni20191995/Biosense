@@ -368,7 +368,7 @@ Tool call → stage, from the call's own name and arguments:
 | `sys_session_send` titled `bioinformatics-*` | `searching_datasets` |
 | `sys_session_send` titled `analysis-*` | `running_analysis` |
 | command contains `bioinformatics.cli plan` | `planning_analysis` |
-| command contains `bioinformatics.cli execute` | `running_analysis` |
+| command contains `bioinformatics.cli analyse run` | `running_analysis` |
 | command contains `production.cli advise` | `synthesizing_evidence` |
 | command contains `propose-decision` | `building_hypothesis` |
 | command contains `sim` / `simulate-standin` | `testing_simulator` |

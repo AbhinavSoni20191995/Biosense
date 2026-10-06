@@ -759,9 +759,19 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 959 tests
+uv run --frozen python -m unittest     # 983 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
+uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
+uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip
 ```
+
+The **system check** runs every link a real run depends on, the way the agents
+run it — inside their OS sandbox when it can start — and says which one breaks:
+the sandbox, the agent bundle, every command the brief names, the bioinformatics
+tools on a SYNTHETIC fixture, the simulator, the hypothesis and context builders
+(`biosense.evidence.cli`), the protocol, and the stand-in bioreactor loop. It
+runs in CI and at every hosted boot; operators can run it, including `--live`,
+from the Runs page.
 
 ---
 

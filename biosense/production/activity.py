@@ -220,6 +220,21 @@ class Activity:
         self._note(at, 'error' if failed else 'complete',
                    event.get('simple') or ('The run failed.' if failed else 'Agent work done.'))
 
+    def close(self, outcome, at=None):
+        """The run is over: nobody is still working, whatever the stream last said.
+
+        A run can end without a terminal event on the stream — the session goes
+        idle, it is stopped, the deadline passes — and the agent panel then said
+        "Orchestrator: Running" beside a run marked COMPLETE. *outcome* is
+        complete, failed or cancelled.
+        """
+        at = time.time() if at is None else at
+        state = {'complete': COMPLETE, 'cancelled': CANCELLED}.get(outcome, FAILED)
+        for row in self.agents.values():
+            if row['status'] == RUNNING:
+                row['status'] = state
+                row['finished_at'] = at
+
     def _is_dispatch(self, tool):
         """Whether this tool call is the orchestrator handing work to a specialist."""
         return tool in ST.DISPATCH_TOOLS or tool in AGENT_RE

@@ -297,6 +297,10 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
       <div class="row">
         <button class="btn go" id="runBtn">Run AI discovery</button>
+        <!-- Shown only while a run is live. It interrupts the orchestrator and every
+             specialist still working; whatever they wrote is kept, and the run is
+             recorded as stopped, never as an answer. -->
+        <button class="btn stop" id="stopBtn" type="button" hidden>Stop run</button>
       </div>
       <div id="runState" hidden style="margin-top:14px"></div>
     </section>

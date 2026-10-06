@@ -63,9 +63,13 @@ ORDER = {sid: i for i, sid in enumerate(STAGE_IDS)}
 # Matched against the tool's own name and the text of its arguments. Ordered:
 # the first pattern that matches wins, so the more specific commands come first.
 COMMAND_STAGES = (
-    (re.compile(r'bioinformatics\.cli\s+execute|analysis\s+execute\b'), 'running_analysis'),
-    (re.compile(r'bioinformatics\.cli\s+plan|analysis-plan|analysis_plan'), 'planning_analysis'),
-    (re.compile(r'bioinformatics\.cli\s+(annotate|datasets|search)'), 'searching_datasets'),
+    # The real commands are `analyse run` and `analyse plan`; `execute` is kept
+    # because older briefs named it, and a recorded run must still map.
+    (re.compile(r'bioinformatics\.cli\s+(analyse\s+run|execute)\b|analysis\s+execute\b'),
+     'running_analysis'),
+    (re.compile(r'bioinformatics\.cli\s+analyse\s+plan\b|analysis-plan'), 'planning_analysis'),
+    (re.compile(r'bioinformatics\.cli\s+(annotate|datasets|search|plan|sets|tools)\b'),
+     'searching_datasets'),
     (re.compile(r'production\.cli\s+report\b|reasoning_report'), 'generating_report'),
     (re.compile(r'simulate-standin|sim_mode|sim-compare|simulator'), 'testing_simulator'),
     (re.compile(r'propose-decision|quantified_hypothesis|hypothesis'), 'building_hypothesis'),

@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from pathlib import Path
 
 from .. import contracts as K
 from .. import parameters as PR
@@ -48,7 +49,7 @@ ARTIFACTS = (
     ('analysis_plan.json', 'analysis_plan',
      'the question, the dataset ids, the tool, and the uncertainty it resolves'),
     ('analysis_result.json', 'analysis_result',
-     'what the tool computed, written by `bioinformatics.cli execute` — never by hand'),
+     'what the tool computed, written by `bioinformatics.cli analyse run` — never by hand'),
     ('quantified_hypothesis.json', 'quantified_hypothesis',
      'the parameter change, its expected effects as Estimates, and the evidence behind each'),
     ('research_context.json', 'research_context',
@@ -298,6 +299,11 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None)
     modelled = sorted(project.modelled_ids())
     not_modelled = sorted(p for p in project.parameter_ids if project.coverage(p) != 'modelled')
 
+    # A project the person created lives in their workspace, not the repository;
+    # the agents' commands have to be told where, or they load the wrong one.
+    pdir = ''
+    if projects_dir and (Path(projects_dir) / f'{project.project_id}.json').is_file():
+        pdir = f' --projects-dir {projects_dir}'
     wanted = '\n'.join(
         f'- `{loop_dir}/{name}` — a `{kind}`: {why}' for name, kind, why in ARTIFACTS)
 
@@ -356,7 +362,8 @@ invent one for them, and do not drop them.
    find or use the datasets named above and to plan an analysis that resolves
    that named uncertainty — `plan` refuses without one.
 3. **Execute the analysis with the tools, never by hand.** Run
-   `{python} -m biosense.bioinformatics.cli execute --plan …`. Quote its numbers;
+   `{python} -m biosense.bioinformatics.cli analyse run --plan <plan.json> --out …`
+   (the plan comes from `analyse plan`). Quote its numbers;
    do not retype them from memory and do not compute your own.
 4. Form a **hypothesis**. The parameter, its direction, its candidate value
    where one is supportable, each expected effect as an Estimate with its own
@@ -415,6 +422,40 @@ finds; a file written anywhere else is invisible to the person who asked.
 Write them with the BioSense CLIs so they carry provenance and pass their
 schemas. BioSense validates every file it reads and shows nothing that fails,
 so a hand-written approximation of one of these shapes is worse than no file.
+These are the commands, run from the workspace root:
+
+```
+# the analysis: plan against the named uncertainty, then run it
+{python} -m biosense.bioinformatics.cli analyse plan --plan-id P1 --question "…" \\
+    --evidence-gap U1 --uncertainty "…" --why "…" --dataset-ids <id> --analysis-type <type> --tool <tool> \\
+    --decision-relevance "…" --out {loop_dir}/analysis_plan.json
+{python} -m biosense.bioinformatics.cli analyse run --plan {loop_dir}/analysis_plan.json \\
+    --out {loop_dir}/analysis_result.json
+
+# the scope that was applied
+{python} -m biosense.evidence.cli context --strictness prefer --species … --cell-types … \\
+    --out {loop_dir}/research_context.json
+
+# the simulator, for the parameters this project's model covers (it says which it skipped)
+{python} -m biosense.evidence.cli simulate --project {project.project_id}{pdir} \\
+    --set <parameter>=<value> --out {loop_dir}/simulation.json
+
+# the hypothesis: write YOUR science as a small draft, and let the CLI build the file
+{python} -m biosense.evidence.cli template hypothesis      # prints the draft shape
+{python} -m biosense.evidence.cli hypothesis --project {project.project_id}{pdir} \\
+    --draft {loop_dir}/H01.draft.json --out {loop_dir}/quantified_hypothesis.json
+```
+
+The draft (`*.draft.json`) is your input, not an artifact, and is the one file
+you write yourself: the statement, the uncertainty, the lever and its direction,
+each effect, the evidence rows and the next experiment. The CLI computes
+everything derived — coverage, claim level, confidence, trade-offs, each
+Estimate's arithmetic — and refuses a draft the evidence does not permit, with
+the reason. An effect can point at the analysis result
+(`"from_analysis_result": "…", "readout": "…"`) or the simulation
+(`"from_simulation": "…"`) instead of restating their numbers. Several
+hypotheses go in `quantified_hypothesis_H02.json` and so on. Once a hypothesis
+file validates, BioSense builds the protocol summary from it; you do not.
 
 ## What stays true
 

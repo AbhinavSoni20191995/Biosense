@@ -46,8 +46,6 @@ and host and a boolean.
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, replace
@@ -460,8 +458,6 @@ def check_workspace(cfg):
 SANDBOX_CHECK_ENV = 'BIOSENSE_SANDBOX_CHECK'     # 1 to check, 0 to skip; hosted checks by default
 SANDBOX_RECHECK_S = 60.0
 _SANDBOX_CACHE = {'ok_at': None, 'failed_at': None, 'detail': None}
-BWRAP_TRIAL = ('--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc',
-               '--unshare-all', '--die-with-parent', 'true')
 
 
 def _sandbox_wanted(cfg, env=None):
@@ -475,17 +471,21 @@ def _sandbox_wanted(cfg, env=None):
     return cfg.hosted or flag in ('1', 'true', 'yes')
 
 
-def _try_bwrap():
-    """None when bubblewrap can make a sandbox here, else what went wrong."""
-    exe = shutil.which('bwrap')
-    if exe is None:
-        return "the 'bwrap' binary is not on PATH"
-    try:
-        r = subprocess.run([exe, *BWRAP_TRIAL], capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError) as e:
-        return f'bwrap could not be started: {type(e).__name__}'
-    if r.returncode != 0:
-        return f'bwrap exited {r.returncode}: {(r.stderr or "").strip()[:300]}'
+def _try_bwrap(workspace=None):
+    """None when the agents' sandbox can start here, else what went wrong.
+
+    Builds the exact bwrap command Omnigent would (see `sandbox.diagnose`), so a
+    pass here means the agents' tools will start, not merely that bwrap exists.
+    """
+    from . import sandbox as SB
+    found = SB.diagnose(workspace)
+    if not found['ok']:
+        return f'{found["problem"]}: {found["detail"]}'
+    if found['mode'] == 'bind_proc' and \
+            os.environ.get(SB.PROC_BIND_ENV) != SB.PROC_BIND_VALUE:
+        return (f'bwrap works here only with the container /proc bound in, and the runtime '
+                f'was started without {SB.PROC_BIND_ENV}={SB.PROC_BIND_VALUE} '
+                f'(deploy/start-ai.sh sets it at boot)')
     return None
 
 
@@ -501,7 +501,7 @@ def check_sandbox(cfg, *, trial=None, now=None, env=None):
     c = _SANDBOX_CACHE
     if c['ok_at'] is None and not (c['failed_at'] is not None
                                    and now - c['failed_at'] < SANDBOX_RECHECK_S):
-        problem = (trial or _try_bwrap)()
+        problem = trial() if trial else _try_bwrap(cfg.workspace)
         if problem is None:
             c.update(ok_at=now, failed_at=None, detail=None)
         else:

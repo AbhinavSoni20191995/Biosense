@@ -22,3 +22,5 @@ jobs:
         run: uv run --frozen python -m biosense.production.cli demo --out runs/ci-prod-demo
       - name: Offline agent-driven loop smoke run (synthetic CAR-T fixtures)
         run: uv run --frozen python -m biosense.production.cli demo-cart --out runs/ci-cart-demo
+      - name: Offline system check (a prompt's whole chain to a protocol, no model)
+        run: uv run --frozen python -m biosense.production.selfcheck --runs runs

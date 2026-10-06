@@ -14,6 +14,7 @@ const page = { runs: [], projects: {}, filter: null, open: null, detach: null };
 async function boot() {
   try { page.identity = await BS.identity(); } catch (_) { /* a view is not the model */ }
   renderIdentity();
+  mountSystemCheck();
   mountRunBeacon();
   BS.onChange(s => { page.runs = s.runs; page.projects = s.projects; render(); });
   page.filter = BS.selected.get();
@@ -146,3 +147,55 @@ async function stop(runId) {
 }
 
 boot();
+
+/* The system check. Shown only when the server says this caller may run it;
+   the page never decides that itself. */
+async function mountSystemCheck() {
+  let st;
+  try { st = await BS.json('/api/admin/selfcheck'); } catch (_) { return; }
+  $('#syscheckCard').hidden = false;
+  $('#syscheckRun').addEventListener('click', () => startCheck(false));
+  $('#syscheckLive').addEventListener('click', () => {
+    if (confirm('Run the live check?\n\nIt starts a real agent session: the orchestrator '
+      + 'asks the bioinformatics agent to run one tool inside its sandbox. It spends a '
+      + 'small amount of model credit.')) startCheck(true);
+  });
+  renderCheck(st);
+  if (st.state === 'running') pollCheck();
+}
+
+async function startCheck(live) {
+  try { renderCheck(await BS.json('/api/admin/selfcheck', { method: 'POST',
+    body: JSON.stringify({ live }), headers: { 'Content-Type': 'application/json' } })); }
+  catch (e) { $('#syscheckState').textContent = e.message || String(e); return; }
+  pollCheck();
+}
+
+function pollCheck() {
+  const t = setInterval(async () => {
+    let st; try { st = await BS.json('/api/admin/selfcheck'); } catch (_) { return; }
+    renderCheck(st);
+    if (st.state !== 'running') clearInterval(t);
+  }, 2000);
+}
+
+function renderCheck(st) {
+  const busy = st.state === 'running';
+  $('#syscheckRun').disabled = busy; $('#syscheckLive').disabled = busy;
+  const r = st.report;
+  $('#syscheckState').textContent = busy ? `running${st.live ? ' (live)' : ''}…`
+    : st.error ? `failed to run: ${st.error}`
+    : r ? `${r.ok ? 'PASS' : 'FAIL'} · ${BS.fmt.ago(st.finished_at)}${r.live ? ' · live' : ''}`
+    : 'not run yet';
+  const box = $('#syscheckRows'); box.textContent = '';
+  if (!r) return;
+  const mark = { ok: '✓', warn: '!', fail: '✕', skip: '·' };
+  const cls = { ok: 'ok', warn: 'warn', fail: 'bad', skip: 'dim' };
+  r.rows.forEach(row => {
+    const line = el('div', 'syscheck-row');
+    line.append(el('span', 'syscheck-mark ' + (cls[row.status] || ''), mark[row.status] || '?'));
+    line.append(el('b', null, row.label));
+    line.append(el('span', 'dim', row.detail));
+    box.append(line);
+  });
+}

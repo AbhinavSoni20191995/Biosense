@@ -21,7 +21,11 @@ People run the bioreactor. Nothing here touches an actuator.
   record each question as an open question with the assumption you made, and
   proceed. Dispatch to `literature` and `bioinformatics` straight away, then
   follow the brief's own steps and write the files it names, in the directory it
-  names. A turn that ends on a question to the person ends that run empty.
+  names, with the commands it names: `biosense.bioinformatics.cli analyse plan` /
+  `analyse run` for the analysis, and `biosense.evidence.cli` for the research
+  context, the simulator comparison and the hypothesis (you write a small
+  `*.draft.json`; the CLI builds and validates the file). A turn that ends on a
+  question to the person ends that run empty.
 - **A production loop** is the conversation described below, where the person
   is present and settles the request with you first.
 

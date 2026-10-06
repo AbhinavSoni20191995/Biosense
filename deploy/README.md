@@ -389,10 +389,16 @@ Four things to settle before running the agents anywhere with real data:
   dispatches its specialists and none of them can write a file. BioSense now
   checks this before a real run starts, by running bwrap once, and refuses with
   `agent_sandbox_unavailable` if it cannot. `/readyz` and the boot log say the
-  same. bwrap also needs the host to permit unprivileged user namespaces; if a
-  platform forbids them, the answer is a host that allows them, not running the
-  agents unsandboxed in a container that holds a model key. Do not set the type
-  to `none`, and do not relax `write_paths` to make a deploy succeed.
+  same. bwrap also needs the host to permit unprivileged user namespaces.
+  `start-ai.sh` runs `python -m biosense.production.sandbox --env` before
+  Omnigent starts: where namespaces work but a fresh `/proc` mount is refused (a
+  common container case), it sets Omnigent's `/proc`-bind switch
+  (`OMNIGENT_HOST_SANDBOX_BACKEND`) for the runner automatically. Where namespaces
+  are refused outright (Docker's default seccomp profile), no in-container fix
+  exists: the answer is a host that allows them, not running the agents
+  unsandboxed in a container that holds a model key. Do not set the type to
+  `none`, and do not relax `write_paths` to make a deploy succeed. The boot log's
+  `[sandbox]` and `[selfcheck]` lines say which case you are in.
 - **Session lifetime.** A real loop spans days: a protocol goes to a person for
   approval, a bioreactor runs, results come back. Redeploys kill processes, so
   the durable record must be the files on the volume — which it is, and which is

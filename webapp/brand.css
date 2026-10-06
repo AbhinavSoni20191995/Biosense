@@ -166,6 +166,9 @@ button{font-family:inherit}
 .btn:hover{border-color:var(--brand);color:var(--brand);transform:translateY(-1px)}
 .btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn.stop{margin-left:10px;border-color:color-mix(in srgb,var(--bad) 55%,transparent);color:var(--bad);
+  background:color-mix(in srgb,var(--bad) 7%,transparent)}
+.btn.stop:hover:not(:disabled){background:color-mix(in srgb,var(--bad) 14%,transparent)}
 .btn.go{background:linear-gradient(135deg,var(--brand),var(--brand-deep));
   border-color:transparent;color:#fff;font-size:14px;padding:13px 26px;
   letter-spacing:.02em;
@@ -495,3 +498,12 @@ button{font-family:inherit}
 .diag p{margin:6px 0;font-size:13.5px;line-height:1.5}
 .diag .said{margin:6px 0 10px;padding:8px 12px;border-left:3px solid var(--line);
   font-size:13.5px;line-height:1.5;white-space:pre-wrap;color:var(--ink-2)}
+
+/* the operator's system check */
+.syscheck-row{display:grid;grid-template-columns:1.4em 15em 1fr;gap:8px;padding:6px 0;
+  border-bottom:1px solid var(--line);font-size:13.5px;line-height:1.45}
+.syscheck-mark{font-family:var(--mono);font-weight:700}
+.syscheck-mark.ok{color:var(--ok)}.syscheck-mark.warn{color:var(--warn)}
+.syscheck-mark.bad{color:var(--bad)}
+@media (max-width:640px){.syscheck-row{grid-template-columns:1.4em 1fr}
+  .syscheck-row .dim{grid-column:2}}

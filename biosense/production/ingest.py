@@ -33,6 +33,7 @@ from ..data import roots as DR
 MAX_BYTES = 8 * 1024 * 1024
 MAX_FILES = 400
 FORBIDDEN = 'truth'
+DRAFT_SUFFIX = '.draft.json'
 
 # filename pattern -> contract. Checked in order; the first contract a document
 # validates against wins, and a document that validates against none is rejected.
@@ -114,6 +115,10 @@ def read_run(run_dir, *, max_files=MAX_FILES):
     for path in sorted(root.rglob('*.json')):
         if seen >= max_files:
             break
+        if path.name.endswith(DRAFT_SUFFIX):
+            # An agent's input to a BioSense CLI, not an artifact: the CLI
+            # writes the validated document beside it.
+            continue
         seen += 1
         doc, why = _load(path)
         rel = str(path.relative_to(root))
