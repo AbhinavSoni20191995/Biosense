@@ -209,6 +209,28 @@ def listing(runs_dir, *, owner=None, project_id=None, live_ids=(), limit=200):
     return rows
 
 
+TRASH = '.trash'
+
+
+def trash(runs_dir, run_dir):
+    """Move a run directory into the runs root's trash. Returns where it went.
+
+    Not an unlink: a run is a scientist's record, and "delete" pressed by
+    mistake should be recoverable by whoever runs the server. The trash is a
+    dot-folder one level down, so no listing (`*/app_run.json`) and no lookup
+    ever sees it, and it is never served.
+    """
+    src = Path(run_dir).resolve()
+    root = Path(runs_dir).resolve()
+    if src.parent != root:
+        raise ValueError(f'{src} is not a run directory directly under {root}')
+    dst_dir = root / TRASH
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst = dst_dir / f'{src.name}-{time.strftime("%Y%m%d-%H%M%S")}'
+    src.rename(dst)
+    return dst
+
+
 def find(runs_dir, run_id):
     """The directory holding *run_id*, or None.
 

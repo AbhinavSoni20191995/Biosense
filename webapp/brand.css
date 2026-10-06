@@ -173,7 +173,7 @@ button{font-family:inherit}
    to nothing: a long objective is cut with an ellipsis (the full text is the
    tooltip) instead of widening the card under the live panel beside it. */
 .prunlist{margin-top:12px;min-width:0;max-width:100%;overflow:hidden}
-.prunlist .prun{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto;
+.prunlist .prun{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto auto;
   align-items:center;gap:10px;padding:6px 0;min-width:0;
   border-top:1px solid color-mix(in srgb,var(--ink-3) 18%,transparent)}
 .prunlist .prun > *{min-width:0}
@@ -508,8 +508,21 @@ button{font-family:inherit}
   background:color-mix(in srgb,var(--brand) 10%,transparent)}
 .claim.simulated{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent);
   background:color-mix(in srgb,var(--warn) 10%,transparent)}
-.insights p.m{white-space:pre-wrap;margin:0 0 10px;padding:8px 10px;border-left:2px solid
-  color-mix(in srgb,var(--brand) 45%,transparent);border-radius:4px}
+/* Insights: one foldable section per source; each note folds on its own. */
+.ins-sec{border-top:1px solid color-mix(in srgb,var(--ink-3) 20%,transparent);padding:8px 0}
+.ins-sec > summary{cursor:pointer;list-style:revert;padding:4px 0}
+.ins-sec > summary .ins-t{font-weight:600;color:var(--ink)}
+.ins-sub{margin-top:8px}
+.ins-sub > summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
+.ins-pre{margin:6px 0 10px;font-size:13px;color:var(--ink-2)}
+.ins-note{margin:0 0 6px;padding:6px 10px;border-radius:6px;
+  border-left:2px solid color-mix(in srgb,var(--brand) 45%,transparent);
+  background:color-mix(in srgb,var(--brand) 4%,transparent)}
+.ins-note > summary{cursor:pointer;font-size:13.5px;line-height:1.4}
+.ins-body{margin-top:6px;font-size:13px}
+.md-h{font-weight:600;margin:8px 0 4px}
+.md-p{margin:0 0 6px}
+.insights code{font-family:var(--mono);font-size:.92em}
 #papersFound .m{margin:0 0 8px}
 #papersFound a{font-family:var(--mono);font-size:12px}
 .notest{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
@@ -575,3 +588,5 @@ button{font-family:inherit}
 .bc-grid{stroke:color-mix(in srgb,var(--ink-3) 20%,transparent);stroke-width:1}
 .bc-line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .bc-line.bc-a{stroke:var(--s1)} .bc-line.bc-b{stroke:var(--s2)}
+.btn.del{padding:4px 9px;min-width:0;color:var(--ink-3)}
+.btn.del:hover{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 55%,transparent)}

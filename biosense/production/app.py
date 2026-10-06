@@ -44,6 +44,8 @@ Endpoints
     GET  /api/runs/<id>/report    the reasoning report as HTML
     POST /api/discovery/<id>/cancel   stop a run in flight, and its Omnigent session
     POST /api/discovery/<id>/extend   more time for a live run, within the deployment's bounds
+    POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
+    POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
     GET  /api/datasets            registered PUBLIC datasets only; private ones are
                                   never listed here and never served
     GET  /api/analysis-tools      the tool registry: what can run, over what, and
@@ -916,6 +918,40 @@ class DiscoveryRegistry:
             return None
         return run
 
+    def delete(self, rid, *, owner=None, operator=False):
+        """Move one finished run to the trash. Returns 'deleted', 'live' or None.
+
+        Only its owner may, or an operator for a run that has no owner. A live
+        run is refused: stop it first, so nothing is still writing into the
+        directory being moved.
+        """
+        if not DISCOVERY_ID.match(rid or ''):
+            return None
+        with self.lock:
+            run = self.runs.get(rid)
+        if run is not None:
+            if run.finished_at is None:
+                return 'live'
+            run_owner, out_dir = run.owner, run.out_dir
+        else:
+            d = RS.find(self.runs_dir, rid)
+            if d is None:
+                return None
+            # On disk only: whatever its record says, nothing in this process is
+            # writing to it (a "running" record here is an interrupted run).
+            state = RS._read_state(RS.state_path(d)) or {}
+            run_owner, out_dir = state.get('owner'), d
+        if run_owner is not None and run_owner != owner:
+            return None
+        if run_owner is None and not operator:
+            return None
+        RS.trash(self.runs_dir, out_dir)
+        with self.lock:
+            self.runs.pop(rid, None)
+            if rid in self.order:
+                self.order.remove(rid)
+        return 'deleted'
+
     def restore(self, rid, *, after=-1, owner=None):
         """A run this process no longer holds, read back from its own directory.
 
@@ -1227,6 +1263,12 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/extend', path)
             if m:
                 return self._extend_discovery(m.group(1))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/delete', path)
+            if m:
+                return self._delete_discovery(m.group(1))
+            m = re.fullmatch(r'/api/projects/([^/]+)/delete', path)
+            if m:
+                return self._delete_project(m.group(1), self._body())
             if path == '/api/benchmarks/run':
                 return self._run_benchmark(self._body(MAX_BODY_DISCOVERY))
             if path == '/api/projects':
@@ -1528,6 +1570,52 @@ class Handler(BaseHTTPRequestHandler):
                                     'runtime_mode': req['runtime_mode'],
                                     'runtime_label': RT.LABELS[req['runtime_mode']]})
         return self._send(202, run.snapshot())
+
+    def _is_operator(self, identity):
+        try:
+            if self.policy.has_admins or self.runtime_cfg.hosted:
+                self.policy.require_admin(identity, 'deleting a run nobody owns')
+            return True
+        except Exception:  # noqa: BLE001 - not an operator is an answer, not a fault
+            return False
+
+    def _delete_discovery(self, rid):
+        """Move a finished run of the caller's to the trash."""
+        identity = self._identity()
+        r = self.discovery.delete(rid, owner=identity.owner,
+                                  operator=self._is_operator(identity))
+        if r == 'live':
+            return self._send(409, {'error': 'this run is still going; stop it first'})
+        if r is None:
+            return self._send(404, {'error': 'no such run of yours'})
+        return self._send(200, {'run_id': rid, 'deleted': True,
+                                'note': 'Moved to the server\'s trash: no longer listed or '
+                                        'served, and recoverable by whoever runs the server.'})
+
+    def _delete_project(self, project_id, body):
+        """Move a workspace's own project — and, if asked, its runs — to the trash."""
+        from .. import projects as PJ
+        identity = self._identity()
+        if not any(p.project_id == project_id for p in PB.workspace_projects(identity)):
+            if any(p.project_id == project_id for p in PJ.load_all()):
+                return self._send(403, {'error': 'this is a built-in project template; it is part '
+                                                 'of the app and cannot be deleted'})
+            return self._send(404, {'error': 'no such project in your workspace'})
+        runs = self.discovery.listing(owner=identity.owner, project_id=project_id)
+        if any(r.get('live') for r in runs):
+            return self._send(409, {'error': 'a run in this project is still going; stop it first'})
+        deleted, kept = [], []
+        if body.get('delete_runs'):
+            op = self._is_operator(identity)
+            for r in runs:
+                (deleted if self.discovery.delete(r['run_id'], owner=identity.owner,
+                                                  operator=op) == 'deleted'
+                 else kept).append(r['run_id'])
+        PB.delete(identity, project_id)
+        return self._send(200, {'project_id': project_id, 'deleted': True,
+                                'runs_deleted': deleted, 'runs_kept': kept,
+                                'note': 'Moved to the server\'s trash and recoverable by whoever '
+                                        'runs the server.'})
 
     def _extend_discovery(self, rid):
         """Give a live run more time, within the bounds the deployment sets."""

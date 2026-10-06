@@ -328,6 +328,14 @@ class RunEndTests(unittest.TestCase):
         # Bioinformatics plans and notes show live; uploads stay private.
         self.assertIn('function renderBioInsights', js)
         self.assertIn('id="bioInsights"', html)
+        # Insights fold, one section per source; every note folds on its own.
+        for sec in ('id="litSec"', 'id="bioSec"', 'id="genoSec"', 'id="papersSec"'):
+            self.assertIn(sec, html)
+        self.assertIn('function renderNotes', js)
+        self.assertNotIn('innerHTML', js[js.index('function inlineMd'):js.index('function renderNotes')])
+        # Runs and your own projects can be deleted, to the server's trash.
+        self.assertIn('/delete`', js)
+        self.assertIn('function deleteProject', js)
         data = (K.ROOT / 'webapp' / 'data.html').read_text()
         self.assertIn('/api/datasets/upload', data)
         self.assertIn('id="effort"', html)

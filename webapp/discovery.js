@@ -370,6 +370,33 @@ async function showProject() {
 
 function currentProject() { const s = $('#project'); return s ? s.value : null; }
 
+/* Deleting moves the run to the server's trash: no longer listed or served,
+   recoverable by whoever runs the server. Asked once, by name. */
+async function deleteRun(r) {
+  const what = (r.objective || r.run_id).slice(0, 120);
+  if (!confirm(`Delete this run?\n\n"${what}"\n\nIt disappears from your lists. Whoever runs `
+    + 'the server can still recover it from the trash.')) return;
+  try {
+    await post(`/api/discovery/${r.run_id}/delete`);
+    if (state.run && state.run.run_id === r.run_id) forgetRun();
+    await BS.runs(currentProject());
+  } catch (e) { fail(e); }
+}
+
+async function deleteProject(id, name, runCount) {
+  const msg = `Delete the project "${name || id}"?`
+    + (runCount ? `\n\nIts ${runCount} run${runCount === 1 ? '' : 's'} will be deleted with it.` : '')
+    + '\n\nWhoever runs the server can still recover it from the trash.';
+  if (!confirm(msg)) return;
+  try {
+    await post(`/api/projects/${encodeURIComponent(id)}/delete`, { delete_runs: true });
+    $('#projectDetail').hidden = true;
+    BS.selected.set(null);
+    await loadProjects();
+    await BS.runs(currentProject());
+  } catch (e) { fail(e); }
+}
+
 /* The project's runs, right under the picker: a scientist comes back to a
    project to see what it already found, so that is one click, not three. Fed
    by the same listing as the Runs page, scoped to the account. */
@@ -394,6 +421,13 @@ function renderProjectRunList(snapshot) {
     const open = el('button', 'btn', r.live ? 'Watch' : 'Open');
     open.addEventListener('click', () => watchRun(r.run_id));
     row.append(open);
+    /* A finished run can be removed; a live one must be stopped first. */
+    if (!r.live) {
+      const del = el('button', 'btn del', '✕');
+      del.title = 'Delete this run'; del.setAttribute('aria-label', 'Delete this run');
+      del.addEventListener('click', () => deleteRun(r));
+      row.append(del);
+    }
     host.append(row);
   });
   if (runs.length > RUN_LIST_MAX) {
@@ -463,6 +497,18 @@ async function renderProjectDetail(id) {
   if ((p.limitations || []).length) {
     box.append(el('div', 'lab', 'Limitations'));
     p.limitations.forEach(l => box.append(el('p', 'dim', l)));
+  }
+  /* Only a project you created can be deleted; the built-in templates are part
+     of the app. A project with a run still going cannot be deleted yet. */
+  if (d.owned) {
+    const row = el('div', 'rv-actions');
+    const del = el('button', 'btn stop', 'Delete this project');
+    if ((d.active_runs || []).length) {
+      del.disabled = true; del.title = 'A run is still going in this project; stop it first';
+    }
+    del.addEventListener('click', () => deleteProject(id, p.name, (d.runs || []).length));
+    row.append(del);
+    box.append(row);
   }
   host.append(box);
 }
@@ -746,7 +792,6 @@ function renderBioInsights(bio) {
   bioSeen = key;
   host.textContent = '';
   if (!bio) return;
-  host.append(el('div', 'lab', 'Bioinformatics'));
   (bio.plans || []).forEach(p => {
     const row = el('div', 'm');
     row.append(el('span', 'tag', 'PLANNED'), ' ', el('b', null, p.question || p.plan_id));
@@ -767,8 +812,9 @@ function renderBioInsights(bio) {
     host.append(el('p', 'dim', 'No analysis planned yet.'));
   }
   if (bio.notes) {
-    bio.notes.text.split(/\n{2,}/).map(b => b.trim()).filter(Boolean)
-      .forEach(b => host.append(el('p', 'm insight', b)));
+    host.append(el('div', 'lab', 'Running notes'));
+    const notes = el('div', 'insights'); host.append(notes);
+    renderNotes(notes, bio.notes.text, 'bio');
   }
 }
 
@@ -782,7 +828,6 @@ function renderGenoInsight(g) {
   genoSeen = key; host.textContent = '';
   if (!g) return;
   const label = (g.genotype || {}).label || 'edited line';
-  host.append(el('div', 'lab', `Simulated: wild type against ${label}`));
   if (g.stand_in) host.append(el('p', 'warnc', 'STAND-IN MODEL. ' + (g.stand_in_note || '')));
   if (g.assumption) host.append(el('p', 'caveat', 'Assumed: ' + g.assumption));
   if (g.verdict) host.append(el('p', 'm', g.verdict));
@@ -804,25 +849,111 @@ function hasPartial(r) {
    are leads written while reading, shown before the orchestrator has weighed
    them; the panel says so, and never calls them findings. */
 let insightsSeen = '';
+/* A light reading of the agents' notes: headings, rules, **bold**, `code`
+   and list items. Text only — nothing from a note is ever parsed as HTML. */
+function inlineMd(text) {
+  const frag = document.createDocumentFragment();
+  const parts = String(text).split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  parts.forEach(t => {
+    if (!t) return;
+    if (t.startsWith('**') && t.endsWith('**') && t.length > 4) frag.append(el('strong', null, t.slice(2, -2)));
+    else if (t.startsWith('`') && t.endsWith('`') && t.length > 2) frag.append(el('code', null, t.slice(1, -1)));
+    else frag.append(document.createTextNode(t));
+  });
+  return frag;
+}
+function mdBlock(text, host) {
+  let list = null;
+  text.split('\n').forEach(raw => {
+    const line = raw.replace(/\s+$/, '');
+    if (!line.trim()) { list = null; return; }
+    if (/^-{3,}$/.test(line.trim())) { list = null; return; }
+    const h = line.match(/^#{1,4}\s+(.*)$/);
+    if (h) { list = null; const n = el('div', 'md-h'); n.append(inlineMd(h[1])); host.append(n); return; }
+    const li = line.match(/^\s*[-*•]\s+(.*)$/);
+    if (li) {
+      if (!list) { list = el('ul', 'tight'); host.append(list); }
+      const n = el('li'); n.append(inlineMd(li[1])); list.append(n); return;
+    }
+    list = null;
+    const n = el('p', 'md-p'); n.append(inlineMd(line)); host.append(n);
+  });
+}
+/* A note file as foldable entries: what comes before the first second-level
+   heading is the preface; every "## ..." section folds on its own, closed. */
+function renderNotes(host, text, kind) {
+  host.textContent = '';
+  const lines = String(text || '').split('\n');
+  const pre = [], secs = [];
+  let cur = null;
+  lines.forEach(l => {
+    const m = l.match(/^##\s+(.*)$/);
+    if (m) { cur = { title: m[1], body: [] }; secs.push(cur); }
+    else if (cur) cur.body.push(l);
+    else if (!/^#\s/.test(l)) pre.push(l);
+  });
+  if (pre.join('').trim()) { const p = el('div', 'ins-pre'); mdBlock(pre.join('\n'), p); host.append(p); }
+  if (!secs.length && !pre.join('').trim()) { mdBlock(text, host); return 0; }
+  secs.forEach((sec, i) => {
+    const d = el('details', 'ins-note');
+    d.dataset.key = `${kind}:${sec.title}`;
+    d.open = rememberedOpen(d.dataset.key, false);
+    d.addEventListener('toggle', () => rememberOpen(d.dataset.key, d.open));
+    const sm = el('summary'); sm.append(inlineMd(sec.title)); d.append(sm);
+    const b = el('div', 'ins-body'); mdBlock(sec.body.join('\n'), b); d.append(b);
+    host.append(d);
+  });
+  return secs.length;
+}
+/* Which sections a viewer keeps open, remembered in their own browser. */
+const OPEN_KEY = 'biosense.insightsOpen';
+function openState() { try { return JSON.parse(localStorage.getItem(OPEN_KEY) || '{}'); } catch (_) { return {}; } }
+function rememberedOpen(key, dflt) { const s = openState(); return key in s ? !!s[key] : dflt; }
+function rememberOpen(key, open) {
+  const s = openState(); s[key] = !!open;
+  const keys = Object.keys(s); if (keys.length > 200) keys.slice(0, keys.length - 200).forEach(k => delete s[k]);
+  try { localStorage.setItem(OPEN_KEY, JSON.stringify(s)); } catch (_) {}
+}
+function wireSection(id, dflt) {
+  const d = $('#' + id); if (!d || d.dataset.wired) return d;
+  d.dataset.wired = '1';
+  d.open = rememberedOpen(d.dataset.key, dflt);
+  d.addEventListener('toggle', () => rememberOpen(d.dataset.key, d.open));
+  return d;
+}
+
 function renderInsights(snap) {
   const panel = $('#insightsPanel'); if (!panel) return;
   const ins = snap.insights, papers = snap.papers_found || [], bio = snap.bioinformatics;
   const geno = snap.genotype_simulation;
   if (!ins && !papers.length && !bio && !geno) { panel.hidden = true; return; }
   panel.hidden = false;
-  renderBioInsights(bio);
-  renderGenoInsight(geno);
+  wireSection('litSec', false); wireSection('papersSec', false);
+  wireSection('bioSec', false); wireSection('genoSec', true);
+
+  $('#bioSec').hidden = !bio;
+  if (bio) {
+    renderBioInsights(bio);
+    $('#bioSum').textContent = [`${(bio.plans || []).length} planned`,
+      `${(bio.results || []).length} run`, bio.notes ? `notes ${BS.fmt.ago(bio.notes.updated_at)}` : null]
+      .filter(Boolean).join(' · ');
+  }
+  $('#genoSec').hidden = !geno;
+  if (geno) {
+    renderGenoInsight(geno);
+    $('#genoSum').textContent = (geno.genotype || {}).label || '';
+  }
+
   const key = `${ins ? ins.updated_at : 0}:${papers.length}`;
   if (key === insightsSeen) return;
   insightsSeen = key;
   $('#insightsHead').textContent = ins ? `updated ${BS.fmt.ago(ins.updated_at)}` : '';
   $('#insightsNote').textContent = ins ? ins.note : '';
-  const host = $('#insights'); host.textContent = '';
-  if (ins) {
-    ins.text.split(/\n{2,}/).map(b => b.trim()).filter(Boolean).forEach(block => {
-      host.append(el('p', 'm', block));
-    });
-  }
+  const n = ins ? renderNotes($('#insights'), ins.text, 'lit') : 0;
+  if (!ins) $('#insights').textContent = '';
+  $('#litSum').textContent = [n ? `${n} note${n === 1 ? '' : 's'}` : null,
+    papers.length ? `${papers.length} papers` : null].filter(Boolean).join(' · ');
+  $('#papersSum').textContent = papers.length ? `(${papers.length})` : '';
   const list = $('#papersFound'); list.textContent = '';
   if (!papers.length) list.append(el('p', 'dim', 'No search has been saved yet.'));
   papers.forEach(p => {

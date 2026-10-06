@@ -322,12 +322,26 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
          weighed it: leads for the scientist watching, labelled as such. -->
     <section class="glass card" id="insightsPanel" hidden>
       <div class="head"><h3>Insights as they come</h3><span class="hint" id="insightsHead"></span></div>
-      <p class="dim" id="insightsNote"></p>
-      <div id="insights" class="insights"></div>
-      <div class="lab" style="margin-top:12px">Papers found</div>
-      <div id="papersFound"></div>
-      <div id="bioInsights"></div>
-      <div id="genoInsights"></div>
+      <!-- One foldable section per source, each remembering whether it is open.
+           Every paper's note folds on its own, so a long run stays scannable. -->
+      <details class="ins-sec" id="litSec" data-key="lit">
+        <summary><span class="ins-t">Literature</span> <span class="dim" id="litSum"></span></summary>
+        <p class="dim" id="insightsNote"></p>
+        <div id="insights" class="insights"></div>
+        <details class="ins-sub" id="papersSec" data-key="papers">
+          <summary>Papers found <span class="dim" id="papersSum"></span></summary>
+          <div id="papersFound"></div>
+        </details>
+      </details>
+      <details class="ins-sec" id="bioSec" data-key="bio" hidden>
+        <summary><span class="ins-t">Bioinformatics</span> <span class="dim" id="bioSum"></span></summary>
+        <div id="bioInsights"></div>
+      </details>
+      <details class="ins-sec" id="genoSec" data-key="geno" hidden>
+        <summary><span class="ins-t">Simulated: wild type against the edit</span>
+          <span class="dim" id="genoSum"></span></summary>
+        <div id="genoInsights"></div>
+      </details>
     </section>
 
     <section class="glass card" id="resultPanel" hidden>

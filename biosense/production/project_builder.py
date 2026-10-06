@@ -374,10 +374,18 @@ def save(identity, doc, *, overwrite=False):
 
 
 def delete(identity, project_id):
+    """Move a workspace's own project into its trash. Templates cannot be deleted.
+
+    Moved rather than unlinked, for the same reason as a run: a mistaken click
+    should be recoverable by whoever runs the server.
+    """
     path = WS.assert_owned(identity, WS.projects_dir(identity) / f'{project_id}.json')
     if not path.is_file():
         raise K.ContractError(f'no project {project_id!r} in this workspace')
-    path.unlink()
+    bin_ = WS.workspace_root(identity) / '.trash' / 'projects'
+    bin_.mkdir(parents=True, exist_ok=True)
+    import time as _time
+    path.rename(bin_ / f'{project_id}-{_time.strftime("%Y%m%d-%H%M%S")}.json')
     return True
 
 

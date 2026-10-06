@@ -565,6 +565,50 @@ class ApiTests(unittest.TestCase):
             time.sleep(0.25)
         self.fail('the run never settled')
 
+    # ── deleting ───────────────────────────────────────────
+    def test_a_finished_run_is_deleted_to_the_trash_and_disappears(self):
+        pid = self._project('Delete Me Runs')
+        rid = self._run(pid)
+        self._settle(rid)
+        code, d = self._req('POST', f'/api/discovery/{rid}/delete')
+        self.assertEqual(200, code, d)
+        listed = [r['run_id'] for r in self._req('GET', '/api/discovery')[1]['runs']]
+        self.assertNotIn(rid, listed)
+        self.assertEqual(404, self._req('GET', f'/api/discovery/{rid}')[0])
+        trash = self.tmp / 'runs' / '.trash'
+        self.assertTrue(any(rid[:6] in p.name for p in trash.iterdir()),
+                        'moved, not unlinked: recoverable on the server')
+        self.assertEqual(404, self._req('POST', f'/api/discovery/{rid}/delete')[0])
+
+    def test_a_live_run_cannot_be_deleted(self):
+        from biosense.production import app as APP
+        reg = self.APP.Handler.discovery
+        run = APP.DiscoveryRun('d' * 16, {'request_id': 'r', 'project_id': 'p', 'objective': 'o'},
+                               self.tmp / 'runs' / 'ai-live-dddddd', 'synthetic_demo',
+                               owner=None)
+        with reg.lock:
+            reg.runs[run.id] = run; reg.order.append(run.id)
+        try:
+            self.assertEqual('live', reg.delete(run.id, owner=None, operator=True))
+        finally:
+            with reg.lock:
+                reg.runs.pop(run.id, None); reg.order.remove(run.id)
+
+    def test_a_project_and_its_runs_go_together_and_a_template_never(self):
+        pid = self._project('Delete Me Project')
+        rid = self._run(pid)
+        self._settle(rid)
+        code, d = self._req('POST', f'/api/projects/{pid}/delete', {'delete_runs': True})
+        self.assertEqual(200, code, d)
+        self.assertIn(rid, d['runs_deleted'])
+        ids = [p['project_id'] for p in self._req('GET', '/api/projects')[1]['projects']
+               if p.get('source') == 'workspace']
+        self.assertNotIn(pid, ids)
+        code, d = self._req('POST', '/api/projects/ipsc_macrophage/delete', {'delete_runs': True})
+        self.assertEqual(403, code)
+        self.assertIn('cannot be deleted', d['error'])
+        self.assertEqual(404, self._req('POST', '/api/projects/no_such_project/delete', {})[0])
+
     # ── creating and selecting ──────────────────────────────
     def test_creating_a_project_returns_the_one_to_select(self):
         code, d = self._req('POST', '/api/projects', {
