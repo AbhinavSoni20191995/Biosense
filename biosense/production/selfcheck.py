@@ -479,24 +479,40 @@ def run(*, live=False, runs_dir=None, keep=False, cfg=None, hosted=None):
         c.unsandboxed_why = 'this runs directory is outside the agents\' write paths'
     elif not found['ok']:
         c.unsandboxed_why = 'the sandbox cannot start here'
-    try:
-        check_sandbox(c, found, hosted)
-        check_bundle(c)
+    def guard(cid, label, fn, *args, default=None):
+        """One broken step is a failed row, never a crashed check: the rows
+        after it still say what works."""
+        t = time.monotonic()
+        try:
+            return fn(*args)
+        except Exception as e:  # noqa: BLE001 - the failure is the finding
+            c.row(cid, label, FAIL, f'{type(e).__name__}: {e}', t)
+            return default
+
+    def commands():
         req = DISC.build(project_id=FIXTURE_PROJECT,
                          objective='SELF-CHECK: does every named command exist?',
                          runtime_mode='synthetic_demo')
         rel = os.path.relpath(work, workspace) if work.is_relative_to(workspace) else str(work)
         check_commands(c, DISC.render_brief(req, loop_dir=rel))
-        readout = check_bioinformatics(c)
-        simulated = check_simulator(c)
-        hyp = check_hypothesis(c, readout, simulated)
-        check_parameters(c, hyp)
-        check_protocol(c)
-        check_bioreactor_loop(c)
-        up = check_runtime(c, cfg)
+
+    try:
+        guard('sandbox', 'Agents\' sandbox', check_sandbox, c, found, hosted)
+        guard('agent_bundle', 'Agent bundle', check_bundle, c)
+        guard('commands_named', 'Commands named to the agents', commands)
+        readout = guard('bioinformatics', 'Bioinformatics tools', check_bioinformatics, c)
+        simulated = guard('simulator', 'Bioreactor simulator', check_simulator, c,
+                          default=False)
+        hyp = guard('hypothesis', 'Hypothesis and context files', check_hypothesis, c,
+                    readout, simulated)
+        guard('parameters', 'Parameter recommendation', check_parameters, c, hyp)
+        guard('protocol', 'Protocol from the run directory', check_protocol, c)
+        guard('bioreactor_loop', 'Bioreactor loop (stand-in)', check_bioreactor_loop, c)
+        up = guard('runtime', 'AI runtime', check_runtime, c, cfg, default=False)
         if live:
             if up:
-                check_agents_talk(c, cfg)
+                guard('agents_talk', 'Agents talk to each other (live)', check_agents_talk,
+                      c, cfg)
             else:
                 c.row('agents_talk', 'Agents talk to each other (live)', SKIP,
                       'the AI runtime is not available, so no session was started',

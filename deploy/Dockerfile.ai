@@ -61,6 +61,9 @@ COPY analysis_agent/ ./analysis_agent/
 COPY examples/ ./examples/
 COPY webapp/ ./webapp/
 COPY benchmarks/ ./benchmarks/
+# The committed project templates (ipsc_macrophage, cart_expansion): what a run
+# and the system check load when no account project of that name exists.
+COPY projects/ ./projects/
 COPY scripts/ ./scripts/
 COPY docs/ ./docs/
 # The agent bundle itself: the orchestrator prompt and its five specialists.

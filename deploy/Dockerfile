@@ -41,6 +41,9 @@ COPY qc_profiles/ ./qc_profiles/
 COPY bioinfo_knowledge/ ./bioinfo_knowledge/
 COPY analysis_agent/ ./analysis_agent/
 COPY examples/ ./examples/
+# The committed project templates (ipsc_macrophage, cart_expansion): what a run
+# and the system check load when no account project of that name exists.
+COPY projects/ ./projects/
 COPY webapp/ ./webapp/
 RUN uv sync --locked
 

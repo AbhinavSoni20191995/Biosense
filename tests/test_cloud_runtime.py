@@ -482,6 +482,23 @@ class DeploymentTests(unittest.TestCase):
                 text, r"ANTHROPIC_API_KEY\s*=\s*(?!'held-by-the-biosense-model-proxy'|\"\$PLACEHOLDER\")\S",
                 name)
 
+    def test_every_repository_folder_the_code_reads_is_in_the_ai_image(self):
+        """The hosted image had no projects/ folder, so the committed templates
+        (ipsc_macrophage, cart_expansion) did not exist on Railway and the system
+        check crashed loading one. Every folder the package reads from the
+        repository root must be copied in."""
+        runtime_only = {'runs', 'private_data', 'exports', 'data_cache'}
+        wanted = set()
+        for py in (ROOT / 'biosense').rglob('*.py'):
+            wanted |= set(re.findall(r"ROOT / '([a-z_]+)'", py.read_text()))
+        wanted = {d for d in wanted - runtime_only if (ROOT / d).is_dir()}
+        self.assertIn('projects', wanted)
+        text = (ROOT / 'deploy' / 'Dockerfile.ai').read_text()
+        for d in sorted(wanted):
+            self.assertIn(f'COPY {d}/ ./{d}/', text, f'Dockerfile.ai lacks {d}/')
+        # The minimal synthetic image still needs the templates its demo loads.
+        self.assertIn('COPY projects/ ./projects/', (ROOT / 'deploy' / 'Dockerfile').read_text())
+
     def test_the_vm_deployment_bakes_in_no_credential_and_evaluates_nothing(self):
         for name in ('docker-compose.yml', 'Caddyfile', 'env.example', 'setup.sh', 'update.sh'):
             text = (ROOT / 'deploy' / 'vm' / name).read_text()
