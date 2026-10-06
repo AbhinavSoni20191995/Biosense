@@ -15,6 +15,9 @@
 .cols{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:20px;
   align-items:start;margin-top:4px}
 @media (max-width:64rem){.cols{grid-template-columns:1fr}}
+/* A grid column's content must not be wider than the column: without this a
+   long unbreakable line widened a card under its neighbour. */
+.cols > *, .stack > *{min-width:0}
 .stack{display:flex;flex-direction:column;gap:20px;min-width:0}
 .card{padding:20px 22px}
 .card > .head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
@@ -324,6 +327,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div class="lab" style="margin-top:12px">Papers found</div>
       <div id="papersFound"></div>
       <div id="bioInsights"></div>
+      <div id="genoInsights"></div>
     </section>
 
     <section class="glass card" id="resultPanel" hidden>
@@ -441,6 +445,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 })();
 </script>
 <script src="runstate.js"></script>
+<script src="curves.js"></script>
 <script src="runview.js"></script>
 <script src="discovery.js"></script>
 </body>

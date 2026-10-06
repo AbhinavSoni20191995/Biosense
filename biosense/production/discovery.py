@@ -539,6 +539,19 @@ invent one for them, and do not drop them.
 5. Check **simulator coverage** against the project before predicting anything,
    and run the comparison only for the parameters it models. `NOT MODELLED` is
    an answer to report beside the hypothesis, not a reason to withhold it.
+
+   **When the objective compares an engineered line** (a knockout, an
+   overexpression, an edited clone) against wild type, also run both through
+   the reactor, with the recommended values:
+   `{python} -m biosense.evidence.cli simulate --project {project.project_id}{pdir} \
+       --set <parameter>=<value> --genotype "<EDIT>:growth=<ratio>,diff=<ratio>" \
+       --out {loop_dir}/simulation.json`
+   The reactor models an edit only as a change in growth rate and in
+   differentiation efficiency (1 = no effect; 0.8 = 20% slower or less).
+   Choose the two ratios as a labelled best guess from the evidence direction,
+   and say in the hypothesis which ratios you assumed and why. The person sees
+   wild type and the edited line as growth curves side by side; they show your
+   assumption played through the reactor, never a prediction of the gene.
 6. **Give every setpoint the process needs a number, or say why it must not have
    one.** A protocol with a blank cannot be run, and the literature will not
    report the value for this exact vessel, density and line. Each parameter the

@@ -120,6 +120,32 @@ CHALLENGE_LABEL = {c['id']: c['label'] for c in CHALLENGES}
 # ── thresholds for the condition read ───────────────────────────────────
 # Stated here rather than buried in the renderer, because the read is only
 # worth anything if you can see what it was asked.
+# An engineered line, as the person (or a hypothesis) assumes it behaves: its
+# effect on growth (mu_max) and on differentiation efficiency, as ratios to wild
+# type. The stand-in models an edit exactly this way; the numbers are an
+# ASSUMPTION a person sets, never something the model knows about a gene.
+GENOTYPE_RANGE = (0.3, 2.0)
+
+
+def parse_genotype(raw):
+    """{label, growth_ratio, diff_ratio} -> a clamped genotype, or None for wild type."""
+    if raw in (None, {}, ''):
+        return None
+    if not isinstance(raw, dict):
+        raise K.ContractError('genotype is {"label", "growth_ratio", "diff_ratio"}')
+    label = str(raw.get('label') or 'edited line').strip()[:40] or 'edited line'
+    out = {'label': label}
+    for key in ('growth_ratio', 'diff_ratio'):
+        try:
+            v = float(raw.get(key, 1.0))
+        except (TypeError, ValueError):
+            raise K.ContractError(f'genotype.{key} must be a number') from None
+        if not math.isfinite(v):
+            raise K.ContractError(f'genotype.{key} must be finite')
+        out[key] = min(GENOTYPE_RANGE[1], max(GENOTYPE_RANGE[0], v))
+    return out
+
+
 LIMITS = dict(
     viability_good=88.0, viability_poor=75.0,
     lactate_high=22.0, lactate_severe=30.0,
@@ -201,7 +227,7 @@ def parse_condition(payload):
 
     sp = Setpoints(**values)
     meta = dict(challenge=challenge, seed=seed, clamped=clamped,
-                total_days=round(total, 2))
+                total_days=round(total, 2), genotype=parse_genotype(payload.get('genotype')))
     return sp, stage_days, meta
 
 
@@ -212,6 +238,10 @@ def _reactor(meta):
                                           introduce_sensor_fault, introduce_variant)
 
     line, sensors = LineState(line_id='SIM'), SensorState()
+    g = meta.get('genotype')
+    if g:
+        line.genotype_mu_ratio = g['growth_ratio']
+        line.genotype_diff_ratio = g['diff_ratio']
     ch = meta['challenge']
     if ch == 'variant':
         introduce_variant(line, 0.02)
@@ -370,6 +400,7 @@ def simulate(payload):
         label=str(payload.get('label') or 'condition')[:60],
         setpoints=asdict(sp), stage_days=stage_days,
         challenge=meta['challenge'], challenge_label=CHALLENGE_LABEL[meta['challenge']],
+        genotype=meta.get('genotype'),
         seed=meta['seed'], clamped=meta['clamped'],
         total_days=meta['total_days'],
         frames=frames, outcome=rec.outcome, signature=_signature(frames, rec.outcome),
@@ -435,6 +466,53 @@ def compare(payload):
                      'model built to reward these levers.')
 
 
+CURVE_CHANNELS = ('vcd_e6_per_ml', 'viability_pct', 'harvest_cum_e6_per_ml',
+                  'imp_frac_monocyte_cluster', 'lactate_mM')
+
+
+def genotype_compare(payload):
+    """Wild type against an engineered line, same setpoints, same seed.
+
+    The one difference between the two runs is the assumed effect of the edit,
+    so every difference in the curves is that assumption played through the
+    reactor — which is exactly what it can show, and all it can show. A gene's
+    real effect is a measurement; these ratios are a person's or a hypothesis's
+    guess at it.
+    """
+    payload = dict(payload or {})
+    g = parse_genotype(payload.get('genotype'))
+    if not g:
+        raise K.ContractError('name the engineered line: {"genotype": {"label", '
+                              '"growth_ratio", "diff_ratio"}}')
+    base = {k: v for k, v in payload.items() if k != 'genotype'}
+    wt = dict(base, label='wild type')
+    ed = dict(base, label=g['label'], genotype=g)
+    cmp = compare({'conditions': [wt, ed]})
+    a, b = cmp['a'], cmp['b']
+    curves = {'days': [f['day'] for f in a['frames']],
+              'wild_type': {c: [f.get(c) for f in a['frames']] for c in CURVE_CHANNELS},
+              'edited': {c: [f.get(c) for f in b['frames']] for c in CURVE_CHANNELS}}
+    h = cmp['deltas'].get('harvest_per_input_ipsc') or {}
+    pk = cmp['deltas'].get('peak_vcd_e6_per_ml') or {}
+    verdict = (f'Under the assumed effect (growth ×{g["growth_ratio"]:g}, differentiation '
+               f'×{g["diff_ratio"]:g}), {g["label"]} '
+               f'{"out-yields" if (h.get("delta") or 0) > 0 else "under-yields"} wild type by '
+               f'{abs(h.get("delta") or 0):.3f} cells per input iPSC'
+               + (f'; peak density {pk["b"]:.2f} ({g["label"]}) against {pk["a"]:.2f} (wild '
+                  f'type) 1e6/mL' if pk else '')
+               + '. One replicate each: the direction of an assumption, not a prediction '
+                 'about the gene.')
+    return dict(evidence_status='synthetic_demonstration', process='ipsc_to_monocyte',
+                genotype=g, setpoints=a['setpoints'], stage_days=a['stage_days'],
+                seed=a['seed'], curves=curves, deltas=cmp['deltas'],
+                outcome={'wild_type': a['outcome'], 'edited': b['outcome']},
+                signature={'wild_type': a['signature'], 'edited': b['signature']},
+                verdict=verdict,
+                note='The edit is modelled as an assumed change in growth rate and '
+                     'differentiation efficiency, nothing else. The numbers are a sandbox '
+                     'reading from an uncalibrated model, never evidence about the gene.')
+
+
 def seed_brief(result):
     """What a sandbox condition is allowed to become on the way into a loop run.
 
@@ -479,6 +557,7 @@ def config():
         knobs=[dict(k) for k in KNOBS],
         stages=[dict(s) for s in STAGES],
         challenges=[dict(c) for c in CHALLENGES],
+        genotype_range=list(GENOTYPE_RANGE),
         limits=dict(LIMITS), max_days=MAX_DAYS,
         channels=list(FRAME_CHANNELS),
         evidence_status='synthetic_demonstration',

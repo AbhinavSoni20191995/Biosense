@@ -169,11 +169,20 @@ button{font-family:inherit}
 .btn.stop{margin-left:10px;border-color:color-mix(in srgb,var(--bad) 55%,transparent);color:var(--bad);
   background:color-mix(in srgb,var(--bad) 7%,transparent)}
 .btn.stop:hover:not(:disabled){background:color-mix(in srgb,var(--bad) 14%,transparent)}
-.prunlist{margin-top:12px}
-.prunlist .prun{display:flex;align-items:center;gap:10px;padding:6px 0;
+/* A project's runs under the picker. A grid row whose text column may shrink
+   to nothing: a long objective is cut with an ellipsis (the full text is the
+   tooltip) instead of widening the card under the live panel beside it. */
+.prunlist{margin-top:12px;min-width:0;max-width:100%;overflow:hidden}
+.prunlist .prun{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto;
+  align-items:center;gap:10px;padding:6px 0;min-width:0;
   border-top:1px solid color-mix(in srgb,var(--ink-3) 18%,transparent)}
-.prunlist .pobj{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prunlist .prun > *{min-width:0}
+.prunlist .pobj{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prunlist .mono{font-size:12px;white-space:nowrap}
+.prunlist .rv-status{white-space:nowrap}
 .prunlist a{display:inline-block;margin-top:6px}
+@media (max-width:40rem){.prunlist .prun{grid-template-columns:minmax(0,1fr) auto}
+  .prunlist .prun .mono,.prunlist .prun .rv-status{display:none}}
 .rv-pause{margin:10px 0;padding:12px 14px;border-radius:10px;
   border:1px solid color-mix(in srgb,var(--warn) 55%,transparent);
   background:color-mix(in srgb,var(--warn) 10%,transparent)}
@@ -548,3 +557,21 @@ button{font-family:inherit}
 #bioInsights p.m.insight{white-space:pre-wrap;margin:0 0 10px;padding:8px 10px;border-radius:4px;
   border-left:2px solid color-mix(in srgb,var(--warn) 45%,transparent)}
 #bioInsights .m{margin:0 0 8px}
+
+/* Wild type against an engineered line: small multiples, both series per panel. */
+.genoform{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 16px;
+  align-items:end;margin:10px 0}
+.genoform label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ink-2)}
+.genoform .val{font-family:var(--mono);color:var(--ink)}
+.genoform input[type=text]{font:inherit;padding:6px 8px;border-radius:6px;background:transparent;
+  color:var(--ink);border:1px solid color-mix(in srgb,var(--ink-3) 35%,transparent)}
+.bc-legend{display:flex;gap:16px;margin:8px 0;font-size:12.5px;color:var(--ink-2)}
+.bc-sw{display:inline-block;width:18px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.bc-sw.bc-a{background:var(--s1)} .bc-sw.bc-b{background:var(--s2)}
+.bc-grid-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.bc-panel{width:100%;height:auto;overflow:visible}
+.bc-title{font-size:11px;fill:var(--ink-2);font-family:var(--mono)}
+.bc-tick{font-size:9.5px;fill:var(--ink-3);font-family:var(--mono)}
+.bc-grid{stroke:color-mix(in srgb,var(--ink-3) 20%,transparent);stroke-width:1}
+.bc-line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.bc-line.bc-a{stroke:var(--s1)} .bc-line.bc-b{stroke:var(--s2)}

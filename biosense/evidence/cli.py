@@ -299,6 +299,66 @@ def simulate(project_id, settings, *, projects_dir=None, seed=7):
                     'simulation is evidence about the model, not about the cells.'}
 
 
+def _genotype(text):
+    """'BACH2_KO:growth=0.8,diff=1.2' -> {label, growth_ratio, diff_ratio}."""
+    if ':' not in text:
+        raise argparse.ArgumentTypeError('expected LABEL:growth=<ratio>,diff=<ratio>')
+    label, rest = text.split(':', 1)
+    out = {'label': label.strip(), 'growth_ratio': 1.0, 'diff_ratio': 1.0}
+    for part in rest.split(','):
+        if not part.strip():
+            continue
+        if '=' not in part:
+            raise argparse.ArgumentTypeError(f'expected key=value in {text!r}')
+        k, v = (x.strip() for x in part.split('=', 1))
+        key = {'growth': 'growth_ratio', 'diff': 'diff_ratio',
+               'differentiation': 'diff_ratio'}.get(k)
+        if not key:
+            raise argparse.ArgumentTypeError(f'unknown genotype effect {k!r}: growth or diff')
+        try:
+            out[key] = float(v)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f'{v!r} is not a number') from None
+    return out
+
+
+def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, seed=7):
+    """Wild type against an engineered line on the reactor, with this project's values.
+
+    On the project's own reactor model its mapped setpoints are used; a project
+    with no model runs its physical setpoints on the reactor as a stand-in and
+    says so. The edit is an assumed growth and differentiation ratio, and the
+    result is that assumption played through the reactor — never a claim about
+    the gene.
+    """
+    from ..production import sim_mode as SM
+    project = PJ.load(project_id, projects_dir)
+    values = {PR.resolve(k): v for k, v in settings.items()}
+    knobs, used, unused = {}, [], []
+    for pid in sorted(project.parameter_ids):
+        pp = project.parameter(pid)
+        v = values.get(pid, project.defaults().get(pid))
+        knob = pp.simulator_mapping or (pid if pid in SM.KNOB_BY_ID else None)
+        if knob in SM.KNOB_BY_ID and isinstance(v, (int, float)):
+            knobs[knob] = v
+            used.append(pid)
+        elif pid in values:
+            unused.append(pid)
+    stand_in = (project.simulator or {}).get('model_id') != SM.config()['model_id']
+    doc = SM.genotype_compare({'setpoints': knobs, 'seed': seed, 'genotype': genotype})
+    doc.update(project_id=project.project_id, stand_in=stand_in, used=used,
+               not_represented=unused,
+               assumption=(f'{doc["genotype"]["label"]} assumed to change growth '
+                           f'×{doc["genotype"]["growth_ratio"]:g} and differentiation '
+                           f'×{doc["genotype"]["diff_ratio"]:g}; the ratios are a labelled guess, '
+                           f'not a measured effect of the edit.'))
+    if stand_in:
+        doc['stand_in_note'] = (f'{project.name} has no reactor model of its own: its physical '
+                                f'setpoints ran on the iPSC → monocyte reactor as a stand-in. The '
+                                f'physics carry over; this cell type\'s biology does not.')
+    return doc
+
+
 def _setting(text):
     if '=' not in text:
         raise argparse.ArgumentTypeError(f'expected parameter=value, got {text!r}')
@@ -311,11 +371,16 @@ def _setting(text):
 
 def cmd_simulate(a):
     doc = simulate(a.project, dict(a.set or []), projects_dir=a.projects_dir, seed=a.seed)
+    if a.genotype:
+        doc['genotype_simulation'] = genotype_simulation(
+            a.project, dict(a.set or []), a.genotype, projects_dir=a.projects_dir, seed=a.seed)
     out = _write(doc, a.out)
     print(json.dumps({'written': str(out), 'prediction': doc['prediction'],
                       'applied': [r.get('parameter_id') for r in doc['applied']],
                       'skipped': [r.get('parameter_id') for r in doc['skipped']],
                       'effects': [E.render(e) for e in doc['effects']],
+                      'genotype': (doc['genotype_simulation']['verdict']
+                                   if doc.get('genotype_simulation') else None),
                       'note': doc['prediction_note']}, indent=2))
     return 0
 
@@ -419,6 +484,8 @@ def main(argv=None):
     p.add_argument('--project', required=True)
     p.add_argument('--projects-dir', default=None)
     p.add_argument('--set', action='append', type=_setting, metavar='PARAMETER=VALUE')
+    p.add_argument('--genotype', type=_genotype, metavar='LABEL:growth=R,diff=R',
+                   help='also run wild type against an edited line with this assumed effect')
     p.add_argument('--seed', type=int, default=7)
     p.add_argument('--out', required=True)
     p.set_defaults(fn=cmd_simulate)

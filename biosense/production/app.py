@@ -219,6 +219,7 @@ class Run:
         self.insights = None
         self.papers_found = []
         self.bioinformatics = None
+        self.genotype_sim = None
         self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -327,6 +328,7 @@ class DiscoveryRun:
         self.insights = None
         self.papers_found = []
         self.bioinformatics = None
+        self.genotype_sim = None
         self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -369,6 +371,7 @@ class DiscoveryRun:
     def _read_live_notes(self):
         """The literature agent's insights.md and discover.json, as they grow."""
         self._read_analyses()
+        self._read_genotype_sim()
         for rel, reader in (('literature/insights.md', self._read_insights),
                             ('literature/discover.json', self._read_papers),
                             ('bioinformatics/insights.md', self._read_bio_notes)):
@@ -444,6 +447,27 @@ class DiscoveryRun:
         bio = dict(self.bioinformatics or {})
         bio.update(plans=plans, results=results)
         self.bioinformatics = bio if (plans or results or bio.get('notes')) else None
+
+    def _read_genotype_sim(self):
+        """A wild-type-against-edited-line run the agents asked the reactor for."""
+        try:
+            files = sorted(f for f in self.out_dir.glob('simulation*.json') if f.is_file())
+        except OSError:
+            return
+        sig = tuple((f.name, f.stat().st_mtime) for f in files)
+        if self._live_mtimes.get('genotype_sim') == sig:
+            return
+        self._live_mtimes['genotype_sim'] = sig
+        for f in reversed(files):
+            try:
+                g = (K.read_json(f) or {}).get('genotype_simulation')
+            except (OSError, ValueError):
+                continue
+            if isinstance(g, dict) and isinstance(g.get('curves'), dict):
+                self.genotype_sim = {k: g.get(k) for k in (
+                    'genotype', 'curves', 'deltas', 'verdict', 'note', 'assumption',
+                    'stand_in', 'stand_in_note', 'used', 'not_represented')}
+                return
 
     def _read_papers(self, path, mtime):
         doc = K.read_json(path)
@@ -654,6 +678,7 @@ class DiscoveryRun:
                 'insights': self.insights,
                 'papers_found': list(self.papers_found),
                 'bioinformatics': self.bioinformatics,
+                'genotype_simulation': self.genotype_sim,
                 'stage_counts': ST.stage_counts(self.stages_reached,
                                                 terminal=self._terminal()),
                 'deadline_in_s': (round(self.deadline - time.time(), 1)
@@ -1220,6 +1245,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/sim/run':
                 with SIM_GATE:
                     return self._send(200, SM.simulate(self._body()))
+            if path == '/api/sim/genotype':
+                with SIM_GATE:
+                    return self._send(200, SM.genotype_compare(self._body()))
             if path == '/api/sim/compare':
                 with SIM_GATE:
                     return self._send(200, SM.compare(self._body()))

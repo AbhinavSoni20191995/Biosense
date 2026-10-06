@@ -275,6 +275,30 @@ and nothing here decides anything.</p>
   <p class="caveat" id="cmpNote"></p>
 </section>
 
+<!-- ── engineered line ──────────────────────────────────── -->
+<!-- Wild type against an edited line on the same setpoints and seed. The edit is
+     an assumed change in growth and differentiation — the only way this reactor
+     models a genotype — so the curves show that assumption, not the gene. -->
+<section class="glass card" id="genoCard">
+  <h3><span class="eyebrow">Engineered line against wild type</span></h3>
+  <p class="caveat">Runs the conditions above twice: once as wild type, once as an edited
+    line whose effect you set — how much faster or slower it grows, and how much better or
+    worse it differentiates (×1 = no effect). The curves show that assumption played through
+    the reactor. They are not a prediction of what the gene does.</p>
+  <div class="genoform">
+    <label>Edit <input type="text" id="genoLabel" value="BACH2 KO" maxlength="40"></label>
+    <label>Effect on growth <span class="val" id="genoGrowthV">×1.00</span>
+      <input type="range" id="genoGrowth" min="0.3" max="2" step="0.05" value="1"></label>
+    <label>Effect on differentiation <span class="val" id="genoDiffV">×1.00</span>
+      <input type="range" id="genoDiff" min="0.3" max="2" step="0.05" value="1"></label>
+    <button class="btn go" id="genoBtn" type="button">Compare wild type and edited line</button>
+  </div>
+  <p class="verdict" id="genoVerdict"></p>
+  <div id="genoCurves"></div>
+  <table class="dtab" id="genoTab"></table>
+  <p class="caveat" id="genoNote"></p>
+</section>
+
 <!-- ── carry brief ─────────────────────────────────────── -->
 <section class="glass card hide" id="briefCard">
   <h3><span class="eyebrow">Carry into a loop run</span></h3>
@@ -300,6 +324,7 @@ and nothing here decides anything.</p>
 </footer>
 
 </div>
+<script src="curves.js"></script>
 <script src="simulator.js"></script>
 <script src="runstate.js"></script>
 <script>mountRunBeacon();</script>

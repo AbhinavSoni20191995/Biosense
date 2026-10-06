@@ -772,6 +772,29 @@ function renderBioInsights(bio) {
   }
 }
 
+/* Wild type against the engineered line the run asked about, as the agents ran
+   it on the reactor: the assumed effect stated first, then the curves. */
+let genoSeen = '';
+function renderGenoInsight(g) {
+  const host = $('#genoInsights'); if (!host) return;
+  const key = g ? JSON.stringify([g.verdict, g.assumption]) : '';
+  if (key === genoSeen) return;
+  genoSeen = key; host.textContent = '';
+  if (!g) return;
+  const label = (g.genotype || {}).label || 'edited line';
+  host.append(el('div', 'lab', `Simulated: wild type against ${label}`));
+  if (g.stand_in) host.append(el('p', 'warnc', 'STAND-IN MODEL. ' + (g.stand_in_note || '')));
+  if (g.assumption) host.append(el('p', 'caveat', 'Assumed: ' + g.assumption));
+  if (g.verdict) host.append(el('p', 'm', g.verdict));
+  const curves = el('div'); host.append(curves);
+  BSCurves.render(curves, g.curves, { aLabel: 'wild type', bLabel: label });
+  const tab = el('table', 'dtab'); host.append(tab);
+  BSCurves.table(tab, g.deltas, ['wild type', label]);
+  if ((g.not_represented || []).length) {
+    host.append(el('p', 'dim', 'Not represented in the reactor: ' + g.not_represented.join(', ')));
+  }
+}
+
 function hasPartial(r) {
   const b = (r && r.bundle) || {};
   return !!(r.protocol || (b.hypotheses || []).length || (b.artifacts_ingested || 0) > 0);
@@ -784,9 +807,11 @@ let insightsSeen = '';
 function renderInsights(snap) {
   const panel = $('#insightsPanel'); if (!panel) return;
   const ins = snap.insights, papers = snap.papers_found || [], bio = snap.bioinformatics;
-  if (!ins && !papers.length && !bio) { panel.hidden = true; return; }
+  const geno = snap.genotype_simulation;
+  if (!ins && !papers.length && !bio && !geno) { panel.hidden = true; return; }
   panel.hidden = false;
   renderBioInsights(bio);
+  renderGenoInsight(geno);
   const key = `${ins ? ins.updated_at : 0}:${papers.length}`;
   if (key === insightsSeen) return;
   insightsSeen = key;
