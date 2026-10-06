@@ -333,7 +333,7 @@ class Session:
 
 
 def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop=None,
-          inbox=None):
+          inbox=None, paused=None):
     """Start a session, send the brief, and stream what comes back.
 
     *brief* is the rendered message text. It is placed in the event payload as a
@@ -348,6 +348,10 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
     orchestrator as the next user turn and recorded in the run's stream. It is
     how BioSense tells a running orchestrator that time is nearly up, or that
     the person gave it more; it never decides anything for it.
+    *paused* is polled too: while it returns True the orchestrator and every
+    working specialist are interrupted (nothing is spent while a person
+    decides), and the run holds instead of ending. When it turns False the run
+    resumes, and the inbox carries the message that tells the orchestrator so.
 
     Returns a summary dict. Raises RuntimeUnavailable, and never starts anything
     synthetic.
@@ -362,7 +366,7 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
     try:
         return _run_async(_drive(cfg, brief, title=title, on_event=on_event,
                                 on_session=on_session, should_stop=should_stop,
-                                inbox=inbox))
+                                inbox=inbox, paused=paused))
     except RT.RuntimeUnavailable:
         raise
     except Exception as e:  # noqa: BLE001
@@ -371,7 +375,8 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
                                     hosted=bool(getattr(cfg, 'hosted', False))) from None
 
 
-async def _drive(cfg, brief, *, title, on_event, on_session, should_stop, inbox=None):
+async def _drive(cfg, brief, *, title, on_event, on_session, should_stop, inbox=None,
+                 paused=None):
     client = _client(cfg)
     emit = on_event or (lambda _e: None)
     children = None
@@ -406,6 +411,7 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop, inbox=
         reached, terminal, error = set(), None, None
         turns, last_event, stopped_because, settled = 0, time.monotonic(), None, 0
         dispatched, nudges, said = False, 0, None
+        holding = False
 
         def out(ev):
             if ev.get('stage'):
@@ -420,6 +426,27 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop, inbox=
                 await children.interrupt()
                 terminal, error = 'failed', 'the run was stopped while it was in flight'
                 break
+            if paused and paused():
+                if not holding:
+                    # Interrupted, not ended: the sessions stay, and a
+                    # message resumes them. Nothing runs while a person decides.
+                    holding = True
+                    try:
+                        await client.sessions.interrupt(session_id)
+                    except Exception:  # noqa: BLE001 - stopping is advisory
+                        pass
+                    await children.interrupt()
+                    emit({'kind': 'note', 'stage': None, 'omnigent_type': 'biosense.paused',
+                          'simple': 'Paused at the time limit. The agents are stopped until '
+                                    'you continue or finish the run.',
+                          'technical': 'paused: session and working children interrupted'})
+                await asyncio.sleep(IDLE_RECHECK_S)
+                continue
+            if holding:
+                holding = False
+                last_event, settled = time.monotonic(), 0
+                if stream is None:
+                    stream = await _reopen(client, session_id)
             message = inbox() if inbox else None
             if message:
                 await _deliver(client, session_id, emit, message)

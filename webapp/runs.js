@@ -17,7 +17,10 @@ async function boot() {
   mountSystemCheck();
   mountRunBeacon();
   BS.onChange(s => { page.runs = s.runs; page.projects = s.projects; render(); });
-  page.filter = BS.selected.get();
+  // A link from a project (runs.html?project=<id>) opens on that project's runs.
+  const asked = new URL(location.href).searchParams.get('project');
+  if (asked) BS.selected.set(asked);
+  page.filter = asked || BS.selected.get();
   await load();
   const want = new URLSearchParams(location.search).get('run');
   if (want) openRun(want);

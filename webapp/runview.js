@@ -58,7 +58,9 @@ const RV = (() => {
     if ((act.active_agents || []).length) {
       stats.append(stat('Working', act.active_agents.join(', ')));
     }
-    if (snap.deadline_in_s) {
+    if (snap.paused) {
+      stats.append(stat('Paused', 'waiting for you'));
+    } else if (snap.deadline_in_s) {
       const left = Math.max(0, snap.deadline_in_s);
       stats.append(stat('Stops in', left < 10 * 60
         ? `${Math.floor(left / 60)}:${String(Math.round(left % 60)).padStart(2, '0')}`
@@ -69,7 +71,35 @@ const RV = (() => {
     /* The time limit is a bill cap, not a verdict. Near it the orchestrator is
        told to write what it has, and the person may buy it more time — a
        bounded choice shown exactly when it matters, never taken for them. */
-    if (isLive(snap) && snap.wrap_up_sent) {
+    /* Paused at the limit: the agents are stopped and nothing is spent until
+       the person chooses. Never decided for them, but not held for ever. */
+    if (isLive(snap) && snap.paused) {
+      const box = el('div', 'rv-pause');
+      const mins = Math.round((snap.extension_s || 600) / 60);
+      const hold = snap.pause_hold_s != null ? Math.max(0, Math.round(snap.pause_hold_s / 60)) : null;
+      box.append(el('b', null, 'Paused at the time limit.'));
+      box.append(el('p', null, 'The agents are stopped; nothing is being spent. Continue to give '
+        + `them ${mins} more minutes from where they left off, or finish with what they have `
+        + 'written so far (shown as a partial result).'
+        + (hold != null ? ` If nobody chooses, it finishes in about ${hold} min.` : '')));
+      const row = el('div', 'rv-actions');
+      if (opts.onExtend && snap.extendable) {
+        const go = el('button', 'btn go', `Continue (${mins} more minutes)`);
+        go.addEventListener('click', () => {
+          go.disabled = true; go.textContent = 'continuing…'; opts.onExtend(snap.run_id);
+        });
+        row.append(go);
+      }
+      if (opts.onStop) {
+        const end = el('button', 'btn stop', 'Finish with what it has');
+        end.addEventListener('click', () => {
+          end.disabled = true; end.textContent = 'finishing…'; opts.onStop(snap.run_id);
+        });
+        row.append(end);
+      }
+      box.append(row);
+      host.append(box);
+    } else if (isLive(snap) && snap.wrap_up_sent) {
       host.append(el('p', 'rv-note', 'Time is nearly up. The orchestrator has been told to '
         + 'write the hypothesis with what it already has.'));
     }
@@ -90,10 +120,10 @@ const RV = (() => {
       const row = el('div', 'rv-actions'); row.append(stop);
       /* Offered for the whole run, not only at the end: the person watching
          can see the agents are mid-work long before the countdown says so. */
-      if (opts.onExtend && snap.extendable) {
+      if (opts.onExtend && snap.extendable && !snap.paused) {
         const mins = Math.round((snap.extension_s || 600) / 60);
-        const more = el('button', 'btn more',
-          `Give it ${mins} more minutes (${snap.extensions_left} left)`);
+        const more = el('button', 'btn more', `Give it ${mins} more minutes`
+          + (snap.extensions_left != null ? ` (${snap.extensions_left} left)` : ''));
         more.title = 'Pushes the time limit out and tells the orchestrator it has more time.';
         more.addEventListener('click', () => {
           more.disabled = true; more.textContent = 'extending…';

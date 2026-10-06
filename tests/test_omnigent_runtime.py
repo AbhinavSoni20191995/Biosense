@@ -394,6 +394,24 @@ class AutoContinueTests(unittest.TestCase):
         self.assertEqual(1, len(notes))
         self.assertEqual('Time is nearly up.', notes[0]['simple'])
 
+    def test_a_paused_run_interrupts_once_holds_and_resumes(self):
+        h = _Harness().install(self)
+        h.events = [ev('response.output_item.done',
+                       item={'type': 'function_call', 'name': 'sys_session_send',
+                             'arguments': '{"agent": "literature", "title": "literature-it1"}'}),
+                    ev('response.completed')]
+        state = {'n': 0}
+        def paused():
+            state['n'] += 1
+            return 2 <= state['n'] <= 4
+        events = []
+        OMNI.drive(cfg_for(), 'brief', on_event=events.append, paused=paused)
+        calls = [c[0] for c in h.last_client.sessions.calls]
+        self.assertEqual(1, calls.count('interrupt'), 'interrupted once, not on every pass')
+        notes = [e for e in events if e.get('omnigent_type') == 'biosense.paused']
+        self.assertEqual(1, len(notes))
+        self.assertGreater(state['n'], 4, 'the loop went on after the pause')
+
     def test_an_orchestrator_that_dispatched_is_left_alone(self):
         h = _Harness().install(self)
         h.events = [ev('response.output_item.done',

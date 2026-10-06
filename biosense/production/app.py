@@ -69,6 +69,7 @@ the durable record; this memory is a view of them.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import threading
@@ -125,6 +126,13 @@ MAX_CONCURRENT_REAL = 1
 WRAP_UP_S = 5 * 60
 EXTENSION_S = 10 * 60
 MAX_EXTENSIONS = 2
+# At the time limit an operator's run is PAUSED, not stopped: the agents are
+# interrupted (nothing is spent while waiting) and the person is asked to
+# continue or finish. Unanswered for PAUSE_HOLD_S, it finishes with what the
+# agents wrote. BIOSENSE_PAUSE_AT_LIMIT says whose runs: `admin` (default),
+# `all`, or `none` (every run stops at the limit, the public-demo bill cap).
+PAUSE_HOLD_S = int(os.environ.get('BIOSENSE_PAUSE_HOLD_S') or 30 * 60)
+PAUSE_AT_LIMIT = (os.environ.get('BIOSENSE_PAUSE_AT_LIMIT') or 'admin').strip().lower()
 # The literature agent's running notes, shown live. Bounded so a snapshot stays
 # a snapshot; the whole file is on disk with the run.
 INSIGHTS_MAX_CHARS = 12000
@@ -135,6 +143,11 @@ PAPERS_MAX = 40
 STOP_MESSAGES = {
     'cancelled': 'You stopped this run. The agents were interrupted, so nothing here is a '
                  'finished answer.',
+    'finished_at_pause': 'You finished this run at its pause. The agents were stopped, and what '
+                         'they had written is shown as a partial result — not a finished answer.',
+    'pause_unanswered': 'This run paused at its time limit and nobody chose to continue it, so it '
+                        'was finished with what the agents had written. Nothing here is a '
+                        'finished answer.',
     'timed_out': 'This run reached the deployment\'s time limit for a single real AI run and '
                  'was stopped. Nothing here is a finished answer. While a run is live, the '
                  'live panel offers more time before the limit falls.',
@@ -278,7 +291,13 @@ class DiscoveryRun:
         # runtime is ONLINE to the person reading it, not LOCAL.
         self.runtime_label = runtime_label or RT.LABELS[runtime_mode]
         self.deadline = deadline
-        self.extensions_left = MAX_EXTENSIONS if deadline else 0
+        # An operator's run, by default, pauses at its limit and asks; it is
+        # never cut off unasked. Its extensions are not counted either.
+        self.pauses = bool(deadline) and (
+            PAUSE_AT_LIMIT == 'all' or (PAUSE_AT_LIMIT == 'admin' and bool(started_by_admin)))
+        self.extensions_left = (None if self.pauses else MAX_EXTENSIONS) if deadline else 0
+        self.paused = False
+        self.paused_at = None
         self.wrap_up_sent = False
         self._inbox = []            # messages for the orchestrator, delivered by the adapter
         self.cancelled = None       # the reason it was stopped, once it is
@@ -423,7 +442,20 @@ class DiscoveryRun:
         """
         if self.cancelled:
             return True
+        if self.paused:
+            if time.time() - self.paused_at > PAUSE_HOLD_S:
+                self.cancelled = 'pause_unanswered'
+                return True
+            return False
         if self.deadline and time.time() > self.deadline:
+            if self.pauses:
+                self.paused, self.paused_at = True, time.time()
+                self.add({'kind': 'note', 'stage': None,
+                          'simple': 'Time limit reached: the run is paused. Continue it for '
+                                    f'{EXTENSION_S // 60} more minutes, or finish it with what '
+                                    f'the agents have written.',
+                          'technical': f'paused at deadline; held up to {PAUSE_HOLD_S} s'})
+                return False
             self.cancelled = 'timed_out'
             return True
         if self.deadline and not self.wrap_up_sent and time.time() >= self.deadline - WRAP_UP_S:
@@ -437,6 +469,10 @@ class DiscoveryRun:
     def _tell(self, text, *, simple, technical=None):
         with self.cv:
             self._inbox.append({'text': text, 'simple': simple, 'technical': technical})
+
+    def is_paused(self):
+        """Polled by the adapter: hold the agents while a person decides."""
+        return self.paused
 
     def take_message(self):
         """The next message for the orchestrator, or None. Polled by the adapter."""
@@ -463,21 +499,37 @@ class DiscoveryRun:
         extensions left, or a run that is no longer live.
         """
         with self.cv:
-            if self.finished_at is not None or self.cancelled or not self.deadline \
-                    or self.extensions_left <= 0:
+            if self.finished_at is not None or self.cancelled or not self.deadline:
                 return False
-            self.deadline += EXTENSION_S
-            self.extensions_left -= 1
+            if self.extensions_left is not None and self.extensions_left <= 0:
+                return False
+            was_paused = self.paused
+            # From a pause the clock restarts now; otherwise the time is added.
+            self.deadline = (time.time() if was_paused else self.deadline) + EXTENSION_S
+            if self.extensions_left is not None:
+                self.extensions_left -= 1
+            self.paused, self.paused_at = False, None
             self.wrap_up_sent = False
+        left = '' if self.extensions_left is None else f' ({self.extensions_left} extension(s) left)'
         self.add({'kind': 'note', 'stage': None,
-                  'simple': f'The run was given {EXTENSION_S // 60} more minutes '
-                            f'({self.extensions_left} extension(s) left).',
-                  'technical': f'deadline extended by {EXTENSION_S} s'})
-        self._tell(f'BioSense: the person gave this run {EXTENSION_S // 60} more minutes; '
-                   f'about {self._minutes_left()} remain. Finish the hypothesis properly, '
-                   f'then the simulator comparison where the project models the parameter.',
-                   simple='The orchestrator was told it has more time.',
-                   technical='extension message sent')
+                  'simple': (f'Continued from the pause for {EXTENSION_S // 60} more minutes.'
+                             if was_paused else
+                             f'The run was given {EXTENSION_S // 60} more minutes.') + left,
+                  'technical': f'deadline extended by {EXTENSION_S} s'
+                               + (' (resumed from pause)' if was_paused else '')})
+        if was_paused:
+            text = (f'BioSense: the run was paused at its time limit, and the person chose to '
+                    f'continue it for {EXTENSION_S // 60} more minutes. Your last turn and any '
+                    f'specialist still working were interrupted. Pick up where you left off: '
+                    f'read your inbox, send again (same title, so the thread continues) any '
+                    f'specialist whose answer you still need, and finish the hypothesis, the '
+                    f'design choices and the simulator comparison.')
+        else:
+            text = (f'BioSense: the person gave this run {EXTENSION_S // 60} more minutes; '
+                    f'about {self._minutes_left()} remain. Finish the hypothesis properly, '
+                    f'then the simulator comparison where the project models the parameter.')
+        self._tell(text, simple='The orchestrator was told it has more time.',
+                   technical='resume message sent' if was_paused else 'extension message sent')
         return True
 
     @property
@@ -546,7 +598,12 @@ class DiscoveryRun:
                                   if self.deadline and not self.finished_at else None),
                 'cancellable': self.finished_at is None,
                 'extendable': (self.finished_at is None and not self.cancelled
-                               and bool(self.deadline) and self.extensions_left > 0),
+                               and bool(self.deadline)
+                               and (self.extensions_left is None or self.extensions_left > 0)),
+                'paused': self.paused,
+                'pause_hold_s': (round(PAUSE_HOLD_S - (time.time() - self.paused_at), 1)
+                                 if self.paused else None),
+                'pauses_at_limit': self.pauses,
                 'extensions_left': self.extensions_left,
                 'extension_s': EXTENSION_S,
                 'wrap_up_sent': self.wrap_up_sent,
@@ -671,7 +728,7 @@ class DiscoveryRegistry:
                                     on_session=lambda sess: setattr(run, 'session',
                                                                     sess.public()),
                                     should_stop=run.should_stop,
-                                    inbox=run.take_message,
+                                    inbox=run.take_message, paused=run.is_paused,
                                     projects_dir=run.projects_dir)
                 summary = res['omnigent']
                 run.session = summary['session']
@@ -802,6 +859,8 @@ class DiscoveryRegistry:
         run = self.get(rid, owner=owner)
         if run is None or run.finished_at is not None:
             return None
+        if run.paused and reason == 'cancelled':
+            reason = 'finished_at_pause'
         if not run.stop(reason, STOP_MESSAGES[reason]):
             return None
         sess = (run.session or {}).get('omnigent_session_id')

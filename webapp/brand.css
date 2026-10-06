@@ -169,6 +169,16 @@ button{font-family:inherit}
 .btn.stop{margin-left:10px;border-color:color-mix(in srgb,var(--bad) 55%,transparent);color:var(--bad);
   background:color-mix(in srgb,var(--bad) 7%,transparent)}
 .btn.stop:hover:not(:disabled){background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.prunlist{margin-top:12px}
+.prunlist .prun{display:flex;align-items:center;gap:10px;padding:6px 0;
+  border-top:1px solid color-mix(in srgb,var(--ink-3) 18%,transparent)}
+.prunlist .pobj{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prunlist a{display:inline-block;margin-top:6px}
+.rv-pause{margin:10px 0;padding:12px 14px;border-radius:10px;
+  border:1px solid color-mix(in srgb,var(--warn) 55%,transparent);
+  background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.rv-pause p{margin:6px 0 10px}
+.rv-pause .btn.stop{margin-left:10px}
 .btn.more{margin-left:10px;border-color:color-mix(in srgb,var(--brand) 55%,transparent);color:var(--brand)}
 .btn.more:hover:not(:disabled){background:color-mix(in srgb,var(--brand) 12%,transparent)}
 .btn.go{background:linear-gradient(135deg,var(--brand),var(--brand-deep));

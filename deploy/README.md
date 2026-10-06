@@ -265,6 +265,8 @@ Still enforced in code, exactly as in the synthetic image:
 | | `BIOSENSE_AGENT_MODEL` | `claude-opus-5` | the agents' model, passed on as `ANTHROPIC_MODEL`. Claude Opus 5.5's broader safeguards can stop biology-research-adjacent runs (`[bio]`); its own message says to change the model |
 | | `BIOSENSE_SPECIALIST_MODEL` | no | a different model for the specialists (literature, bioinformatics, analysis…), e.g. a faster one; the orchestrator stays on `ANTHROPIC_MODEL`. Written into a copy of the agent bundle at boot |
 | | `BIOSENSE_SPECIALIST_EFFORT` | no | the specialists' reasoning effort: `low`, `medium` or `high` |
+| | `BIOSENSE_PAUSE_AT_LIMIT` | `admin` | at the time limit, whose runs **pause and ask** (continue / finish) instead of stopping: `admin`, `all`, or `none`. A paused run's agents are interrupted, so nothing is spent while waiting |
+| | `BIOSENSE_PAUSE_HOLD_S` | `1800` | how long a paused run waits for an answer before it finishes with what the agents wrote |
 | | `BIOSENSE_ORCHESTRATOR_MODEL` | no | the orchestrator's own model, when it should differ from `ANTHROPIC_MODEL` |
 | Remote | `BIOSENSE_OMNIGENT_TOKEN` / `_TOKEN_FILE` | no | only for `remote` mode |
 | Accounts | `BIOSENSE_AUTH_SERVER` | **no — you set it** | the one issuer sign-in is accepted from |

@@ -310,6 +310,13 @@ class RunEndTests(unittest.TestCase):
         self.assertIn('confidence_basis', js)
         self.assertIn('limitation_groups', js)
         self.assertIn('q.design_choice', js)
+        # Runs are listed under their project; a paused run asks.
+        self.assertIn('id="projectRunList"', html)
+        self.assertIn('function renderProjectRunList', js)
+        rv = (K.ROOT / 'webapp' / 'runview.js').read_text()
+        self.assertIn('Paused at the time limit.', rv)
+        self.assertIn('Finish with what it has', rv)
+        self.assertIn("searchParams.get('project')", (K.ROOT / 'webapp' / 'runs.js').read_text())
         self.assertIn('id="effort"', html)
         rv = (K.ROOT / 'webapp' / 'runview.js').read_text()
         self.assertIn('snap.extendable', rv)

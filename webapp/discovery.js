@@ -115,7 +115,8 @@ async function boot() {
   mountRunBeacon();
   /* The selector's active-run counts come from the same list the Runs page
      reads, so "1 active investigation" means the same thing on both. */
-  BS.onChange(() => {
+  BS.onChange(s => {
+    renderProjectRunList(s);
     /* Not while somebody is using it: rebuilding a select that has focus closes
        the list under their cursor. */
     if (document.activeElement === $('#project')) return;
@@ -347,6 +348,7 @@ async function showProject() {
   const note = $('#projectNote');
   if (!row) { note.textContent = ''; return; }
   BS.selected.set(id);
+  renderProjectRunList(BS.state);
   note.textContent = row.has_simulator
     ? 'This project has a mechanistic model, so candidate parameters it covers get a prediction.'
     : 'This project has no mechanistic model. Parameters are real design variables; nothing '
@@ -367,6 +369,39 @@ async function showProject() {
 }
 
 function currentProject() { const s = $('#project'); return s ? s.value : null; }
+
+/* The project's runs, right under the picker: a scientist comes back to a
+   project to see what it already found, so that is one click, not three. Fed
+   by the same listing as the Runs page, scoped to the account. */
+const RUN_LIST_MAX = 8;
+function renderProjectRunList(snapshot) {
+  const host = $('#projectRunList'); if (!host) return;
+  const id = currentProject();
+  const runs = ((snapshot && snapshot.runs) || []).filter(r => !id || r.project_id === id);
+  host.textContent = '';
+  if (!runs.length) return;
+  host.append(el('div', 'lab', `Runs in this project (${runs.length})`));
+  runs.slice(0, RUN_LIST_MAX).forEach(r => {
+    const row = el('div', 'prun');
+    const when = r.started_at ? new Date(r.started_at * 1000).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    row.append(el('span', 'dim mono', when));
+    row.append(el('span', 'rv-status ' + (r.live ? 'go' : r.group || ''), BS.fmt.status(r)));
+    const what = el('span', 'pobj', r.hypothesis || r.objective || r.run_id);
+    what.title = r.objective || '';
+    row.append(what);
+    if (r.hypothesis_count > 1) row.append(el('span', 'dim', `+${r.hypothesis_count - 1}`));
+    const open = el('button', 'btn', r.live ? 'Watch' : 'Open');
+    open.addEventListener('click', () => watchRun(r.run_id));
+    row.append(open);
+    host.append(row);
+  });
+  if (runs.length > RUN_LIST_MAX) {
+    const a = el('a', 'dim', `All ${runs.length} runs of this project →`);
+    a.href = `runs.html?project=${encodeURIComponent(id)}`;
+    host.append(a);
+  }
+}
 
 /* The project as a workspace: what the process is, what is running in it, and
    what it has produced. A panel, deliberately — not a management screen. */
@@ -684,6 +719,7 @@ function showStop(snap) {
 function stopFromButton() {
   const b = $('#stopBtn'); const id = b && b.dataset.run;
   if (!id) return;
+  if (state.run && state.run.paused) { b.disabled = true; b.textContent = 'finishing…'; stopRun(id); return; }
   if (!confirm('Stop this run?\n\nThe orchestrator and every specialist still working are '
     + 'interrupted. Whatever they have already written is kept, and the run is recorded as '
     + 'stopped — not as an answer.')) return;

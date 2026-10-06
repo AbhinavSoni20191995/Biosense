@@ -718,6 +718,53 @@ class StopAndTimeoutTests(unittest.TestCase):
             run.scan_artifacts(force=True)
             self.assertIn('PMC3', run.snapshot()['insights']['text'])
 
+    def test_an_operators_run_pauses_at_the_limit_and_asks(self):
+        """It should not stop unless the person stops it: at the limit an
+        operator's run is paused, nothing is spent, and they choose."""
+        from biosense.production import app as APP
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        run = APP.DiscoveryRun('k' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                               deadline=time.time() - 1, started_by_admin=True)
+        self.assertTrue(run.pauses)
+        self.assertFalse(run.should_stop(), 'paused, not stopped')
+        self.assertTrue(run.is_paused())
+        snap = run.snapshot()
+        self.assertTrue(snap['paused'] and snap['extendable'])
+        self.assertIsNone(snap['extensions_left'], 'an operator is not counted')
+        self.assertIn('paused', run.events[-1]['simple'])
+        # Continue: the clock restarts from now and the orchestrator is told to resume.
+        self.assertTrue(run.extend())
+        self.assertFalse(run.is_paused())
+        self.assertGreater(run.deadline, time.time() + APP.EXTENSION_S - 5)
+        self.assertIn('chose to continue', run.take_message()['text'])
+        # Unanswered, it finishes with what the agents wrote.
+        run.deadline = time.time() - 1
+        run.should_stop()
+        run.paused_at = time.time() - APP.PAUSE_HOLD_S - 1
+        self.assertTrue(run.should_stop())
+        self.assertEqual('pause_unanswered', run.cancelled)
+
+    def test_finishing_a_paused_run_is_recorded_as_the_persons_choice(self):
+        from biosense.production import app as APP
+        reg = APP.DiscoveryRegistry.__new__(APP.DiscoveryRegistry)
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        run = APP.DiscoveryRun('m' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                               deadline=time.time() - 1, started_by_admin=True)
+        run.should_stop()
+        reg.get = lambda rid, owner=None: run
+        reg.cfg = None
+        self.assertIs(run, reg.cancel('m' * 16))
+        self.assertEqual('finished_at_pause', run.cancelled)
+
+    def test_a_public_run_still_stops_at_the_limit(self):
+        from biosense.production import app as APP
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        run = APP.DiscoveryRun('n' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                               deadline=time.time() - 1)
+        self.assertFalse(run.pauses)
+        self.assertTrue(run.should_stop())
+        self.assertEqual('timed_out', run.cancelled)
+
     def test_a_finished_run_cannot_be_stopped_again(self):
         from biosense.production import app as APP
         req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
