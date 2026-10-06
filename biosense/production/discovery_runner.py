@@ -184,7 +184,7 @@ def run_dir_for_agents(cfg_runtime, out_dir):
 
 
 def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
-             should_stop=None, projects_dir=None):
+             should_stop=None, inbox=None, projects_dir=None):
     """The agent path. Starts an Omnigent session and streams it.
 
     Never falls back: a runtime that cannot start raises, and the caller records
@@ -212,7 +212,7 @@ def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
     summary = OMNI.drive(cfg_runtime, brief,
                          title=f'BioSense: {request["objective"][:80]}',
                          on_event=on_event, on_session=on_session,
-                         should_stop=should_stop)
+                         should_stop=should_stop, inbox=inbox)
     return {'omnigent': summary, 'out_dir': str(out)}
 
 

@@ -273,7 +273,8 @@ function renderLimits() {
   if (lim.max_real_runs_per_day)
     bits.push(`${lim.max_real_runs_per_day} across the service per day`);
   if (lim.real_run_timeout_s)
-    bits.push(`each run stops after ${Math.round(lim.real_run_timeout_s / 60)} minutes`);
+    bits.push(`each run stops after ${Math.round(lim.real_run_timeout_s / 60)} minutes `
+      + '(the live panel offers more time before it does)');
   if (lim.real_run_cooldown_s)
     bits.push(`${lim.real_run_cooldown_s}s between runs`);
   host.append(el('span', 'dim', bits.join(' · ')));
@@ -619,7 +620,7 @@ function watchRun(runId) {
   state.detach = RV.attach(runId, {
     snapshot(snap) {
       state.run = snap;
-      RV.header($('#rvHead'), snap, { onStop: stopRun });
+      RV.header($('#rvHead'), snap, { onStop: stopRun, onExtend: extendRun });
       RV.stages($('#rvStages'), snap);
       RV.agents($('#rvAgents'), snap);
       RV.timeline($('#rvTimeline'), snap);
@@ -650,6 +651,13 @@ function watchRun(runId) {
 
 async function stopRun(runId) {
   try { await post(`/api/discovery/${runId}/cancel`); }
+  catch (e) { fail(e); }
+}
+
+/* More time for a live run, within the deployment's bounds. The server says no
+   when there is none to give, and that answer is shown rather than swallowed. */
+async function extendRun(runId) {
+  try { await post(`/api/discovery/${runId}/extend`); }
   catch (e) { fail(e); }
 }
 

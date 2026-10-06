@@ -127,7 +127,7 @@ function openRun(runId) {
     snapshot(snap) {
       $('#detailTitle').textContent = snap.objective || 'Run';
       $('#detailHint').textContent = `${snap.project_id || ''} · ${snap.run_id}`;
-      RV.header(head, snap, { onStop: stop });
+      RV.header(head, snap, { onStop: stop, onExtend: extend });
       RV.stages(stages, snap);
       RV.agents(agents, snap);
       RV.timeline(tl, snap);
@@ -139,6 +139,11 @@ function openRun(runId) {
       host.append(el('p', 'dim', 'That run is not available to this account.'));
     },
   });
+}
+
+async function extend(runId) {
+  try { await BS.json(`/api/discovery/${runId}/extend`, { method: 'POST' }); }
+  catch (e) { alert(e.message || 'that run cannot be extended'); }
 }
 
 async function stop(runId) {

@@ -374,6 +374,26 @@ class AutoContinueTests(unittest.TestCase):
         self.assertIn('QC profile', note[0]['technical'])
         self.assertEqual('complete', out['terminal'])
 
+    def test_a_message_from_biosense_reaches_the_orchestrator_and_the_record(self):
+        """The app drops a message in (time is nearly up; more time was given);
+        the adapter posts it as the next user turn and records that it did."""
+        h = _Harness().install(self)
+        h.events = [ev('response.output_item.done',
+                       item={'type': 'function_call', 'name': 'sys_session_send',
+                             'arguments': '{"agent": "literature", "title": "literature-it1"}'}),
+                    ev('response.completed')]
+        queue = [{'text': 'BioSense: about 5 minutes remain. Write what you have.',
+                  'simple': 'Time is nearly up.', 'technical': 'wrap-up'}]
+        events = []
+        OMNI.drive(cfg_for(), 'brief', on_event=events.append,
+                   inbox=lambda: queue.pop(0) if queue else None)
+        posts = [c for c in h.last_client.sessions.calls if c[0] == 'post_event']
+        texts = [c[2]['data']['content'][0]['text'] for c in posts]
+        self.assertIn('BioSense: about 5 minutes remain. Write what you have.', texts)
+        notes = [e for e in events if e.get('omnigent_type') == 'biosense.message']
+        self.assertEqual(1, len(notes))
+        self.assertEqual('Time is nearly up.', notes[0]['simple'])
+
     def test_an_orchestrator_that_dispatched_is_left_alone(self):
         h = _Harness().install(self)
         h.events = [ev('response.output_item.done',

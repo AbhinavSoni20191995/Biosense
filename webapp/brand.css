@@ -169,6 +169,8 @@ button{font-family:inherit}
 .btn.stop{margin-left:10px;border-color:color-mix(in srgb,var(--bad) 55%,transparent);color:var(--bad);
   background:color-mix(in srgb,var(--bad) 7%,transparent)}
 .btn.stop:hover:not(:disabled){background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.btn.more{margin-left:10px;border-color:color-mix(in srgb,var(--brand) 55%,transparent);color:var(--brand)}
+.btn.more:hover:not(:disabled){background:color-mix(in srgb,var(--brand) 12%,transparent)}
 .btn.go{background:linear-gradient(135deg,var(--brand),var(--brand-deep));
   border-color:transparent;color:#fff;font-size:14px;padding:13px 26px;
   letter-spacing:.02em;

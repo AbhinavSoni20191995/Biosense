@@ -250,6 +250,9 @@ class RunEndTests(unittest.TestCase):
         self.assertIn('id="stopBtn"', html)
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
         self.assertIn('/cancel', js)
+        self.assertIn('/extend', js)
+        rv = (K.ROOT / 'webapp' / 'runview.js').read_text()
+        self.assertIn('snap.extendable', rv)
         self.assertIn("$('#stopBtn').addEventListener('click', stopFromButton)", js)
 
 

@@ -625,6 +625,57 @@ class StopAndTimeoutTests(unittest.TestCase):
         live.stop('cancelled', APP.STOP_MESSAGES['cancelled'])
         self.assertTrue(live.should_stop())
 
+    def test_near_the_deadline_the_orchestrator_is_told_once_to_write_what_it_has(self):
+        """A run cut off mid-hypothesis throws away what the specialists found:
+        the cap is a bill cap, not a verdict, so the orchestrator hears about
+        it while there is still time to write."""
+        from biosense.production import app as APP
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        run = APP.DiscoveryRun('d' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                               deadline=time.time() + APP.WRAP_UP_S + 30)
+        self.assertFalse(run.should_stop())
+        self.assertIsNone(run.take_message(), 'too early to say anything')
+        run.deadline = time.time() + APP.WRAP_UP_S - 1
+        self.assertFalse(run.should_stop(), 'a wrap-up is not a stop')
+        self.assertFalse(run.should_stop())
+        msg = run.take_message()
+        self.assertIn('write the hypothesis', msg['text'])
+        self.assertIn('ai-x/', msg['text'])
+        self.assertIn('direction_only or a labelled best guess', msg['text'])
+        self.assertIsNone(run.take_message(), 'said once')
+        self.assertTrue(run.snapshot()['wrap_up_sent'])
+        # The record of it is written when the adapter delivers it, once.
+        self.assertIn('Time is nearly up', msg['simple'])
+
+    def test_the_person_may_extend_a_live_run_a_bounded_number_of_times(self):
+        from biosense.production import app as APP
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        run = APP.DiscoveryRun('e' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                               deadline=time.time() + 60)
+        before = run.deadline
+        self.assertTrue(run.snapshot()['extendable'])
+        self.assertTrue(run.extend())
+        self.assertAlmostEqual(before + APP.EXTENSION_S, run.deadline, delta=1)
+        self.assertEqual(APP.MAX_EXTENSIONS - 1, run.extensions_left)
+        self.assertIn('more minutes', run.take_message()['text'])
+        for _ in range(APP.MAX_EXTENSIONS - 1):
+            self.assertTrue(run.extend())
+        self.assertFalse(run.extend(), 'the bound holds')
+        self.assertFalse(run.snapshot()['extendable'])
+        # Extending lifts an earlier wrap-up, so the next one is sent again in time.
+        run2 = APP.DiscoveryRun('g' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                                deadline=time.time() + 10)
+        run2.should_stop(); self.assertTrue(run2.wrap_up_sent)
+        run2.extend(); self.assertFalse(run2.wrap_up_sent)
+        # No deadline, nothing to extend; a stopped run, likewise.
+        free = APP.DiscoveryRun('h' * 16, req, Path('/tmp/ai-x'), 'synthetic_demo')
+        self.assertFalse(free.extend())
+        self.assertFalse(free.snapshot()['extendable'])
+        stopped = APP.DiscoveryRun('i' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                                   deadline=time.time() + 60)
+        stopped.stop('cancelled', 'x')
+        self.assertFalse(stopped.extend())
+
     def test_a_finished_run_cannot_be_stopped_again(self):
         from biosense.production import app as APP
         req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
@@ -716,6 +767,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(404, code)
         self.assertEqual('f' * 16, d['run_id'])
         self.assertEqual(404, self._req('POST', '/api/discovery/' + 'f' * 16 + '/cancel')[0])
+        self.assertEqual(404, self._req('POST', '/api/discovery/' + 'f' * 16 + '/extend')[0])
 
     def test_a_finished_run_survives_being_dropped_from_memory(self):
         """What a browser reload does, and then what a redeploy does."""

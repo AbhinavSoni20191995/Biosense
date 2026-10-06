@@ -332,7 +332,8 @@ class Session:
                 'llm_model': self.llm_model}
 
 
-def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop=None):
+def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop=None,
+          inbox=None):
     """Start a session, send the brief, and stream what comes back.
 
     *brief* is the rendered message text. It is placed in the event payload as a
@@ -343,6 +344,10 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
     *on_session* receives the `Session` as soon as the ids exist, so a run can
     record them even if the stream later fails.
     *should_stop* is polled between events so a shutting-down server can let go.
+    *inbox* is polled beside it: a message it returns is posted to the
+    orchestrator as the next user turn and recorded in the run's stream. It is
+    how BioSense tells a running orchestrator that time is nearly up, or that
+    the person gave it more; it never decides anything for it.
 
     Returns a summary dict. Raises RuntimeUnavailable, and never starts anything
     synthetic.
@@ -356,7 +361,8 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
     RT.check_sandbox(cfg)
     try:
         return _run_async(_drive(cfg, brief, title=title, on_event=on_event,
-                                on_session=on_session, should_stop=should_stop))
+                                on_session=on_session, should_stop=should_stop,
+                                inbox=inbox))
     except RT.RuntimeUnavailable:
         raise
     except Exception as e:  # noqa: BLE001
@@ -365,7 +371,7 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
                                     hosted=bool(getattr(cfg, 'hosted', False))) from None
 
 
-async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
+async def _drive(cfg, brief, *, title, on_event, on_session, should_stop, inbox=None):
     client = _client(cfg)
     emit = on_event or (lambda _e: None)
     children = None
@@ -414,6 +420,12 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
                 await children.interrupt()
                 terminal, error = 'failed', 'the run was stopped while it was in flight'
                 break
+            message = inbox() if inbox else None
+            if message:
+                await _deliver(client, session_id, emit, message)
+                last_event, settled = time.monotonic(), 0
+                if stream is None:
+                    stream = await _reopen(client, session_id)
             raw = None
             if stream is None:
                 # No tail to wait on: pause instead of spinning, then ask.
@@ -709,10 +721,25 @@ async def _continue(client, session_id, emit, said):
                     'wait for an answer nobody can give in a web run. BioSense told it '
                     'once to proceed on stated assumptions.',
           'technical': 'auto-continue: ' + ((said or '(no closing message)')[:600])})
+    await _post_user(client, session_id, AUTO_CONTINUE_TEXT)
+
+
+async def _deliver(client, session_id, emit, message):
+    """A message from BioSense to a running orchestrator, recorded as such.
+
+    *message* is {'text', 'simple', 'technical'}: what the orchestrator is told,
+    and how the run's own stream describes it. BioSense speaks here only about
+    time — nearly up, or extended — never about the science.
+    """
+    emit({'kind': 'note', 'stage': None, 'omnigent_type': 'biosense.message',
+          'simple': message['simple'], 'technical': message.get('technical') or message['text']})
+    await _post_user(client, session_id, message['text'])
+
+
+async def _post_user(client, session_id, text):
     await client.sessions.post_event(session_id, {
         'type': 'message',
-        'data': {'role': 'user',
-                 'content': [{'type': 'input_text', 'text': AUTO_CONTINUE_TEXT}]}})
+        'data': {'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}})
 
 
 async def _reopen(client, session_id):

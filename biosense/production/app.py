@@ -43,6 +43,7 @@ Endpoints
     GET  /api/runs/<id>/events    Server-Sent Events, live, from `?after=<n>`
     GET  /api/runs/<id>/report    the reasoning report as HTML
     POST /api/discovery/<id>/cancel   stop a run in flight, and its Omnigent session
+    POST /api/discovery/<id>/extend   more time for a live run, within the deployment's bounds
     GET  /api/datasets            registered PUBLIC datasets only; private ones are
                                   never listed here and never served
     GET  /api/analysis-tools      the tool registry: what can run, over what, and
@@ -116,6 +117,14 @@ SIM_GATE = threading.BoundedSemaphore(MAX_CONCURRENT_SIM)
 # A real-AI run costs money and lasts minutes rather than a second, so it gets a
 # tighter cap than the synthetic loop and its own queue.
 MAX_CONCURRENT_REAL = 1
+# The time limit is a bill cap, not a verdict: a run cut off mid-hypothesis
+# throws away everything the specialists found. So the orchestrator is told
+# WRAP_UP_S before the deadline to write what it has, and the person watching
+# may extend the run, EXTENSION_S at a time and MAX_EXTENSIONS times — a
+# bounded choice, never an automatic one.
+WRAP_UP_S = 5 * 60
+EXTENSION_S = 10 * 60
+MAX_EXTENSIONS = 2
 # Why a run stopped short, in the words the person reading it needs. Both are
 # recorded as `stopped`, never as a result: a run that was halted produced no
 # answer, and saying otherwise is the one thing this product must never do.
@@ -123,7 +132,8 @@ STOP_MESSAGES = {
     'cancelled': 'You stopped this run. The agents were interrupted, so nothing here is a '
                  'finished answer.',
     'timed_out': 'This run reached the deployment\'s time limit for a single real AI run and '
-                 'was stopped. Nothing here is a finished answer.',
+                 'was stopped. Nothing here is a finished answer. While a run is live, the '
+                 'live panel offers more time before the limit falls.',
     'shutdown': 'The server shut down while this run was in flight.',
 }
 # After the agent stream ends, BioSense is still working: discovering the files
@@ -258,6 +268,9 @@ class DiscoveryRun:
         # runtime is ONLINE to the person reading it, not LOCAL.
         self.runtime_label = runtime_label or RT.LABELS[runtime_mode]
         self.deadline = deadline
+        self.extensions_left = MAX_EXTENSIONS if deadline else 0
+        self.wrap_up_sent = False
+        self._inbox = []            # messages for the orchestrator, delivered by the adapter
         self.cancelled = None       # the reason it was stopped, once it is
         self.events = []
         self.stages_reached = set()
@@ -357,7 +370,59 @@ class DiscoveryRun:
         if self.deadline and time.time() > self.deadline:
             self.cancelled = 'timed_out'
             return True
+        if self.deadline and not self.wrap_up_sent and time.time() >= self.deadline - WRAP_UP_S:
+            self.wrap_up_sent = True
+            self._tell(self._wrap_up_text(),
+                       simple='Time is nearly up. The orchestrator was told to write the '
+                              'hypothesis with what it already has.',
+                       technical='wrap-up sent %d s before the deadline' % WRAP_UP_S)
         return False
+
+    def _tell(self, text, *, simple, technical=None):
+        with self.cv:
+            self._inbox.append({'text': text, 'simple': simple, 'technical': technical})
+
+    def take_message(self):
+        """The next message for the orchestrator, or None. Polled by the adapter."""
+        with self.cv:
+            return self._inbox.pop(0) if self._inbox else None
+
+    def _minutes_left(self):
+        return max(0, int(round((self.deadline - time.time()) / 60)))
+
+    def _wrap_up_text(self):
+        return (f'BioSense: about {self._minutes_left()} minutes remain before this run\'s time '
+                f'limit stops it. Stop gathering now. With what you already have, write the '
+                f'hypothesis file(s), the research context and the limitations into '
+                f'`{self.out_dir.name}/` with the commands the brief names. Where the magnitude '
+                f'is not established use direction_only or a labelled best guess; put every '
+                f'open question and anything a specialist has not returned under '
+                f'limitations. Do not wait for a specialist that is still working.')
+
+    def extend(self):
+        """More time, by the person's choice: EXTENSION_S, at most MAX_EXTENSIONS times.
+
+        The orchestrator is told, so a wrap-up it was already given is lifted.
+        Returns False when there is nothing to extend: no deadline, no
+        extensions left, or a run that is no longer live.
+        """
+        with self.cv:
+            if self.finished_at is not None or self.cancelled or not self.deadline \
+                    or self.extensions_left <= 0:
+                return False
+            self.deadline += EXTENSION_S
+            self.extensions_left -= 1
+            self.wrap_up_sent = False
+        self.add({'kind': 'note', 'stage': None,
+                  'simple': f'The run was given {EXTENSION_S // 60} more minutes '
+                            f'({self.extensions_left} extension(s) left).',
+                  'technical': f'deadline extended by {EXTENSION_S} s'})
+        self._tell(f'BioSense: the person gave this run {EXTENSION_S // 60} more minutes; '
+                   f'about {self._minutes_left()} remain. Finish the hypothesis properly, '
+                   f'then the simulator comparison where the project models the parameter.',
+                   simple='The orchestrator was told it has more time.',
+                   technical='extension message sent')
+        return True
 
     @property
     def is_live(self):
@@ -422,6 +487,11 @@ class DiscoveryRun:
                 'deadline_in_s': (round(self.deadline - time.time(), 1)
                                   if self.deadline and not self.finished_at else None),
                 'cancellable': self.finished_at is None,
+                'extendable': (self.finished_at is None and not self.cancelled
+                               and bool(self.deadline) and self.extensions_left > 0),
+                'extensions_left': self.extensions_left,
+                'extension_s': EXTENSION_S,
+                'wrap_up_sent': self.wrap_up_sent,
                 'recovered': False,
             }
 
@@ -543,6 +613,7 @@ class DiscoveryRegistry:
                                     on_session=lambda sess: setattr(run, 'session',
                                                                     sess.public()),
                                     should_stop=run.should_stop,
+                                    inbox=run.take_message,
                                     projects_dir=run.projects_dir)
                 summary = res['omnigent']
                 run.session = summary['session']
@@ -680,6 +751,13 @@ class DiscoveryRegistry:
             from . import omnigent_runtime as OMNI
             OMNI.interrupt(self.cfg.for_mode(run.runtime_mode), sess)
         return run
+
+    def extend(self, rid, *, owner=None):
+        """More time for a live run, by whoever may see it. None if there is none to give."""
+        run = self.get(rid, owner=owner)
+        if run is None:
+            return None
+        return run if run.extend() else False
 
     def listing(self, *, owner=None, project_id=None, limit=200):
         """Every run this caller may see: the live ones and the durable ones.
@@ -942,6 +1020,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/cancel', path)
             if m:
                 return self._cancel_discovery(m.group(1))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/extend', path)
+            if m:
+                return self._extend_discovery(m.group(1))
             if path == '/api/benchmarks/run':
                 return self._run_benchmark(self._body(MAX_BODY_DISCOVERY))
             if path == '/api/projects':
@@ -1174,6 +1255,18 @@ class Handler(BaseHTTPRequestHandler):
                                     'runtime_mode': req['runtime_mode'],
                                     'runtime_label': RT.LABELS[req['runtime_mode']]})
         return self._send(202, run.snapshot())
+
+    def _extend_discovery(self, rid):
+        """Give a live run more time, within the bounds the deployment sets."""
+        owner = self._identity().owner
+        run = self.discovery.extend(rid, owner=owner)
+        if run is None:
+            return self._send(404, {'error': 'no such discovery run in this process'})
+        if run is False:
+            return self._send(409, {'error': 'this run cannot be extended: it has finished, '
+                                             'has no time limit, or has used every extension'})
+        return self._send(200, {'run_id': rid, 'deadline_in_s': round(run.deadline - time.time(), 1),
+                                'extensions_left': run.extensions_left})
 
     def _cancel_discovery(self, rid):
         """Stop a run in flight.

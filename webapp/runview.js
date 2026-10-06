@@ -59,9 +59,20 @@ const RV = (() => {
       stats.append(stat('Working', act.active_agents.join(', ')));
     }
     if (snap.deadline_in_s) {
-      stats.append(stat('Stops after', `${Math.round(snap.deadline_in_s / 60)} min`));
+      const left = Math.max(0, snap.deadline_in_s);
+      stats.append(stat('Stops in', left < 10 * 60
+        ? `${Math.floor(left / 60)}:${String(Math.round(left % 60)).padStart(2, '0')}`
+        : `${Math.round(left / 60)} min`));
     }
     host.append(stats);
+
+    /* The time limit is a bill cap, not a verdict. Near it the orchestrator is
+       told to write what it has, and the person may buy it more time — a
+       bounded choice shown exactly when it matters, never taken for them. */
+    if (isLive(snap) && snap.wrap_up_sent) {
+      host.append(el('p', 'rv-note', 'Time is nearly up. The orchestrator has been told to '
+        + 'write the hypothesis with what it already has.'));
+    }
 
     if (snap.status === 'finalizing') {
       host.append(el('p', 'rv-note', 'The agents have finished. BioSense is collecting the '
@@ -76,7 +87,19 @@ const RV = (() => {
         stop.disabled = true; stop.textContent = 'stopping…';
         opts.onStop(snap.run_id);
       });
-      const row = el('div', 'rv-actions'); row.append(stop); host.append(row);
+      const row = el('div', 'rv-actions'); row.append(stop);
+      const soon = snap.deadline_in_s != null && snap.deadline_in_s <= 8 * 60;
+      if (opts.onExtend && snap.extendable && (soon || snap.wrap_up_sent)) {
+        const mins = Math.round((snap.extension_s || 600) / 60);
+        const more = el('button', 'btn more',
+          `Give it ${mins} more minutes (${snap.extensions_left} left)`);
+        more.addEventListener('click', () => {
+          more.disabled = true; more.textContent = 'extending…';
+          opts.onExtend(snap.run_id);
+        });
+        row.append(more);
+      }
+      host.append(row);
     }
   }
 
