@@ -336,6 +336,11 @@ class RunEndTests(unittest.TestCase):
         # Runs and your own projects can be deleted, to the server's trash.
         self.assertIn('/delete`', js)
         self.assertIn('function deleteProject', js)
+        # Literature search by stage is a choice on the form; one agent is the default.
+        self.assertIn('id="litMode"', html)
+        self.assertIn('<option value="single" selected>', html)
+        self.assertIn('literature_mode:', js)
+        self.assertIn('function renderLitStages', js)
         data = (K.ROOT / 'webapp' / 'data.html').read_text()
         self.assertIn('/api/datasets/upload', data)
         self.assertIn('id="effort"', html)

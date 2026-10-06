@@ -254,3 +254,50 @@ class DiscoverTests(unittest.TestCase):
         kinds = [(row['index'], row.get('error') is not None) for row in r['search_log']]
         self.assertEqual([('europepmc', True), ('pubmed', False)], kinds)
         self.assertIn('FAILED', (Path(self.tmp) / 'discover.md').read_text())
+
+
+class ByStageTests(unittest.TestCase):
+    """One literature agent per process stage, merged: a paper two stages find is
+    read once and listed once, saying who found it."""
+
+    def setUp(self):
+        patcher = mock.patch.object(AT, '_sleep', lambda s: None)
+        patcher.start(); self.addCleanup(patcher.stop)
+        self.tmp = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_the_shared_cache_fetches_a_paper_once(self):
+        fetched = []
+        paper = {'id': '1', 'pmid': '1', 'pmcid': 'PMC1', 'title': 'Synthetic A', 'isOpenAccess': 'Y'}
+        def fake(req, timeout):
+            if 'fullTextXML' in req.full_url:
+                fetched.append(req.full_url)
+                return _Resp(PMC_SET_XML.replace(b'<pmc-articleset>', b'').replace(b'</pmc-articleset>', b''))
+            return _Resp(json.dumps({'hitCount': 1, 'resultList': {'result': [paper]}}).encode())
+        cache = self.tmp / 'cache'
+        with mock.patch('urllib.request.urlopen', fake):
+            AT.discover(['q'], out_dir=self.tmp / 'expansion', fetch=1, cache_dir=cache)
+            r = AT.discover(['q'], out_dir=self.tmp / 'myeloid', fetch=1, cache_dir=cache)
+        self.assertEqual(1, len(fetched), 'the second stage read it from the cache')
+        self.assertTrue((self.tmp / 'myeloid' / 'sources' / 'PMC1.json').exists())
+        self.assertTrue(any(row.get('cached') for row in r['search_log']))
+
+    def test_merge_lists_each_paper_once_with_who_found_it(self):
+        def write(stage, papers):
+            d = self.tmp / stage; d.mkdir()
+            (d / 'discover.json').write_text(json.dumps({'queries': [f'{stage} q'], 'search_log': [],
+                                                         'papers': papers, 'excerpts': []}))
+        a = {'pmid': '1', 'pmcid': 'PMC1', 'title': 'Shared', 'matched_queries': ['x'], 'citedByCount': 1}
+        b = {'pmid': '2', 'title': 'Only myeloid', 'matched_queries': ['y'], 'citedByCount': 90}
+        write('expansion', [a])
+        write('myeloid', [b, dict(a, source_file='sources/PMC1.json')])
+        r = AT.merge([self.tmp / 'expansion', self.tmp / 'myeloid', self.tmp / 'hemato'],
+                     out_dir=self.tmp / 'merged', labels=['expansion', 'myeloid', 'hemato'])
+        self.assertEqual(2, r['paper_count'])
+        self.assertEqual(['expansion', 'myeloid'], r['papers'][0]['found_by'],
+                         'found by two stages ranks above a more-cited single find')
+        self.assertEqual('myeloid/sources/PMC1.json', r['papers'][0]['source_file'])
+        self.assertEqual(['PMC1'], r['found_by_several'])
+        self.assertEqual(['hemato'], r['shards_missing'])
+        md = (self.tmp / 'merged' / 'discover.md').read_text()
+        self.assertIn('found by expansion, myeloid', md)
+        self.assertIn('Not merged', md)

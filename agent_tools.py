@@ -163,7 +163,7 @@ def _paper_key(p):
     return p.get('pmid') or p.get('pmcid') or p.get('doi') or p.get('id')
 
 def discover(queries, *, out_dir, page_size=10, since=None, open_access=False, both=False,
-             fetch=0, find=(), sort='relevance'):
+             fetch=0, find=(), sort='relevance', cache_dir=None):
     """Every query, both indexes when asked or needed, one ranked digest.
 
     This is the mechanical loop the literature agent used to run by hand, one
@@ -206,11 +206,21 @@ def discover(queries, *, out_dir, page_size=10, since=None, open_access=False, b
     excerpts = []
     if fetch:
         for p in [p for p in ranked if p.get('pmcid') and p.get('isOpenAccess') != 'N'][:fetch]:
-            try:
-                src = fetch_full_text(p['pmcid'])
-            except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, ET.ParseError) as e:
-                log.append({'fetch': p['pmcid'], 'error': f'{type(e).__name__}: {str(e)[:160]}'})
-                continue
+            # Several agents searching one run share a cache, so a paper two of
+            # them find is downloaded and parsed once.
+            cached = Path(cache_dir) / f"{p['pmcid']}.json" if cache_dir else None
+            if cached is not None and cached.is_file():
+                src = json.loads(cached.read_text())
+                log.append({'fetch': p['pmcid'], 'cached': True})
+            else:
+                try:
+                    src = fetch_full_text(p['pmcid'])
+                except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, ET.ParseError) as e:
+                    log.append({'fetch': p['pmcid'], 'error': f'{type(e).__name__}: {str(e)[:160]}'})
+                    continue
+                if cached is not None:
+                    cached.parent.mkdir(parents=True, exist_ok=True)
+                    cached.write_text(json.dumps(src, ensure_ascii=False, indent=2) + '\n')
             (out / 'sources' / f"{p['pmcid']}.json").write_text(json.dumps(src, ensure_ascii=False, indent=2) + '\n')
             p['source_file'] = f"sources/{p['pmcid']}.json"
             if find:
@@ -221,6 +231,57 @@ def discover(queries, *, out_dir, page_size=10, since=None, open_access=False, b
               'paper_count': len(ranked), 'papers': ranked, 'excerpts': excerpts}
     (out / 'discover.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     (out / 'discover.md').write_text(render_digest(result))
+    return result
+
+def merge(dirs, *, out_dir, labels=None):
+    """Several agents' discover results as one digest, each paper saying who found it.
+
+    The shards of a by-stage search overlap: the paper that matters most is
+    usually found by more than one. It appears once here, with every stage
+    that found it, ranked first by how many stages did. A paper one stage read
+    in full keeps its source file. Nothing is judged here; the orchestrator
+    reads the merged digest and reconciles the stages.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    labels = list(labels or [])
+    papers, log, excerpts, queries, missing = {}, [], [], [], []
+    for i, d in enumerate(dirs):
+        d = Path(d)
+        label = labels[i] if i < len(labels) else d.name
+        f = d / 'discover.json'
+        if not f.is_file():
+            missing.append(label)
+            continue
+        r = json.loads(f.read_text())
+        queries += [f'[{label}] {q}' for q in r.get('queries', [])]
+        log += [dict(row, shard=label) for row in r.get('search_log', [])]
+        excerpts += [dict(e, shard=label) for e in r.get('excerpts', [])]
+        for p in r.get('papers', []):
+            k = _paper_key(p)
+            if not k:
+                continue
+            row = papers.setdefault(k, {**p, 'matched_queries': [], 'found_by': []})
+            row['matched_queries'] += [q for q in p.get('matched_queries', []) if q not in row['matched_queries']]
+            if label not in row['found_by']:
+                row['found_by'].append(label)
+            if p.get('source_file') and not row.get('source_file'):
+                row['source_file'] = str(Path(d.name) / p['source_file'])
+    def rank(p):
+        return (-len(p['found_by']), -len(p['matched_queries']), -(p.get('citedByCount') or 0),
+                -int(p.get('pubYear') or 0))
+    ranked = sorted(papers.values(), key=rank)
+    result = {'retrieved_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'queries': queries,
+              'search_log': log, 'paper_count': len(ranked), 'papers': ranked, 'excerpts': excerpts,
+              'shards': [labels[i] if i < len(labels) else Path(d).name for i, d in enumerate(dirs)],
+              'shards_missing': missing,
+              'found_by_several': [p.get('pmcid') or p.get('pmid') or p.get('id')
+                                   for p in ranked if len(p['found_by']) > 1]}
+    (out / 'discover.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
+    md = render_digest(result)
+    if missing:
+        md += '\n**Not merged (no discover.json yet):** ' + ', '.join(missing) + '\n'
+    (out / 'discover.md').write_text(md)
     return result
 
 def render_digest(result, top=25):
@@ -236,7 +297,8 @@ def render_digest(result, top=25):
         oa = 'OA' if p.get('isOpenAccess') == 'Y' or (p.get('isOpenAccess') is None and p.get('pmcid')) else 'closed'
         ident = p.get('pmcid') or ('PMID:' + str(p.get('pmid'))) if (p.get('pmcid') or p.get('pmid')) else p.get('id')
         src = f" · full text saved: {p['source_file']}" if p.get('source_file') else ''
-        lines.append(f"### {ident} · {p.get('pubYear') or '?'} · {oa} · cited {p.get('citedByCount') or 0} · matched {len(p['matched_queries'])} quer{'y' if len(p['matched_queries']) == 1 else 'ies'}{src}")
+        who = f" · found by {', '.join(p['found_by'])}" if p.get('found_by') else ''
+        lines.append(f"### {ident} · {p.get('pubYear') or '?'} · {oa} · cited {p.get('citedByCount') or 0} · matched {len(p['matched_queries'])} quer{'y' if len(p['matched_queries']) == 1 else 'ies'}{who}{src}")
         lines.append(f"**{(p.get('title') or '').strip()}**")
         ab = normalize(p.get('abstractText') or '')
         if ab:
@@ -432,6 +494,11 @@ def main(argv=None):
     d.add_argument('--sort', choices=sorted(SORTS), default='relevance')
     d.add_argument('--fetch', type=int, default=0, help='read the top N open-access full texts')
     d.add_argument('--find', action='append', default=[], help='with --fetch: show paragraphs containing this (repeatable)')
+    d.add_argument('--cache-dir', help='a full-text cache shared with other agents in the same run')
+    mg = sub.add_parser('merge', help='several agents\' discover results as one digest')
+    mg.add_argument('--dir', action='append', required=True, help='a discover --out-dir (repeatable)')
+    mg.add_argument('--label', action='append', default=[], help='its name, in the same order')
+    mg.add_argument('--out-dir', required=True)
     f = sub.add_parser('fetch'); f.add_argument('pmcid'); f.add_argument('--out', required=True); f.add_argument('--find', action='append', default=[], help='print paragraphs containing this text (repeatable)')
     a = sub.add_parser('abstract'); a.add_argument('--search-file', required=True, help='a saved search/pubmed result'); a.add_argument('--id', required=True, help='its id, PMID or PMCID'); a.add_argument('--out', required=True)
     c = sub.add_parser('compile'); c.add_argument('--request', required=True); c.add_argument('--extraction', required=True); c.add_argument('--sources', nargs='+', required=True); c.add_argument('--out', required=True)
@@ -441,12 +508,21 @@ def main(argv=None):
     try:
         if args.command == 'discover':
             result = discover(args.query, out_dir=args.out_dir, page_size=args.page_size, since=args.since,
-                              open_access=args.open_access, both=args.both, fetch=args.fetch, find=args.find, sort=args.sort)
+                              open_access=args.open_access, both=args.both, fetch=args.fetch, find=args.find, sort=args.sort,
+                              cache_dir=args.cache_dir)
             print(json.dumps({'out': str(Path(args.out_dir) / 'discover.md'), 'papers': result['paper_count'],
                               'full_texts_saved': sum(1 for p in result['papers'] if p.get('source_file')),
                               'search_log': result['search_log'],
                               'top': summary({'papers': result['papers'][:12]}),
                               'next': 'read discover.md (it is short), then cite from sources/<PMCID>.json paragraphs'},
+                             ensure_ascii=False, indent=1))
+            return 0
+        if args.command == 'merge':
+            result = merge(args.dir, out_dir=args.out_dir, labels=args.label)
+            print(json.dumps({'out': str(Path(args.out_dir) / 'discover.md'), 'papers': result['paper_count'],
+                              'found_by_several': result['found_by_several'][:12],
+                              'shards_missing': result['shards_missing'],
+                              'next': 'read discover.md; papers found by several stages come first'},
                              ensure_ascii=False, indent=1))
             return 0
         if args.command == 'search':

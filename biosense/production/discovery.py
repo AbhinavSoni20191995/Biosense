@@ -80,12 +80,20 @@ EFFORT = {
                  'bio_queries': 10, 'hypotheses': 3, 'rounds': 3},
 }
 DEFAULT_EFFORT = 'standard'
+# How the literature is searched. One agent across every lever is the default
+# and what every run so far did. By stage, the same agent is dispatched once per
+# process stage in parallel and the results are merged: the literature phase
+# takes as long as its slowest stage instead of all of them, each agent reads a
+# narrower question, and the cost is more model calls and a reconciliation step.
+LITERATURE_MODES = ('single', 'by_stage')
+DEFAULT_LITERATURE_MODE = 'single'
+MAX_STAGE_SHARDS = 4
 
 
 def build(*, project_id, objective, runtime_mode, research_context=None, dataset_ids=(),
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
-          projects_dir=None, effort=None):
+          projects_dir=None, effort=None, literature_mode=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -115,6 +123,10 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
     effort = (effort or DEFAULT_EFFORT).strip().lower()
     if effort not in EFFORT:
         raise K.ContractError(f'effort must be one of {sorted(EFFORT)}; got {effort!r}')
+    literature_mode = (literature_mode or DEFAULT_LITERATURE_MODE).strip().lower()
+    if literature_mode not in LITERATURE_MODES:
+        raise K.ContractError(f'literature_mode must be one of {LITERATURE_MODES}; '
+                              f'got {literature_mode!r}')
 
     rid = request_id or f'disc-{uuid.uuid4().hex[:12]}'
     if not REQUEST_ID.match(rid):
@@ -136,6 +148,7 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'candidate_values': cands,
         'runtime_mode': mode,
         'effort': effort,
+        'literature_mode': literature_mode,
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
         'notes': _clean(notes, field='notes', limit=2000),
     }
@@ -282,6 +295,8 @@ def summarise(req, *, projects_dir=None):
         lines.append(f'Constraint note: {c["notes"]}')
     lines.append(f'Runtime: {RT.LABELS[req["runtime_mode"]]}')
     b = EFFORT[req.get('effort') or DEFAULT_EFFORT]
+    if (req.get('literature_mode') or DEFAULT_LITERATURE_MODE) == 'by_stage':
+        lines.append('Literature: one agent per process stage, in parallel, merged afterwards')
     lines.append(f'Effort: {b["label"]} — about {b["searches"]} searches and {b["full_texts"]} '
                  f'full texts for literature, {b["bio_queries"]} queries for bioinformatics, '
                  f'about {b["minutes"]} minutes per specialist')
@@ -311,6 +326,51 @@ def privacy(req):
 
 
 # ── the brief handed to the orchestrator ────────────────────────────────
+def _literature_plan(req, project, loop_dir, budget):
+    """The literature dispatch the brief asks for, and what to do once it returns."""
+    common = ('`args:` starting `DISCOVERY EVIDENCE:`, then the objective, the project, the '
+              'scope, {focus}, its run directory (`{folder}`) and what to bring back: cited claims '
+              'and labelled best guesses with their confidence')
+    if (req.get('literature_mode') or DEFAULT_LITERATURE_MODE) != 'by_stage' or \
+            len(project.stages) < 2:
+        return (('Send the literature agent its task with `sys_session_send` — `agent: '
+                 '"literature"`, `title: "literature-it1"`, '
+                 + common.format(focus='the levers you most need evidence on',
+                                 folder=f'{loop_dir}/literature/')), '')
+    stages = list(project.stages)[:MAX_STAGE_SHARDS]
+    per_s = max(3, round(budget['searches'] * 0.6))
+    per_t = max(1, round(budget['full_texts'] / 2))
+    rows = '\n'.join(
+        f'    - `title: "literature-{st["stage_id"]}"` → `{loop_dir}/literature/{st["stage_id"]}/` — '
+        f'{st.get("label") or st["stage_id"]}'
+        + (f': {st["purpose"]}' if st.get('purpose') else '')
+        for st in stages)
+    dispatch = (
+        f'The person chose to search the literature **one process stage per agent, in '
+        f'parallel**. In one response, send `agent: "literature"` {len(stages)} tasks with '
+        f'`sys_session_send`, one per stage:\n{rows}\n'
+        f'  Each task\'s ' + common.format(
+            focus=('ONLY that stage\'s levers (its factors, doses, timing, setpoints and '
+                   'readouts), naming the other stages so cross-stage effects are reported, '
+                   'not searched'),
+            folder=f'{loop_dir}/literature/<stage>/')
+        + f'. Each stage gets about {per_s} searches and {per_t} full texts, and every task '
+          f'says to pass `--cache-dir {loop_dir}/literature/cache` to `discover`, so a paper '
+          f'two stages find is read once')
+    after = (
+        f'\n- **When the stage agents have replied**, merge their searches into one digest:\n'
+        f'  `cd <workspace root> && .venv/bin/python agent_tools.py merge '
+        + ' '.join(f'--dir {loop_dir}/literature/{st["stage_id"]} --label {st["stage_id"]}'
+                   for st in stages)
+        + f' --out-dir {loop_dir}/literature/merged`\n'
+          f'  Read `merged/discover.md` (papers found by several stages come first) and the '
+          f'replies. Reconciling the stages is your job: a dose in one stage that changes '
+          f'another stage\'s outcome is the finding a single-stage agent cannot see — say it.'
+          f' A stage that has not answered within its minutes is merged without and recorded '
+          f'as a limitation.')
+    return dispatch, after
+
+
 def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None, workspace=None):
     """The message an Omnigent session receives, with the request embedded as JSON.
 
@@ -320,6 +380,7 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None,
     """
     project = PJ.load(req['project_id'], projects_dir)
     budget = EFFORT[req.get('effort') or DEFAULT_EFFORT]
+    lit_dispatch, lit_after = _literature_plan(req, project, loop_dir, budget)
     # A specialist's shell can start in a per-session scratch directory, where
     # every relative path in this brief is missing: one run lost its
     # bioinformatics agent to ".venv/bin/python: No such file or directory".
@@ -383,12 +444,7 @@ on a question ends the run with nothing to show. So:
 - Where you would have asked, decide what you can from the request, write the
   question down as an **open question** with the assumption you made instead,
   and carry on. Missing context is a limitation to report, never a reason to stop.
-- **Your first substantive action is a dispatch.** Send the literature agent its
-  task with `sys_session_send` — `agent: "literature"`, `title: "literature-it1"`,
-  `args:` starting `DISCOVERY EVIDENCE:`, then the objective, the project, the
-  scope, the levers you most need evidence on, its run directory
-  (`{loop_dir}/literature/`) and what to bring back: cited claims and labelled
-  best guesses with their confidence — and the
+- **Your first substantive action is a dispatch.** {lit_dispatch} — and the
   bioinformatics agent its own (`agent: "bioinformatics"`, `title:
   "bioinformatics-it1"`) in the same response, so they run in parallel. Then end
   your turn; the inbox wakes you with their answers.
@@ -401,7 +457,7 @@ on a question ends the run with nothing to show. So:
   given network access for Europe PMC. Your own session may have none: a
   search you run yourself can fail on DNS, and even where it works it skips the
   agent that extracts and cites the claims. Do not run literature or web
-  searches yourself; send the question to `literature`.
+  searches yourself; send the question to `literature`.{lit_after}
 - Gene and dataset questions go to `bioinformatics`.
 - **If a specialist fails or refuses**, read its reply for the reason. Send it
   once more, narrower (one gene, one parameter, a smaller budget), under a new

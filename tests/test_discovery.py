@@ -141,6 +141,25 @@ class RequestTests(unittest.TestCase):
         self.assertIn('what the evidence means', DISC.render_brief(req, loop_dir='ai-x'))
         self.assertIn('evidence.cli check', brief)
 
+    def test_one_literature_agent_is_the_default_and_by_stage_is_a_choice(self):
+        req = a_request()
+        self.assertEqual('single', req['literature_mode'])
+        brief = DISC.render_brief(req, loop_dir='ai-x')
+        self.assertIn('title: "literature-it1"', brief)
+        self.assertNotIn('agent_tools.py merge', brief)
+        staged = a_request(literature_mode='by_stage')
+        brief = DISC.render_brief(staged, loop_dir='ai-x')
+        project = PJ.load('ipsc_macrophage')
+        for st in list(project.stages)[:DISC.MAX_STAGE_SHARDS]:
+            self.assertIn(f'title: "literature-{st["stage_id"]}"', brief)
+            self.assertIn(f'--dir ai-x/literature/{st["stage_id"]}', brief)
+        self.assertIn('--cache-dir ai-x/literature/cache', brief)
+        self.assertIn('--out-dir ai-x/literature/merged', brief)
+        self.assertIn('Reconciling the stages is your job', brief)
+        self.assertIn('Literature: one agent per process stage', DISC.summarise(staged))
+        with self.assertRaisesRegex(K.ContractError, 'literature_mode'):
+            a_request(literature_mode='swarm')
+
     def test_a_benchmark_config_converts_rather_than_being_retyped(self):
         cfg = K.read_json(K.ROOT / 'benchmarks' / 'configs' / 'macrophage_mcsf_demo.json')
         req = DISC.from_benchmark_config(cfg, runtime_mode='synthetic_demo')

@@ -300,6 +300,13 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
             <option value="standard" selected>Standard — about 8 searches, 4 full texts, ~10 min</option>
             <option value="thorough">Thorough — about 14 searches, 8 full texts, ~20 min</option>
           </select>
+          <!-- One literature agent is the default. By stage runs one per process stage
+               in parallel and merges them: faster literature, more model calls. -->
+          <label class="lab" for="litMode" style="margin-top:14px">Literature search</label>
+          <select id="litMode" class="select">
+            <option value="single" selected>One agent across every lever (default)</option>
+            <option value="by_stage">One agent per process stage, in parallel — faster, uses more of the model allowance</option>
+          </select>
           <p class="hint">A synthetic run and a real one are different claims about the same
             question. BioSense never substitutes one for the other: if a real runtime is
             unavailable the run fails with the reason, and says what fixes it.</p>
@@ -327,6 +334,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <details class="ins-sec" id="litSec" data-key="lit">
         <summary><span class="ins-t">Literature</span> <span class="dim" id="litSum"></span></summary>
         <p class="dim" id="insightsNote"></p>
+        <div id="litStages"></div>
         <div id="insights" class="insights"></div>
         <details class="ins-sub" id="papersSec" data-key="papers">
           <summary>Papers found <span class="dim" id="papersSum"></span></summary>

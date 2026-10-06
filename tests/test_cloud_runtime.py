@@ -765,6 +765,28 @@ class StopAndTimeoutTests(unittest.TestCase):
         self.assertTrue(run.should_stop())
         self.assertEqual('timed_out', run.cancelled)
 
+    def test_each_stage_agents_notes_show_live_and_papers_merge(self):
+        import json
+        import tempfile
+        from biosense.production import app as APP
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / 'ai-x'
+            for stage, pid in (('expansion', '1'), ('myeloid', '2')):
+                (out / 'literature' / stage).mkdir(parents=True)
+                (out / 'literature' / stage / 'insights.md').write_text(f'## PMC{pid} - {stage} note\n')
+                (out / 'literature' / stage / 'discover.json').write_text(json.dumps(
+                    {'papers': [{'pmid': pid, 'title': f'Synthetic {stage}'},
+                                {'pmid': '9', 'title': 'Shared'}]}))
+            (out / 'literature' / 'cache').mkdir()
+            run = APP.DiscoveryRun('s' * 16, req, out, 'local_real_ai')
+            run.scan_artifacts(force=True)
+            snap = run.snapshot()
+            self.assertEqual(['expansion', 'myeloid'],
+                             [r['stage'] for r in snap['literature_stages']], 'cache is not a stage')
+            self.assertIn('expansion note', snap['literature_stages'][0]['notes'])
+            self.assertEqual(3, len(snap['papers_found']), 'the union, each paper once')
+
     def test_a_finished_run_cannot_be_stopped_again(self):
         from biosense.production import app as APP
         req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}

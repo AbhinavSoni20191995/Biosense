@@ -198,6 +198,13 @@
         "thorough"
       ],
       "description": "How much the specialists may spend: the search and full-text budgets and the minutes each is asked to stay within. A budget bounds the search, never the honesty of the answer."
+    },
+    "literature_mode": {
+      "enum": [
+        "single",
+        "by_stage"
+      ],
+      "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards \u2014 faster on the literature phase, more of the model allowance, and the orchestrator must reconcile the stages."
     }
   }
 }

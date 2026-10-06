@@ -222,6 +222,7 @@ class Run:
         self.papers_found = []
         self.bioinformatics = None
         self.genotype_sim = None
+        self.literature_stages = []
         self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -331,6 +332,7 @@ class DiscoveryRun:
         self.papers_found = []
         self.bioinformatics = None
         self.genotype_sim = None
+        self.literature_stages = []
         self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -374,8 +376,12 @@ class DiscoveryRun:
         """The literature agent's insights.md and discover.json, as they grow."""
         self._read_analyses()
         self._read_genotype_sim()
+        self._read_stage_shards()
+        papers = ('literature/merged/discover.json'
+                  if (self.out_dir / 'literature' / 'merged' / 'discover.json').is_file()
+                  else 'literature/discover.json')
         for rel, reader in (('literature/insights.md', self._read_insights),
-                            ('literature/discover.json', self._read_papers),
+                            (papers, self._read_papers),
                             ('bioinformatics/insights.md', self._read_bio_notes)):
             path = self.out_dir / rel
             try:
@@ -450,6 +456,59 @@ class DiscoveryRun:
         bio.update(plans=plans, results=results)
         self.bioinformatics = bio if (plans or results or bio.get('notes')) else None
 
+    def _read_stage_shards(self):
+        """A by-stage search: each stage agent's notes and paper count, live."""
+        lit = self.out_dir / 'literature'
+        try:
+            dirs = sorted(d for d in lit.iterdir()
+                          if d.is_dir() and d.name not in ('merged', 'cache', 'sources'))
+        except OSError:
+            return
+        sig = []
+        for d in dirs:
+            for f in ('insights.md', 'discover.json'):
+                try:
+                    sig.append((d.name, f, (d / f).stat().st_mtime))
+                except OSError:
+                    pass
+        sig = tuple(sig)
+        if self._live_mtimes.get('stages') == sig:
+            return
+        self._live_mtimes['stages'] = sig
+        rows = []
+        for d in dirs:
+            row = {'stage': d.name, 'notes': None, 'papers': None, 'updated_at': None}
+            notes = d / 'insights.md'
+            if notes.is_file():
+                text = notes.read_text(encoding='utf-8', errors='replace')
+                row['notes'] = ('…' + text[-INSIGHTS_MAX_CHARS:]) if len(text) > INSIGHTS_MAX_CHARS else text
+                row['updated_at'] = notes.stat().st_mtime
+            disc = d / 'discover.json'
+            if disc.is_file():
+                try:
+                    row['papers'] = len((K.read_json(disc) or {}).get('papers') or [])
+                except (OSError, ValueError):
+                    pass
+            if row['notes'] is not None or row['papers'] is not None:
+                rows.append(row)
+        self.literature_stages = rows
+        if rows and not (self.out_dir / 'literature' / 'merged' / 'discover.json').is_file():
+            # Before the merge, the paper list is the union of what the stages saved.
+            seen, union = set(), []
+            for d in dirs:
+                f = d / 'discover.json'
+                if not f.is_file():
+                    continue
+                try:
+                    for p in (K.read_json(f) or {}).get('papers') or []:
+                        k = p.get('pmid') or p.get('pmcid') or p.get('doi') or p.get('id')
+                        if k and k not in seen:
+                            seen.add(k)
+                            union.append(p)
+                except (OSError, ValueError):
+                    continue
+            self._read_papers_from(union)
+
     def _read_genotype_sim(self):
         """A wild-type-against-edited-line run the agents asked the reactor for."""
         try:
@@ -472,15 +531,18 @@ class DiscoveryRun:
                 return
 
     def _read_papers(self, path, mtime):
-        doc = K.read_json(path)
+        self._read_papers_from(K.read_json(path).get('papers') or [])
+
+    def _read_papers_from(self, papers):
         rows = []
-        for p in (doc.get('papers') or [])[:PAPERS_MAX]:
+        for p in papers[:PAPERS_MAX]:
             rows.append({'id': p.get('pmcid') or (f'PMID:{p["pmid"]}' if p.get('pmid') else p.get('id')),
                          'pmcid': p.get('pmcid'), 'pmid': p.get('pmid'),
                          'title': (p.get('title') or '')[:200], 'year': p.get('pubYear'),
                          'open_access': p.get('isOpenAccess'),
                          'cited_by': p.get('citedByCount'),
                          'matched_queries': len(p.get('matched_queries') or []),
+                         'found_by': p.get('found_by') or [],
                          'full_text_read': bool(p.get('source_file'))})
         self.papers_found = rows
 
@@ -681,6 +743,7 @@ class DiscoveryRun:
                 'papers_found': list(self.papers_found),
                 'bioinformatics': self.bioinformatics,
                 'genotype_simulation': self.genotype_sim,
+                'literature_stages': list(self.literature_stages),
                 'stage_counts': ST.stage_counts(self.stages_reached,
                                                 terminal=self._terminal()),
                 'deadline_in_s': (round(self.deadline - time.time(), 1)
@@ -1547,6 +1610,7 @@ class Handler(BaseHTTPRequestHandler):
             uncertainty=body.get('uncertainty'), control=body.get('control'),
             candidate_values=body.get('candidate_values'),
             title=body.get('title'), notes=body.get('notes'), effort=body.get('effort'),
+            literature_mode=body.get('literature_mode'),
             requested_by=identity.owner if identity.authenticated else None,
             projects_dir=self._projects_dir(identity))
 

@@ -81,6 +81,11 @@ instructions: |
          from discover.json, search_complete) plus `best_guesses` and a
          `synthesis` block (see agent_prompt.md). At most one more `discover`
          for a lever the first one missed; then stop and reply.
+    A task may name ONE PROCESS STAGE (a by-stage search, one agent per stage in
+    parallel): search only that stage's levers, write in that stage's folder,
+    pass the `--cache-dir` the task names to `discover` so papers another
+    stage already read are not fetched again, and report — not search —
+    anything you see that crosses into another stage.
     Reply with: the claims (ID, value, unit, stage, context, source and
     paragraph, full text or abstract), the synthesis (what the body of
     evidence means, direct and indirect, convergent and contradicting), each

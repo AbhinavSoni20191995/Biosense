@@ -638,6 +638,7 @@ function buildRequest() {
     objective: $('#objective').value.trim(),
     runtime_mode: chosenRuntime(),
     effort: ($('#effort') && $('#effort').value) || 'standard',
+    literature_mode: ($('#litMode') && $('#litMode').value) || 'single',
     dataset_ids: $$('#datasetPicks input:checked').map(i => i.value),
   };
   if (anyCtx) {
@@ -849,6 +850,27 @@ function hasPartial(r) {
    are leads written while reading, shown before the orchestrator has weighed
    them; the panel says so, and never calls them findings. */
 let insightsSeen = '';
+/* A by-stage search: each stage agent's notes, folding on their own. */
+let stagesSeen = '';
+function renderLitStages(rows) {
+  const host = $('#litStages'); if (!host) return;
+  const key = JSON.stringify(rows.map(r => [r.stage, r.updated_at, r.papers]));
+  if (key === stagesSeen) return;
+  stagesSeen = key; host.textContent = '';
+  rows.forEach(r => {
+    const d = el('details', 'ins-sub');
+    d.dataset.key = 'stage:' + r.stage;
+    d.open = rememberedOpen(d.dataset.key, false);
+    d.addEventListener('toggle', () => rememberOpen(d.dataset.key, d.open));
+    const sm = el('summary');
+    sm.append(el('b', null, r.stage), el('span', 'dim', '  ' + [r.papers != null ? `${r.papers} papers` : null,
+      r.updated_at ? `notes ${BS.fmt.ago(r.updated_at)}` : 'no notes yet'].filter(Boolean).join(' · ')));
+    d.append(sm);
+    const body = el('div', 'insights'); d.append(body);
+    if (r.notes) renderNotes(body, r.notes, 'lit-' + r.stage);
+    host.append(d);
+  });
+}
 /* A light reading of the agents' notes: headings, rules, **bold**, `code`
    and list items. Text only — nothing from a note is ever parsed as HTML. */
 function inlineMd(text) {
@@ -944,6 +966,7 @@ function renderInsights(snap) {
     $('#genoSum').textContent = (geno.genotype || {}).label || '';
   }
 
+  renderLitStages(snap.literature_stages || []);
   const key = `${ins ? ins.updated_at : 0}:${papers.length}`;
   if (key === insightsSeen) return;
   insightsSeen = key;
@@ -967,6 +990,7 @@ function renderInsights(snap) {
     if (p.open_access === 'Y' || p.full_text_read) tags.push(p.full_text_read ? 'full text read' : 'open access');
     if (p.cited_by) tags.push(`cited ${p.cited_by}`);
     if (p.matched_queries > 1) tags.push(`${p.matched_queries} queries`);
+    if ((p.found_by || []).length > 1) tags.push(`found by ${p.found_by.join(', ')}`);
     if (tags.length) row.append(el('div', 'dim', tags.join(' · ')));
     list.append(row);
   });
