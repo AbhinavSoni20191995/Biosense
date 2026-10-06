@@ -27,11 +27,61 @@ property of the user's simulator. Confirm it with the simulator developer.
 
 ## Tools
 
-Use `agent_tools.search_literature(query, page_size, cursor)` to locate papers;
-use `agent_tools.fetch_full_text(pmcid)` to retrieve permissible open-access JATS.
+Use `agent_tools.search_literature(query, page_size, cursor)` (Europe PMC) and
+`agent_tools.search_pubmed(query, page_size)` (PubMed) to locate papers;
+use `agent_tools.fetch_full_text(pmcid)` to retrieve permissible open-access JATS,
+and `abstract` to cite an abstract when no open full text exists.
 Use `agent_tools.compile_handoff(request, extraction, sources)` for verification.
 The Python CLI exposes the same functions for a harness with shell access.
 These are local project tools, not built-in Omnigent API names.
+
+## Search strategy
+
+Finding the evidence is most of the work; a search that returns nothing usually
+had the wrong words, not the wrong question.
+
+- **Several narrow queries beat one broad one.** Write one per stage and per
+  lever: the target cell AND the factor or setting AND the stage, e.g.
+  `(iPSC OR hiPSC OR "induced pluripotent") AND macrophage AND (M-CSF OR CSF1 OR
+  CSF-1)`. Expand synonyms for the cell (monocyte/macrophage/myeloid), the
+  factor (gene and protein names, common abbreviations) and the format
+  (bioreactor, suspension, stirred tank, embryoid body, spin EB).
+- **Use the index's fields.** Europe PMC: `METHODS:"M-CSF"` searches Methods
+  sections only (where doses live); `TITLE_ABS:` narrows to title and abstract;
+  `--open-access` keeps papers whose full text `fetch` can read; `--sort cited`
+  surfaces the established protocols; `--since 2015` drops the obsolete.
+  PubMed: `[tiab]`, `[mh]` and `[pt]` work the same way (`review[pt]` finds
+  reviews to mine for primary sources).
+- **Use both indexes.** `search` (Europe PMC) and `pubmed` rank differently and
+  either can be down. If one refuses, run the same query on the other.
+- **Too many hits:** add the stage or the format. **None:** drop the least
+  essential term, then try synonyms. Record every query, its hit count and
+  index in `search_log`, including the ones that found nothing.
+- **Read efficiently.** `fetch PMCID --find "ng/mL" --find "M-CSF"` prints the
+  paragraphs that carry doses and timings. When the full text is not open,
+  `abstract --search-file <s.json> --id <PMID>` makes the abstract a source you
+  can quote; say a claim is abstract-level in its notes.
+- **Follow the trail.** A review or a highly cited protocol names its primary
+  sources; search for those by title or DOI.
+
+## Best guesses
+
+When the evidence does not settle a number, the person still needs a starting
+point. Give a **best guess**, kept apart from the claims and never written as a
+reported value:
+
+- `parameter`, `stage`, `unit`, `low`, `high` (a range, never a single
+  "optimum") and optionally `central`;
+- `confidence`: `high` (several consistent sources in this cell type and
+  format), `moderate` (one direct source, or consistent sources in a related
+  cell type), `low` (mechanism, analogy or a distant context);
+- `rationale` naming the claim IDs, the context differences and what was
+  missing, and `would_change_it`: the measurement that would settle it.
+
+A best guess is a design choice for a person to approve, not evidence. Never
+average conflicting protocols into it, and never present it as reported.
+A missing model constant still gets its gap record; the best guess sits
+beside the gap and does not close it.
 
 ## Research workflow
 

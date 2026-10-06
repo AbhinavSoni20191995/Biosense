@@ -64,3 +64,102 @@ class LiteratureContractTests(unittest.TestCase):
         self.assertEqual(len(self.run_claims([self.claim])['rejected_claims']), 1)
 
 if __name__ == '__main__': unittest.main()
+
+
+import contextlib
+import io
+import json
+import tempfile
+import urllib.error
+from pathlib import Path
+from unittest import mock
+
+import agent_tools as AT
+
+PUBMED_XML = b'''<?xml version="1.0"?><PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>111</PMID>
+<Article><Journal><Title>Synthetic Journal</Title><JournalIssue><PubDate><Year>2021</Year></PubDate></JournalIssue></Journal>
+<ArticleTitle>Synthetic fixture: iPSC macrophages</ArticleTitle><Abstract><AbstractText Label="METHODS">Cells received 100 ng/mL M-CSF.</AbstractText></Abstract>
+<AuthorList><Author><LastName>Doe</LastName><Initials>J</Initials></Author></AuthorList>
+<PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList></Article></MedlineCitation>
+<PubmedData><ArticleIdList><ArticleId IdType="pubmed">111</ArticleId><ArticleId IdType="pmc">PMC999</ArticleId><ArticleId IdType="doi">10.0/x</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle></PubmedArticleSet>'''
+
+
+class _Resp:
+    def __init__(self, data): self.data = data
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self, n=-1): return self.data
+
+
+class RetrievalTests(unittest.TestCase):
+    """Synthetic responses only: no network in ordinary CI."""
+
+    def setUp(self):
+        self.sleeps = []
+        patcher = mock.patch.object(AT, '_sleep', self.sleeps.append)
+        patcher.start(); self.addCleanup(patcher.stop)
+
+    def test_a_dropped_connection_is_retried_not_reported_as_no_evidence(self):
+        answers = [urllib.error.URLError('reset'), _Resp(b'{"hitCount": 0, "resultList": {"result": []}}')]
+        def fake(req, timeout):
+            a = answers.pop(0)
+            if isinstance(a, Exception): raise a
+            return a
+        with mock.patch('urllib.request.urlopen', fake):
+            r = AT.search_literature('macrophage')
+        self.assertEqual(0, r['hit_count'])
+        self.assertEqual([1], self.sleeps)
+
+    def test_a_not_found_is_an_answer_and_is_not_retried(self):
+        calls = []
+        def fake(req, timeout):
+            calls.append(req.full_url)
+            raise urllib.error.HTTPError(req.full_url, 404, 'Not Found', {}, None)
+        with mock.patch('urllib.request.urlopen', fake), self.assertRaises(urllib.error.HTTPError):
+            AT.fetch_full_text('PMC1')
+        self.assertEqual(1, len(calls))
+
+    def test_filters_are_added_to_the_query_actually_sent(self):
+        seen = []
+        def fake(req, timeout):
+            seen.append(req.full_url)
+            return _Resp(b'{"hitCount": 3, "resultList": {"result": []}}')
+        with mock.patch('urllib.request.urlopen', fake):
+            r = AT.search_literature('iPSC AND macrophage', open_access=True, since=2015, sort='cited')
+        self.assertEqual('(iPSC AND macrophage) AND OPEN_ACCESS:y AND PUB_YEAR:[2015 TO 3000]', r['query_sent'])
+        self.assertIn('sort=CITED+desc', seen[0])
+
+    def test_pubmed_returns_papers_in_the_europe_pmc_shape(self):
+        def fake(req, timeout):
+            if 'esearch' in req.full_url:
+                return _Resp(b'{"esearchresult": {"count": "1", "idlist": ["111"]}}')
+            return _Resp(PUBMED_XML)
+        with mock.patch('urllib.request.urlopen', fake):
+            r = AT.search_pubmed('iPSC macrophage M-CSF', since=2015)
+        p = r['papers'][0]
+        self.assertEqual(('111', 'PMC999', '2021', 'pubmed'), (p['pmid'], p['pmcid'], p['pubYear'], r['index']))
+        self.assertIn('100 ng/mL M-CSF', p['abstractText'])
+
+    def test_an_abstract_can_carry_a_checked_quote_and_says_it_is_an_abstract(self):
+        paper = AT.parse_pubmed(PUBMED_XML)[0]
+        src = AT.abstract_source(paper)
+        self.assertEqual('abstract', src['article_type'])
+        self.assertEqual(['p0000'], [p['id'] for p in src['paragraphs']])
+        self.assertIn('100 ng/mL M-CSF', src['paragraphs'][0]['text'])
+
+    def test_find_shows_only_the_paragraphs_that_matter(self):
+        src = {'paragraphs': [{'id': 'p0', 'section': 'body / Methods', 'text': 'M-CSF at 100 ng/mL'},
+                              {'id': 'p1', 'section': 'body / Intro', 'text': 'Macrophages are cells.'}]}
+        self.assertEqual(['p0'], [p['id'] for p in AT.find_paragraphs(src, ['m-csf'])])
+
+    def test_an_unreachable_index_is_one_readable_refusal_with_a_way_on(self):
+        def fake(req, timeout): raise urllib.error.URLError('Name or service not known')
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as d, mock.patch('urllib.request.urlopen', fake), contextlib.redirect_stdout(out):
+            code = AT.main(['search', 'macrophage', '--out', str(Path(d) / 's.json')])
+        doc = json.loads(out.getvalue())
+        self.assertEqual(1, code)
+        self.assertTrue(doc['refused'])
+        self.assertIn('pubmed', doc['next'])
+        self.assertEqual(3, len(self.sleeps) + 1, 'retried before refusing')

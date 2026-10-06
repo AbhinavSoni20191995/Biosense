@@ -121,6 +121,15 @@ class EvidenceCliTests(unittest.TestCase):
             EVCLI.build_hypothesis(self.draft(next_experiment=None),
                                    project_id='ipsc_macrophage')
 
+    def test_a_draft_best_guess_builds_a_labelled_judgement(self):
+        import copy
+        guess = copy.deepcopy(EVCLI.TEMPLATE['effects'][1])
+        h = EVCLI.build_hypothesis(self.draft(effects=[guess]), project_id='ipsc_macrophage')
+        e = h['expected_effects'][0]
+        self.assertEqual('judgement', e['estimate_type'])
+        self.assertEqual('low', e['judgement']['confidence'])
+        self.assertEqual('candidate', h['claim_level'])
+
     def test_a_magnitude_needs_typed_sourced_values(self):
         eff = {'metric': 'yield', 'unit': 'cells', 'baseline': 10, 'candidate': 12}
         with self.assertRaisesRegex(K.ContractError, 'estimate_type'):

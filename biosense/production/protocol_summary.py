@@ -78,7 +78,7 @@ def _estimate_type_for(hyp):
     number supporting it, and a card that showed MEASURED beside a value whose
     only magnitude came from a simulation would say something untrue.
     """
-    order = ('target', 'predicted', 'simulated', 'derived', 'measured')
+    order = ('judgement', 'target', 'predicted', 'simulated', 'derived', 'measured')
     seen = {e.get('estimate_type') for e in (hyp.get('expected_effects') or [])}
     for t in order:
         if t in seen:

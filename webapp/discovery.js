@@ -847,6 +847,7 @@ function effectRow(e) {
 
 function effectRowSized(e) {
   const r = el('div', 'eff');
+  if (e.estimate_type === 'judgement') return effectRowGuess(e, r);
   r.append(el('div', null, e.label || e.metric));
   const amt = el('div', 'amt');
   if (!e.magnitude_estimated) {
@@ -868,6 +869,26 @@ function effectRowSized(e) {
     'et ' + e.estimate_type));
   (e.model_basis || []).forEach(b => amt.append(term('model_basis', b, null, 'et')));
   r.append(amt);
+  return r;
+}
+
+/* A best guess: a range and a confidence, never a bare number. It reads as a
+   guess on purpose, so nobody mistakes it for a measurement. */
+function effectRowGuess(e, r) {
+  const j = e.judgement || {};
+  const iv = e.interval || {};
+  const left = el('div', null);
+  left.append(el('div', null, e.label || e.metric));
+  if (j.rationale) left.append(el('div', 'm', j.rationale));
+  if (j.would_change_it) left.append(el('div', 'm', 'Would change it: ' + j.would_change_it));
+  const amt = el('div', 'amt');
+  const sgn = v => (v > 0 ? '+' : '') + num(v, 4);
+  amt.append(document.createTextNode(
+    `best guess ${sgn(iv.lower)} to ${sgn(iv.upper)} ${e.change_unit || ''}`));
+  if (e.absolute_change != null) amt.append(el('span', 'rel', `  (central ${sgn(e.absolute_change)})`));
+  amt.append(el('span', 'conf ' + (j.confidence || 'low'), (j.confidence || 'low') + ' confidence'));
+  amt.append(term('estimate_type', e.estimate_type, null, 'et ' + e.estimate_type));
+  r.append(left, amt);
   return r;
 }
 

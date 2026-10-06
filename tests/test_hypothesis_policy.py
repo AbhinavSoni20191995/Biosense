@@ -232,3 +232,49 @@ class WithholdingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BestGuessTests(unittest.TestCase):
+    """A labelled best guess: a starting point when the evidence points at a size
+    without measuring it. It must stay unmistakably a guess."""
+
+    def guess(self, **kw):
+        kw.setdefault('low', 2); kw.setdefault('high', 10)
+        kw.setdefault('confidence', 'low')
+        kw.setdefault('rationale', 'Two related-cell studies report a rise; none in this format.')
+        return E.best_guess('cd14_fraction', '%', higher_is_better=True, **kw)
+
+    def test_a_best_guess_is_a_range_with_a_confidence_and_stays_a_candidate(self):
+        e = self.guess()
+        K.require_valid('estimate', e)
+        self.assertEqual('judgement', e['estimate_type'])
+        self.assertEqual((2.0, 10.0, 'best_guess_range'),
+                         (e['interval']['lower'], e['interval']['upper'], e['interval']['type']))
+        self.assertEqual('increase', e['direction'])
+        self.assertIsNone(e['absolute_change'], 'no central value is invented by averaging')
+        self.assertEqual('candidate', HY.claim_level_of([e], 'not_modelled')[0])
+        self.assertIn('best guess +2 to +10 percentage_points [JUDGEMENT · low confidence]'
+                      .replace('percentage_points', 'percentage points'), E.render(e))
+
+    def test_confidence_needs_the_references_to_carry_it(self):
+        with self.assertRaisesRegex(K.ContractError, 'at least 2'):
+            self.guess(confidence='high', evidence_refs=['PMID:1'])
+        with self.assertRaisesRegex(K.ContractError, 'rationale'):
+            self.guess(rationale=' ')
+        with self.assertRaisesRegex(K.ContractError, 'outside its own range'):
+            self.guess(central=20)
+        self.assertEqual('high', self.guess(confidence='high',
+                                            evidence_refs=['PMID:1', 'PMID:2'])['judgement']['confidence'])
+
+    def test_a_guess_is_never_surer_than_the_hypothesis_evidence(self):
+        e = self.guess(confidence='high', evidence_refs=['PMID:1', 'PMID:2'])
+        h = HY.hypothesis('H01', 'Raising M-CSF may raise the CD14+ fraction.',
+                          project=PJ.load('ipsc_macrophage'), uncertainty_ref=UNC,
+                          parameter_id='mcsf_ng_ml', direction='increase', effects=[e],
+                          evidence=lit(), next_experiment=NEXT)
+        self.assertEqual('low', h['confidence'])
+        self.assertEqual('low', h['expected_effects'][0]['judgement']['confidence'])
+        self.assertEqual('candidate', h['claim_level'])
+
+    def test_a_guess_weakens_anything_it_is_combined_with(self):
+        self.assertEqual('judgement', E.combine_type('measured', 'judgement'))

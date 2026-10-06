@@ -27,9 +27,14 @@ import math
 
 from .. import contracts as K
 
-TYPES = ('measured', 'derived', 'simulated', 'predicted', 'target')
+TYPES = ('measured', 'derived', 'simulated', 'predicted', 'target', 'judgement')
 # Weakest-link order: a result is only as direct as its least direct input.
-_STRENGTH = {'measured': 0, 'derived': 1, 'simulated': 2, 'predicted': 3, 'target': 4}
+_STRENGTH = {'measured': 0, 'derived': 1, 'simulated': 2, 'predicted': 3, 'target': 4,
+             'judgement': 5}
+# A best guess says how sure its author is, in the hypothesis' own words, and
+# the evidence it points at has to be able to carry that.
+CONFIDENCE = ('low', 'moderate', 'high')
+_MIN_REFS = {'low': 0, 'moderate': 1, 'high': 2}
 
 PERCENT_UNITS = ('%', 'percent', 'pct', 'percentage')
 PP = 'percentage_points'
@@ -80,7 +85,8 @@ def interval(lower, upper, kind, *, level=None, method=None):
         return None
     if lower > upper:
         lower, upper = upper, lower
-    if kind not in ('confidence_interval', 'prediction_interval', 'range', 'search_range'):
+    if kind not in ('confidence_interval', 'prediction_interval', 'range', 'search_range',
+                    'best_guess_range'):
         raise K.ContractError(f'unknown interval type {kind!r}')
     return {'lower': float(lower), 'upper': float(upper), 'type': kind,
             'level': level, 'method': method}
@@ -173,6 +179,65 @@ def direction_only(metric, unit, direction, estimate_type, *, reason, label=None
     return out
 
 
+def best_guess(metric, unit, *, low, high, confidence, rationale, central=None,
+               direction=None, would_change_it=None, label=None, higher_is_better=None,
+               evidence_refs=(), limitations=()):
+    """A labelled best guess at a change: a range, a confidence, and the reasoning.
+
+    For when the evidence points somewhere but does not measure the size —
+    the person still needs a starting point, and "not established" alone gives
+    them none. It is typed `judgement`, the weakest estimate type there is, so
+    it never makes a hypothesis QUANTIFIED, never combines into anything
+    stronger, and reads as a guess wherever it is shown. The range is the
+    claim; a central value is optional and never computed by averaging.
+    """
+    if confidence not in CONFIDENCE:
+        raise K.ContractError(f'a best guess needs a confidence of {CONFIDENCE}, got {confidence!r}')
+    if not (rationale or '').strip():
+        raise K.ContractError('a best guess needs its rationale: which evidence, which context '
+                              'differences, and what was missing')
+    refs = [r for r in evidence_refs or () if str(r).strip()]
+    if len(refs) < _MIN_REFS[confidence]:
+        raise K.ContractError(
+            f'a {confidence}-confidence best guess needs at least {_MIN_REFS[confidence]} '
+            f'evidence reference(s); it has {len(refs)}. Lower the confidence or cite the sources.')
+    for v in (low, high, central):
+        if v is not None and not math.isfinite(float(v)):
+            raise K.ContractError('a best guess is finite numbers')
+    if low is None or high is None:
+        raise K.ContractError('a best guess is a range: give low and high')
+    low, high = sorted((float(low), float(high)))
+    if central is not None and not low <= float(central) <= high:
+        raise K.ContractError(f'the central guess {central} lies outside its own range {low}..{high}')
+    if direction is None:
+        direction = 'increase' if low > 0 else 'decrease' if high < 0 else 'unknown'
+    if direction not in ('increase', 'decrease', 'no_change', 'unknown'):
+        raise K.ContractError(f'unknown direction {direction!r}')
+    favourable = None
+    if higher_is_better is not None and direction in ('increase', 'decrease'):
+        favourable = (direction == 'increase') == bool(higher_is_better)
+    out = {
+        'metric': metric, 'label': label, 'unit': unit, 'estimate_type': 'judgement',
+        'baseline': None, 'candidate': None,
+        'magnitude_estimated': True, 'withheld_reason': None, 'direction': direction,
+        'absolute_change': None if central is None else float(central),
+        'change_unit': PP if is_percent(unit) else unit,
+        'relative_change_pct': None, 'relative_withheld_reason': None,
+        'fold_change': None,
+        'interval': interval(low, high, 'best_guess_range', method='judgement'),
+        'higher_is_better': higher_is_better, 'favourable': favourable,
+        'judgement': {'confidence': confidence, 'rationale': rationale.strip(),
+                      'would_change_it': (would_change_it or '').strip() or None},
+        'evidence_refs': refs,
+        'limitations': list(limitations) + [
+            'A best guess (JUDGEMENT): reasoned from the cited evidence, not measured or '
+            'computed. It is a starting point to test, and a person approves it before any '
+            'protocol uses it.'],
+    }
+    K.require_valid('estimate', out)
+    return out
+
+
 def from_statistics_row(row, metric_unit, *, source_ref, higher_is_better=None, label=None):
     """An AnalysisResult statistics row -> an Estimate.
 
@@ -208,6 +273,12 @@ def from_statistics_row(row, metric_unit, *, source_ref, higher_is_better=None, 
 def render(e, *, nd=3):
     """One line a person can read, with the label the number has earned."""
     tag = e['estimate_type'].upper()
+    if e['estimate_type'] == 'judgement':
+        iv, j = e.get('interval') or {}, e.get('judgement') or {}
+        unit = 'percentage points' if e.get('change_unit') == PP else e['unit']
+        mid = '' if e['absolute_change'] is None else f', central {e["absolute_change"]:+.4g}'
+        return (f'{e["label"] or e["metric"]}: best guess {iv.get("lower"):+.4g} to '
+                f'{iv.get("upper"):+.4g} {unit}{mid} [{tag} · {j.get("confidence", "?")} confidence]')
     if not e['magnitude_estimated']:
         return (f'{e["label"] or e["metric"]}: direction {e["direction"]}, '
                 f'magnitude not yet estimated ({e["withheld_reason"]}) [{tag}]')

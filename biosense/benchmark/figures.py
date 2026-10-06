@@ -35,7 +35,8 @@ CLASS_COLOUR = {'published_literature': 'data', 'public_dataset': 'data',
                 'derived_analysis': 'brand', 'simulation': 'code',
                 'real_measurement': 'brand', 'synthetic_fixture': 'ink3'}
 TYPE_LABEL = {'measured': 'MEASURED', 'derived': 'DERIVED', 'simulated': 'SIMULATED',
-              'predicted': 'PREDICTED', 'target': 'TARGET'}
+              'predicted': 'PREDICTED', 'target': 'TARGET',
+              'judgement': 'BEST GUESS'}
 
 
 def esc(s):

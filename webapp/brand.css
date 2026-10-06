@@ -489,6 +489,12 @@ button{font-family:inherit}
   background:color-mix(in srgb,var(--warn) 10%,transparent)}
 .notest{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
   color:var(--ink-3)}
+/* A best guess's confidence, worded and toned so it never reads as a measurement. */
+.conf{margin-left:8px;font-family:var(--mono);font-size:11px;font-weight:700;
+  letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px dashed currentColor}
+.conf.high{color:var(--brand)}
+.conf.moderate{color:var(--warn)}
+.conf.low{color:var(--ink-3)}
 
 /* A run that produced nothing says what happened. An empty panel reads as a
    scientific conclusion when it is usually a mechanical one. */

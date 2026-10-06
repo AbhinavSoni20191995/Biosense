@@ -58,6 +58,14 @@ TEMPLATE = {
          'higher_is_better': True, 'estimate_type': 'derived',
          'reason': 'the literature supports the direction; no source here gives a magnitude for '
                    'this process'},
+        {'_comment': 'a best guess: when the evidence points somewhere but measures no size. '
+                     'A range and a confidence (low / moderate / high; moderate needs 1 evidence '
+                     'ref, high 2), labelled BEST GUESS everywhere and never a reported value',
+         'metric': 'cd14_fraction', 'unit': '%', 'higher_is_better': True,
+         'best_guess': {'low': 2, 'high': 10, 'central': None, 'confidence': 'low',
+                        'rationale': 'Which sources, in which context, and what is missing.',
+                        'would_change_it': 'A dose series measuring CD14+ fraction.'},
+         'evidence_refs': ['PMID:<id>']},
         {'_comment': 'a measured effect: point at the analysis result and the readout it tested',
          'from_analysis_result': 'data/runs/<run>/analysis_result.json', 'readout': '<readout>',
          'unit': '%', 'higher_is_better': True},
@@ -114,6 +122,18 @@ def _effect(spec, base_dir):
     missing = [k for k in EFFECT_KEYS if not spec.get(k)]
     if missing:
         raise K.ContractError(f'an effect needs {", ".join(missing)}: {spec!r}')
+    if spec.get('best_guess') is not None:
+        g = spec['best_guess']
+        if not isinstance(g, dict):
+            raise K.ContractError('best_guess is {"low", "high", "confidence", "rationale", '
+                                  '"central"?, "would_change_it"?}')
+        return E.best_guess(spec['metric'], spec['unit'], low=g.get('low'), high=g.get('high'),
+                            central=g.get('central'), confidence=g.get('confidence'),
+                            rationale=g.get('rationale'), direction=spec.get('direction'),
+                            would_change_it=g.get('would_change_it'), label=spec.get('label'),
+                            higher_is_better=spec.get('higher_is_better'),
+                            evidence_refs=spec.get('evidence_refs') or (),
+                            limitations=spec.get('limitations') or ())
     if spec.get('baseline') is not None or spec.get('candidate') is not None:
         def val(v):
             if not isinstance(v, dict) or 'value' not in v or 'estimate_type' not in v:

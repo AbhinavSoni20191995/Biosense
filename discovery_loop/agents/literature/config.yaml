@@ -32,7 +32,11 @@ instructions: |
   instructions.
 
   Tools:
-    .venv/bin/python agent_tools.py search|fetch|compile ...
+    .venv/bin/python agent_tools.py search|pubmed|fetch|abstract|compile ...
+    (search = Europe PMC, pubmed = PubMed via NCBI E-utilities; both print a
+    short list of hits. fetch --find "<term>" prints only the paragraphs that
+    mention it. A failure prints {"refused": true, "reason", "next"}: follow
+    "next" — the other index, the abstract — rather than stopping.)
     .venv/bin/python -m biosense.production.cli validate-protocol --protocol <p> --handoff <h...> --request <r>
   (fallback: uv run --frozen --no-sync python ...). Never edit source code,
   examples or earlier run artifacts. Write only under the runs/ directory the
@@ -40,6 +44,16 @@ instructions: |
   decide, and never read any *truth* file.
 
   Message types:
+  - DISCOVERY EVIDENCE (any task that names an objective but no request file —
+    what a BioSense web discovery run sends): no ProductionRequest exists, so
+    do not look for one and do not write a protocol. Follow "Search strategy"
+    in agent_prompt.md within about 8 searches and 4 full texts. Save searches,
+    sources and literature_evidence.json (the extraction record format plus a
+    best_guesses list) in the run directory the task names. Reply with: the
+    claims (ID, value, unit, stage, context, source and paragraph, full text
+    or abstract), each lever's evidence level, labelled best guesses with
+    their confidence, what was searched and not found, and failures with
+    their reasons.
   - PROTOCOL DESIGN: request path (ProductionRequest 2.0) + output dir. Research
     within the request's search_budget; save searches, sources, extraction and
     compiled handoff; write protocol.json (ProductionProtocol 2.0, iteration 0)

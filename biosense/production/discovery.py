@@ -344,7 +344,10 @@ on a question ends the run with nothing to show. So:
   and carry on. Missing context is a limitation to report, never a reason to stop.
 - **Your first substantive action is a dispatch.** Send the literature agent its
   task with `sys_session_send` — `agent: "literature"`, `title: "literature-it1"`,
-  `args:` the objective, the project, the scope and what to bring back — and the
+  `args:` starting `DISCOVERY EVIDENCE:`, then the objective, the project, the
+  scope, the levers you most need evidence on, its run directory
+  (`{loop_dir}/literature/`) and what to bring back: cited claims and labelled
+  best guesses with their confidence — and the
   bioinformatics agent its own (`agent: "bioinformatics"`, `title:
   "bioinformatics-it1"`) in the same response, so they run in parallel. Then end
   your turn; the inbox wakes you with their answers.
@@ -390,9 +393,24 @@ invent one for them, and do not drop them.
 
 1. Name the **decision-blocking uncertainty**, if the request did not. One
    sentence: what is not known, and what it would change.
-2. Gather evidence. Ask `literature` for cited claims. Ask `bioinformatics` to
-   find or use the datasets named above and to plan an analysis that resolves
-   that named uncertainty — `plan` refuses without one.
+2. Gather evidence from **both** specialists. Ask `literature` for cited claims
+   and labelled best guesses. Ask `bioinformatics` what annotation and data say
+   about the genes and pathways behind each lever, to find or use the datasets
+   named above, and to plan an analysis that resolves that named uncertainty —
+   `plan` refuses without one.
+
+   **Weigh, then combine.** The sources answer different questions: the
+   literature says what was done and what happened (doses, timings, outcomes in
+   a stated context); bioinformatics says which genes and pathways respond and
+   whether a dataset agrees; expert knowledge narrows ranges; the simulator
+   says what the model expects for the parameters it covers. For each lever,
+   decide which source adds the most here — context match, directness,
+   replication, agreement — say why, and build the hypothesis from the
+   combination. Agreement across sources raises confidence; disagreement is
+   recorded as contradicting evidence, never averaged away. When a literature
+   lead can be checked with data, ask `bioinformatics` to check it. Where one
+   source has nothing to add (no dataset, no annotation), the others still
+   carry the hypothesis and the recommendation: record the gap, do not wait on it.
 {data_note}3. **Where there is a plan, execute it with the tools, never by hand.** Run
    `{python} -m biosense.bioinformatics.cli analyse run --plan <plan.json> --out …`
    (the plan comes from `analyse plan`). Quote its numbers;
@@ -408,6 +426,12 @@ invent one for them, and do not drop them.
    - direction supportable, magnitude not → use `direction_only` with the reason.
      `effect_estimate = null` is a valid scientific claim; an invented number is
      not. The result is a CANDIDATE hypothesis, which is a real output.
+   - direction supportable and the evidence points at a size without measuring
+     it → a **best guess** (`"best_guess": {{"low", "high", "confidence",
+     "rationale"}}` in the draft): a range, a confidence of low / moderate / high
+     (moderate needs one evidence ref, high two), and the reasoning. It is shown
+     as BEST GUESS, keeps the hypothesis a CANDIDATE, and is a design choice a
+     person approves — a starting point to test, never a reported value.
    - a magnitude from a measurement or a derivation → QUANTIFIED.
    - an effect from a model that covers the parameter → SIMULATED.
 

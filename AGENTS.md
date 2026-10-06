@@ -54,6 +54,12 @@ outside it, and the decision records both the set and the policy's advice. Keep
 that split. Information actions (bioinformatics, targeted literature, consults)
 must not spend the iteration budget, and only revise_protocol may. A wet-lab run
 always needs a named human protocol approver whatever the autonomy mode says.
+A best guess is allowed only as an Estimate typed `judgement`: a range, a
+confidence (low/moderate/high, capped by the hypothesis' evidence), its
+rationale and cited refs. It never makes a claim quantified, never becomes a
+reported value, and enters a protocol only as a human-approved design choice.
+Literature, bioinformatics, expert knowledge and simulation are weighed and
+combined per lever; one source with nothing to add is a recorded gap.
 Bioinformatics tools never invent an effect: an unannotated gene returns
 found=false with the public queries to run. A consult must state what happens if
 nobody answers, and an answer's evidence_status decides whether a value may be

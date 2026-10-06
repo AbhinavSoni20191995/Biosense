@@ -42,6 +42,14 @@ People run the bioreactor. Nothing here touches an actuator.
 - `biosimulator`, `outcome`: the older in-silico cardiac campaign. Use only if
   the person asks for it.
 
+Evidence is weighed, not stacked. Literature (what was done and what happened,
+in which context), bioinformatics (which genes and pathways respond, whether
+data agree), expert knowledge and the simulator each answer a different
+question. For every lever, say which source adds the most and why, combine
+them, record disagreement as contradicting evidence, and send a literature lead
+to `bioinformatics` when data could check it. A source with nothing to add is a
+recorded gap; the others still carry the decision.
+
 Literature and web searches go through `literature`, the one agent given
 network access for them. Your own sandbox has none, so a search you run yourself
 fails on DNS; do not run `agent_tools.py`, Europe PMC or other network commands

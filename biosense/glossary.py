@@ -57,6 +57,15 @@ ESTIMATE_TYPES = {
                 'would look like, not what happened.',
         'tone': 'neutral',
     },
+    'judgement': {
+        'label': 'BEST GUESS',
+        'short': 'Reasoned from the evidence, not measured.',
+        'long': 'A labelled best guess: a range and a confidence (low, moderate or high), '
+                'reasoned from the cited sources where they do not measure the size directly. '
+                'It is a starting point to test, never evidence, and a person approves it before '
+                'a protocol uses it.',
+        'tone': 'warn',
+    },
 }
 
 ESTIMATE_RULES = [

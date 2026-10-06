@@ -25,7 +25,8 @@ from .. import contracts as K
 from ..evidence import estimates as E
 
 LABEL = {'measured': 'MEASURED', 'derived': 'DERIVED', 'simulated': 'SIMULATED',
-         'predicted': 'PREDICTED', 'target': 'TARGET'}
+         'predicted': 'PREDICTED', 'target': 'TARGET',
+         'judgement': 'BEST GUESS'}
 CLASS_LABEL = {'published_literature': 'PUBLISHED', 'public_dataset': 'PUBLIC DATA',
                'private_user_dataset': 'PRIVATE DATA', 'expert_knowledge': 'EXPERT KNOWLEDGE',
                'derived_analysis': 'DERIVED ANALYSIS', 'simulation': 'SIMULATION',

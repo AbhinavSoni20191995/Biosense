@@ -119,6 +119,9 @@ def claim_level_of(effects, coverage):
         return 'simulated', None
     if any(e.get('estimate_type') in ('measured', 'derived', 'predicted') for e in sized):
         return 'quantified', None
+    if any(e.get('estimate_type') == 'judgement' for e in sized):
+        return 'candidate', ('the magnitudes here are labelled best guesses, not measurements, '
+                             'so the claim stays a candidate to test')
     reasons = sorted({e.get('withheld_reason') for e in (effects or [])
                       if e.get('withheld_reason')})
     return 'candidate', (reasons[0] if reasons else
@@ -180,6 +183,15 @@ def hypothesis(hypothesis_id, statement, *, project, uncertainty_ref, parameter_
             f'not cover would be invented.')
 
     level, reasons = (confidence, []) if confidence else confidence_from(evidence, effects)
+    # A best guess cannot be surer than the evidence behind the whole hypothesis.
+    order = {'low': 0, 'moderate': 1, 'high': 2}
+    for e in effects:
+        j = e.get('judgement')
+        if j and level in order and order[j['confidence']] > order[level]:
+            e['limitations'] = list(e.get('limitations') or []) + [
+                f'confidence lowered from {j["confidence"]} to {level}: the evidence behind '
+                f'this hypothesis supports no more']
+            e['judgement'] = {**j, 'confidence': level}
     level_name, level_why = claim_level_of(effects, coverage)
     pp = (project.parameter(pid)
           if registered and coverage in ('modelled', 'not_modelled', 'no_simulator') else None)

@@ -83,7 +83,7 @@
                 },
                 "estimate_type": {
                   "type": ["string", "null"],
-                  "enum": ["measured", "derived", "simulated", "predicted", "target", null]
+                  "enum": ["measured", "derived", "simulated", "predicted", "target", "judgement", null]
                 },
                 "simulator_coverage": {
                   "enum": ["modelled", "not_modelled", "no_simulator", "not_in_project"]

@@ -24,9 +24,10 @@
             "derived",
             "simulated",
             "predicted",
-            "target"
+            "target",
+            "judgement"
           ],
-          "description": "measured = a real instrument produced it. derived = deterministic code computed it from measured or public data. simulated = a mechanistic model produced it. predicted = a model-based forecast that is not a full simulation. target = a desired outcome a person supplied."
+          "description": "measured = a real instrument produced it. derived = deterministic code computed it from measured or public data. simulated = a mechanistic model produced it. predicted = a model-based forecast that is not a full simulation. target = a desired outcome a person supplied. judgement = a labelled best guess reasoned from cited evidence; weakest of all."
         },
         "source_ref": {
           "type": [
@@ -79,7 +80,8 @@
             "confidence_interval",
             "prediction_interval",
             "range",
-            "search_range"
+            "search_range",
+            "best_guess_range"
           ]
         },
         "level": {
@@ -126,9 +128,10 @@
             "derived",
             "simulated",
             "predicted",
-            "target"
+            "target",
+            "judgement"
           ],
-          "description": "The weakest link in the chain: an effect derived from measured data is derived; a difference between two simulated values is simulated."
+          "description": "The weakest link in the chain: an effect derived from measured data is derived; a difference between two simulated values is simulated. judgement is a best guess and is weaker than every other type."
         },
         "baseline": {
           "oneOf": [
@@ -229,6 +232,37 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "judgement": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Present only on a judgement (best-guess) estimate: how sure its author is, why, and what would settle it.",
+          "required": [
+            "confidence",
+            "rationale"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "enum": [
+                "low",
+                "moderate",
+                "high"
+              ]
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1
+            },
+            "would_change_it": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         }
       }

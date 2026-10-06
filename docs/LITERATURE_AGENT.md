@@ -89,6 +89,9 @@ uv sync --locked
 uv run --frozen python -m unittest -v
 uv run --frozen python agent_tools.py search '(hiPSC OR "induced pluripotent stem cell") AND cardiomyocyte AND (bioreactor OR expansion)' --page-size 5 --out runs/search.json
 uv run --frozen python agent_tools.py fetch PMC7076930 --out runs/source.json
+uv run --frozen python agent_tools.py pubmed 'iPSC macrophage M-CSF' --since 2015 --out runs/pubmed.json
+uv run --frozen python agent_tools.py fetch PMC7076930 --find 'ng/mL' --out runs/source.json
+uv run --frozen python agent_tools.py abstract --search-file runs/pubmed.json --id <PMID> --out runs/abstract.json
 uv run --frozen python agent_tools.py compile --request request.example.json --extraction example.extraction.json --sources runs/source.json --out runs/handoff.json
 ```
 

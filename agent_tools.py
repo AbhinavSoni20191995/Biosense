@@ -9,14 +9,24 @@ import datetime as dt
 import hashlib
 import json
 import math
+import os
 import re
+import sys
+import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 BASE = 'https://www.ebi.ac.uk/europepmc/webservices/rest'
+# PubMed through NCBI E-utilities: a second index with its own ranking, and the
+# way on when Europe PMC is unreachable. NCBI_API_KEY, when set, raises the
+# rate limit from 3 to 10 requests a second; nothing else needs it.
+EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils'
+RETRIES = 3          # attempts per request: an index that hiccups once is not "no evidence"
+_sleep = time.sleep  # replaced in tests
 # Stage names are product-specific snake_case (STAGE_PATTERN). STAGES only lists
 # those of the legacy cardiac example, kept for reference; nothing requires them.
 STAGES = {'ipsc_expansion', 'cardiac_differentiation', 'purification', 'recovery'}
@@ -49,23 +59,111 @@ def normalize(text):
     return ' '.join(unicodedata.normalize('NFKC', str(text)).split())
 
 def get_bytes(url):
-    request = urllib.request.Request(url, headers={'User-Agent': 'BioSenseLiteraturePrototype/0.1', 'Accept': 'application/json,application/xml'})
-    with urllib.request.urlopen(request, timeout=25) as response:
-        data = response.read(20_000_001)
+    """GET with retries on what is worth retrying: a dropped connection, a
+    timeout, 429 and 5xx. A 4xx other than 429 is an answer and raised at once."""
+    request = urllib.request.Request(url, headers={'User-Agent': 'BioSenseLiteraturePrototype/0.2', 'Accept': 'application/json,application/xml'})
+    for attempt in range(RETRIES):
+        try:
+            with urllib.request.urlopen(request, timeout=25) as response:
+                data = response.read(20_000_001)
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 429 and e.code < 500 or attempt == RETRIES - 1:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if attempt == RETRIES - 1:
+                raise
+        _sleep(2 ** attempt)
     if len(data) > 20_000_000:
         raise ValueError('Response exceeds 20 MB limit')
     return data
 
-def search_literature(query, page_size=10, cursor='*'):
+def europepmc_query(query, open_access=False, since=None):
+    """The query actually sent: the agent's own, plus the filters it asked for."""
+    q = f'({query})'
+    if open_access:
+        q += ' AND OPEN_ACCESS:y'
+    if since:
+        q += f' AND PUB_YEAR:[{int(since)} TO 3000]'
+    return q
+
+SORTS = {'relevance': None, 'cited': 'CITED desc', 'recent': 'P_PDATE_D desc'}
+
+def search_literature(query, page_size=10, cursor='*', open_access=False, since=None, sort='relevance'):
     """Query Europe PMC. Results locate evidence; abstracts are not full-text proof."""
     if not 1 <= page_size <= 25:
         raise ValueError('page_size must be 1..25')
-    params = urllib.parse.urlencode({'query': query, 'format': 'json', 'resultType': 'core', 'pageSize': page_size, 'cursorMark': cursor})
-    data = json.loads(get_bytes(BASE + '/search?' + params))
+    sent = europepmc_query(query, open_access, since)
+    params = {'query': sent, 'format': 'json', 'resultType': 'core', 'pageSize': page_size, 'cursorMark': cursor}
+    if SORTS[sort]:
+        params['sort'] = SORTS[sort]
+    data = json.loads(get_bytes(BASE + '/search?' + urllib.parse.urlencode(params)))
     papers = []
     for p in data.get('resultList', {}).get('result', []):
-        papers.append({k: p.get(k) for k in ['id', 'source', 'pmcid', 'doi', 'title', 'authorString', 'firstPublicationDate', 'isOpenAccess', 'pubTypeList', 'abstractText']})
-    return {'query': query, 'retrieved_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'hit_count': data.get('hitCount'), 'next_cursor': data.get('nextCursorMark'), 'papers': papers}
+        papers.append({k: p.get(k) for k in ['id', 'source', 'pmid', 'pmcid', 'doi', 'title', 'authorString', 'journalTitle', 'pubYear', 'firstPublicationDate', 'citedByCount', 'isOpenAccess', 'pubTypeList', 'abstractText']})
+    return {'index': 'europepmc', 'query': query, 'query_sent': sent, 'retrieved_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'hit_count': data.get('hitCount'), 'next_cursor': data.get('nextCursorMark'), 'papers': papers}
+
+def _eutils(path, **params):
+    params['tool'] = 'BioSenseLiterature'
+    if os.environ.get('NCBI_API_KEY'):
+        params['api_key'] = os.environ['NCBI_API_KEY']
+    return get_bytes(f'{EUTILS}/{path}?' + urllib.parse.urlencode(params))
+
+def parse_pubmed(xml_bytes):
+    """PubmedArticleSet XML -> papers in the same shape as a Europe PMC search."""
+    papers = []
+    for art in ET.fromstring(xml_bytes).iter('PubmedArticle'):
+        pmid = art.findtext('.//MedlineCitation/PMID')
+        ids = {i.get('IdType'): (i.text or '').strip() for i in art.findall('.//PubmedData/ArticleIdList/ArticleId')}
+        abstract = ' '.join(((a.get('Label') + ': ') if a.get('Label') else '') + normalize(''.join(a.itertext())) for a in art.findall('.//Abstract/AbstractText'))
+        authors = [' '.join(x for x in (a.findtext('LastName'), a.findtext('Initials')) if x) for a in art.findall('.//AuthorList/Author')]
+        year = art.findtext('.//JournalIssue/PubDate/Year') or (art.findtext('.//JournalIssue/PubDate/MedlineDate') or '')[:4] or None
+        types = [normalize(t.text or '') for t in art.findall('.//PublicationTypeList/PublicationType')]
+        pmcid = ids.get('pmc') or None
+        papers.append({'id': pmid, 'source': 'MED', 'pmid': pmid, 'pmcid': pmcid, 'doi': ids.get('doi') or None,
+                       'title': normalize(''.join(art.find('.//ArticleTitle').itertext())) if art.find('.//ArticleTitle') is not None else '',
+                       'authorString': ', '.join(authors[:6]) + (' et al.' if len(authors) > 6 else ''),
+                       'journalTitle': art.findtext('.//Journal/Title'), 'pubYear': year,
+                       # PubMed does not say whether a PMC copy is open access; fetch tells.
+                       'isOpenAccess': None, 'in_pmc': bool(pmcid), 'pubTypeList': {'pubType': types},
+                       'abstractText': abstract or None})
+    return papers
+
+def search_pubmed(query, page_size=10, since=None, sort='relevance'):
+    """Query PubMed (NCBI E-utilities): esearch for ids, efetch for the abstracts."""
+    if not 1 <= page_size <= 25:
+        raise ValueError('page_size must be 1..25')
+    params = {'db': 'pubmed', 'term': query, 'retmode': 'json', 'retmax': page_size,
+              'sort': 'pub_date' if sort == 'recent' else 'relevance'}
+    if since:
+        params.update(datetype='pdat', mindate=str(int(since)), maxdate='3000')
+    found = json.loads(_eutils('esearch.fcgi', **params)).get('esearchresult', {})
+    ids = found.get('idlist') or []
+    papers = parse_pubmed(_eutils('efetch.fcgi', db='pubmed', id=','.join(ids), retmode='xml', rettype='abstract')) if ids else []
+    return {'index': 'pubmed', 'query': query, 'query_sent': params['term'], 'retrieved_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'hit_count': int(found.get('count') or 0), 'next_cursor': None, 'papers': papers}
+
+def abstract_source(paper):
+    """A search hit's abstract as a source document compile can check quotes
+    against. Marked `abstract` so nobody reads it as Methods-level evidence."""
+    pid = paper.get('pmcid') or ('PMID' + str(paper.get('pmid') or paper.get('id')))
+    return {'id': pid + '-abstract', 'url': ('https://europepmc.org/abstract/MED/' + str(paper['pmid'])) if paper.get('pmid') else None,
+            'title': paper.get('title') or '', 'retrieved_at': dt.datetime.now(dt.timezone.utc).isoformat(),
+            'sha256': hashlib.sha256((paper.get('abstractText') or '').encode()).hexdigest(),
+            'article_type': 'abstract', 'license': [], 'supplements_retrieved': False, 'supplement_count': 0,
+            'paragraphs': [{'id': 'p0000', 'section': 'abstract', 'text': normalize(paper.get('abstractText') or '')}]}
+
+def find_paragraphs(source, terms, limit=40):
+    """Paragraphs mentioning any of the terms (case-insensitive), for reading
+    Methods and tables without loading a whole article into the conversation."""
+    wanted = [t.lower() for t in terms if t.strip()]
+    hits = [p for p in source.get('paragraphs', []) if any(t in p['text'].lower() for t in wanted)]
+    return [{'id': p['id'], 'section': p.get('section'), 'text': p['text'][:700]} for p in hits[:limit]]
+
+def summary(result):
+    """What the command prints: enough to choose papers without opening the file."""
+    return [{'id': p.get('id'), 'pmcid': p.get('pmcid'), 'year': p.get('pubYear') or (p.get('firstPublicationDate') or '')[:4] or None,
+             'open_access': p.get('isOpenAccess'), 'cited_by': p.get('citedByCount'), 'title': (p.get('title') or '')[:160]}
+            for p in result.get('papers', [])]
 
 def fetch_full_text(pmcid):
     """Fetch open-access JATS XML through the documented Europe PMC endpoint."""
@@ -205,19 +303,57 @@ def compile_handoff(request, extraction, sources):
     protocols = [{'protocol_id': pid, 'contexts': [c['context'] for c in compatible if c['protocol_id'] == pid]} for pid in sorted({c['protocol_id'] for c in compatible})]
     return {'schema_version': '0.1', 'request_id': request['request_id'], 'ready_for_simulation': False, 'readiness_reason': 'Candidate evidence only: semantic review, protocol selection and model mapping are required.', 'source_manifest': manifest, 'candidate_protocols': protocols, 'claims': accepted, 'rejected_claims': rejected, 'excluded_claims': excluded, 'conflicts': conflicts, 'candidate_parameters': comparable, 'missing_required_parameters': missing, 'selected_parameters': [], 'optimization_domains': [], 'search_log': extraction.get('search_log', []), 'search_complete': extraction.get('search_complete', False), 'limitations': ['No automatic kinetic inference from endpoint purity.', 'Numeric/quote correctness and biological applicability need semantic review.', 'No optimal or safe operating range inferred from a reported setting.', 'Supplementary evidence is not retrieved by fetch_full_text.']}
 
-def main():
+NEXT_STEP = {
+    'search': 'Europe PMC did not answer. Run the same query with `pubmed`, or retry later; '
+              'record the failure in search_log rather than reporting no evidence.',
+    'pubmed': 'PubMed did not answer. Run the same query with `search` (Europe PMC), or retry later.',
+    'fetch': 'No open-access full text came back. Use the paper\'s abstract (`abstract`), mark '
+             'claims from it abstract-level, or choose another open-access paper.',
+}
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='command', required=True)
-    s = sub.add_parser('search'); s.add_argument('query'); s.add_argument('--out', required=True); s.add_argument('--page-size', type=int, default=10)
-    f = sub.add_parser('fetch'); f.add_argument('pmcid'); f.add_argument('--out', required=True)
+    for name in ('search', 'pubmed'):
+        s = sub.add_parser(name); s.add_argument('query'); s.add_argument('--out', required=True); s.add_argument('--page-size', type=int, default=10)
+        s.add_argument('--since', type=int, help='publication year from'); s.add_argument('--sort', choices=sorted(SORTS), default='relevance')
+        if name == 'search': s.add_argument('--open-access', action='store_true', help='only papers whose full text can be fetched')
+    f = sub.add_parser('fetch'); f.add_argument('pmcid'); f.add_argument('--out', required=True); f.add_argument('--find', action='append', default=[], help='print paragraphs containing this text (repeatable)')
+    a = sub.add_parser('abstract'); a.add_argument('--search-file', required=True, help='a saved search/pubmed result'); a.add_argument('--id', required=True, help='its id, PMID or PMCID'); a.add_argument('--out', required=True)
     c = sub.add_parser('compile'); c.add_argument('--request', required=True); c.add_argument('--extraction', required=True); c.add_argument('--sources', nargs='+', required=True); c.add_argument('--out', required=True)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     read = lambda p: json.loads(Path(p).read_text())
-    if args.command == 'search': result = search_literature(args.query, args.page_size)
-    elif args.command == 'fetch': result = fetch_full_text(args.pmcid)
-    else: result = compile_handoff(read(args.request), read(args.extraction), [read(p) for p in args.sources])
+    shown = {}
+    try:
+        if args.command == 'search':
+            result = search_literature(args.query, args.page_size, open_access=args.open_access, since=args.since, sort=args.sort)
+        elif args.command == 'pubmed':
+            result = search_pubmed(args.query, args.page_size, since=args.since, sort=args.sort)
+        elif args.command == 'fetch':
+            result = fetch_full_text(args.pmcid)
+            if args.find:
+                shown['matches'] = find_paragraphs(result, args.find)
+        elif args.command == 'abstract':
+            papers = read(args.search_file).get('papers', [])
+            paper = next((p for p in papers if args.id in (p.get('id'), p.get('pmid'), p.get('pmcid'))), None)
+            if not paper or not paper.get('abstractText'):
+                raise ValueError(f'{args.id} has no abstract in {args.search_file}')
+            result = abstract_source(paper)
+        else:
+            result = compile_handoff(read(args.request), read(args.extraction), [read(p) for p in args.sources])
+    except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, ET.ParseError) as e:
+        # One readable refusal, not a traceback: the orchestrator and the run
+        # page show `reason`, and `next` says how to carry on.
+        print(json.dumps({'refused': True, 'command': args.command, 'error': type(e).__name__,
+                          'reason': f'{args.command}: {str(e)[:300]}', 'next': NEXT_STEP.get(args.command)}))
+        return 1
     Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
-    print(args.out)
+    if args.command in ('search', 'pubmed'):
+        shown.update(index=result['index'], hit_count=result['hit_count'], papers=summary(result))
+    elif args.command == 'fetch':
+        shown.update(paragraphs=len(result['paragraphs']), title=result['title'])
+    print(json.dumps({'out': args.out, **shown}, ensure_ascii=False, indent=1))
+    return 0
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
