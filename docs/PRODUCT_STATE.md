@@ -192,6 +192,16 @@ Three changes, from the cause outwards:
 When a run still comes back empty, the diagnosis shows what the orchestrator said
 last (its message, never its reasoning), so "asked nobody" comes with the reason.
 
+### The agents' sandbox has to exist before a run starts
+
+With dispatch working, the next hosted run reached both specialists, and every
+shell and file tool they called failed with `linux_bwrap sandbox requires the
+'bwrap' binary on PATH`. Omnigent wraps every agent tool in bubblewrap on Linux,
+and the hosted image did not install it. The image now does, and a real run is
+refused up front with `agent_sandbox_unavailable` when bwrap cannot start, instead
+of being spent discovering it. The agents are never run without the sandbox as a
+fallback.
+
 A run read back from disk carries `finished_at`, so its elapsed time stops where
 the run did (older records without one use the last time they were written), and
 its stage count is recomputed from the tick list beside it.

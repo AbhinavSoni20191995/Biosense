@@ -27,6 +27,16 @@
 # processes, and the caps bound what the key can spend.
 FROM python:3.12-slim
 
+# Bubblewrap is the agents' OS sandbox. Omnigent wraps every agent shell and file
+# tool in it on Linux, and without it each of those tools fails before it starts:
+# a real run dispatched its specialists, and none of them could write a byte
+# ("linux_bwrap sandbox requires the 'bwrap' binary on PATH"). The agents are not
+# run unsandboxed instead — this container holds a model key — and BioSense
+# refuses a real run with `agent_sandbox_unavailable` when bwrap cannot start.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends bubblewrap \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir uv==0.12.23
 
 WORKDIR /app

@@ -383,10 +383,16 @@ Four things to settle before running the agents anywhere with real data:
   be reachable. In option A it is bound to loopback inside the container and
   nothing routes to it; anywhere else, put it behind authentication.
 - **The sandbox.** Every agent config uses `os_env.sandbox.type: auto`, which on
-  Linux expects bubblewrap. In a container it may be unavailable or need
-  privileges it should not have. Check what the sandbox resolves to before
-  trusting the isolation, and do not relax `write_paths` to make a deploy
-  succeed.
+  Linux is bubblewrap: Omnigent runs every agent shell and file tool inside it.
+  `Dockerfile.ai` installs it. Without it, every one of those tools fails before
+  it starts (`linux_bwrap sandbox requires the 'bwrap' binary on PATH`): the run
+  dispatches its specialists and none of them can write a file. BioSense now
+  checks this before a real run starts, by running bwrap once, and refuses with
+  `agent_sandbox_unavailable` if it cannot. `/readyz` and the boot log say the
+  same. bwrap also needs the host to permit unprivileged user namespaces; if a
+  platform forbids them, the answer is a host that allows them, not running the
+  agents unsandboxed in a container that holds a model key. Do not set the type
+  to `none`, and do not relax `write_paths` to make a deploy succeed.
 - **Session lifetime.** A real loop spans days: a protocol goes to a person for
   approval, a bioreactor runs, results come back. Redeploys kill processes, so
   the durable record must be the files on the volume — which it is, and which is

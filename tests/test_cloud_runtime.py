@@ -349,6 +349,72 @@ class RunRecoveryTests(unittest.TestCase):
         self.assertFalse(RS.append_event('/proc/nonexistent/x', {'seq': 0}))
 
 
+class SandboxCheckTests(unittest.TestCase):
+    """A real run is refused before it starts when the agents' sandbox cannot."""
+
+    def setUp(self):
+        RT._SANDBOX_CACHE.update(ok_at=None, failed_at=None, detail=None)
+        self.addCleanup(RT._SANDBOX_CACHE.update, ok_at=None, failed_at=None, detail=None)
+        self.cfg = RT.from_env(env={'BIOSENSE_RUNTIME_MODE': 'local', 'BIOSENSE_HOSTED': '1'})
+        self.on = {'BIOSENSE_SANDBOX_CHECK': ''}
+
+    def test_a_missing_bwrap_refuses_with_its_own_reason(self):
+        if not RT.sys.platform.startswith('linux'):
+            self.skipTest('the bubblewrap check is Linux-only')
+        with self.assertRaises(RT.RuntimeUnavailable) as ctx:
+            RT.check_sandbox(self.cfg, env=self.on,
+                             trial=lambda: "the 'bwrap' binary is not on PATH")
+        self.assertEqual('agent_sandbox_unavailable', ctx.exception.reason)
+        self.assertIn('bwrap', str(ctx.exception))
+        # Hosted wording: the visitor is told whose fault it is, not a command.
+        self.assertIn('hosted deployment', RT.next_step_for('agent_sandbox_unavailable',
+                                                            hosted=True))
+
+    def test_a_working_sandbox_is_checked_once_and_remembered(self):
+        if not RT.sys.platform.startswith('linux'):
+            self.skipTest('the bubblewrap check is Linux-only')
+        calls = []
+
+        def trial():
+            calls.append(1)
+            return None
+        self.assertEqual('linux_bwrap', RT.check_sandbox(self.cfg, env=self.on, trial=trial))
+        self.assertEqual('linux_bwrap', RT.check_sandbox(self.cfg, env=self.on, trial=trial))
+        self.assertEqual(1, len(calls))
+
+    def test_a_failure_is_retried_after_a_minute_so_a_fix_needs_no_restart(self):
+        if not RT.sys.platform.startswith('linux'):
+            self.skipTest('the bubblewrap check is Linux-only')
+        with self.assertRaises(RT.RuntimeUnavailable):
+            RT.check_sandbox(self.cfg, env=self.on, trial=lambda: 'no bwrap', now=0.0)
+        with self.assertRaises(RT.RuntimeUnavailable):    # cached, not re-run
+            RT.check_sandbox(self.cfg, env=self.on, trial=lambda: None, now=10.0)
+        self.assertEqual('linux_bwrap', RT.check_sandbox(
+            self.cfg, env=self.on, trial=lambda: None, now=RT.SANDBOX_RECHECK_S + 1))
+
+    def test_it_can_be_switched_off_and_never_applies_to_a_remote_runtime(self):
+        self.assertIsNone(RT.check_sandbox(self.cfg, env={'BIOSENSE_SANDBOX_CHECK': '0'},
+                                           trial=lambda: 'broken'))
+        remote = RT.from_env(env={'BIOSENSE_RUNTIME_MODE': 'remote',
+                                  'BIOSENSE_OMNIGENT_SERVER': 'https://omni.example',
+                                  'BIOSENSE_HOSTED': '1'})
+        self.assertIsNone(RT.check_sandbox(remote, env=self.on, trial=lambda: 'broken'))
+
+    def test_the_readiness_answer_names_it(self):
+        if not RT.sys.platform.startswith('linux'):
+            self.skipTest('the bubblewrap check is Linux-only')
+        RT._SANDBOX_CACHE.update(failed_at=RT.time.monotonic(), detail='no bwrap')
+        old = os.environ.get('BIOSENSE_SANDBOX_CHECK')
+        os.environ['BIOSENSE_SANDBOX_CHECK'] = '1'
+        try:
+            out = RT.available(self.cfg, 'local_real_ai',
+                               probe_fn=lambda _c: RT.reason('ok'))
+        finally:
+            os.environ['BIOSENSE_SANDBOX_CHECK'] = old if old is not None else '0'
+        self.assertFalse(out['ok'])
+        self.assertEqual('agent_sandbox_unavailable', out['reason'])
+
+
 class DeploymentTests(unittest.TestCase):
     """The deployment's own invariants, asserted rather than reviewed by eye."""
 
@@ -374,6 +440,15 @@ class DeploymentTests(unittest.TestCase):
         cfg = RT.from_env(runs_dir=runs, env={'BIOSENSE_RUNTIME_MODE': 'local',
                                               'BIOSENSE_OMNIGENT_WORKSPACE': ws})
         self.assertEqual(str(Path(runs).relative_to(Path(ws))), RT.check_workspace(cfg))
+
+    def test_the_ai_image_installs_the_agents_sandbox(self):
+        """Omnigent runs every agent tool inside bubblewrap on Linux. An image
+        without it gave a run whose specialists could not write a single file."""
+        text = (ROOT / 'deploy' / 'Dockerfile.ai').read_text()
+        self.assertRegex(text, r'apt-get install[^\n]*\bbubblewrap\b')
+        for cfg in sorted((ROOT / 'discovery_loop').rglob('config.yaml')):
+            self.assertNotRegex(cfg.read_text(), r'^\s*type:\s*none\s*$',
+                                f'{cfg} turns the agent sandbox off')
 
     def test_the_private_data_root_is_on_the_volume_too(self):
         """Projects accounts create are files under the private root. With the

@@ -46,6 +46,10 @@ and host and a boolean.
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import sys
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -139,6 +143,11 @@ REASONS = {
     'probe_failed': (
         'The Omnigent server answered, but not in a way this version understands.',
         'Check that the server and the omnigent client library are the same version.'),
+    'agent_sandbox_unavailable': (
+        'The agents\' sandbox cannot start on this machine, so every shell and file tool '
+        'they call would fail and the run would end having written nothing.',
+        'Install bubblewrap (apt install bubblewrap) and make sure the host permits '
+        'unprivileged user namespaces. The agents are never run unsandboxed instead.'),
 }
 
 
@@ -160,6 +169,8 @@ HOSTED_STEPS = {
                           'you can change fixes this; the demonstration path still works.',
     'probe_failed': 'This is a fault in the hosted deployment, not in your request.',
     'no_server_configured': 'This is a fault in the hosted deployment, not in your request.',
+    'agent_sandbox_unavailable': 'This is a fault in the hosted deployment, not in your request. '
+                                 'The demonstration path still works.',
     # Not a fault at all: a deployment offering one runtime is a choice. A
     # visitor shown an environment variable here would be reading somebody
     # else's configuration note.
@@ -441,6 +452,65 @@ def check_workspace(cfg):
     return str(rel)
 
 
+# Omnigent wraps every agent shell and file tool in its OS sandbox, which on Linux
+# is bubblewrap. Without a working `bwrap` each of those tools fails before it
+# starts — the run is dispatched, the specialists are asked, and nothing at all
+# can be written. That was a real hosted run, and it cost the person a run to find
+# out. So it is checked before a run starts, by running the sandbox once.
+SANDBOX_CHECK_ENV = 'BIOSENSE_SANDBOX_CHECK'     # 1 to check, 0 to skip; hosted checks by default
+SANDBOX_RECHECK_S = 60.0
+_SANDBOX_CACHE = {'ok_at': None, 'failed_at': None, 'detail': None}
+BWRAP_TRIAL = ('--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc',
+               '--unshare-all', '--die-with-parent', 'true')
+
+
+def _sandbox_wanted(cfg, env=None):
+    env = os.environ if env is None else env
+    flag = (env.get(SANDBOX_CHECK_ENV) or '').strip().lower()
+    if flag in ('0', 'false', 'no'):
+        return False
+    if cfg.mode != 'local_real_ai' or not sys.platform.startswith('linux'):
+        # A remote runtime sandboxes on its own machine; macOS uses seatbelt.
+        return False
+    return cfg.hosted or flag in ('1', 'true', 'yes')
+
+
+def _try_bwrap():
+    """None when bubblewrap can make a sandbox here, else what went wrong."""
+    exe = shutil.which('bwrap')
+    if exe is None:
+        return "the 'bwrap' binary is not on PATH"
+    try:
+        r = subprocess.run([exe, *BWRAP_TRIAL], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as e:
+        return f'bwrap could not be started: {type(e).__name__}'
+    if r.returncode != 0:
+        return f'bwrap exited {r.returncode}: {(r.stderr or "").strip()[:300]}'
+    return None
+
+
+def check_sandbox(cfg, *, trial=None, now=None, env=None):
+    """Raise RuntimeUnavailable unless the agents' OS sandbox can start here.
+
+    A success is remembered; a failure is retried after a minute, so installing
+    the package does not need a restart to be noticed.
+    """
+    if not _sandbox_wanted(cfg, env):
+        return None
+    now = time.monotonic() if now is None else now
+    c = _SANDBOX_CACHE
+    if c['ok_at'] is None and not (c['failed_at'] is not None
+                                   and now - c['failed_at'] < SANDBOX_RECHECK_S):
+        problem = (trial or _try_bwrap)()
+        if problem is None:
+            c.update(ok_at=now, failed_at=None, detail=None)
+        else:
+            c.update(failed_at=now, detail=problem)
+    if c['ok_at'] is None:
+        raise RuntimeUnavailable('agent_sandbox_unavailable', c['detail'], hosted=cfg.hosted)
+    return 'linux_bwrap'
+
+
 def available(cfg, mode=None, *, probe_fn=None):
     """Can this runtime run? Returns {'ok', 'reason', 'headline', 'next_step', …}.
 
@@ -459,6 +529,7 @@ def available(cfg, mode=None, *, probe_fn=None):
         return {**out, **_reason('no_server_configured', hosted=cfg.hosted)}
     try:
         check_workspace(target)
+        check_sandbox(target)
     except RuntimeUnavailable as e:
         return {**out, **_reason(e.reason, e.detail, hosted=cfg.hosted)}
     if probe_fn is None:

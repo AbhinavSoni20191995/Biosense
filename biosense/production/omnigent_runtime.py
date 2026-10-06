@@ -353,6 +353,7 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
             f'synthetic path is a different function on purpose, so one can never stand '
             f'in for the other.')
     RT.check_workspace(cfg)
+    RT.check_sandbox(cfg)
     try:
         return _run_async(_drive(cfg, brief, title=title, on_event=on_event,
                                 on_session=on_session, should_stop=should_stop))
