@@ -4,152 +4,430 @@
   "title": "ProtocolSummary 2.0: one recommended protocol, and the hypotheses behind it",
   "description": "A run forms several hypotheses and some of them are wrong. Reading eight cards and working out which ideas survived is not the deliverable; one protocol is. This is that page: the process stage by stage with the values this run recommends, each traced to the hypothesis that proposed it and badged with how it was produced, plus the ledger of every hypothesis the run formed and what became of it. It is assembled from artifacts that already passed their own contracts and is never written by a model. status is a const for a reason: this is a proposal. A wet-lab run needs a named human approver, which is a CLI act, and nothing that renders this document approves anything.",
   "type": "object",
-  "required": ["schema_version", "summary_id", "created_at", "status", "project", "objective",
-               "runtime_mode", "stages", "hypothesis_ledger", "approval", "limitations"],
+  "required": [
+    "schema_version",
+    "summary_id",
+    "created_at",
+    "status",
+    "project",
+    "objective",
+    "runtime_mode",
+    "stages",
+    "hypothesis_ledger",
+    "approval",
+    "limitations"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "2.0"},
-    "summary_id": {"type": "string"},
-    "created_at": {"type": "string"},
-    "run_id": {"type": ["string", "null"]},
-    "request_id": {"type": ["string", "null"]},
-
+    "schema_version": {
+      "const": "2.0"
+    },
+    "summary_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "status": {
       "const": "proposed_not_approved",
       "description": "There is one value because there is one truth: a protocol summary is a proposal. Approval is a separate, named, human act and cannot be reached from here."
     },
     "approval": {
       "type": "object",
-      "required": ["required", "approved_by", "how"],
+      "required": [
+        "required",
+        "approved_by",
+        "how"
+      ],
       "additionalProperties": false,
       "properties": {
-        "required": {"const": true},
+        "required": {
+          "const": true
+        },
         "approved_by": {
           "type": "null",
           "description": "Always null in this document. An approver is recorded on an approved ProductionProtocol, by a person running approve-protocol."
         },
-        "how": {"type": "string"}
+        "how": {
+          "type": "string"
+        }
       }
     },
-
-    "title": {"type": ["string", "null"]},
-    "objective": {"type": "string"},
-    "runtime_mode": {"enum": ["synthetic_demo", "local_real_ai", "remote_real_ai"]},
+    "title": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "objective": {
+      "type": "string"
+    },
+    "runtime_mode": {
+      "enum": [
+        "synthetic_demo",
+        "local_real_ai",
+        "remote_real_ai"
+      ]
+    },
     "evidence_status": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "What this run's numbers are worth, in words, e.g. that a synthetic run demonstrates the workflow and measures no cell."
     },
     "project": {
       "type": "object",
-      "required": ["project_id", "name", "version"],
+      "required": [
+        "project_id",
+        "name",
+        "version"
+      ],
       "properties": {
-        "project_id": {"type": "string"}, "name": {"type": "string"},
-        "version": {"type": "string"},
-        "simulator": {"type": ["object", "null"]}
+        "project_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "simulator": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
       }
     },
-    "research_context": {"type": ["object", "null"]},
-    "uncertainty": {"type": ["object", "null"]},
-
+    "research_context": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "uncertainty": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
     "stages": {
       "type": "array",
       "description": "The process in order, with the values this run recommends for each stage.",
       "items": {
         "type": "object",
-        "required": ["stage_id", "label", "parameters"],
+        "required": [
+          "stage_id",
+          "label",
+          "parameters"
+        ],
         "additionalProperties": false,
         "properties": {
-          "stage_id": {"type": "string"},
-          "label": {"type": "string"},
-          "goal": {"type": ["string", "null"]},
+          "stage_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "parameters": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["parameter_id", "label", "provenance", "changed"],
+              "required": [
+                "parameter_id",
+                "label",
+                "provenance",
+                "changed"
+              ],
               "additionalProperties": false,
               "properties": {
-                "parameter_id": {"type": "string"},
-                "label": {"type": "string"},
-                "unit": {"type": ["string", "null"]},
-                "control_value": {"type": ["number", "string", "null"]},
-                "recommended_value": {"type": ["number", "string", "null"]},
-                "changed": {"type": "boolean"},
-                "direction": {"type": ["string", "null"]},
-                "suggested_range": {"type": ["object", "null"]},
+                "parameter_id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "control_value": {
+                  "type": [
+                    "number",
+                    "string",
+                    "null"
+                  ]
+                },
+                "recommended_value": {
+                  "type": [
+                    "number",
+                    "string",
+                    "null"
+                  ]
+                },
+                "changed": {
+                  "type": "boolean"
+                },
+                "direction": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "suggested_range": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
                 "provenance": {
-                  "enum": ["reported", "adapted", "design_choice", "gap"],
+                  "enum": [
+                    "reported",
+                    "adapted",
+                    "design_choice",
+                    "gap"
+                  ],
                   "description": "How firm the value is. A gap has no evidence at all and blocks the wet lab; it is never filled with a plausible number."
                 },
                 "estimate_type": {
-                  "type": ["string", "null"],
-                  "enum": ["measured", "derived", "simulated", "predicted", "target", "judgement", null]
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "measured",
+                    "derived",
+                    "simulated",
+                    "predicted",
+                    "target",
+                    "judgement",
+                    null
+                  ]
                 },
                 "simulator_coverage": {
-                  "enum": ["modelled", "not_modelled", "no_simulator", "not_in_project"]
+                  "enum": [
+                    "modelled",
+                    "not_modelled",
+                    "no_simulator",
+                    "not_in_project"
+                  ]
                 },
-                "reason": {"type": ["string", "null"]},
-                "evidence_sources": {"type": "array", "items": {"type": "string"}},
-                "hypothesis_ref": {"type": ["string", "null"]},
-                "constraint": {"type": ["object", "null"]}
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "evidence_sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "hypothesis_ref": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "constraint": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "design_choice": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "Present when this value is a reasoned starting value: its confidence, basis and what would settle it."
+                }
               }
             }
           }
         }
       }
     },
-
     "hypothesis_ledger": {
       "type": "array",
       "description": "Every hypothesis the run formed, and what became of it. A discarded hypothesis stays on the page: showing only the winner hides that three alternatives were considered and ruled out, which is what a reviewer most needs to see.",
       "items": {
         "type": "object",
-        "required": ["hypothesis_id", "statement", "status", "adopted"],
+        "required": [
+          "hypothesis_id",
+          "statement",
+          "status",
+          "adopted"
+        ],
         "additionalProperties": false,
         "properties": {
-          "hypothesis_id": {"type": "string"},
-          "statement": {"type": "string"},
-          "status": {"enum": ["proposed", "supported", "contradicted", "superseded", "rejected"]},
+          "hypothesis_id": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "proposed",
+              "supported",
+              "contradicted",
+              "superseded",
+              "rejected"
+            ]
+          },
           "adopted": {
             "type": "boolean",
             "description": "Whether this hypothesis's parameter change appears in the protocol above."
           },
-          "reason": {"type": ["string", "null"], "description": "Why it was adopted or not."},
-          "confidence": {"type": ["string", "null"]},
-          "parameter_id": {"type": ["string", "null"]},
-          "supersedes": {"type": ["string", "null"]},
-          "superseded_reason": {"type": ["string", "null"]},
-          "evidence_sources": {"type": "array", "items": {"type": "string"}}
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it was adopted or not."
+          },
+          "confidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parameter_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "supersedes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "superseded_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
-
     "expected_effects": {
       "type": "array",
       "description": "Estimates, each carrying its own estimate_type. Never collapsed into one improvement number.",
-      "items": {"type": "object"}
+      "items": {
+        "type": "object"
+      }
     },
-    "trade_offs": {"type": "array", "items": {"type": "object"}},
-    "readouts": {"type": "array", "items": {"type": "object"}},
-    "simulator": {"type": ["object", "null"]},
-    "next_experiment": {"type": ["object", "null"]},
-
+    "trade_offs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "readouts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "simulator": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "next_experiment": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
     "gaps": {
       "type": "array",
       "description": "Values with no evidence behind them. Listed separately because they block the wet lab.",
       "items": {
         "type": "object",
-        "required": ["parameter_id", "why"],
-        "properties": {"parameter_id": {"type": "string"}, "why": {"type": "string"}}
+        "required": [
+          "parameter_id",
+          "why"
+        ],
+        "properties": {
+          "parameter_id": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        }
       }
     },
     "blocks_wet_lab": {
       "type": "boolean",
       "description": "True when any value is a gap. A protocol with a gap is not runnable, whatever else it says."
     },
-
-    "privacy": {"type": ["object", "null"]},
-    "limitations": {"type": "array", "items": {"type": "string"}},
-    "provenance": {"type": ["object", "null"]}
+    "privacy": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "design_choices": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Setpoints given a reasoned starting value rather than left as a gap: what each was derived from, how sure its author is, and what would settle it. Never evidence; always a person's to approve."
+    },
+    "limitation_groups": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "The same limitations, folded and grouped by what the reader can do about them. A flat list of forty-two lines, in which the one structural finding sat at number thirty, is why this exists."
+    }
   }
 }

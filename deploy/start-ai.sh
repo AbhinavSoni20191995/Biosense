@@ -116,6 +116,30 @@ else
   sed 's/^/[boot] /' "$LOGS/sandbox.log" 2>/dev/null
 fi
 
+# The operator's model choices per agent. The specialists search, read and
+# extract, and a faster model there is the biggest time lever a run has; the
+# orchestrator keeps whatever ANTHROPIC_MODEL names unless told otherwise.
+# Written into a copy of the bundle (the one above, when it already is one),
+# never into the image's own; the values are checked before they are used.
+if [ -n "${BIOSENSE_SPECIALIST_MODEL:-}${BIOSENSE_SPECIALIST_EFFORT:-}${BIOSENSE_ORCHESTRATOR_MODEL:-}" ]; then
+  if [ "$AGENT_BUNDLE" = "$APP_ROOT/discovery_loop" ]; then
+    AGENT_BUNDLE="/tmp/biosense-agents/discovery_loop"
+    rm -rf /tmp/biosense-agents
+    mkdir -p /tmp/biosense-agents
+    cp -r "$APP_ROOT/discovery_loop" "$AGENT_BUNDLE"
+  fi
+  if "${UV[@]}" python -m biosense.production.bundle --src "$AGENT_BUNDLE" --dst "$AGENT_BUNDLE.tmp" \
+       ${BIOSENSE_SPECIALIST_MODEL:+--specialist-model "$BIOSENSE_SPECIALIST_MODEL"} \
+       ${BIOSENSE_SPECIALIST_EFFORT:+--specialist-effort "$BIOSENSE_SPECIALIST_EFFORT"} \
+       ${BIOSENSE_ORCHESTRATOR_MODEL:+--orchestrator-model "$BIOSENSE_ORCHESTRATOR_MODEL"} \
+       2>&1 | sed 's/^/[boot] /'; then
+    rm -rf "$AGENT_BUNDLE" && mv "$AGENT_BUNDLE.tmp" "$AGENT_BUNDLE"
+  else
+    log 'WARNING: the per-agent model choice was refused (above); the agents run on ANTHROPIC_MODEL'
+    rm -rf "$AGENT_BUNDLE.tmp"
+  fi
+fi
+
 # The self-check validates the bundle Omnigent actually registers.
 export BIOSENSE_AGENT_BUNDLE="$AGENT_BUNDLE"
 

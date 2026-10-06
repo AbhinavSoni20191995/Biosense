@@ -42,6 +42,7 @@ RECOGNISED = (
     ('analysis_plan', 'analysis_plan'),
     ('quantified_hypothesis', 'quantified_hypothesis'),
     ('hypothesis', 'quantified_hypothesis'),
+    ('design_choices', 'design_choices'),
     ('research_context', 'research_context'),
     ('bioinformatics_report', 'bioinformatics_report'),
     ('bioinfo', 'bioinformatics_report'),
@@ -285,7 +286,8 @@ def _evidence_row(e):
             'summary': e.get('summary'), 'ref': e.get('ref'),
             'visibility': e.get('visibility'),
             'context_match': e.get('context_match'),
-            'context_mismatch_note': e.get('context_mismatch_note')}
+            'context_mismatch_note': e.get('context_mismatch_note'),
+            'relevance': e.get('relevance'), 'bearing': e.get('bearing')}
 
 
 def evidence_panel(bundle):

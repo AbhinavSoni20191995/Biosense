@@ -263,6 +263,9 @@ Still enforced in code, exactly as in the synthetic image:
 | | `OMNIGENT_LOCAL_SINGLE_USER` | `1` | loopback, no login |
 | Model | `ANTHROPIC_API_KEY` | **no — you set it** | a platform secret, never in the image |
 | | `BIOSENSE_AGENT_MODEL` | `claude-opus-5` | the agents' model, passed on as `ANTHROPIC_MODEL`. Claude Opus 5.5's broader safeguards can stop biology-research-adjacent runs (`[bio]`); its own message says to change the model |
+| | `BIOSENSE_SPECIALIST_MODEL` | no | a different model for the specialists (literature, bioinformatics, analysis…), e.g. a faster one; the orchestrator stays on `ANTHROPIC_MODEL`. Written into a copy of the agent bundle at boot |
+| | `BIOSENSE_SPECIALIST_EFFORT` | no | the specialists' reasoning effort: `low`, `medium` or `high` |
+| | `BIOSENSE_ORCHESTRATOR_MODEL` | no | the orchestrator's own model, when it should differ from `ANTHROPIC_MODEL` |
 | Remote | `BIOSENSE_OMNIGENT_TOKEN` / `_TOKEN_FILE` | no | only for `remote` mode |
 | Accounts | `BIOSENSE_AUTH_SERVER` | **no — you set it** | the one issuer sign-in is accepted from |
 | | `BIOSENSE_ADMIN_USER_IDS` | **no — you set it** | operator ids on that server |

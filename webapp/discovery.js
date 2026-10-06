@@ -951,6 +951,64 @@ function effectRowGuess(e, r) {
   return r;
 }
 
+/* The recommendation is always shown; how far to trust it sits right under
+   it, as a bar, with the reasons the code computed and the sources behind
+   them — supporting and contradicting — so "why high" or "why low" is
+   checkable without leaving the card. */
+const CONF_LEVELS = { low: 1, moderate: 2, high: 3 };
+function sourceLink(ref) {
+  const r = String(ref || '');
+  let m = r.match(/^PMC\d+$/);
+  if (m) return `https://europepmc.org/articles/${r}`;
+  m = r.match(/^PMID:?\s*(\d+)$/i);
+  if (m) return `https://pubmed.ncbi.nlm.nih.gov/${m[1]}/`;
+  m = r.match(/^(10\.\d{4,9}\/\S+)$/);
+  if (m) return `https://doi.org/${m[1]}`;
+  return null;
+}
+function confidenceBar(h) {
+  const level = h.confidence || 'low';
+  const box = el('div', 'confbox');
+  const top = el('div', 'confhead');
+  top.append(el('span', 'lab', 'Confidence'));
+  const bar = el('div', 'confbar ' + level);
+  for (let i = 1; i <= 3; i++) bar.append(el('span', i <= (CONF_LEVELS[level] || 1) ? 'on' : ''));
+  top.append(bar, el('span', 'conf ' + level, level));
+  box.append(top);
+  const why = el('ul', 'tight');
+  (h.confidence_basis || []).forEach(r => why.append(el('li', null, r)));
+  if (why.children.length) box.append(why);
+  const ev = (h.evidence || []).filter(e => e.stance === 'supportive' || e.stance === 'contradicting');
+  if (ev.length) {
+    const det = el('details');
+    const sup = ev.filter(e => e.stance === 'supportive').length;
+    det.append(el('summary', null,
+      `Backing sources: ${sup} supporting, ${ev.length - sup} contradicting`));
+    const ul = el('ul', 'tight');
+    ev.forEach(e => {
+      const li = el('li', e.stance === 'contradicting' ? 'contra' : null);
+      li.append(el('span', 'tag', e.stance === 'contradicting' ? 'AGAINST' : 'FOR'), ' ');
+      const href = sourceLink(e.ref);
+      if (href) {
+        const a = el('a', null, e.ref); a.href = href; a.target = '_blank'; a.rel = 'noopener';
+        li.append(a, ' — ');
+      } else if (e.ref) {
+        li.append(el('code', null, e.ref), ' — ');
+      }
+      li.append(document.createTextNode(e.summary || ''));
+      const bits = [e.strength && e.strength !== 'not_assessed' ? e.strength : null,
+        e.relevance,
+        e.context_match === 'partial_match' ? 'partial context match'
+          : e.context_match === 'context_mismatch' ? 'context mismatch' : null].filter(Boolean);
+      if (bits.length) li.append(el('span', 'dim', ` (${bits.join(' · ')})`));
+      if (e.bearing) li.append(el('div', 'dim', 'Bears on it because: ' + e.bearing));
+      ul.append(li);
+    });
+    det.append(ul); box.append(det);
+  }
+  return box;
+}
+
 function renderHypothesis(selected, all) {
   const host = $('#hypothesis'); if (!host) return;
   host.textContent = '';
@@ -1007,6 +1065,7 @@ function renderHypothesis(selected, all) {
   }
   w.append(head);
   w.append(el('h4', null, selected.statement));
+  w.append(confidenceBar(selected));
   if (selected.claim_level_reason) {
     w.append(el('p', 'caveat', selected.claim_level_reason));
   }
@@ -1153,6 +1212,17 @@ function renderProtocol(p) {
         w.append(Object.assign(el('div', 'dim'),
           { style: 'font-size:12.5px;padding:0 0 6px', textContent: q.reason }));
       }
+      /* A reasoned starting value shows its basis and how sure it is, so it
+         reads as a proposal to approve — never as a measured setting. */
+      if (q.design_choice) {
+        const dc = q.design_choice;
+        const box = Object.assign(el('div', 'dim'), { style: 'font-size:12.5px;padding:0 0 6px' });
+        box.append(el('span', 'conf ' + dc.confidence, dc.confidence + ' confidence'), ' ');
+        box.append(document.createTextNode(q.reason || ''));
+        box.append(el('div', null, 'Derived from: ' + (dc.derived_from || []).join('; ')));
+        if (dc.would_settle_it) box.append(el('div', null, 'Would settle it: ' + dc.would_settle_it));
+        w.append(box);
+      }
     });
     host.append(w);
   });
@@ -1182,7 +1252,21 @@ function renderProtocol(p) {
     p.gaps.forEach(g => ul.append(el('li', null, `${g.parameter_id}: ${g.why}`)));
     host.append(ul);
   }
-  if ((p.limitations || []).length) {
+  /* Grouped by what the reader can do about them, restatements folded. The
+     first two groups are open; what the machine lacks and the standing rules
+     are one click away, because they are true of every run. */
+  const groups = p.limitation_groups || [];
+  if (groups.length) {
+    host.append(el('div', 'lab', 'Limitations'));
+    groups.forEach(g => {
+      const det = el('details');
+      if (g.kind === 'blocks' || g.kind === 'unsettled') det.open = true;
+      det.append(el('summary', null, `${g.label} (${g.items.length})`));
+      const ul = el('ul', 'tight');
+      g.items.forEach(x => ul.append(el('li', null, x)));
+      det.append(ul); host.append(det);
+    });
+  } else if ((p.limitations || []).length) {
     const det = el('details');
     det.append(el('summary', null, 'Limitations'));
     const ul = el('ul', 'tight');

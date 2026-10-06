@@ -40,6 +40,7 @@ from .. import parameters as PR
 from .. import projects as PJ
 from . import context as CX
 from . import estimates as E
+from . import design as DC
 from . import hypothesis as HY
 
 TEMPLATE = {
@@ -332,6 +333,37 @@ def kind_of(path):
     return None
 
 
+DESIGN_TEMPLATE = {
+    'choices': [
+        {'parameter_id': 'seed_density', 'value': 0.3, 'unit': '1e6 cells/mL',
+         'rationale': 'Why this number: the reasoning from what is known to what is proposed.',
+         'derived_from': ['PMID:<id> (related cell type, same vessel class)',
+                          'common practice: iPSC suspension aggregates'],
+         'confidence': 'low',
+         'context_note': 'How the source context differs from this process.',
+         'would_settle_it': 'A seeding series in this vessel, measuring viability at 24 h.',
+         'risk_if_wrong': 'Too low wastes a run; too high causes aggregate necrosis.'},
+    ],
+}
+
+
+def cmd_design(a):
+    """Reasoned starting values for setpoints nothing in the run sets directly."""
+    project = PJ.load(a.project, a.projects_dir)
+    draft = K.read_json(a.draft)
+    doc = DC.build(draft, project=project, run_id=a.run_id,
+                   created_by=a.created_by or 'orchestrator')
+    if a.out:
+        K.write_json_atomic(a.out, doc)
+    print(json.dumps({'choices': [{'parameter_id': c['parameter_id'], 'value': c['value'],
+                                   'confidence': c['confidence']} for c in doc['choices']],
+                      'out': a.out,
+                      'note': 'Not evidence and not a measurement. Each is a person\'s to '
+                              'approve, and the protocol shows it as a design choice with its '
+                              'basis.'}, indent=1))
+    return 0
+
+
 def cmd_check(a):
     """Validate a file an agent wrote itself. The errors are the answer, in full.
 
@@ -359,7 +391,7 @@ def cmd_check(a):
 
 
 def cmd_template(a):
-    print(json.dumps(TEMPLATE, indent=2))
+    print(json.dumps(DESIGN_TEMPLATE if a.what == 'design-choices' else TEMPLATE, indent=2))
     return 0
 
 
@@ -390,11 +422,17 @@ def main(argv=None):
     p.add_argument('--seed', type=int, default=7)
     p.add_argument('--out', required=True)
     p.set_defaults(fn=cmd_simulate)
+    p = sub.add_parser('design-choices',
+                       help='reasoned starting values for setpoints no source sets here')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out')
+    p.add_argument('--run-id'); p.add_argument('--created-by')
+    p.set_defaults(fn=cmd_design)
     p = sub.add_parser('check', help='validate a BioSense artifact file and list every error')
     p.add_argument('file'); p.add_argument('--kind', choices=sorted(KINDS_BY_NAME))
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser('template', help='print an example draft')
-    p.add_argument('kind', choices=['hypothesis'])
+    p.add_argument('what', choices=['hypothesis', 'design-choices'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

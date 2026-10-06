@@ -180,9 +180,11 @@ PROVENANCE = {
     },
     'design_choice': {
         'label': 'D · design choice',
-        'short': 'Somebody chose it. No source states it.',
-        'long': 'A value picked by a person or implied by a model, with a stated rationale. It '
-                'is not evidence, and a wet-lab protocol needs it acknowledged by a named human.',
+        'short': 'Reasoned, not cited. A person approves it.',
+        'long': 'A starting value reasoned from adjacent practice — a related cell type, another '
+                'format, a named convention — with what it was derived from, how sure its author '
+                'is and what would settle it. No source states it for this process. It is not '
+                'evidence, and a wet-lab protocol needs it acknowledged by a named human.',
     },
     'gap': {
         'label': 'GAP · no evidence',

@@ -56,6 +56,9 @@ SCHEMAS = {
     # one number and where it came from; the unit of quantified evidence
     'estimate': 'estimate.schema.json',
     'quantified_hypothesis': 'quantified_hypothesis.schema.json',
+    # reasoned starting values for setpoints no source states for this process:
+    # not evidence, not a gap, and always a person's to approve
+    'design_choices': 'design_choices.schema.json',
     'research_context': 'research_context.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/design-choices-v2.0",
+  "title": "DesignChoices 2.0: reasoned starting values for parameters no evidence sets directly",
+  "description": "A process needs every physical setpoint to have a number before anyone can run it, and the literature rarely reports the one for this exact process. A design choice is the honest third option between a cited value and a blocking gap: a number proposed by reasoning from adjacent practice, with what it was derived from, how sure its author is, and what would settle it. It is never a reported value, it never becomes evidence, and a human approves it before the wet lab -- which is the same rule a ProductionProtocol already applies to its own design_choice provenance. A value that must not be guessed stays a gap.",
+  "type": "object",
+  "required": ["schema_version", "project_id", "choices"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string"},
+    "created_at": {"type": ["string", "null"]},
+    "created_by": {"type": ["string", "null"]},
+    "project_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "choices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["parameter_id", "value", "rationale", "derived_from", "confidence"],
+        "additionalProperties": false,
+        "properties": {
+          "parameter_id": {"type": "string"},
+          "label": {"type": ["string", "null"]},
+          "unit": {"type": ["string", "null"]},
+          "value": {"type": ["number", "string"]},
+          "range": {
+            "type": ["object", "null"],
+            "required": ["lower", "upper"],
+            "additionalProperties": false,
+            "properties": {"lower": {"type": "number"}, "upper": {"type": "number"}}
+          },
+          "rationale": {"type": "string", "minLength": 1,
+            "description": "Why this number: the reasoning from what is known to what is proposed"},
+          "derived_from": {
+            "type": "array", "minItems": 1, "items": {"type": "string"},
+            "description": "What it was reasoned from: claim ids, PMIDs, a named practice, a related cell type or format. 'Common practice' alone is a weak but statable basis; an empty list is not."
+          },
+          "confidence": {"enum": ["low", "moderate", "high"]},
+          "context_note": {"type": ["string", "null"],
+            "description": "How the source context differs from this process"},
+          "would_settle_it": {"type": ["string", "null"],
+            "description": "The measurement or source that would replace this guess with a value"},
+          "risk_if_wrong": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

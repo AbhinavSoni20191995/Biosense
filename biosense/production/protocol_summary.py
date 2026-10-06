@@ -28,6 +28,7 @@ import uuid
 from .. import contracts as K
 from .. import parameters as PR
 from .. import projects as PJ
+from ..evidence import limitations as LIM
 from . import response_model as RM
 from . import runtime as RT
 
@@ -148,7 +149,7 @@ def _pick(hypotheses):
 def build(*, project, objective, hypotheses, runtime_mode, control=None, simulator=None,
           research_context=None, uncertainty=None, next_experiment=None, limitations=(),
           privacy=None, provenance=None, run_id=None, request_id=None, title=None,
-          evidence_status=None):
+          evidence_status=None, design_choices=None):
     """Assemble a ProtocolSummary. Validated before it is returned.
 
     *project* is a loaded `Project`; *hypotheses* are QuantifiedHypothesis
@@ -161,7 +162,7 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
     adopted_ids = {h['hypothesis_id'] for h in chosen.values()}
     control = dict(control or {})
 
-    stages, gaps = [], []
+    stages, gaps, choice_rows = [], [], []
     stage_rows = list(project.stages) + [{'stage_id': 'all', 'label': 'Whole process'}]
     for s in stage_rows:
         sid = s['stage_id']
@@ -182,13 +183,25 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
                 href = h.get('hypothesis_id')
             else:
                 # Nothing proposed a change. The value stays what the process
-                # already uses, and where there is no such value it is a gap.
+                # already uses; where there is none, a reasoned starting value
+                # may have been proposed, and only where neither exists is it a
+                # gap. A setpoint nobody will ever measure for this exact vessel
+                # is routinely derived from adjacent practice: refusing to name
+                # one leaves the work undone rather than making it safer.
                 prov = 'design_choice' if current is not None else 'gap'
                 est, reason, sources, href = None, None, [], None
+            dc = (design_choices or {}).get(pid)
+            if dc and not h and current is None:
+                prov, recommended = 'design_choice', dc['value']
+                reason = dc['rationale']
+                sources = ['design_choice']
+                choice_rows.append(dc)
             if prov == 'gap':
                 gaps.append({'parameter_id': pid,
-                             'why': f'{q.label} has no recorded value for this process and '
-                                    f'nothing in this run proposed one.'})
+                             'why': f'{q.label} has no recorded value for this process, no '
+                                    f'hypothesis set one, and no starting value was proposed '
+                                    f'for it. A reasoned starting value with its basis would '
+                                    f'unblock it; so would a measurement.'})
             params.append({
                 'parameter_id': pid, 'label': q.label, 'unit': q.unit,
                 'control_value': current, 'recommended_value': recommended,
@@ -197,6 +210,12 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
                 'suggested_range': ({'minimum': q.minimum, 'maximum': q.maximum}
                                     if q.minimum is not None or q.maximum is not None else None),
                 'provenance': prov, 'estimate_type': est,
+                'design_choice': ({'confidence': dc['confidence'],
+                                   'derived_from': dc['derived_from'],
+                                   'would_settle_it': dc.get('would_settle_it'),
+                                   'risk_if_wrong': dc.get('risk_if_wrong'),
+                                   'context_note': dc.get('context_note')}
+                                  if dc and prov == 'design_choice' and not h else None),
                 'simulator_coverage': q.simulator_coverage,
                 'reason': reason, 'evidence_sources': sources, 'hypothesis_ref': href,
                 'constraint': ({'source': q.bound_origin['source'],
@@ -217,6 +236,13 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
     if gaps:
         limits.append('This protocol has gaps. It cannot be run until each one has evidence '
                       'or a named design choice.')
+    if choice_rows:
+        low = [c['parameter_id'] for c in choice_rows if c['confidence'] == 'low']
+        limits.append(
+            f'{len(choice_rows)} setpoint(s) are reasoned starting values, not measurements: '
+            f'{", ".join(sorted(c["parameter_id"] for c in choice_rows))}. Each carries what it '
+            f'was derived from and what would settle it; a person approves them before the wet '
+            f'lab.' + (f' Lowest confidence: {", ".join(sorted(low))}.' if low else ''))
     if mode == 'synthetic_demo':
         limits.append('Produced by the synthetic demonstration path. It shows what the system '
                       'can express and measures no real cell.')
@@ -244,9 +270,11 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
         'simulator': simulator,
         'next_experiment': next_experiment or ((lead or {}).get('next_experiment')),
         'gaps': gaps,
+        'design_choices': choice_rows,
         'blocks_wet_lab': bool(gaps),
         'privacy': privacy,
         'limitations': sorted(set(limits)),
+        'limitation_groups': LIM.digest(limits),
         'provenance': provenance,
     }
     K.require_valid('protocol_summary', doc)
@@ -306,7 +334,7 @@ def from_benchmark(result, *, project=None, runtime_mode='synthetic_demo', run_i
 
 
 def from_bundle(bundle, *, project, objective, runtime_mode, run_id=None, request_id=None,
-                research_context=None, simulator=None, privacy=None):
+                research_context=None, simulator=None, privacy=None, design_choices=None):
     """A ProtocolSummary from an ingested run directory."""
     hyps = []
     for card in bundle.get('hypotheses') or []:
@@ -327,7 +355,8 @@ def from_bundle(bundle, *, project, objective, runtime_mode, run_id=None, reques
         simulator=simulator, research_context=research_context or bundle.get('research_context'),
         run_id=run_id, request_id=request_id, privacy=privacy,
         limitations=sorted({x for c in (bundle.get('hypotheses') or [])
-                            for x in (c.get('limitations') or [])}))
+                            for x in (c.get('limitations') or [])}),
+        design_choices=design_choices)
 
 
 # ── rendering ───────────────────────────────────────────────────────────
@@ -395,7 +424,23 @@ def markdown(doc):
     nx = doc.get('next_experiment') or {}
     if nx.get('summary'):
         L += ['## Recommended next experiment', '', nx['summary'], '']
-    if doc.get('limitations'):
+    if doc.get('design_choices'):
+        L += ['## Reasoned starting values', '',
+              'Not measurements and not citations: numbers proposed from adjacent practice so '
+              'the process can be run at all. A person approves each one.', '',
+              '| Parameter | Value | Confidence | Derived from | What would settle it |',
+              '|---|---|---|---|---|']
+        for c in doc['design_choices']:
+            L.append(f'| {c["label"] or c["parameter_id"]} | {c["value"]}'
+                     f'{" " + c["unit"] if c.get("unit") else ""} | {c["confidence"]} | '
+                     f'{"; ".join(c["derived_from"])} | {c.get("would_settle_it") or "—"} |')
+        L.append('')
+    groups = doc.get('limitation_groups')
+    if groups:
+        L += ['## Limitations', '']
+        for g in groups:
+            L += [f'### {g["label"]}', ''] + [f'- {x}' for x in g['items']] + ['']
+    elif doc.get('limitations'):
         L += ['## Limitations', ''] + [f'- {x}' for x in doc['limitations']] + ['']
     return '\n'.join(L)
 

@@ -304,6 +304,12 @@ class RunEndTests(unittest.TestCase):
         self.assertIn('/cancel', js)
         self.assertIn('/extend', js)
         self.assertIn('id="insightsPanel"', html)
+        # The recommendation always carries a confidence bar with its reasons
+        # and linked sources, and grouped limitations.
+        self.assertIn('function confidenceBar', js)
+        self.assertIn('confidence_basis', js)
+        self.assertIn('limitation_groups', js)
+        self.assertIn('q.design_choice', js)
         self.assertIn('id="effort"', html)
         rv = (K.ROOT / 'webapp' / 'runview.js').read_text()
         self.assertIn('snap.extendable', rv)

@@ -495,6 +495,15 @@ button{font-family:inherit}
 #papersFound a{font-family:var(--mono);font-size:12px}
 .notest{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
   color:var(--ink-3)}
+/* How far to trust a recommendation: three segments, the reasons under them. */
+.confbox{margin:8px 0 10px;padding:10px 12px;border:1px solid var(--line,rgba(0,0,0,.08));border-radius:8px}
+.confhead{display:flex;align-items:center;gap:10px}
+.confbar{display:inline-flex;gap:3px}
+.confbar span{width:26px;height:8px;border-radius:2px;background:color-mix(in srgb,var(--ink-3) 25%,transparent)}
+.confbar.high span.on{background:var(--brand)}
+.confbar.moderate span.on{background:var(--warn)}
+.confbar.low span.on{background:var(--ink-3)}
+.confbox li.contra{color:var(--bad)}
 /* A best guess's confidence, worded and toned so it never reads as a measurement. */
 .conf{margin-left:8px;font-family:var(--mono);font-size:11px;font-weight:700;
   letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px dashed currentColor}

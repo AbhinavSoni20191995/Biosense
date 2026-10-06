@@ -237,11 +237,17 @@ def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
             run_id=Path(out_dir).name, request_id=request['request_id'],
             projects_dir=projects_dir)
     elif bundle['hypotheses']:
+        # Reasoned starting values, when the run proposed any: a setpoint with a
+        # stated basis is a design choice a person approves, not a gap.
+        from ..evidence import design as DC
+        entries = (bundle.get('by_kind') or {}).get('design_choices') or []
+        choices = DC.by_parameter(entries[0]['doc']) if entries else {}
         protocol = PS.from_bundle(
             bundle, project=project, objective=request['objective'],
             runtime_mode=runtime_mode, run_id=Path(out_dir).name,
             request_id=request['request_id'],
-            research_context=request.get('research_context'), privacy=priv)
+            research_context=request.get('research_context'), privacy=priv,
+            design_choices=choices)
     if protocol is not None:
         K.write_json_atomic(Path(out_dir) / 'protocol_summary.json', protocol)
         (Path(out_dir) / 'protocol_summary.md').write_text(

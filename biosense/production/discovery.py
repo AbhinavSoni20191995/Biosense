@@ -73,11 +73,11 @@ def _clean(text, *, field, limit, minimum=0):
 # bound the search; they never license a number the evidence does not support.
 EFFORT = {
     'quick': {'label': 'Quick', 'searches': 4, 'full_texts': 2, 'minutes': 5,
-              'bio_queries': 3, 'hypotheses': 1},
+              'bio_queries': 3, 'hypotheses': 1, 'rounds': 1},
     'standard': {'label': 'Standard', 'searches': 8, 'full_texts': 4, 'minutes': 10,
-                 'bio_queries': 6, 'hypotheses': 2},
+                 'bio_queries': 6, 'hypotheses': 2, 'rounds': 2},
     'thorough': {'label': 'Thorough', 'searches': 14, 'full_texts': 8, 'minutes': 20,
-                 'bio_queries': 10, 'hypotheses': 3},
+                 'bio_queries': 10, 'hypotheses': 3, 'rounds': 3},
 }
 DEFAULT_EFFORT = 'standard'
 
@@ -404,12 +404,22 @@ send, and hold the specialists to them:
   the budget goes on reading, not on typing commands.
 - `bioinformatics`: about {budget['bio_queries']} annotation or dataset queries, about
   {budget['minutes']} minutes.
-- Yourself: at most {budget['hypotheses']} hypothesis file(s), the best-supported first.
+- Yourself: at most {budget['rounds']} round(s) of dispatch (the first round
+  with both specialists at once counts as one; a narrower retry or a
+  follow-up question to a specialist is another), and at most
+  {budget['hypotheses']} hypothesis file(s), the best-supported first.
 
 A specialist that has not answered when its minutes are well past is not
 waited for: write with what you have and record what is missing. A budget
 bounds the search, never the honesty of the answer: a magnitude the evidence
 does not give stays not established.
+
+Your own time is turns, so spend few: dispatch both specialists in one
+response; read their *replies* rather than re-reading the files behind them
+(the digest, the sources) unless a number has to be quoted; write each file
+once with its CLI command and fix only what the command's output names; do
+not re-run an analysis or a simulation you already have; do not summarise the
+run in prose before the files exist. RUN_SUMMARY.md comes last, and short.
 
 ## The request
 
@@ -513,9 +523,39 @@ invent one for them, and do not drop them.
 5. Check **simulator coverage** against the project before predicting anything,
    and run the comparison only for the parameters it models. `NOT MODELLED` is
    an answer to report beside the hypothesis, not a reason to withhold it.
-6. Recommend the **next experiment**: the conditions, what to measure, and why.
+6. **Give every setpoint the process needs a number, or say why it must not have
+   one.** A protocol with a blank cannot be run, and the literature will not
+   report the value for this exact vessel, density and line. Each parameter the
+   project exposes ends as one of three things, and the third is not a failure:
+
+   - a **hypothesis**, where the evidence supports a change;
+   - a **design choice** — a reasoned starting value, derived from adjacent
+     practice (a related cell type, another format, a named convention), with
+     what it was derived from, a confidence, what would settle it and what goes
+     wrong if it is wrong. Write them together and let the CLI check them
+     against the project:
+     `{python} -m biosense.evidence.cli template design-choices` prints the shape;
+     `{python} -m biosense.evidence.cli design-choices --project {project.project_id}{pdir} \
+         --draft {loop_dir}/choices.draft.json --out {loop_dir}/design_choices.json`
+     builds it. They appear as **D** in the protocol, never as reported values,
+     and a person approves them.
+   - a **gap**, reserved for a value that genuinely must not be guessed — one
+     where a wrong number is unsafe or would invalidate the experiment. Say which.
+
+   Leaving a routine setpoint blank because no paper states it is not caution;
+   it leaves the work undone. Propose the number, label it, and say how sure
+   you are.
+7. Recommend the **next experiment**: the conditions, what to measure, and why.
    This matters most when the magnitude is unknown — the experiment is how it
    stops being unknown.
+
+**Always end with a recommendation.** However thin the evidence, the person
+gets your best-supported proposal; how far to trust it is shown beside it as a
+confidence bar, with the reasons BioSense computes from your evidence rows and
+the sources behind them. So the evidence rows are what make the bar honest:
+cite each source with its ref (PMID, PMC id or DOI), its stance, its strength
+and — when it is not direct — its bearing. A low-confidence recommendation with
+its reasons stated is a result; no recommendation is not.
 
 Whatever else happens, try to come back with: the main uncertainty, what the
 evidence says, one or more candidate hypotheses, the lever each names, its
