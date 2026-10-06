@@ -41,6 +41,7 @@ import threading
 import time
 
 from .. import contracts as K
+from . import activity as AC
 from . import runtime as RT
 from . import stages as ST
 
@@ -69,6 +70,16 @@ IDLE_CONFIRMATIONS = 2       # a momentary idle between turns must not end a run
 MAX_SILENCE_S = 900.0        # nothing at all for this long: stop watching and say so
 SESSION_LIVE = ('launching', 'running', 'waiting', 'in_progress', 'queued')
 SESSION_DONE = ('idle', 'completed', 'complete', 'finished', 'cancelled')
+# The specialists run in their own child sessions. A parent reads `idle` once it
+# has dispatched and ended its turn, while its children are still working, and
+# none of a child's events appear on the parent's stream. So the session tree is
+# polled, and each working child's stream is tailed beside the parent's.
+CHILD_POLL_S = 10.0          # how often the session tree is asked who is working
+MAX_CHILD_TAILS = 8          # streams followed at once; the tree poll covers the rest
+CHILD_TASK_DONE = ('completed', 'failed', 'cancelled')
+# A child's own lifecycle is not the run's: its turn ending, its deltas and its
+# reasoning are not shown. Its tool calls, results and messages are.
+CHILD_DROPPED = ('delta', 'reasoning', 'status', 'waiting', 'accepted', 'terminal')
 
 
 
@@ -343,6 +354,7 @@ def drive(cfg, brief, *, title=None, on_event=None, on_session=None, should_stop
 async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
     client = _client(cfg)
     emit = on_event or (lambda _e: None)
+    children = None
     try:
         agent = await client.sessions.resolve_agent(cfg.agent)
         where = await _find_executor(client, agent.harness)
@@ -373,25 +385,47 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
 
         reached, terminal, error = set(), None, None
         turns, last_event, stopped_because, settled = 0, time.monotonic(), None, 0
+
+        def out(ev):
+            if ev.get('stage'):
+                reached.add(ev['stage'])
+            emit(ev)
+
+        children = _Children(client, session_id, out)
         stream = client.sessions.stream(session_id).__aiter__()
         while terminal is None:
             if should_stop and should_stop():
                 await client.sessions.interrupt(session_id)
+                await children.interrupt()
                 terminal, error = 'failed', 'the run was stopped while it was in flight'
                 break
             raw = None
-            try:
-                raw = await asyncio.wait_for(stream.__anext__(), timeout=STREAM_POLL_S)
-            except asyncio.TimeoutError:
-                pass
-            except StopAsyncIteration:
-                # The server closed the tail. That is not the session ending —
-                # it does not replay, so the way to find out is to ask it.
-                stream = None
-            except Exception as e:  # noqa: BLE001 - a dropped tail is not a failed run
-                emit({'kind': 'note', 'stage': None, 'simple': None,
-                      'technical': f'event stream dropped ({type(e).__name__}); reconnecting'})
-                stream = None
+            if stream is None:
+                # No tail to wait on: pause instead of spinning, then ask.
+                await asyncio.sleep(IDLE_RECHECK_S)
+            else:
+                try:
+                    raw = await asyncio.wait_for(stream.__anext__(), timeout=STREAM_POLL_S)
+                except asyncio.TimeoutError:
+                    pass
+                except StopAsyncIteration:
+                    # The server closed the tail. That is not the session ending —
+                    # it does not replay, so the way to find out is to ask it.
+                    stream = None
+                except Exception as e:  # noqa: BLE001 - a dropped tail is not a failed run
+                    emit({'kind': 'note', 'stage': None, 'simple': None,
+                          'technical': f'event stream dropped ({type(e).__name__}); '
+                                       f'reconnecting'})
+                    stream = None
+
+            # What the specialists did since the last pass, from their own streams.
+            for ev in children.drain():
+                last_event, settled = time.monotonic(), 0
+                out(ev)
+            seen = children.changes
+            kids = await children.poll()
+            if children.changes != seen:
+                last_event, settled = time.monotonic(), 0
 
             if raw is not None:
                 last_event, settled = time.monotonic(), 0
@@ -431,9 +465,17 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
             if status == 'failed':
                 terminal, error = 'failed', _task_error(getattr(live, 'last_task_error', None))
                 break
-            if status in SESSION_LIVE:
-                # Working, or parked waiting for a specialist. Either way it is
-                # not over, so the tail is reopened and the wait continues.
+            if status not in SESSION_LIVE:
+                # About to count towards "finished": ask the tree fresh, because
+                # an idle parent with a working child is the normal async shape.
+                seen = children.changes
+                kids = await children.poll(force=True)
+                if children.changes != seen:
+                    last_event, quiet, settled = time.monotonic(), 0.0, 0
+            if status in SESSION_LIVE or kids:
+                # Working, parked waiting for a specialist, or idle while one
+                # works. None of those is over, so the tail is reopened and the
+                # wait continues.
                 settled = 0
                 if stream is None:
                     stream = await _reopen(client, session_id)
@@ -442,12 +484,13 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
                 # because a session is briefly idle between turns and ending the
                 # run there is exactly the bug this loop exists to fix.
                 settled += 1
-                if settled >= IDLE_CONFIRMATIONS and (stream is None or quiet >= TURN_QUIET_S):
+                # Once a specialist has answered, the parent is woken by its
+                # inbox; that wake is given the full quiet period to arrive.
+                if settled >= IDLE_CONFIRMATIONS and (
+                        (stream is None and not children.count()) or quiet >= TURN_QUIET_S):
                     terminal = 'complete'
                     break
-                if stream is None:
-                    await asyncio.sleep(IDLE_RECHECK_S)
-            if quiet >= MAX_SILENCE_S:
+            if quiet >= MAX_SILENCE_S and not kids:
                 terminal = 'failed'
                 stopped_because = (
                     f'nothing happened for {int(quiet // 60)} minutes and the session reports '
@@ -461,9 +504,156 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
             error = error or _task_error(snapshot.last_task_error)
         return {'session': rec.public(), 'terminal': terminal or 'complete',
                 'error': error, 'stages_reached': sorted(reached),
-                'status': snapshot.status}
+                'status': snapshot.status, 'sub_agents': children.count()}
     finally:
+        if children is not None:
+            await children.close()
         await client.close()
+
+
+def _child_busy(row):
+    """Omnigent's own "is this sub-agent still working" predicate, or a copy of it."""
+    try:
+        from omnigent_client import child_summary_busy  # noqa: PLC0415 - lazy, like _sdk
+        return bool(child_summary_busy(row))
+    except ImportError:
+        task = row.get('current_task_status')
+        if int(row.get('pending_elicitations_count') or 0) > 0 or row.get('busy') \
+                or task == 'launching':
+            return True
+        return task is not None and task not in CHILD_TASK_DONE
+
+
+class _Children:
+    """The specialists' sessions under one run, which its own stream never shows.
+
+    Two sources, both read-only: the session tree, polled, which says who exists
+    and who is working; and each working child's stream, tailed, which carries
+    the tool calls that move the stage ticks. Nothing here starts, steers or
+    answers a child — that is the orchestrator's job. A server without the tree
+    endpoint gives `None` from `poll`, and the loop falls back to the parent's
+    status alone, which is how it behaved before.
+    """
+
+    def __init__(self, client, root, out):
+        self.client, self.root, self.out = client, root, out
+        self.state = {}           # child id -> 'working' | 'finished' | 'failed'
+        self.agent = {}           # child id -> specialist name, or None
+        self.tails = {}           # child id -> asyncio task pumping its stream
+        self.queue = asyncio.Queue()
+        self.polled_at = None
+        self.busy = None
+        self.changes = 0          # state transitions seen; a change is activity
+        self.supported = callable(getattr(client.sessions, 'child_sessions_tree', None))
+
+    def count(self):
+        return len(self.state)
+
+    async def poll(self, force=False):
+        """Whether any child is working: True, False, or None when unknowable."""
+        if not self.supported:
+            return None
+        now = time.monotonic()
+        if not force and self.polled_at is not None and now - self.polled_at < CHILD_POLL_S:
+            return self.busy
+        self.polled_at = now
+        try:
+            rows = await self.client.sessions.child_sessions_tree(self.root)
+        except Exception:  # noqa: BLE001 - a failed poll says nothing either way
+            self.busy = None
+            return None
+        busy = False
+        for row in rows or ():
+            if not isinstance(row, dict) or not isinstance(row.get('id'), str):
+                continue
+            cid = row['id']
+            working = _child_busy(row)
+            busy = busy or working
+            task = (row.get('current_task_status') or '').lower()
+            now_state = 'working' if working else ('failed' if task == 'failed' else 'finished')
+            if cid not in self.agent:
+                self.agent[cid] = AC.agent_named(
+                    f"{row.get('agent_name') or ''} {row.get('title') or ''}")
+            prev = self.state.get(cid)
+            if prev != 'working' and (working or prev is None):
+                # New, or woken for another task. A child first seen already
+                # finished was quick, and still gets its start recorded.
+                self._say(cid, row, 'started')
+            if not working and prev != now_state:
+                self._say(cid, row, now_state)
+            self.state[cid] = now_state
+            if working:
+                self._tail(cid)
+        self.busy = busy
+        return busy
+
+    def _say(self, cid, row, state):
+        self.changes += 1
+        agent = self.agent.get(cid)
+        name = (AC.AGENT_LABEL.get(agent)
+                or AC._short(row.get('title') or row.get('agent_name') or 'A specialist', 60))
+        preview = AC._short(row.get('last_message_preview'), 200)
+        simple = {'started': f'{name} agent is working.',
+                  'finished': f'{name} agent finished its task.',
+                  'failed': f'{name} agent stopped with an error.'}[state]
+        technical = f'child session {cid} ({row.get("agent_name") or row.get("title") or "?"})' \
+                    f' {state}'
+        if preview and state != 'started':
+            technical += f': {preview}'
+        self.out({'kind': 'subagent', 'agent': agent, 'child_session_id': cid, 'state': state,
+                  'task': row.get('title'),
+                  'stage': ST.stage_for_agent(agent) if state == 'started' else None,
+                  'simple': simple, 'technical': technical})
+
+    def _tail(self, cid):
+        if cid in self.tails or len(self.tails) >= MAX_CHILD_TAILS:
+            return
+        self.tails[cid] = asyncio.ensure_future(self._pump(cid))
+
+    async def _pump(self, cid):
+        try:
+            async for raw in self.client.sessions.stream(cid):
+                self.queue.put_nowait((cid, raw))
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - the tree poll still sees this child
+            pass
+        finally:
+            self.tails.pop(cid, None)
+
+    def drain(self):
+        """The children's events that arrived since the last call, mapped."""
+        rows = []
+        while True:
+            try:
+                cid, raw = self.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return rows
+            mapped = ST.map_event(raw)
+            if mapped is None or mapped['kind'] in CHILD_DROPPED:
+                continue
+            if mapped['kind'] == 'error':
+                # A specialist's failed step is a limitation of its answer, not
+                # the end of the run; the tree poll reports a child that died.
+                mapped = dict(mapped, kind='warning')
+            rows.append(dict(mapped, agent=self.agent.get(cid), child_session_id=cid))
+
+    async def interrupt(self):
+        """Stop every child that is still working. Best effort."""
+        for cid, state in list(self.state.items()):
+            if state == 'working':
+                try:
+                    await self.client.sessions.interrupt(cid)
+                except Exception:  # noqa: BLE001 - stopping is advisory
+                    pass
+
+    async def close(self):
+        tails = list(self.tails.values())
+        for t in tails:
+            t.cancel()
+        if tails:
+            await asyncio.gather(*tails, return_exceptions=True)
+        self.tails.clear()
 
 
 async def _reopen(client, session_id):

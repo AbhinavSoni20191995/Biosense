@@ -73,6 +73,14 @@ MAX_ARTIFACTS = 40
 MAX_TASK_CHARS = 140
 
 
+def agent_named(text):
+    """The specialist a piece of text names, or None. One rule for every caller."""
+    for name, rx in AGENT_RE.items():
+        if rx.search(text or ''):
+            return name
+    return None
+
+
 def _short(text, limit=MAX_TASK_CHARS):
     s = ' '.join((text or '').split())
     return s[:limit] + ('…' if len(s) > limit else '')
@@ -108,7 +116,10 @@ class Activity:
         if kind in ('delta', 'reasoning'):
             # Alive, and nothing a reader should be shown as a finding.
             return
-        self._touch('orchestrator', at)
+        # A specialist's own session reports as itself; everything else is the
+        # orchestrator, which is the one working whenever nothing else is.
+        who = event.get('agent')
+        self._touch(who if who in self.agents else 'orchestrator', at)
         if kind == 'accepted':
             self._note(at, 'started', event.get('simple') or 'Run started.')
         if event.get('omnigent_type') == 'turn.completed':
@@ -119,6 +130,8 @@ class Activity:
             self._on_result(event, at, text)
         elif kind in ('refusal', 'warning'):
             self._limit(at, event.get('simple') or event.get('technical'), event.get('tool'))
+        elif kind == 'subagent':
+            self._on_subagent(event, at)
         elif kind == 'needs_human':
             self._note(at, 'needs_human', event.get('simple') or 'A question needs a person.')
         elif kind in ('terminal', 'error'):
@@ -149,15 +162,46 @@ class Activity:
 
     def _on_result(self, event, at, text):
         if self._is_dispatch(event.get('tool') or ''):
+            # The dispatch tool's result is the hand-over being accepted, not the
+            # specialist's answer: the orchestrator is asynchronous, sends, and
+            # ends its turn. Marking the agent finished here showed every
+            # specialist "done" seconds after it was asked. It stays working
+            # until its own session says otherwise, or the run ends.
             name = self._agent_in(text) or (self._pending.pop() if self._pending else None)
             if name and name in self.agents:
-                row = self.agents[name]
-                row['status'] = COMPLETE
-                row['finished_at'] = at
-                row['last_activity_at'] = at
-                self._note(at, 'agent', f'{AGENT_LABEL[name]} agent finished', agent=name)
+                self.agents[name]['last_activity_at'] = at
+                self._note(at, 'agent', f'{AGENT_LABEL[name]} agent received its task',
+                           agent=name)
         if REFUSAL_RE.search(event.get('technical') or ''):
             self._limit(at, event.get('technical'), event.get('tool'))
+
+    def _on_subagent(self, event, at):
+        """A specialist's session, as the server reports it.
+
+        The parent's stream never carries a child's work, so this — polled from
+        the session tree — is what says a specialist is working or has finished.
+        """
+        name = event.get('agent')
+        if name not in self.agents or name == 'orchestrator':
+            if event.get('simple'):
+                self._note(at, 'agent', event['simple'])
+            return
+        row = self.agents[name]
+        row['child_session_id'] = event.get('child_session_id') or row['child_session_id']
+        row['last_activity_at'] = at
+        state = event.get('state')
+        if state == 'started':
+            row['started_at'] = row['started_at'] or at
+            row['status'] = RUNNING
+            row['finished_at'] = None
+            row['task'] = _short(event.get('task')) or row['task']
+            self._note(at, 'agent', f'{AGENT_LABEL[name]} agent is working', agent=name)
+        elif state in ('finished', 'failed'):
+            row['status'] = COMPLETE if state == 'finished' else FAILED
+            row['finished_at'] = at
+            self._note(at, 'agent', f'{AGENT_LABEL[name]} agent '
+                       + ('finished' if state == 'finished' else 'stopped with an error'),
+                       agent=name)
 
     def _finish(self, at, event):
         stage = event.get('stage')
@@ -176,10 +220,7 @@ class Activity:
         return tool in ST.DISPATCH_TOOLS or tool in AGENT_RE
 
     def _agent_in(self, text):
-        for name, rx in AGENT_RE.items():
-            if rx.search(text or ''):
-                return name
-        return None
+        return agent_named(text)
 
     def _touch(self, name, at):
         row = self.agents.get(name)

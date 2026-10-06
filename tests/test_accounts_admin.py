@@ -323,7 +323,7 @@ class HttpRoleTests(unittest.TestCase):
         rid = d['run_id']
         for _ in range(240):
             snap = self._req('GET', f'/api/discovery/{rid}', sid=sid)[1]
-            if snap['status'] not in ('queued', 'running'):
+            if snap['status'] not in ('queued', 'running', 'finalizing'):
                 break
             time.sleep(0.25)
         return rid

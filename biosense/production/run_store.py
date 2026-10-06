@@ -201,6 +201,7 @@ def listing(runs_dir, *, owner=None, project_id=None, live_ids=(), limit=200):
             continue
         if project_id and state.get('project_id') != project_id:
             continue
+        _settle_counts(state)
         rows.append(summarise(state, live_ids=live_ids))
         if len(rows) >= limit:
             break
@@ -229,6 +230,32 @@ def find(runs_dir, run_id):
     return None
 
 
+def _settle_counts(snap):
+    """Make an old record's clock and stage count agree with what it says.
+
+    Records written before `finished_at` was part of the snapshot have no end
+    time, so a viewer counted their elapsed time up to "now" for ever: a thirty
+    second run read back the next morning said fourteen hours. The last time the
+    record was written is the latest moment it can have finished, so that is
+    used, and the elapsed figure is frozen at it. The stage count is recomputed
+    from the tick list beside it, because older code computed the two apart and
+    they disagreed ("0 / 10" next to a ticked stage).
+    """
+    if snap.get('status') not in LIVE_STATUSES:
+        if not snap.get('finished_at'):
+            snap['finished_at'] = snap.get('written_at') or snap.get('updated_at')
+        if snap.get('finished_at') and snap.get('started_at'):
+            snap['elapsed_s'] = round(max(0.0, snap['finished_at'] - snap['started_at']), 1)
+    rows = snap.get('progress')
+    if isinstance(rows, list) and rows:
+        counts = dict(snap.get('stage_counts') or {})
+        counts['done'] = sum(1 for r in rows if isinstance(r, dict) and r.get('status') == 'done')
+        counts['total'] = len(rows)
+        counts['current'] = next((r.get('stage') for r in rows
+                                  if isinstance(r, dict) and r.get('status') == 'current'), None)
+        snap['stage_counts'] = counts
+
+
 def restore(runs_dir, run_id, *, after=-1):
     """A snapshot for *run_id* read back from disk, or None if there is no record.
 
@@ -246,7 +273,7 @@ def restore(runs_dir, run_id, *, after=-1):
     snap['events'] = read_events(d, after=after)
     snap['event_count'] = len(read_events(d, after=-1))
     snap['recovered'] = True
-    live = snap.get('status') in ('queued', 'running')
+    live = snap.get('status') in LIVE_STATUSES
     if live:
         age = time.time() - (snap.get('written_at') or 0)
         snap['interrupted'] = True
@@ -260,5 +287,6 @@ def restore(runs_dir, run_id, *, after=-1):
                              if age > STALE_AFTER_S else
                              'Start the run again, or reload in a moment in case this process '
                              'is still coming up.')
+    _settle_counts(snap)
     snap.pop('written_at', None)
     return snap

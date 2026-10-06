@@ -127,10 +127,43 @@ class ActivityTests(unittest.TestCase):
     def test_an_agent_is_running_because_a_dispatch_was_seen(self):
         a = ACT.Activity.from_events(self.events(), started_at=0)
         by = {r['agent']: r for r in a.snapshot(now=210)['agents']}
-        self.assertEqual('complete', by['literature']['status'])
         self.assertEqual('running', by['bioinformatics']['status'])
         self.assertEqual('queued', by['biosimulator']['status'])
         self.assertIn('G-CSF', by['literature']['task'])
+
+    def test_the_dispatch_being_accepted_is_not_the_agent_finishing(self):
+        """The orchestrator is asynchronous: the send tool returns at once, and the
+        specialist starts then. Calling it finished there showed every agent
+        "done" seconds after it was asked."""
+        a = ACT.Activity.from_events(self.events(), started_at=0)
+        by = {r['agent']: r for r in a.snapshot(now=210)['agents']}
+        self.assertEqual('running', by['literature']['status'])
+
+    def test_a_child_session_says_when_its_specialist_finished(self):
+        rows = self.events() + [
+            {'seq': 6, 'at': 230, 'kind': 'subagent', 'agent': 'literature',
+             'child_session_id': 'conv_lit', 'state': 'finished',
+             'simple': 'Literature agent finished its task.'},
+            {'seq': 7, 'at': 240, 'kind': 'subagent', 'agent': 'bioinformatics',
+             'child_session_id': 'conv_bio', 'state': 'failed'},
+        ]
+        a = ACT.Activity.from_events(rows, started_at=0)
+        by = {r['agent']: r for r in a.snapshot(now=250)['agents']}
+        self.assertEqual('complete', by['literature']['status'])
+        self.assertEqual('conv_lit', by['literature']['child_session_id'])
+        self.assertEqual('failed', by['bioinformatics']['status'])
+        self.assertNotIn('Literature', a.snapshot(now=250)['active_agents'])
+
+    def test_a_specialists_own_events_do_not_keep_the_orchestrator_busy(self):
+        a = ACT.Activity(started_at=0)
+        a.observe({'at': 5, 'kind': 'subagent', 'agent': 'analysis', 'state': 'started',
+                   'child_session_id': 'conv_an', 'task': 'analysis-it1'})
+        a.observe({'at': 9, 'kind': 'tool', 'tool': 'bash', 'agent': 'analysis',
+                   'technical': 'bioinformatics.cli execute plan.json'})
+        by = {r['agent']: r for r in a.snapshot(now=10)['agents']}
+        self.assertEqual('running', by['analysis']['status'])
+        self.assertEqual(9, by['analysis']['last_activity_at'])
+        self.assertEqual('queued', by['orchestrator']['status'])
 
     def test_prose_about_an_agent_does_not_start_one(self):
         """A bash line containing the word "analysis" is prose. Showing work that
@@ -323,6 +356,29 @@ class RunStoreTests(unittest.TestCase):
         row = RS.listing(self.tmp, owner='me@lab.example', live_ids={'d' * 16})[0]
         self.assertEqual('running', row['status'])
         self.assertEqual('active', row['group'])
+
+    def test_a_finished_record_has_a_clock_that_stopped(self):
+        """Records written before `finished_at` was saved had none, and a viewer
+        counted their elapsed time up to now: a 30 s run read "24:29" later."""
+        started = time.time() - 30
+        progress = [{'stage': 'understanding_objective', 'status': 'done'},
+                    {'stage': 'identifying_uncertainty', 'status': 'skipped'}]
+        self._write('e' * 16, started_at=started, progress=progress,
+                    stage_counts={'done': 0, 'total': 10, 'current': None})
+        snap = RS.restore(self.tmp, 'e' * 16)
+        self.assertTrue(snap['finished_at'])
+        self.assertLess(snap['elapsed_s'], 60)
+        # The count agrees with the ticks beside it.
+        self.assertEqual(1, snap['stage_counts']['done'])
+        self.assertEqual(2, snap['stage_counts']['total'])
+        row = RS.listing(self.tmp, owner='me@lab.example')[0]
+        self.assertTrue(row['finished_at'])
+
+    def test_a_run_that_was_finalizing_when_the_server_went_is_interrupted(self):
+        self._write('f' * 16, status='finalizing')
+        snap = RS.restore(self.tmp, 'f' * 16)
+        self.assertEqual('interrupted', snap['status'])
+        self.assertTrue(snap['finished_at'])
 
 
 class ApiTests(unittest.TestCase):

@@ -736,7 +736,7 @@ class AppServerTests(unittest.TestCase):
         for _ in range(240):
             code, body = self._get(f'/api/runs/{rid}?after=999999')
             snap = json.loads(body)
-            if snap['status'] not in ('queued', 'running'):
+            if snap['status'] not in ('queued', 'running', 'finalizing'):
                 break
             time.sleep(0.25)
         self.assertEqual('done', snap['status'], snap.get('error'))

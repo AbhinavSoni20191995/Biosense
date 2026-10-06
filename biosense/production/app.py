@@ -314,7 +314,6 @@ class DiscoveryRun:
         self.persist()
 
     def persist(self):
-        """Write the snapshot beside the artifacts, so a reload can find it."""
         """Write the snapshot beside the artifacts, so a reload can find it.
 
         Events are already journalled line by line; this is the header. Failure
@@ -404,6 +403,7 @@ class DiscoveryRun:
                 'result': self.result if include_result else None,
                 'elapsed_s': round((self.finished_at or time.time()) - self.started_at, 1),
                 'started_at': self.started_at,
+                'finished_at': self.finished_at,
                 'updated_at': time.time(),
                 'last_activity_at': self.activity.last_at,
                 'activity': self.activity.snapshot(),

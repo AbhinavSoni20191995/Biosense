@@ -595,7 +595,7 @@ class HttpTests(unittest.TestCase):
         rid = run['run_id']
         for _ in range(240):
             snap = self._req('GET', f'/api/discovery/{rid}')[1]
-            if snap['status'] not in ('queued', 'running'):
+            if snap['status'] not in ('queued', 'running', 'finalizing'):
                 break
             time.sleep(0.25)
         self.assertEqual('done', snap['status'])

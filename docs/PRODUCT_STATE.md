@@ -142,6 +142,34 @@ open (reopening it when the server closes it), and ends the run when the session
 reports a non-live status, confirmed more than once, with nothing arriving in
 between — or when it fails, is stopped, or hits its deadline.
 
+### The specialists are followed in their own sessions
+
+Each specialist runs in a **child session**. Two things about those were wrong
+before, and both made a run look stalled while its agents were working:
+
+* **The parent reads `idle` while a child works.** An async orchestrator
+  dispatches, ends its turn and returns to its prompt, so its own status is
+  `idle` with the literature agent still searching. Ending the run at that idle
+  cut the specialists off. BioSense now asks Omnigent for the session tree
+  (`child_sessions_tree`, Omnigent's own "is this sub-agent busy" predicate) and
+  treats any working child as "not finished". After a child finishes, the parent
+  gets the full quiet period to be woken by its inbox before the run is ended.
+* **A child's events never appear on the parent's stream.** The tick list and the
+  agent panel only saw the orchestrator. Each working child's stream is now tailed
+  beside the parent's (up to eight at once; the tree poll covers the rest), so a
+  specialist's tool calls move the stage ticks and are attributed to that
+  specialist. Its deltas, reasoning and turn endings are not shown.
+
+The dispatch tool's *result* is the hand-over being accepted, not the answer, so
+it no longer marks the specialist finished: the child session says when it
+finished or failed. Stopping a run interrupts its working children as well as the
+orchestrator. A server without the tree endpoint behaves as before, on the
+parent's status alone.
+
+A run read back from disk carries `finished_at`, so its elapsed time stops where
+the run did (older records without one use the last time they were written), and
+its stage count is recomputed from the tick list beside it.
+
 
 During a real Codex run the parent turn completed while child agents were still
 writing. A run marked COMPLETE at that moment shows a result missing the files

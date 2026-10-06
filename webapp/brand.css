@@ -382,6 +382,9 @@ button{font-family:inherit}
   text-transform:uppercase;color:var(--bad)}
 .state code{font-family:var(--mono);font-size:12.5px;background:var(--glass-2);
   padding:2px 6px;border-radius:5px;display:inline-block;margin-top:6px}
+/* Information, not an error: where a run came from, what a page is showing.
+   It used the error box once, and a restored run looked like a failed one. */
+.state.info{border-color:var(--line);background:var(--glass-2)}
 
 /* ── live run viewer ───────────────────────────────────────────────────
    Shared by the Discovery page and the Runs page, because two renderings of

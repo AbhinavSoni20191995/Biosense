@@ -124,7 +124,7 @@ class _Client:
         self.outer = outer
         self.base_url = base_url
         self.headers = headers or {}
-        self.sessions = _Sessions(outer)
+        self.sessions = getattr(outer, 'sessions_cls', _Sessions)(outer)
 
     async def close(self):
         pass
@@ -166,12 +166,14 @@ def setUpModule():
     its length, so the tests run with it at zero.
     """
     global _SAVED
-    _SAVED = (OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S)
-    OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S = 0.0, 0.01
+    _SAVED = (OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S, OMNI.CHILD_POLL_S, OMNI.TURN_QUIET_S)
+    OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S, OMNI.CHILD_POLL_S = 0.0, 0.01, 0.0
+    OMNI.TURN_QUIET_S = 0.05
 
 
 def tearDownModule():
-    OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S = _SAVED
+    (OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S, OMNI.CHILD_POLL_S,
+     OMNI.TURN_QUIET_S) = _SAVED
 
 
 def cfg_for(mode='local_real_ai', **env):
@@ -308,6 +310,111 @@ class AsyncOrchestratorTests(unittest.TestCase):
             self.assertIn(live, OMNI.SESSION_LIVE, live)
         self.assertIn('idle', OMNI.SESSION_DONE)
         self.assertNotIn('waiting', OMNI.SESSION_DONE)
+
+
+class _TreeSessions(_Sessions):
+    """A server with the sub-agent tree: one literature child that works for a
+    few polls and then finishes. The parent's stream ends after its first turn,
+    exactly as an async orchestrator's does."""
+
+    def __init__(self, outer):
+        super().__init__(outer)
+        self.polls = 0
+        self.parent_streams = 0
+
+    async def child_sessions_tree(self, sid):
+        self.calls.append(('tree', sid))
+        self.polls += 1
+        busy = self.polls <= self.outer.child_busy_polls
+        task = 'in_progress' if busy else self.outer.child_end
+        return [{'id': 'conv_lit', 'agent_name': 'literature', 'title': 'literature-it1',
+                 'busy': busy, 'current_task_status': task,
+                 'last_message_preview': '7 claims found'}]
+
+    async def stream(self, sid):
+        self.calls.append(('stream', sid))
+        if sid == 'conv_lit':
+            for e in self.outer.child_events:
+                yield e
+            return
+        self.parent_streams += 1
+        if self.parent_streams == 1:
+            for e in self.outer.events:
+                yield e
+
+
+class SubAgentTests(unittest.TestCase):
+    """A parent reads idle while its specialists work, and their work is not on
+    its stream. Watching the parent alone ended runs early and showed nothing of
+    what the specialists did."""
+
+    def harness(self, busy_polls=4, end='completed', child_events=()):
+        h = _Harness()
+        h.sessions_cls = _TreeSessions
+        h.child_busy_polls = busy_polls
+        h.child_end = end
+        h.child_events = list(child_events)
+        h.events = [ev('session.created'),
+                    ev('response.output_item.done',
+                       item={'type': 'function_call', 'name': 'sys_session_send',
+                             'arguments': '{"title": "literature-it1"}'}),
+                    ev('response.completed')]
+        return h.install(self)
+
+    def test_an_idle_parent_with_a_working_child_is_not_finished(self):
+        h = self.harness(busy_polls=4)
+        events = []
+        out = OMNI.drive(cfg_for(), 'brief', on_event=events.append)
+        self.assertEqual('complete', out['terminal'])
+        sess = h.last_client.sessions
+        # Watched past the point the child finished, not stopped at the parent's idle.
+        self.assertGreater(sess.polls, 4)
+        states = [e['state'] for e in events if e.get('kind') == 'subagent']
+        self.assertEqual(['started', 'finished'], states)
+        self.assertEqual(1, out['sub_agents'])
+
+    def test_a_childs_own_tool_calls_move_the_stages(self):
+        h = self.harness(child_events=[
+            ev('response.output_item.done',
+               item={'type': 'function_call', 'name': 'bash',
+                     'arguments': 'python -m biosense.bioinformatics.cli execute p.json'}),
+            ev('response.output_item.done',
+               item={'type': 'reasoning', 'summary': 'private chain of thought'}),
+            ev('response.completed')])
+        events = []
+        out = OMNI.drive(cfg_for(), 'brief', on_event=events.append)
+        self.assertIn('running_analysis', out['stages_reached'])
+        tool = [e for e in events if e.get('kind') == 'tool' and e.get('agent') == 'literature']
+        self.assertTrue(tool, 'the child tool call was not reported as the child\'s')
+        # A child's reasoning is not shown, and its turn ending is not the run ending.
+        self.assertFalse([e for e in events if e.get('kind') == 'reasoning'])
+        self.assertEqual('complete', out['terminal'])
+        self.assertIn(('stream', 'conv_lit'), h.last_client.sessions.calls)
+
+    def test_a_child_that_died_is_reported_and_does_not_fail_the_run(self):
+        self.harness(busy_polls=1, end='failed')
+        events = []
+        out = OMNI.drive(cfg_for(), 'brief', on_event=events.append)
+        self.assertEqual('complete', out['terminal'])
+        self.assertIn('failed', [e['state'] for e in events if e.get('kind') == 'subagent'])
+
+    def test_stopping_a_run_stops_its_working_children(self):
+        h = self.harness(busy_polls=10 ** 6)
+        flag = {'n': 0}
+
+        def stop():
+            flag['n'] += 1
+            return flag['n'] > 3
+        out = OMNI.drive(cfg_for(), 'brief', should_stop=stop)
+        self.assertEqual('failed', out['terminal'])
+        self.assertIn(('interrupt', 'conv_lit'), h.last_client.sessions.calls)
+
+    def test_a_server_without_the_tree_behaves_as_before(self):
+        h = _Harness().install(self)
+        h.events = [ev('response.completed')]
+        out = OMNI.drive(cfg_for(), 'brief')
+        self.assertEqual('complete', out['terminal'])
+        self.assertEqual(0, out['sub_agents'])
 
 
 # ── the sequence ────────────────────────────────────────────────────────

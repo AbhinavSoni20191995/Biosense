@@ -142,7 +142,7 @@ function note(text) {
   if (!box) return;
   if (!text) { box.hidden = true; return; }
   box.hidden = false; box.textContent = '';
-  const w = el('div', 'state'); w.append(el('p', 'dim', text)); box.append(w);
+  const w = el('div', 'state info'); w.append(el('p', 'dim', text)); box.append(w);
 }
 
 async function loadRuntime() {
@@ -389,7 +389,7 @@ async function renderProjectDetail(id) {
       const row = el('div', 'prun');
       row.append(el('span', 'rv-status go', BS.fmt.status(r)));
       row.append(el('span', 'dim', [r.engine ? (r.engine.includes('codex') ? 'Codex' : 'Claude')
-        : null, (r.active_agents || [])[0], BS.fmt.elapsed(r.started_at)]
+        : null, (r.active_agents || [])[0], BS.fmt.elapsed(r.started_at, r.finished_at)]
         .filter(Boolean).join(' · ')));
       const open = el('button', 'btn', 'Open run');
       open.addEventListener('click', () => watchRun(r.run_id));
@@ -618,8 +618,8 @@ function watchRun(runId) {
       $('#runBtn').disabled = RV.isLive(snap);
       if (snap.status === 'done' && snap.result) {
         state.result = snap.result; renderResult(snap);
-        note(snap.recovered ? 'This is the run you were last watching, read back from its own '
-          + 'record on the server.' : null);
+        note(snap.recovered ? 'Reopened from the server: this is the run you were last '
+          + 'watching, read back from its saved record. Nothing went wrong.' : null);
       } else if (!RV.isLive(snap)) {
         fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
           message: snap.error });

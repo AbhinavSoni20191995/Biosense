@@ -481,10 +481,14 @@ class ApiTests(unittest.TestCase):
         self.assertIs(False, run['is_real'])
         for _ in range(240):
             code, snap = self._req('GET', f'/api/discovery/{run["run_id"]}')
-            if snap['status'] not in ('running', 'queued'):
+            # `finalizing` is still live: the AI part is over and the result
+            # is being assembled. Reading it as finished was a CI race.
+            if snap['status'] not in ('running', 'queued', 'finalizing'):
                 break
             time.sleep(0.25)
         self.assertEqual('done', snap['status'])
+        # A finished run says when it finished, so its clock stops there.
+        self.assertGreaterEqual(snap['finished_at'], snap['started_at'])
         self.assertTrue(snap['result']['protocol'])
         self.assertEqual('proposed_not_approved', snap['result']['protocol']['status'])
         done = {p['stage'] for p in snap['progress'] if p['status'] == 'done'}

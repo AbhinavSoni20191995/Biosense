@@ -157,6 +157,18 @@ def stage_for_tool(name, arguments):
     return None
 
 
+def stage_for_agent(name):
+    """The stage a specialist's work implies, from its name alone, or None.
+
+    Used for a sub-agent session seen directly on the server — the same mapping a
+    dispatch to it already uses, so the two routes tick the same box.
+    """
+    for pattern, stage in AGENT_STAGES:
+        if pattern.search(name or ''):
+            return stage
+    return None
+
+
 def _as_dict(event):
     """An SDK event object or a plain dict, as a dict.
 
