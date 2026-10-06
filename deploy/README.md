@@ -262,6 +262,7 @@ Still enforced in code, exactly as in the synthetic image:
 | Omnigent | `BIOSENSE_OMNIGENT_PORT` | `6767` | loopback only |
 | | `OMNIGENT_LOCAL_SINGLE_USER` | `1` | loopback, no login |
 | Model | `ANTHROPIC_API_KEY` | **no — you set it** | a platform secret, never in the image |
+| | `BIOSENSE_AGENT_MODEL` | `claude-opus-5` | the agents' model, passed on as `ANTHROPIC_MODEL`. Claude Opus 5.5's broader safeguards can stop biology-research-adjacent runs (`[bio]`); its own message says to change the model |
 | Remote | `BIOSENSE_OMNIGENT_TOKEN` / `_TOKEN_FILE` | no | only for `remote` mode |
 | Accounts | `BIOSENSE_AUTH_SERVER` | **no — you set it** | the one issuer sign-in is accepted from |
 | | `BIOSENSE_ADMIN_USER_IDS` | **no — you set it** | operator ids on that server |

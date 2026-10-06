@@ -60,6 +60,17 @@ else
   log '                   the deterministic demonstration path still works.'
 fi
 
+# The agents' model. Claude Code reads ANTHROPIC_MODEL, and Omnigent passes it
+# through to every agent. Claude Opus 5.5's broader safety classifiers can flag
+# biology-research-adjacent work and stop a run ("safeguards flagged this
+# session ... [bio]"); its own message says to change the model, so the default
+# here is Claude Opus 5. Set BIOSENSE_AGENT_MODEL to choose another, or an
+# explicit ANTHROPIC_MODEL to override both.
+if [ -n "${BIOSENSE_AGENT_MODEL:-}" ] && [ -z "${ANTHROPIC_MODEL:-}" ]; then
+  export ANTHROPIC_MODEL="$BIOSENSE_AGENT_MODEL"
+fi
+log "agents' model: ${ANTHROPIC_MODEL:-the Claude Code default}"
+
 # The agent bundle Omnigent registers. Normally the one in the image, untouched.
 AGENT_BUNDLE="$APP_ROOT/discovery_loop"
 

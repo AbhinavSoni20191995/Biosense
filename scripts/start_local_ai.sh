@@ -97,6 +97,18 @@ else
   say  'the runtime will start either way, and will say so if the key is what is missing'
 fi
 
+# The agents' model. Claude Code reads ANTHROPIC_MODEL, and Omnigent passes it
+# through to every agent. Claude Opus 5.5's broader safety classifiers can flag
+# biology-research-adjacent work and stop a run ("safeguards flagged this
+# session ... [bio]"); its own message says to change the model, so the default
+# here is Claude Opus 5. Set BIOSENSE_AGENT_MODEL to choose another, or an
+# explicit ANTHROPIC_MODEL to override both.
+BIOSENSE_AGENT_MODEL="${BIOSENSE_AGENT_MODEL-claude-opus-5}"
+if [ -n "${BIOSENSE_AGENT_MODEL:-}" ] && [ -z "${ANTHROPIC_MODEL:-}" ]; then
+  export ANTHROPIC_MODEL="$BIOSENSE_AGENT_MODEL"
+fi
+ok "agents' model: ${ANTHROPIC_MODEL:-the Claude Code default}"
+
 # ── 3. the Omnigent server ──────────────────────────────────────────────────
 bold "3 · omnigent server on ${SERVER}"
 if http_ok "$SERVER/health"; then

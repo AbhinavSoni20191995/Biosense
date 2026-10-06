@@ -585,6 +585,16 @@ class DiscoveryRegistry:
                             code, err[:600], hosted=self.cfg.hosted)), reason=code,
                             next_step=RT.next_step_for(code, hosted=self.cfg.hosted))
                         return
+                    if 'safeguards flagged' in err or "can't respond to your last message" in err:
+                        # Not a fault and not a finding: the model's safety
+                        # classifiers stopped the session. The provider's own
+                        # remedy is a different model, which is a setting.
+                        run.finish('error', final, err, reason='model_safeguard',
+                                   next_step='The model\'s safety classifiers stopped this '
+                                             'session. Its own advice is to rephrase or change '
+                                             'the model: set BIOSENSE_AGENT_MODEL (the hosted '
+                                             'image uses claude-opus-5) and restart the service.')
+                        return
                     run.finish('error', final, err, reason='run_failed')
                     return
             else:

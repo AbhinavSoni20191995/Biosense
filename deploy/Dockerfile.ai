@@ -95,6 +95,7 @@ ENV RUNS_DIR=/app/data/runs \
     BIOSENSE_OMNIGENT_WORKSPACE=/app \
     BIOSENSE_HOSTED=1 \
     BIOSENSE_PUBLIC_DEMO=1 \
+    BIOSENSE_AGENT_MODEL=claude-opus-5 \
     OMNIGENT_LOCAL_SINGLE_USER=1 \
     OMNIGENT_HOST_NO_OPEN=1
 RUN mkdir -p /app/data/runs /app/data/private

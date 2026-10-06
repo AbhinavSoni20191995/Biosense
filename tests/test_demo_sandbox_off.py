@@ -165,6 +165,34 @@ class ModelProxyTests(unittest.TestCase):
             MP.main(['--port', '0'])
 
 
+class AgentModelTests(unittest.TestCase):
+    """Opus 5.5's safeguards flagged a cell-production run as [bio]; the model
+    the agents use is a setting, Claude Opus 5 by default in the images."""
+
+    def test_the_hosted_image_and_the_local_launcher_choose_the_model(self):
+        docker = (ROOT / 'deploy' / 'Dockerfile.ai').read_text()
+        self.assertIn('BIOSENSE_AGENT_MODEL=claude-opus-5', docker)
+        for script in ('deploy/start-ai.sh', 'scripts/start_local_ai.sh'):
+            text = (ROOT / script).read_text()
+            self.assertIn('export ANTHROPIC_MODEL="$BIOSENSE_AGENT_MODEL"', text, script)
+            # An explicit ANTHROPIC_MODEL still wins.
+            self.assertIn('[ -z "${ANTHROPIC_MODEL:-}" ]', text, script)
+        self.assertIn('BIOSENSE_AGENT_MODEL-claude-opus-5',
+                      (ROOT / 'scripts' / 'start_local_ai.sh').read_text())
+
+    def test_the_model_variable_reaches_the_agents(self):
+        try:
+            from omnigent.host import connect
+        except ImportError:
+            self.skipTest('Omnigent is not installed')
+        self.assertIn('ANTHROPIC_MODEL', connect.HARNESS_CREDENTIAL_ENV_VARS)
+
+    def test_a_safeguard_stop_is_named_with_its_fix(self):
+        src = (ROOT / 'biosense' / 'production' / 'app.py').read_text()
+        self.assertIn("reason='model_safeguard'", src)
+        self.assertIn('BIOSENSE_AGENT_MODEL', src)
+
+
 class ProxyNotRunningTests(unittest.TestCase):
     """When the credential cannot be separated, the card says why and the fix."""
 
