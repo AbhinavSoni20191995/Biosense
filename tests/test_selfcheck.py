@@ -315,6 +315,7 @@ class RunEndTests(unittest.TestCase):
         self.assertIn('function renderProjectRunList', js)
         rv = (K.ROOT / 'webapp' / 'runview.js').read_text()
         self.assertIn('Paused at the time limit.', rv)
+        self.assertIn("snap.pauses_at_limit ? 'Pauses in' : 'Stops in'", rv)
         self.assertIn('Finish with what it has', rv)
         self.assertIn("searchParams.get('project')", (K.ROOT / 'webapp' / 'runs.js').read_text())
         # Any project's derived protocol can be simulated; without a model of its

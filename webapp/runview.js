@@ -62,7 +62,8 @@ const RV = (() => {
       stats.append(stat('Paused', 'waiting for you'));
     } else if (snap.deadline_in_s) {
       const left = Math.max(0, snap.deadline_in_s);
-      stats.append(stat('Stops in', left < 10 * 60
+      /* An operator's run pauses at its limit and asks; it does not stop. */
+      stats.append(stat(snap.pauses_at_limit ? 'Pauses in' : 'Stops in', left < 10 * 60
         ? `${Math.floor(left / 60)}:${String(Math.round(left % 60)).padStart(2, '0')}`
         : `${Math.round(left / 60)} min`));
     }
