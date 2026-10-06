@@ -20,6 +20,17 @@ set -uo pipefail
 # checkout without building the image.
 APP_ROOT="${BIOSENSE_APP_ROOT:-/app}"
 cd "$APP_ROOT"
+
+# The image starts in deploy/entrypoint-ai.sh, which does the root-only steps and
+# then runs this script as the app user. A platform "start command" that names
+# this script directly would skip them, so as root this hands over to it first.
+if [ "$(id -u)" = 0 ] && [ -z "${BIOSENSE_ENTRYPOINT_DONE:-}" ] \
+    && [ -x "$APP_ROOT/deploy/entrypoint-ai.sh" ]; then
+  exec "$APP_ROOT/deploy/entrypoint-ai.sh"
+fi
+if [ -z "${BIOSENSE_ENTRYPOINT_DONE:-}" ] && [ "${BIOSENSE_AGENT_SANDBOX:-on}" = 'off' ]; then
+  export BIOSENSE_MODEL_PROXY_WHY="${BIOSENSE_MODEL_PROXY_WHY:-entrypoint_skipped}"
+fi
 PORT="${PORT:-8000}"
 OMNI_PORT="${BIOSENSE_OMNIGENT_PORT:-6767}"
 SERVER="http://127.0.0.1:${OMNI_PORT}"
@@ -68,11 +79,18 @@ if [ "${BIOSENSE_AGENT_SANDBOX:-on}" = 'off' ]; then
   rm -rf /tmp/biosense-agents
   mkdir -p /tmp/biosense-agents
   cp -r "$APP_ROOT/discovery_loop" "$AGENT_BUNDLE"
-  find "$AGENT_BUNDLE" -name config.yaml -exec sed -i 's/^\([[:space:]]*type:[[:space:]]*\)auto[[:space:]]*$/\1none/' {} +
+  # Unsandboxed, a command cannot be kept off the network, and Omnigent refuses
+  # to pretend: `type: none` with `allow_network: false` rejects every command
+  # ("sandbox type 'none' cannot restrict network"). So the copy says what is
+  # true — network allowed — rather than claim a restriction nothing enforces.
+  find "$AGENT_BUNDLE" -name config.yaml -exec sed -i \
+    -e 's/^\([[:space:]]*type:[[:space:]]*\)auto[[:space:]]*$/\1none/' \
+    -e 's/^\([[:space:]]*allow_network:[[:space:]]*\)false[[:space:]]*$/\1true/' {} +
   log 'sandbox: OFF by operator choice (BIOSENSE_AGENT_SANDBOX=off). Agent commands run'
   log '         unconfined in this container; the model key is held by a separate process.'
   if [ "${BIOSENSE_MODEL_PROXY:-}" != 'on' ]; then
-    log 'WARNING: the model-key proxy is not running, so the agents can read the key.'
+    log "WARNING: the model-credential proxy is not running (${BIOSENSE_MODEL_PROXY_WHY:-unknown});"
+    log '         the runtime card says why and what fixes it.'
   fi
 else
   # Its output is NAME=VALUE lines; only the two names below are ever exported,
@@ -86,6 +104,9 @@ else
   done < <("${UV[@]}" python -m biosense.production.sandbox --env 2>"$LOGS/sandbox.log")
   sed 's/^/[boot] /' "$LOGS/sandbox.log" 2>/dev/null
 fi
+
+# The self-check validates the bundle Omnigent actually registers.
+export BIOSENSE_AGENT_BUNDLE="$AGENT_BUNDLE"
 
 server_up() { python -c "
 import sys,urllib.request

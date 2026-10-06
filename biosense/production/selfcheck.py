@@ -118,10 +118,9 @@ def check_sandbox(c, found, hosted):
     if state['sandbox'] == 'off':
         c.row('sandbox', 'Agents\' sandbox', WARN if state['model_key'] == 'proxy' else FAIL,
               'OFF by operator choice (BIOSENSE_AGENT_SANDBOX=off): agent commands run '
-              'unconfined in this container. Model key: '
-              + ('held by a separate process the agents cannot read.'
-                 if state['model_key'] == 'proxy' else
-                 'IN THE AGENTS\' ENVIRONMENT — the key proxy is not running.'), t)
+              'unconfined in this container. '
+              + ('Model credential: held by a separate process the agents cannot read.'
+                 if state['model_key'] == 'proxy' else state['note']), t)
         return
     if found['ok']:
         how = {'fresh_proc': 'bubblewrap works as Omnigent configures it',
@@ -165,6 +164,28 @@ def check_bundle(c):
             problems.append(f'{name} runs without a sandbox')
     if not getattr(spec, 'async_enabled', True):
         problems.append('the orchestrator is not async; the inbox will not wake it')
+    # The bundle Omnigent registered may be a copy (the sandbox-off demo mode).
+    # Each agent's sandbox is resolved the way Omnigent resolves it before a
+    # command: a combination it refuses would refuse every command in a run.
+    registered = Path(os.environ.get('BIOSENSE_AGENT_BUNDLE') or root)
+    if registered.is_dir():
+        try:
+            from omnigent.inner.sandbox import resolve_sandbox
+            reg = [('orchestrator', parser.parse(registered))] + [
+                (d.name, parser.parse(d)) for d in sorted((registered / 'agents').iterdir())
+                if (d / 'config.yaml').is_file()]
+            for name, sub in reg:
+                sb = getattr(sub.os_env, 'sandbox', None)
+                if sb is not None and sb.type == 'none':
+                    try:
+                        resolve_sandbox(sub.os_env, K.ROOT)
+                    except ValueError as e:
+                        problems.append(f'{name} (registered from {registered}): Omnigent '
+                                        f'refuses its sandbox, so every command would fail: {e}')
+        except ImportError:
+            pass
+        except Exception as e:  # noqa: BLE001 - a broken registered copy is the finding
+            problems.append(f'the registered bundle {registered} does not parse: {e}')
     c.row('agent_bundle', 'Agent bundle', FAIL if problems else OK,
           '; '.join(problems) or f'orchestrator + {len(present)} specialists parse; it may '
                                  f'dispatch to {", ".join(declared)}', t)

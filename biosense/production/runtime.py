@@ -476,13 +476,37 @@ def agent_sandbox_state(env=None):
     off = (env.get(AGENT_SANDBOX_ENV) or '').strip().lower() == 'off'
     if not off:
         return {'sandbox': 'on', 'model_key': 'not_in_agent_tools'}
-    proxied = (env.get('BIOSENSE_MODEL_PROXY') or '') == 'on'
-    return {'sandbox': 'off', 'model_key': 'proxy' if proxied else 'exposed',
-            'note': ('Demo deployment: this host cannot run the agents\' OS sandbox, so '
-                     'their commands run unconfined in its container. The model key is held '
-                     'by a separate process they cannot read.' if proxied else
-                     'Demo deployment: the agents\' OS sandbox is off and the model-key '
-                     'proxy is not running.')}
+    if (env.get('BIOSENSE_MODEL_PROXY') or '') == 'on':
+        return {'sandbox': 'off', 'model_key': 'proxy',
+                'note': 'Demo deployment: this host cannot run the agents\' OS sandbox, so '
+                        'their commands run unconfined in its container. The model credential '
+                        'is held by a separate process they cannot read.'}
+    why = (env.get('BIOSENSE_MODEL_PROXY_WHY') or '').strip()
+    reason, fix = _PROXY_WHY.get(why.split(':')[0], _PROXY_WHY[''])
+    if why.startswith('not_root:'):
+        reason = reason.format(uid=why.split(':', 1)[1])
+    return {'sandbox': 'off',
+            'model_key': 'none' if why == 'no_credential' else 'exposed',
+            'proxy_why': why or 'unknown',
+            'note': (f'Demo deployment: the agents\' OS sandbox is off and the model-credential '
+                     f'proxy is not running — {reason} {fix}')}
+
+
+# Why the credential proxy did not start, and what fixes it. Set by the image's
+# entrypoint (or by start-ai.sh when the entrypoint was bypassed).
+_PROXY_WHY = {
+    'not_root': ('the container started as user {uid}, not root, so the credential '
+                 'cannot be moved to a separate user.',
+                 'On Railway, set the variable RAILWAY_RUN_UID=0 and redeploy.'),
+    'entrypoint_skipped': ('the image\'s entrypoint was bypassed, most likely by a custom '
+                           'start command.',
+                           'Clear the start command in the service settings and redeploy.'),
+    'no_credential': ('no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is set.',
+                      'Set one of them and redeploy.'),
+    'proxy_failed': ('it did not answer when the container started.',
+                     'See the deploy log lines starting with [model-proxy].'),
+    '': ('the reason was not recorded.', 'Check the deploy log.'),
+}
 
 
 def _sandbox_wanted(cfg, env=None):

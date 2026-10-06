@@ -34,7 +34,12 @@ Both serve `webapp/console.html` at `/`, keep the read-only tracker at
 >   the agents cannot read, and everything else gets a placeholder and the proxy's
 >   loopback address; the proxy also caps model requests per day
 >   (`BIOSENSE_MODEL_PROXY_DAILY_REQUESTS`, default 5000). The Real AI card and the
->   system check say the sandbox is off. Use it for a short demonstration with
+>   system check say the sandbox is off. Either credential works with the proxy:
+>   `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`. The container must start as
+>   root for the separation (it drops to `biosense` itself); if it does not, the
+>   card says so — on Railway, `RAILWAY_RUN_UID=0`. With the sandbox off the
+>   network cannot be restricted, so the registered copy allows it rather than
+>   claim a restriction nothing enforces. Use it for a short demonstration with
 >   demo data, then remove the variable or move to the VM.
 
 ## A. The real-AI service (the hosted product)

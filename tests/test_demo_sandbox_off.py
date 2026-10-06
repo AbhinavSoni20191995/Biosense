@@ -120,6 +120,43 @@ class ModelProxyTests(unittest.TestCase):
             MP.main(['--port', '0'])
 
 
+class ProxyNotRunningTests(unittest.TestCase):
+    """When the credential cannot be separated, the card says why and the fix."""
+
+    def state(self, why):
+        return RT.agent_sandbox_state({'BIOSENSE_AGENT_SANDBOX': 'off',
+                                       'BIOSENSE_MODEL_PROXY_WHY': why})
+
+    def test_each_reason_has_its_own_words_and_fix(self):
+        s = self.state('not_root:1000')
+        self.assertEqual('exposed', s['model_key'])
+        self.assertIn('user 1000', s['note'])
+        self.assertIn('RAILWAY_RUN_UID=0', s['note'])
+        self.assertIn('start command', self.state('entrypoint_skipped')['note'])
+        none = self.state('no_credential')
+        self.assertEqual('none', none['model_key'])
+        self.assertIn('[model-proxy]', self.state('proxy_failed')['note'])
+
+    def test_a_login_token_is_attached_as_a_bearer_token(self):
+        _Upstream.seen = []
+        up = _serve(_Upstream)
+        proxy = _serve(MP.make_handler(REAL_KEY, f'http://127.0.0.1:{up.server_address[1]}',
+                                       MP.Budget(0), 'oauth'))
+        try:
+            r = urllib.request.Request(
+                f'http://127.0.0.1:{proxy.server_address[1]}/v1/messages', data=b'{}',
+                method='POST', headers={'Authorization': 'Bearer placeholder',
+                                        'x-api-key': 'placeholder'})
+            urllib.request.urlopen(r, timeout=10).read()
+        finally:
+            for srv in (proxy, up):
+                srv.shutdown()
+                srv.server_close()
+        seen = _Upstream.seen[-1]
+        self.assertEqual(f'Bearer {REAL_KEY}', seen['authorization'])
+        self.assertNotIn('x-api-key', seen)
+
+
 class SandboxOffStateTests(unittest.TestCase):
     def test_on_is_the_default_and_off_is_reported_with_where_the_key_is(self):
         self.assertEqual('on', RT.agent_sandbox_state({})['sandbox'])
@@ -129,6 +166,7 @@ class SandboxOffStateTests(unittest.TestCase):
         self.assertIn('Demo deployment', off['note'])
         bare = RT.agent_sandbox_state({'BIOSENSE_AGENT_SANDBOX': 'off'})
         self.assertEqual('exposed', bare['model_key'])
+        self.assertEqual('unknown', bare['proxy_why'])
         # Anything but the exact word leaves it on.
         self.assertEqual('on', RT.agent_sandbox_state({'BIOSENSE_AGENT_SANDBOX': 'of'})['sandbox'])
 
@@ -155,7 +193,9 @@ class BootScriptTests(unittest.TestCase):
         text = (ROOT / 'deploy' / 'entrypoint-ai.sh').read_text()
         self.assertIn('--reuid=keyholder', text)
         self.assertIn('biosense.production.model_proxy', text)
-        self.assertIn("export ANTHROPIC_API_KEY='held-by-the-biosense-model-proxy'", text)
+        self.assertIn("PLACEHOLDER='held-by-the-biosense-model-proxy'", text)
+        self.assertIn('export ANTHROPIC_API_KEY="$PLACEHOLDER"', text)
+        self.assertIn('export CLAUDE_CODE_OAUTH_TOKEN="$PLACEHOLDER"', text)
         self.assertIn('export ANTHROPIC_BASE_URL="http://127.0.0.1:${port}"', text)
         # The last thing it does is become biosense, with nothing kept.
         last = [ln for ln in text.splitlines() if ln.strip()][-2:]
@@ -177,25 +217,64 @@ class BootScriptTests(unittest.TestCase):
         self.assertLess(text.index('find "$APP_ROOT/data"'),
                         text.index('exec setpriv --reuid=biosense'))
 
-    def test_sandbox_off_changes_exactly_the_sandbox_types_in_a_copy(self):
+    def _off_copy(self):
+        """The bundle as start-ai.sh rewrites it, using its own sed expressions."""
         boot = (ROOT / 'deploy' / 'start-ai.sh').read_text()
-        expr = re.search(r"sed -i '([^']+)'", boot).group(1)
+        exprs = re.findall(r"-e '([^']+)'", boot)
+        self.assertEqual(2, len(exprs), 'the sandbox type and the network line')
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
         shutil.copytree(ROOT / 'discovery_loop', tmp / 'discovery_loop')
         for cfg in (tmp / 'discovery_loop').rglob('config.yaml'):
-            subprocess.run(['sed', '-i', expr, str(cfg)], check=True)
+            cmd = ['sed', '-i']
+            for e in exprs:
+                cmd += ['-e', e]
+            subprocess.run(cmd + [str(cfg)], check=True)
+        return tmp
+
+    def test_sandbox_off_changes_only_the_sandbox_lines_in_a_copy(self):
+        tmp = self._off_copy()
         changed = 0
         for cfg in (tmp / 'discovery_loop').rglob('config.yaml'):
             orig = (ROOT / cfg.relative_to(tmp)).read_text().splitlines()
             new = cfg.read_text().splitlines()
-            diff = [(a, b) for a, b in zip(orig, new) if a != b]
-            for a, b in diff:
-                self.assertEqual(a.replace('auto', 'none'), b)
-            changed += len(diff)
-        self.assertEqual(6, changed, 'the orchestrator and its five specialists')
+            for a, b in [(a, b) for a, b in zip(orig, new) if a != b]:
+                self.assertIn((a.strip(), b.strip()), (('type: auto', 'type: none'),
+                                                       ('allow_network: false',
+                                                        'allow_network: true')))
+                changed += 1
+        # six sandbox types, five network lines (literature already had network)
+        self.assertEqual(11, changed)
         # The image's own bundle is untouched.
         self.assertIn('type: auto', (ROOT / 'discovery_loop' / 'config.yaml').read_text())
+
+    def test_every_agent_in_the_off_copy_passes_omnigents_own_sandbox_check(self):
+        """`type: none` with `allow_network: false` makes Omnigent refuse every
+        command ("sandbox type 'none' cannot restrict network") — the run that
+        asked both specialists and could not execute `echo hi`."""
+        try:
+            from omnigent.inner.sandbox import resolve_sandbox
+            from omnigent.spec import parser
+        except ImportError:
+            self.skipTest('Omnigent is not installed')
+        root = self._off_copy() / 'discovery_loop'
+        specs = [parser.parse(root)] + [parser.parse(d) for d in sorted((root / 'agents').iterdir())]
+        for spec in specs:
+            policy = resolve_sandbox(spec.os_env, ROOT)
+            self.assertFalse(policy.active)
+        # And the system check, pointed at that registered copy, passes it —
+        # while the copy the old boot script made is caught.
+        c = SC.Check(ROOT, ROOT, sandboxed=False, bind_proc=False, python='python')
+        with mock.patch.dict(os.environ, {'BIOSENSE_AGENT_BUNDLE': str(root)}):
+            SC.check_bundle(c)
+        self.assertEqual('ok', c.rows[-1]['status'], c.rows[-1]['detail'])
+        for cfg in root.rglob('config.yaml'):
+            cfg.write_text(cfg.read_text().replace('allow_network: true',
+                                                   'allow_network: false'))
+        with mock.patch.dict(os.environ, {'BIOSENSE_AGENT_BUNDLE': str(root)}):
+            SC.check_bundle(c)
+        self.assertEqual('fail', c.rows[-1]['status'])
+        self.assertIn('cannot restrict network', c.rows[-1]['detail'])
 
 
 if __name__ == '__main__':

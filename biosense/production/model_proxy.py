@@ -31,6 +31,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 KEY_ENV = 'ANTHROPIC_API_KEY'
+# A Claude subscription login is a bearer token rather than an API key. Either
+# may be what the deployment holds; the proxy holds whichever it was given and
+# attaches it the way the API expects that kind.
+OAUTH_ENV = 'CLAUDE_CODE_OAUTH_TOKEN'
 UPSTREAM = 'https://api.anthropic.com'
 DEFAULT_DAILY_REQUESTS = 5000
 HOP = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te',
@@ -58,7 +62,7 @@ class Budget:
             return True
 
 
-def make_handler(key, upstream, budget):
+def make_handler(key, upstream, budget, kind='api_key'):
     up = urlsplit(upstream)
     conn_cls = http.client.HTTPSConnection if up.scheme == 'https' else http.client.HTTPConnection
 
@@ -93,7 +97,10 @@ def make_handler(key, upstream, budget):
             body = self.rfile.read(length) if length else None
             headers = {k: v for k, v in self.headers.items()
                        if k.lower() not in HOP and k.lower() not in CREDENTIAL_HEADERS}
-            headers['x-api-key'] = key
+            if kind == 'oauth':
+                headers['Authorization'] = f'Bearer {key}'
+            else:
+                headers['x-api-key'] = key
             headers['Host'] = up.netloc
             conn = conn_cls(up.hostname, up.port, timeout=TIMEOUT_S)
             try:
@@ -149,13 +156,17 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.host not in ('127.0.0.1', 'localhost', '::1'):
         sys.exit('the model proxy listens on loopback only')
-    key = os.environ.pop(KEY_ENV, '')
+    key, kind = os.environ.pop(KEY_ENV, ''), 'api_key'
+    oauth = os.environ.pop(OAUTH_ENV, '')
+    if not key and oauth:
+        key, kind = oauth, 'oauth'
     if not key:
-        sys.exit(f'{KEY_ENV} is not set for the model proxy; nothing to hold')
+        sys.exit(f'neither {KEY_ENV} nor {OAUTH_ENV} is set for the model proxy; nothing to hold')
     limit = int(os.environ.get('BIOSENSE_MODEL_PROXY_DAILY_REQUESTS') or DEFAULT_DAILY_REQUESTS)
-    srv = ThreadingHTTPServer((a.host, a.port), make_handler(key, a.upstream, Budget(limit)))
+    srv = ThreadingHTTPServer((a.host, a.port),
+                              make_handler(key, a.upstream, Budget(limit), kind))
     srv.daemon_threads = True
-    sys.stderr.write(f'[model-proxy] holding the model key; forwarding {a.host}:{a.port} '
+    sys.stderr.write(f'[model-proxy] holding the model credential ({kind}); forwarding {a.host}:{a.port} '
                      f'-> {a.upstream}; ceiling {limit} requests/day\n')
     srv.serve_forever()
 

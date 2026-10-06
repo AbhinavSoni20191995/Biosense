@@ -479,7 +479,8 @@ class DeploymentTests(unittest.TestCase):
             # The one value allowed is the entrypoint's placeholder: the real key
             # is handed to the model proxy, and this string is what replaces it.
             self.assertNotRegex(
-                text, r"ANTHROPIC_API_KEY\s*=\s*(?!'held-by-the-biosense-model-proxy')\S", name)
+                text, r"ANTHROPIC_API_KEY\s*=\s*(?!'held-by-the-biosense-model-proxy'|\"\$PLACEHOLDER\")\S",
+                name)
 
     def test_the_vm_deployment_bakes_in_no_credential_and_evaluates_nothing(self):
         for name in ('docker-compose.yml', 'Caddyfile', 'env.example', 'setup.sh', 'update.sh'):
