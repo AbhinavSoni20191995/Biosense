@@ -79,8 +79,38 @@ def set_executor_config(text, **fields):
     return ''.join(lines[:start + 1] + out + lines[end:])
 
 
+def set_os_env_cwd(text, cwd):
+    """Replace `os_env: cwd:` with an absolute directory, textually.
+
+    Omnigent starts an agent whose cwd is `.` in a per-session scratch
+    directory unless the runner's workspace reaches it, and a specialist's
+    session does not always get it: one run after another lost its
+    bioinformatics agent to ".venv/bin/python: No such file or directory".
+    An absolute cwd is kept as written, so the registered copy names the
+    workspace itself and no agent's first command depends on where it woke up.
+    """
+    cwd = str(cwd)
+    if not cwd.startswith('/') or '\n' in cwd or ':' in cwd:
+        raise ValueError(f'the agents\' working directory must be an absolute path: {cwd!r}')
+    lines = text.splitlines(keepends=True)
+    inside, done = False, False
+    for i, line in enumerate(lines):
+        if line.rstrip('\n') == 'os_env:':
+            inside = True
+            continue
+        if inside and line.strip() and not line.startswith(' '):
+            break
+        if inside and re.match(r'^  cwd:', line):
+            lines[i] = f'  cwd: {cwd}\n'
+            done = True
+            break
+    if not done:
+        raise ValueError('no os_env.cwd line in this config.yaml')
+    return ''.join(lines)
+
+
 def write_copy(src, dst, *, specialist_model=None, specialist_effort=None,
-               orchestrator_model=None, orchestrator_effort=None):
+               orchestrator_model=None, orchestrator_effort=None, cwd=None):
     """Copy *src* to *dst* (replacing it) and write the choices into the copy."""
     src, dst = Path(src), Path(dst)
     if not (src / 'config.yaml').is_file():
@@ -109,7 +139,12 @@ def write_copy(src, dst, *, specialist_model=None, specialist_effort=None,
         cfg = dst / 'config.yaml'
         cfg.write_text(set_executor_config(cfg.read_text(), **orch))
         changed.append('orchestrator')
-    return {'dst': str(dst), 'specialists': spec, 'orchestrator': orch, 'changed': changed}
+    if cwd:
+        for cfg in [dst / 'config.yaml'] + sorted((dst / 'agents').glob('*/config.yaml')):
+            cfg.write_text(set_os_env_cwd(cfg.read_text(), cwd))
+        changed.append(f'cwd={cwd}')
+    return {'dst': str(dst), 'specialists': spec, 'orchestrator': orch, 'cwd': cwd,
+            'changed': changed}
 
 
 def main(argv=None):
@@ -120,17 +155,19 @@ def main(argv=None):
     ap.add_argument('--specialist-effort')
     ap.add_argument('--orchestrator-model')
     ap.add_argument('--orchestrator-effort')
+    ap.add_argument('--cwd', help='the absolute workspace every agent starts in')
     a = ap.parse_args(argv)
     try:
         r = write_copy(a.src, a.dst, specialist_model=a.specialist_model,
                        specialist_effort=a.specialist_effort,
                        orchestrator_model=a.orchestrator_model,
-                       orchestrator_effort=a.orchestrator_effort)
+                       orchestrator_effort=a.orchestrator_effort,
+                       cwd=a.cwd and str(Path(a.cwd).resolve()))
     except (ValueError, OSError) as e:
         print(f'bundle: {e}', file=sys.stderr)
         return 1
     print(f"bundle: {r['dst']} · specialists {r['specialists'] or 'unchanged'} · "
-          f"orchestrator {r['orchestrator'] or 'unchanged'}")
+          f"orchestrator {r['orchestrator'] or 'unchanged'} · cwd {r['cwd'] or 'unchanged'}")
     return 0
 
 

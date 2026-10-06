@@ -65,10 +65,35 @@ class BundleCopyTests(unittest.TestCase):
             BN.set_executor_config('executor:\n  type: omnigent\n', model='m')
         self.assertEqual(1, BN.main(['--src', str(self.tmp / 'nowhere'), '--dst', str(self.tmp / 'b')]))
 
-    def test_the_boot_scripts_offer_the_choice_and_register_the_copy(self):
+    def test_every_agent_starts_in_the_workspace_not_a_scratch_directory(self):
+        """A specialist with `cwd: .` woke in a per-session scratch directory and
+        failed on '.venv/bin/python: No such file or directory', run after run."""
+        BN.write_copy(K.ROOT / 'discovery_loop', self.tmp / 'b', cwd='/app')
+        cfgs = [self.tmp / 'b' / 'config.yaml'] + sorted((self.tmp / 'b' / 'agents').glob('*/config.yaml'))
+        self.assertEqual(6, len(cfgs))
+        for cfg in cfgs:
+            text = cfg.read_text()
+            self.assertIn('\n  cwd: /app\n', text, cfg)
+            self.assertNotIn('\n  cwd: .\n', text, cfg)
+        # nothing else in os_env moved
+        src = (K.ROOT / 'discovery_loop' / 'agents' / 'literature' / 'config.yaml').read_text()
+        got = (self.tmp / 'b' / 'agents' / 'literature' / 'config.yaml').read_text()
+        self.assertEqual(src.replace('\n  cwd: .\n', '\n  cwd: /app\n'), got)
+        with self.assertRaisesRegex(ValueError, 'absolute'):
+            BN.write_copy(K.ROOT / 'discovery_loop', self.tmp / 'c', cwd='relative/dir')
+
+    def test_the_boot_scripts_always_register_a_pinned_copy(self):
         for script in ('deploy/start-ai.sh', 'scripts/start_local_ai.sh'):
             text = (K.ROOT / script).read_text()
             self.assertIn('biosense.production.bundle', text, script)
             self.assertIn('BIOSENSE_SPECIALIST_MODEL', text, script)
             self.assertIn('--agent "$AGENT_BUNDLE"', text, script)
+        hosted = (K.ROOT / 'deploy' / 'start-ai.sh').read_text()
+        self.assertIn('--cwd "$APP_ROOT"', hosted)
+        # not behind a condition on the model variables: the cwd is always pinned
+        block = hosted[hosted.index('The registered bundle is always a copy'):]
+        self.assertNotIn('if [ -n "${BIOSENSE_SPECIALIST_MODEL', block.split('--cwd')[0])
+        local = (K.ROOT / 'scripts' / 'start_local_ai.sh').read_text()
+        self.assertIn('--cwd "$ROOT"', local)
+        self.assertIn('AGENT_BUNDLE="$STATE/agents"', local)
         self.assertIn('BIOSENSE_SPECIALIST_MODEL', (K.ROOT / 'deploy' / 'README.md').read_text())

@@ -593,7 +593,7 @@ class DeploymentTests(unittest.TestCase):
         # The bundle registered is the source, or a copy with the operator's
         # per-agent model choices written in — never anything else.
         self.assertIn('--agent "$AGENT_BUNDLE"', text)
-        self.assertIn('AGENT_BUNDLE="$ROOT/discovery_loop"', text)
+        self.assertIn('--src "$ROOT/discovery_loop"', text)
         self.assertNotIn('0.0.0.0', text,
                          'the local launcher must never expose the app to a network')
 

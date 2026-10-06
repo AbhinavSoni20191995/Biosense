@@ -108,21 +108,21 @@ if [ -n "${BIOSENSE_AGENT_MODEL:-}" ] && [ -z "${ANTHROPIC_MODEL:-}" ]; then
   export ANTHROPIC_MODEL="$BIOSENSE_AGENT_MODEL"
 fi
 ok "agents' model: ${ANTHROPIC_MODEL:-the Claude Code default}"
-# Per-agent choices: a faster model for the specialists (the biggest time lever
-# a run has), the orchestrator on ANTHROPIC_MODEL unless told otherwise. They
-# are written into a copy of the bundle under the state dir; the source is
-# never edited, and the self-check validates the copy that is registered.
-AGENT_BUNDLE="$ROOT/discovery_loop"
-if [ -n "${BIOSENSE_SPECIALIST_MODEL:-}${BIOSENSE_SPECIALIST_EFFORT:-}${BIOSENSE_ORCHESTRATOR_MODEL:-}" ]; then
-  if "${UV_RUN[@]}" python -m biosense.production.bundle --src "$ROOT/discovery_loop" --dst "$STATE/agents" \
-       ${BIOSENSE_SPECIALIST_MODEL:+--specialist-model "$BIOSENSE_SPECIALIST_MODEL"} \
-       ${BIOSENSE_SPECIALIST_EFFORT:+--specialist-effort "$BIOSENSE_SPECIALIST_EFFORT"} \
-       ${BIOSENSE_ORCHESTRATOR_MODEL:+--orchestrator-model "$BIOSENSE_ORCHESTRATOR_MODEL"}; then
-    AGENT_BUNDLE="$STATE/agents"
-    ok "specialists on ${BIOSENSE_SPECIALIST_MODEL:-$ANTHROPIC_MODEL}${BIOSENSE_SPECIALIST_EFFORT:+ (effort $BIOSENSE_SPECIALIST_EFFORT)}; orchestrator on ${BIOSENSE_ORCHESTRATOR_MODEL:-$ANTHROPIC_MODEL}"
-  else
-    die 'the per-agent model choice was refused (above); fix the variable or unset it'
-  fi
+# The registered bundle is a copy under the state dir, written by
+# biosense.production.bundle: every agent's working directory pinned to this
+# repository (a specialist otherwise starts in a scratch directory, where
+# .venv/bin/python does not exist), plus the per-agent model choices when set —
+# a faster model for the specialists is the biggest time lever a run has. The
+# source is never edited, and the self-check validates the copy that is registered.
+AGENT_BUNDLE="$STATE/agents"
+if "${UV_RUN[@]}" python -m biosense.production.bundle --src "$ROOT/discovery_loop" --dst "$AGENT_BUNDLE" \
+     --cwd "$ROOT" \
+     ${BIOSENSE_SPECIALIST_MODEL:+--specialist-model "$BIOSENSE_SPECIALIST_MODEL"} \
+     ${BIOSENSE_SPECIALIST_EFFORT:+--specialist-effort "$BIOSENSE_SPECIALIST_EFFORT"} \
+     ${BIOSENSE_ORCHESTRATOR_MODEL:+--orchestrator-model "$BIOSENSE_ORCHESTRATOR_MODEL"}; then
+  ok "agents start in $ROOT; specialists on ${BIOSENSE_SPECIALIST_MODEL:-${ANTHROPIC_MODEL:-the default}}${BIOSENSE_SPECIALIST_EFFORT:+ (effort $BIOSENSE_SPECIALIST_EFFORT)}"
+else
+  die 'the agent bundle copy was refused (above); fix the variable or unset it'
 fi
 export BIOSENSE_AGENT_BUNDLE="$AGENT_BUNDLE"
 
