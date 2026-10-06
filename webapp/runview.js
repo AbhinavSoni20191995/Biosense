@@ -88,11 +88,13 @@ const RV = (() => {
         opts.onStop(snap.run_id);
       });
       const row = el('div', 'rv-actions'); row.append(stop);
-      const soon = snap.deadline_in_s != null && snap.deadline_in_s <= 8 * 60;
-      if (opts.onExtend && snap.extendable && (soon || snap.wrap_up_sent)) {
+      /* Offered for the whole run, not only at the end: the person watching
+         can see the agents are mid-work long before the countdown says so. */
+      if (opts.onExtend && snap.extendable) {
         const mins = Math.round((snap.extension_s || 600) / 60);
         const more = el('button', 'btn more',
           `Give it ${mins} more minutes (${snap.extensions_left} left)`);
+        more.title = 'Pushes the time limit out and tells the orchestrator it has more time.';
         more.addEventListener('click', () => {
           more.disabled = true; more.textContent = 'extending…';
           opts.onExtend(snap.run_id);
