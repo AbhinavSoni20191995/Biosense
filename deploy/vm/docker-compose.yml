@@ -1,0 +1,64 @@
+# BioSense with real AI on a machine you control: the same image Railway builds,
+# plus the one thing Railway cannot give it — permission for the agents' sandbox.
+#
+#   biosense   deploy/Dockerfile.ai, unchanged: the app, the Omnigent server and
+#              host, the agents. Not published to the internet directly.
+#   caddy      HTTPS in front of it, with a certificate it obtains and renews
+#              itself. The only service with open ports.
+#
+# Start (from this directory):   docker compose up -d --build
+# Settings:                      .env beside this file (see env.example)
+name: biosense
+
+services:
+  biosense:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.ai
+    image: biosense-ai:local
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # projects, run artifacts and run journals: survive rebuilds and redeploys
+      - biosense-data:/app/data
+    # Why these two lines exist, and why they are safe here.
+    #
+    # Omnigent runs every agent shell and file command inside bubblewrap, which
+    # builds its sandbox from user namespaces and mounts inside them. Docker's
+    # default seccomp profile refuses to create a user namespace and its default
+    # AppArmor profile refuses the mounts, so with the defaults the sandbox
+    # cannot start and BioSense refuses real runs (agent_sandbox_unavailable).
+    #
+    # Lifting them does NOT lift the agents' confinement: each agent command
+    # still runs in bubblewrap with Omnigent's own seccomp filter, a read-only
+    # workspace, writes only to the runs directory, no network for the
+    # specialists, and an environment with no API key in it. What changes is
+    # how much of the kernel this one container may ask for, which is why this
+    # belongs on a VM that runs nothing else.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    expose:
+      - "8000"
+    stop_grace_period: 30s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - biosense
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      BIOSENSE_DOMAIN: ${BIOSENSE_DOMAIN:?set BIOSENSE_DOMAIN in deploy/vm/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  biosense-data:
+  caddy-data:
+  caddy-config:

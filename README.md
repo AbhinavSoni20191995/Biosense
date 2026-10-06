@@ -288,6 +288,11 @@ is the agent registered, is there an executor, does it have model credentials.
 Full instructions, the environment variables and the reasoning:
 **[deploy/README.md](deploy/README.md)**.
 
+**Real AI needs a host that lets the agents' sandbox start.** Railway does not
+(its containers refuse user namespaces), so real runs are refused there with the
+reason. One command puts the same image on a small VM with HTTPS and
+auto-redeploy: **[deploy/vm/README.md](deploy/vm/README.md)**.
+
 Running it on your own machine, remote Omnigent servers, signing in, Windows →
 **[docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md)**
 
@@ -759,7 +764,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 983 tests
+uv run --frozen python -m unittest     # 985 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

@@ -478,6 +478,39 @@ class DeploymentTests(unittest.TestCase):
             self.assertNotIn('sk-ant', text, name)
             self.assertNotRegex(text, r'ANTHROPIC_API_KEY\s*=\s*\S', name)
 
+    def test_the_vm_deployment_bakes_in_no_credential_and_evaluates_nothing(self):
+        for name in ('docker-compose.yml', 'Caddyfile', 'env.example', 'setup.sh', 'update.sh'):
+            text = (ROOT / 'deploy' / 'vm' / name).read_text()
+            self.assertNotIn('sk-ant', text, name)
+            self.assertNotRegex(text, r'ANTHROPIC_API_KEY\s*=\s*\S', name)
+            self.assertNotRegex(text, r'\beval\b', name)
+        for name in ('setup.sh', 'update.sh'):
+            p = ROOT / 'deploy' / 'vm' / name
+            self.assertTrue(p.stat().st_mode & stat.S_IXUSR, f'{name} is not executable')
+            self.assertRegex(p.read_text(), r'\nset -euo pipefail', name)
+        # The settings file the VM writes is never committed.
+        self.assertIn('.env', (ROOT / '.gitignore').read_text().splitlines())
+
+    def test_the_vm_lets_the_agents_sandbox_start_and_exposes_only_https(self):
+        """Railway refuses user namespaces, so the agents' sandbox cannot start
+        there. The VM compose file lifts exactly the two container defaults that
+        block bubblewrap, keeps the data on a volume, and publishes no port but
+        the HTTPS proxy's."""
+        text = (ROOT / 'deploy' / 'vm' / 'docker-compose.yml').read_text()
+        app, _, proxy = text.partition('\n  caddy:')
+        self.assertIn('dockerfile: deploy/Dockerfile.ai', app)
+        self.assertIn('seccomp=unconfined', app)
+        self.assertIn('apparmor=unconfined', app)
+        self.assertIn('biosense-data:/app/data', app)
+        self.assertNotIn('ports:', app, 'the app must only be reachable through the proxy')
+        self.assertIn('"443:443"', proxy)
+        caddy = (ROOT / 'deploy' / 'vm' / 'Caddyfile').read_text()
+        self.assertIn('reverse_proxy biosense:8000', caddy)
+        self.assertIn('flush_interval -1', caddy, 'live run updates would be buffered')
+        setup = (ROOT / 'deploy' / 'vm' / 'setup.sh').read_text()
+        self.assertIn('apparmor_restrict_unprivileged_userns = 0', setup)
+        self.assertIn('umask 077', setup, 'the key file must be root-only')
+
     def test_the_platform_healthcheck_is_liveness_not_readiness(self):
         """Pointing it at /readyz would restart the container while the runtime
         comes up, and keep restarting it if a key were missing — taking the

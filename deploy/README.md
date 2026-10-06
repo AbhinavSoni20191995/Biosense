@@ -20,6 +20,12 @@ Both serve `webapp/console.html` at `/`, keep the read-only tracker at
 
 ---
 
+> **Real AI needs a host that allows the agents' sandbox.** Railway's containers
+> refuse Linux user namespaces, so bubblewrap cannot start there and real runs are
+> refused with `agent_sandbox_unavailable`; Railway still serves the synthetic
+> path. For real AI, use **[deploy/vm](vm/README.md)**: the same image on a small
+> VM, behind HTTPS, with auto-redeploy on every push to `main`.
+
 ## A. The real-AI service (the hosted product)
 
 <picture>

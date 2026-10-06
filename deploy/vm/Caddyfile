@@ -1,0 +1,10 @@
+# HTTPS for BioSense. Caddy obtains and renews the certificate for
+# BIOSENSE_DOMAIN by itself; ports 80 and 443 must reach this machine.
+{$BIOSENSE_DOMAIN} {
+	encode gzip
+	reverse_proxy biosense:8000 {
+		# Live run updates are a server-sent event stream: pass every event on
+		# as it arrives instead of buffering it.
+		flush_interval -1
+	}
+}
