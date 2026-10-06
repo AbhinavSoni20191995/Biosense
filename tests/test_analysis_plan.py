@@ -65,6 +65,32 @@ class PlanCase(unittest.TestCase):
             parameters_that_may_change=['mcsf_ng_ml'], **kw)
 
 
+class LiveBioinformaticsInsightTests(PlanCase):
+    """The run page shows what the bioinformatics agent planned and found, from
+    its own files, while the run goes on."""
+
+    def test_a_plan_and_the_agents_notes_reach_the_snapshot(self):
+        from pathlib import Path as P
+        from biosense.production import app as APP
+        out = P(self.tmp) / 'runs' / 'ai-x'
+        (out / 'bioinformatics').mkdir(parents=True)
+        run = APP.DiscoveryRun('b' * 16, {'request_id': 'r', 'project_id': 'p', 'objective': 'o'},
+                               out, 'local_real_ai')
+        run.scan_artifacts(force=True)
+        self.assertIsNone(run.snapshot()['bioinformatics'])
+        K.write_json_atomic(out / 'analysis_plan.json', self.a_plan())
+        (out / 'analysis_plan_bad.json').write_text('{"plan_id": "not valid"}')
+        (out / 'bioinformatics' / 'insights.md').write_text(
+            'CSF1R — found, local_annotation.\n\nNo real dataset named; the facs table is usable.\n')
+        run.scan_artifacts(force=True)
+        bio = run.snapshot()['bioinformatics']
+        self.assertEqual(['plan-1'], [p['plan_id'] for p in bio['plans']],
+                         'only what validates is shown')
+        self.assertEqual(['facs-demo'], bio['plans'][0]['datasets'])
+        self.assertEqual('cytometry.population_comparison', bio['plans'][0]['tool'])
+        self.assertIn('CSF1R', bio['notes']['text'])
+
+
 class UncertaintyTests(PlanCase):
     """The structural requirement, not a prompt instruction."""
 

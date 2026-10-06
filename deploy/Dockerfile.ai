@@ -37,6 +37,18 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends bubblewrap \
  && rm -rf /var/lib/apt/lists/*
 
+# Optional: R with DESeq2 and edgeR from Debian's Bioconductor packages, so the
+# external-tool adapter's count-based differential expression can run here.
+# Off by default — it adds several hundred MB to the image. Set the build
+# variable BIOSENSE_WITH_R=1 (on Railway: a service variable) to include it;
+# the tool registry finds Rscript on PATH and registers the tools by itself.
+ARG BIOSENSE_WITH_R=0
+RUN if [ "$BIOSENSE_WITH_R" = "1" ]; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends r-base-core r-bioc-deseq2 r-bioc-edger \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 RUN pip install --no-cache-dir uv==0.12.23
 
 WORKDIR /app
@@ -49,7 +61,9 @@ ENV UV_LINK_MODE=copy \
 # `omnigent` command this container runs, from the same lockfile, so there is
 # nothing to install by hand and no version to drift.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --extra omnigent --no-install-project
+# `--extra singlecell` adds the .h5ad reader (anndata + h5py, small), so the
+# single-cell pseudobulk comparison is registered instead of "needs an install".
+RUN uv sync --locked --extra omnigent --extra singlecell --no-install-project
 
 COPY agent_tools.py output.schema.json agent_prompt.md ./
 COPY biosense/ ./biosense/
@@ -70,7 +84,7 @@ COPY docs/ ./docs/
 # This is what `--agent` registers, and the reason this image can do the work.
 COPY discovery_loop/ ./discovery_loop/
 COPY deploy/start-ai.sh ./deploy/start-ai.sh
-RUN uv sync --locked --extra omnigent
+RUN uv sync --locked --extra omnigent --extra singlecell
 
 # One volume, mounted at /app/data, holding both durable things:
 #

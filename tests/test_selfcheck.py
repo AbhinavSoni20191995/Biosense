@@ -317,6 +317,18 @@ class RunEndTests(unittest.TestCase):
         self.assertIn('Paused at the time limit.', rv)
         self.assertIn('Finish with what it has', rv)
         self.assertIn("searchParams.get('project')", (K.ROOT / 'webapp' / 'runs.js').read_text())
+        # Any project's derived protocol can be simulated; without a model of its
+        # own it runs on the reactor stand-in, and the page says so.
+        self.assertIn('Simulate this protocol', js)
+        sim = (K.ROOT / 'webapp' / 'simulator.js').read_text()
+        self.assertIn("h.kind === 'protocol'", sim)
+        self.assertIn('STAND-IN MODEL', sim)
+        self.assertIn('is NOT modelled', sim)
+        # Bioinformatics plans and notes show live; uploads stay private.
+        self.assertIn('function renderBioInsights', js)
+        self.assertIn('id="bioInsights"', html)
+        data = (K.ROOT / 'webapp' / 'data.html').read_text()
+        self.assertIn('/api/datasets/upload', data)
         self.assertIn('id="effort"', html)
         rv = (K.ROOT / 'webapp' / 'runview.js').read_text()
         self.assertIn('snap.extendable', rv)

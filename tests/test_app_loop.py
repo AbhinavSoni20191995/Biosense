@@ -653,7 +653,10 @@ class AppServerTests(unittest.TestCase):
         code, body = self._get('/simulator.js')
         js = body.decode()
         self.assertIn('servedByThisModel', js)
-        self.assertIn('no mechanistic model at all', js)
+        self.assertIn('no mechanistic model of its own', js)
+        # Selecting such a project never borrows these sliders. A derived protocol
+        # runs on the reactor only when a person asks, and only labelled a stand-in.
+        self.assertIn('STAND-IN MODEL', js)
         # the knobs it lists for such a project come from that project, not this model
         self.assertIn("p.parameters.forEach", js)
 

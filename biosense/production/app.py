@@ -71,6 +71,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -168,6 +169,11 @@ ARTIFACT_SETTLE_MAX_S = 150.0
 READY_CACHE_S = 10
 DISCOVERY_ID = re.compile(r'^[0-9a-f]{8,32}$')
 MAX_BODY_DISCOVERY = 256 * 1024     # a request carries a context and constraints
+# A processed table, uploaded from the Data page as text inside JSON. Raw counts
+# for a whole transcriptome are larger and belong on the command line.
+MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+UPLOAD_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$')
+UPLOAD_TYPES = ('csv', 'tsv', 'txt')
 STANDINS = ('ipsc_tcell', 'tcell', 'monocyte')
 # Truth files for the stand-ins the app offers. The engine reads these; no
 # handler ever serves one.
@@ -212,6 +218,7 @@ class Run:
         # found. Read off disk when the file changes, never from the model.
         self.insights = None
         self.papers_found = []
+        self.bioinformatics = None
         self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -319,6 +326,7 @@ class DiscoveryRun:
         # found. Read off disk when the file changes, never from the model.
         self.insights = None
         self.papers_found = []
+        self.bioinformatics = None
         self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -360,8 +368,10 @@ class DiscoveryRun:
 
     def _read_live_notes(self):
         """The literature agent's insights.md and discover.json, as they grow."""
+        self._read_analyses()
         for rel, reader in (('literature/insights.md', self._read_insights),
-                            ('literature/discover.json', self._read_papers)):
+                            ('literature/discover.json', self._read_papers),
+                            ('bioinformatics/insights.md', self._read_bio_notes)):
             path = self.out_dir / rel
             try:
                 mtime = path.stat().st_mtime
@@ -383,6 +393,57 @@ class DiscoveryRun:
                          'by': 'literature agent, as it read',
                          'note': 'Running notes written during the run by the literature agent, '
                                  'before the orchestrator weighed them. Leads, not findings.'}
+
+    def _read_bio_notes(self, path, mtime):
+        text = path.read_text(encoding='utf-8', errors='replace')
+        if len(text) > INSIGHTS_MAX_CHARS:
+            text = '…' + text[-INSIGHTS_MAX_CHARS:]
+        bio = dict(self.bioinformatics or {})
+        bio['notes'] = {'text': text, 'updated_at': mtime,
+                        'by': 'bioinformatics agent, as it worked'}
+        self.bioinformatics = bio
+
+    def _read_analyses(self):
+        """Planned and finished analyses, from the files the CLI wrote.
+
+        Only what validates is shown: the plan's question, dataset, tool and the
+        uncertainty it targets; the result's key findings, or its refusal.
+        """
+        plans, results = [], []
+        try:
+            files = sorted(self.out_dir.glob('analysis_plan*.json')) + \
+                sorted(self.out_dir.glob('analysis_result*.json'))
+        except OSError:
+            return
+        sig = tuple((f.name, f.stat().st_mtime) for f in files if f.is_file())
+        if self._live_mtimes.get('analyses') == sig:
+            return
+        self._live_mtimes['analyses'] = sig
+        for f in files:
+            try:
+                doc = K.read_json(f)
+            except (OSError, ValueError):
+                continue
+            if f.name.startswith('analysis_plan') and not K.schema_errors('analysis_plan', doc):
+                tool = doc.get('tool') or {}
+                plans.append({'plan_id': doc.get('plan_id'), 'question': doc.get('question'),
+                              'datasets': doc.get('dataset_ids') or [],
+                              'tool': tool.get('name') if isinstance(tool, dict) else tool,
+                              'analysis_type': doc.get('analysis_type'),
+                              'uncertainty': (doc.get('uncertainty_ref') or {}).get('statement'),
+                              'why': doc.get('why_requested'),
+                              'decision_relevance': doc.get('decision_relevance')})
+            elif f.name.startswith('analysis_result') and not K.schema_errors('analysis_result', doc):
+                results.append({'analysis_id': doc.get('analysis_id'),
+                                'plan_ref': doc.get('plan_ref'),
+                                'question': doc.get('question'),
+                                'source': doc.get('source_evidence_class'),
+                                'confidence': doc.get('confidence'),
+                                'key_findings': (doc.get('key_findings') or [])[:5],
+                                'limitations': (doc.get('limitations') or [])[:3]})
+        bio = dict(self.bioinformatics or {})
+        bio.update(plans=plans, results=results)
+        self.bioinformatics = bio if (plans or results or bio.get('notes')) else None
 
     def _read_papers(self, path, mtime):
         doc = K.read_json(path)
@@ -592,6 +653,7 @@ class DiscoveryRun:
                 'activity': self.activity.snapshot(),
                 'insights': self.insights,
                 'papers_found': list(self.papers_found),
+                'bioinformatics': self.bioinformatics,
                 'stage_counts': ST.stage_counts(self.stages_reached,
                                                 terminal=self._terminal()),
                 'deadline_in_s': (round(self.deadline - time.time(), 1)
@@ -1150,6 +1212,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._logout()
             if path == '/api/admin/selfcheck':
                 return self._start_selfcheck(self._body())
+            if path == '/api/datasets/upload':
+                return self._upload_dataset(self._body(MAX_UPLOAD_BYTES + 64 * 1024))
             # Simulator mode. A person turns the knobs, so there is no decision to
             # validate and no iteration to spend: these run the model and return
             # what it read. They are capped like any other work this server starts.
@@ -1229,6 +1293,70 @@ class Handler(BaseHTTPRequestHandler):
             self._set_cookie(f'{WS.ANON_COOKIE}={value}; Path=/; HttpOnly; SameSite=Lax'
                              f'; Max-Age={WS.ANON_TTL_S}{secure}')
         return WS.anon_identity(value)
+
+    def _upload_dataset(self, body):
+        """A processed table from the Data page, registered as a PRIVATE dataset.
+
+        An operator's action: it writes to the volume and the agents read it.
+        The file lands under the private root, never under a served directory,
+        and the registry records who added it. The listing endpoint still never
+        names a private dataset — the response gives its id, and the page keeps
+        it for the person who uploaded it.
+        """
+        identity = self._require_operator('adding a dataset')
+        from ..data import ingest as ING
+        from ..data import roots as DROOTS
+        did = str(body.get('dataset_id') or '').strip()
+        if not UPLOAD_ID.match(did):
+            return self._send(400, {'error': 'dataset_id: 3–64 letters, digits, dot, dash or '
+                                             'underscore, starting with a letter or digit'})
+        name = str(body.get('file_name') or '')
+        ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+        if ext not in UPLOAD_TYPES:
+            return self._send(400, {'error': 'upload a processed table: .csv, .tsv or .txt. '
+                                             '.h5ad and peak files are registered from the '
+                                             'command line (bioinformatics.cli datasets register).'})
+        content = body.get('content')
+        if not isinstance(content, str) or not content.strip():
+            return self._send(400, {'error': 'the file is empty'})
+        if len(content.encode('utf-8')) > MAX_UPLOAD_BYTES:
+            return self._send(413, {'error': f'the table is larger than '
+                                             f'{MAX_UPLOAD_BYTES // (1024 * 1024)} MB; register it '
+                                             f'from the command line instead'})
+        title = str(body.get('title') or did).strip()[:200]
+        DROOTS.ensure_roots()
+        folder = DROOTS.private_root() / 'uploads' / did
+        if folder.exists():
+            return self._send(409, {'error': f'a dataset {did!r} was already uploaded; choose '
+                                             f'another id'})
+        folder.mkdir(parents=True)
+        path = folder / f'table.{"tsv" if ext == "txt" else ext}'
+        path.write_text(content, encoding='utf-8')
+        design = {}
+        for key in ('condition_column', 'control', 'replicate_column', 'sample_id_column',
+                    'batch_column', 'timepoint_column', 'donor_column'):
+            v = str(body.get(key) or '').strip()
+            if v:
+                design[key] = v
+        treats = [str(t).strip() for t in (body.get('treatments') or []) if str(t).strip()]
+        if treats:
+            design['treatments'] = treats
+        try:
+            m, _ = ING.ingest_local(
+                path, dataset_id=did, title=title, modality=(body.get('modality') or None),
+                organism=str(body.get('organism') or 'Homo sapiens'),
+                cell_type=body.get('cell_type') or None,
+                perturbation=body.get('perturbation') or None,
+                experimental_design=design, description=body.get('description') or None,
+                registered_by=identity.owner or 'local operator', visibility='private')
+        except K.ContractError as e:
+            shutil.rmtree(folder, ignore_errors=True)
+            return self._send(400, {'error': str(e)})
+        return self._send(200, {
+            'dataset': DREG.summary(m),
+            'note': 'Registered as PRIVATE: stored on this server\'s volume, never served or '
+                    'listed over HTTP, never a literature citation. Name it in a run to have '
+                    'the bioinformatics agent analyse it.'})
 
     def _require_operator(self, what):
         """An admin, or anyone on a single-user local instance. Never a visitor.

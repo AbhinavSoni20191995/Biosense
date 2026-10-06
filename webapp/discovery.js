@@ -507,6 +507,14 @@ async function loadDatasets() {
   let d;
   try { d = await get('/api/datasets'); } catch (_) { return; }
   state.datasets = d.datasets || [];
+  /* Private uploads are never listed by the server; the Data page remembers the
+     ones made from this browser, and they are offered here for the same person. */
+  let mine = [];
+  try { mine = JSON.parse(localStorage.getItem('biosense.uploads') || '[]'); } catch (_) {}
+  const known = new Set(state.datasets.map(m => m.dataset_id));
+  mine.filter(u => !known.has(u.dataset_id)).forEach(u => state.datasets.push(
+    { dataset_id: u.dataset_id, title: u.title || u.dataset_id, visibility: 'private',
+      yours: true }));
   const host = $('#datasetPicks'); host.textContent = '';
   if (!state.datasets.length) {
     host.append(el('p', 'hint', d.note || 'No datasets are registered on this instance.'));
@@ -516,7 +524,7 @@ async function loadDatasets() {
     const lab = el('label', 'pick');
     const i = el('input'); i.type = 'checkbox'; i.value = m.dataset_id;
     lab.append(i, el('span', null, m.title || m.dataset_id));
-    if (m.visibility === 'private') lab.append(el('span', 'vis', 'private'));
+    if (m.visibility === 'private') lab.append(el('span', 'vis', m.yours ? 'private · yours' : 'private'));
     host.append(lab);
   });
   $('#datasetNote').textContent = d.note || '';
@@ -727,6 +735,43 @@ function stopFromButton() {
   stopRun(id);
 }
 
+/* What the bioinformatics agent is doing, from its own files: the analyses it
+   planned (question, dataset, tool, the uncertainty it targets), what came
+   back, and its running notes. */
+let bioSeen = '';
+function renderBioInsights(bio) {
+  const host = $('#bioInsights'); if (!host) return;
+  const key = JSON.stringify(bio || null);
+  if (key === bioSeen) return;
+  bioSeen = key;
+  host.textContent = '';
+  if (!bio) return;
+  host.append(el('div', 'lab', 'Bioinformatics'));
+  (bio.plans || []).forEach(p => {
+    const row = el('div', 'm');
+    row.append(el('span', 'tag', 'PLANNED'), ' ', el('b', null, p.question || p.plan_id));
+    const bits = [p.tool && `tool ${p.tool}`, (p.datasets || []).length && `data ${p.datasets.join(', ')}`,
+      p.analysis_type].filter(Boolean);
+    if (bits.length) row.append(el('div', 'dim', bits.join(' · ')));
+    if (p.uncertainty) row.append(el('div', 'dim', 'Settles: ' + p.uncertainty));
+    host.append(row);
+  });
+  (bio.results || []).forEach(r => {
+    const row = el('div', 'm');
+    row.append(el('span', 'tag', 'RESULT'), ' ', el('b', null, r.question || r.analysis_id));
+    if (r.source) row.append(el('span', 'dim', `  from ${r.source}${r.confidence ? ' · ' + r.confidence : ''}`));
+    (r.key_findings || []).forEach(f => row.append(el('div', null, '• ' + (typeof f === 'string' ? f : (f.statement || f.summary || JSON.stringify(f))))));
+    host.append(row);
+  });
+  if (!(bio.plans || []).length && !(bio.results || []).length) {
+    host.append(el('p', 'dim', 'No analysis planned yet.'));
+  }
+  if (bio.notes) {
+    bio.notes.text.split(/\n{2,}/).map(b => b.trim()).filter(Boolean)
+      .forEach(b => host.append(el('p', 'm insight', b)));
+  }
+}
+
 function hasPartial(r) {
   const b = (r && r.bundle) || {};
   return !!(r.protocol || (b.hypotheses || []).length || (b.artifacts_ingested || 0) > 0);
@@ -738,9 +783,10 @@ function hasPartial(r) {
 let insightsSeen = '';
 function renderInsights(snap) {
   const panel = $('#insightsPanel'); if (!panel) return;
-  const ins = snap.insights, papers = snap.papers_found || [];
-  if (!ins && !papers.length) { panel.hidden = true; return; }
+  const ins = snap.insights, papers = snap.papers_found || [], bio = snap.bioinformatics;
+  if (!ins && !papers.length && !bio) { panel.hidden = true; return; }
   panel.hidden = false;
+  renderBioInsights(bio);
   const key = `${ins ? ins.updated_at : 0}:${papers.length}`;
   if (key === insightsSeen) return;
   insightsSeen = key;
@@ -1210,10 +1256,37 @@ function openInSimulator(c) {
   location.href = 'simulator.html';
 }
 
+/* The whole derived protocol, every setpoint with its provenance, handed to
+   the Simulator — so a scientist can see what the estimate would do in the
+   most realistic reactor model there is, labelled for what that model is. */
+function simulateProtocol(p) {
+  const values = [];
+  (p.stages || []).forEach(s => (s.parameters || []).forEach(q => {
+    if (q.recommended_value == null || typeof q.recommended_value !== 'number') return;
+    values.push({ parameter_id: q.parameter_id, label: q.label, unit: q.unit,
+      value: q.recommended_value, provenance: q.provenance, stage: s.stage_id });
+  }));
+  const proj = p.project || {};
+  const payload = {
+    kind: 'protocol', project_id: proj.project_id, project_name: proj.name,
+    has_simulator: !!(proj.simulator && proj.simulator !== 'none'
+      && (proj.simulator.model_id || proj.simulator.status !== 'none')),
+    values, gaps: (p.gaps || []).map(g => g.parameter_id),
+    from_run: state.run && state.run.run_id, title: p.title,
+  };
+  try { localStorage.setItem('bs-sim-candidate', JSON.stringify(payload)); } catch (_) {}
+  location.href = 'simulator.html';
+}
+
 function renderProtocol(p) {
   const host = $('#protocol'); if (!host) return;
   host.textContent = '';
   $('#protocolPanel').hidden = false;
+  const sim = el('button', 'btn go', 'Simulate this protocol');
+  sim.title = 'Open the Simulator with every recommended setpoint as the candidate';
+  sim.addEventListener('click', () => simulateProtocol(p));
+  host.append(el('div', 'rv-actions', null));
+  host.lastChild.append(sim);
 
   const head = el('div', 'ev-row');
   head.append(el('span', 'rt-badge ' + p.runtime_mode, p.badge));

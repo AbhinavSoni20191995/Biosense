@@ -83,6 +83,36 @@ body[data-view="simple"] .tech{display:none}
     <div id="datasets" class="dim">loading…</div>
   </section>
 
+  <!-- Adding a processed table. An operator's action: it writes to this server's
+       volume, the dataset stays PRIVATE, and it is never listed here — the page
+       remembers what you uploaded, in your own browser, so you can name it in a run. -->
+  <section class="glass card" id="uploadCard">
+    <div class="head"><h2>Add a dataset</h2><span class="dim">admin · private</span></div>
+    <p class="sub">A processed table (.csv or .tsv): one row per sample or population, a column
+      that says which condition each row belongs to, and the readouts. It is registered
+      privately on this server and the bioinformatics agent can analyse it when a run names it.
+      It is never served over HTTP and never becomes a literature citation.</p>
+    <form id="uploadForm" class="upform">
+      <label>File <input type="file" id="upFile" accept=".csv,.tsv,.txt" required></label>
+      <label>Dataset id <input type="text" id="upId" placeholder="e.g. my-macrophage-gmcsf-2026"
+        pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required></label>
+      <label>Title <input type="text" id="upTitle" placeholder="What this table is"></label>
+      <label>Kind of data
+        <select id="upModality">
+          <option value="">detect from the table</option>
+          <option value="cytometry_summary">flow-cytometry populations (processed)</option>
+          <option value="bulk_rna">bulk expression (normalised)</option>
+        </select></label>
+      <label>Condition column <input type="text" id="upCond" placeholder="e.g. condition"></label>
+      <label>Control level <input type="text" id="upControl" placeholder="e.g. M-CSF only"></label>
+      <label>Replicate column <input type="text" id="upRep" placeholder="optional"></label>
+      <label>Cell type <input type="text" id="upCell" placeholder="optional, e.g. iPSC-derived macrophage"></label>
+      <button class="btn go" type="submit" id="upGo">Add dataset</button>
+    </form>
+    <div id="upResult"></div>
+    <div id="myUploads"></div>
+  </section>
+
   <section class="glass card">
     <div class="head"><h2>Analyses that can run</h2><span class="dim" id="toolCount"></span></div>
     <p class="sub">A tool that cannot run here is not offered. That is deliberate: an analysis
@@ -233,6 +263,62 @@ async function projects() {
     host.append(Object.assign(el('p', 'caveat', d.note), {}));
   } catch (_) { host.textContent = 'the project service did not answer'; }
 }
+
+/* Uploads are remembered in this browser only: the server never lists a
+   private dataset, to anyone. */
+const UPLOADS_KEY = 'biosense.uploads';
+function myUploads() {
+  try { return JSON.parse(localStorage.getItem(UPLOADS_KEY) || '[]'); } catch (_) { return []; }
+}
+function rememberUpload(d) {
+  const list = myUploads().filter(x => x.dataset_id !== d.dataset_id);
+  list.unshift({ dataset_id: d.dataset_id, title: d.title, modality: d.modality,
+    conditions: d.conditions, at: Date.now() });
+  try { localStorage.setItem(UPLOADS_KEY, JSON.stringify(list.slice(0, 40))); } catch (_) {}
+}
+function renderMyUploads() {
+  const host = $('#myUploads'); host.textContent = '';
+  const list = myUploads();
+  if (!list.length) return;
+  host.append(el('div', 'lab', 'Your uploads (remembered in this browser)'));
+  list.forEach(u => {
+    const row = el('div', 'm');
+    row.append(el('code', null, u.dataset_id), ' — ' + (u.title || ''),
+      el('span', 'dim', `  ${u.modality || ''}${(u.conditions || []).length ? ' · ' + u.conditions.join(', ') : ''}`));
+    host.append(row);
+  });
+  host.append(el('p', 'dim', 'They appear as choices in the AI Discovery form under "Datasets".'));
+}
+$('#uploadForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const out = $('#upResult'); out.textContent = '';
+  const f = $('#upFile').files[0];
+  if (!f) return;
+  if (f.size > 12 * 1024 * 1024) { out.append(el('p', 'bad', 'Larger than 12 MB: register it from the command line.')); return; }
+  const go = $('#upGo'); go.disabled = true; go.textContent = 'adding…';
+  try {
+    const body = { file_name: f.name, content: await f.text(), dataset_id: $('#upId').value.trim(),
+      title: $('#upTitle').value.trim(), modality: $('#upModality').value || null,
+      condition_column: $('#upCond').value.trim(), control: $('#upControl').value.trim(),
+      replicate_column: $('#upRep').value.trim(), cell_type: $('#upCell').value.trim() };
+    const r = await fetch('/api/datasets/upload', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `the server answered ${r.status}`);
+    rememberUpload(d.dataset);
+    out.append(el('p', 'ok', `Added ${d.dataset.dataset_id} (${d.dataset.modality}, `
+      + `${d.dataset.sample_count ?? '?'} rows).`), el('p', 'dim', d.note));
+    if ((d.dataset.missing_metadata || []).length) {
+      out.append(el('p', 'caveat', 'Missing metadata: ' + d.dataset.missing_metadata.join(', ')
+        + '. Analyses that need it will say so.'));
+    }
+    renderMyUploads();
+    $('#uploadForm').reset();
+  } catch (e) {
+    out.append(el('p', 'bad', e.message));
+  } finally { go.disabled = false; go.textContent = 'Add dataset'; }
+});
+renderMyUploads();
 
 datasets(); tools(); projects();
 </script>

@@ -145,9 +145,10 @@ function showProject(id) {
   $('#noModelWhy').textContent = p.has_simulator
     ? 'This process has a model, but it is not the one this page runs. Its knobs are listed '
       + 'below; no trajectory is produced for them here.'
-    : 'This process has no mechanistic model at all. Its knobs are real design variables you '
-      + 'can set in the lab, but nothing here predicts what they would do, and borrowing '
-      + "another process's model would produce a number rather than an answer.";
+    : 'This process has no mechanistic model of its own. Its knobs are real design variables '
+      + 'you can set in the lab. To see a derived protocol run anyway, open the run and press '
+      + '"Simulate this protocol": its reactor setpoints run on the stand-in reactor model, '
+      + 'labelled as such — the physics carry over, this cell type\u2019s biology does not.';
   const host = $('#noModelKnobs'); host.textContent = '';
   p.parameters.forEach(q => {
     const r = el('div', 'knob');
@@ -245,7 +246,57 @@ function readHandoff() {
   try { return JSON.parse(raw); } catch (_) { return null; }
 }
 
+/* A whole derived protocol. On the project's own model its setpoints load as
+   the candidate. A project with no model of its own is run on this reactor as
+   a STAND-IN: the physical setpoints (agitation, oxygen, feeding, seed
+   density) mean the same thing in any stirred suspension culture, so they
+   carry over by parameter; the target cell's biology does not, and the page
+   says so every time — the harvest and identity readouts stay this model's. */
+function applyProtocolHandoff(h) {
+  const box = $('#handoff');
+  box.hidden = false; box.textContent = '';
+  const simModel = (state.cfg && state.cfg.model_id) || 'ipsc_monocyte_v1';
+  const own = (state.projects || []).find(p => p.project_id === h.project_id);
+  const ownServed = own && (own.simulator || {}).model_id === simModel;
+  const model = ownServed ? own : (state.projects || []).find(
+    p => (p.simulator || {}).model_id === simModel) || (state.projects || []).find(p => p.has_simulator);
+  if (!model) { box.append(el('div', 'warnc', 'No reactor model is installed here.')); return; }
+  const sel = $('#project');
+  sel.value = model.project_id; showProject(model.project_id);
+  const byId = {};
+  (model.parameters || []).forEach(q => { if (q.simulator_mapping) byId[q.parameter_id] = q; });
+  const used = h.values.filter(v => byId[v.parameter_id]);
+  const unused = h.values.filter(v => !byId[v.parameter_id]);
+  const t = el('div'); t.style.cssText = 'font-weight:600;color:var(--ink)';
+  t.textContent = `Simulating the protocol from ${h.from_run ? 'run ' + h.from_run : 'a discovery run'}`
+    + ` — ${h.project_name || h.project_id}`;
+  box.append(t);
+  if (!ownServed) {
+    box.append(el('div', 'warnc', `STAND-IN MODEL. ${h.project_name || h.project_id} has no model `
+      + `of its own, so its reactor setpoints run on the ${model.name} model. Growth, shear, `
+      + `oxygen, feeding and waste carry over by physics; the differentiation biology of `
+      + `${h.project_name || 'this process'} is NOT modelled, so the harvest and identity `
+      + `readouts below are this model's cell type, not yours. Read the trends, not the numbers.`));
+  }
+  box.append(el('div', null, 'Candidate setpoints: ' + (used.length
+    ? used.map(v => `${v.label || v.parameter_id} ${v.value}${v.unit ? ' ' + v.unit : ''}`
+      + (v.provenance && v.provenance !== 'reported' ? ` [${v.provenance === 'design_choice' ? 'D' : v.provenance}]` : '')).join(' · ')
+    : 'none of them maps onto this model')));
+  if (unused.length) box.append(el('div', 'dim', 'Not represented in this model: '
+    + unused.map(v => v.label || v.parameter_id).join(', ')));
+  if ((h.gaps || []).length) box.append(el('div', 'dim', 'Gaps in the protocol (left at the '
+    + 'control value): ' + h.gaps.join(', ')));
+  box.append(el('div', 'dim', 'Control is the model\u2019s recorded process. Nothing was '
+    + 'approved by loading this, and no simulated number is evidence.'));
+  state.candidates = state.candidates || {};
+  state.candidates[model.project_id] = used.map(v => ({ parameter_id: v.parameter_id,
+    value: v.value, label: v.label || v.parameter_id, from: h.from_run || 'protocol' }));
+  state.handoff = h;
+  applyPreset('candidate');
+}
+
 function applyHandoff(h) {
+  if (h && h.kind === 'protocol') return applyProtocolHandoff(h);
   if (!h || !h.parameter_id) return;
   const box = $('#handoff');
   box.hidden = false;

@@ -483,6 +483,37 @@ class ApiTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b'{}')
 
+    def test_an_operator_adds_a_private_table_that_is_never_listed(self):
+        table = ('sample,condition,cd14_pct,viability_pct\n'
+                 's1,M-CSF,62,91\ns2,M-CSF,60,90\ns3,M-CSF,64,92\n'
+                 's4,GM-CSF+M-CSF,71,89\ns5,GM-CSF+M-CSF,73,90\ns6,GM-CSF+M-CSF,70,88\n')
+        code, d = self._req('POST', '/api/datasets/upload', {
+            'file_name': 'macs.csv', 'content': table, 'dataset_id': 'synthetic-upload-1',
+            'title': 'Synthetic test table', 'modality': 'cytometry_summary',
+            'condition_column': 'condition', 'control': 'M-CSF', 'sample_id_column': 'sample'})
+        self.assertEqual(200, code, d)
+        self.assertEqual('private', d['dataset']['visibility'])
+        self.assertEqual(['GM-CSF+M-CSF', 'M-CSF'], sorted(d['dataset']['conditions']))
+        stored = self.tmp / 'private' / 'uploads' / 'synthetic-upload-1' / 'table.csv'
+        self.assertTrue(stored.is_file(), 'kept under the private root')
+        # The listing still never names a private dataset.
+        listed = self._req('GET', '/api/datasets')[1]['datasets']
+        self.assertNotIn('synthetic-upload-1', [x['dataset_id'] for x in listed])
+        # The same id twice, a wrong type, a bad id, a design naming a missing column.
+        self.assertEqual(409, self._req('POST', '/api/datasets/upload', {
+            'file_name': 'a.csv', 'content': table, 'dataset_id': 'synthetic-upload-1'})[0])
+        self.assertEqual(400, self._req('POST', '/api/datasets/upload', {
+            'file_name': 'a.xlsx', 'content': table, 'dataset_id': 'synthetic-upload-2'})[0])
+        self.assertEqual(400, self._req('POST', '/api/datasets/upload', {
+            'file_name': 'a.csv', 'content': table, 'dataset_id': '../escape'})[0])
+        code, d = self._req('POST', '/api/datasets/upload', {
+            'file_name': 'a.csv', 'content': table, 'dataset_id': 'synthetic-upload-3',
+            'condition_column': 'no_such_column'})
+        self.assertEqual(400, code)
+        self.assertIn('no_such_column', d['error'])
+        self.assertFalse((self.tmp / 'private' / 'uploads' / 'synthetic-upload-3').exists(),
+                         'a refused table leaves nothing behind')
+
     def test_the_system_check_runs_for_an_operator_and_reports_its_rows(self):
         from unittest import mock
         from biosense.production import selfcheck as SCK

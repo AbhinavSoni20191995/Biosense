@@ -40,6 +40,22 @@ Run from the repository root:
 Write only under the `runs/` directory the orchestrator names. Never edit source,
 knowledge sets, protocols or earlier run artifacts.
 
+## Running notes (every task)
+
+As you work, append short entries to `<run dir>/bioinformatics/insights.md`
+(create the folder). BioSense shows this file to the person live, beside the
+literature agent's notes, so write it as you go, not at the end:
+
+- which genes you checked, and for each: found or not, at what confidence;
+- which datasets you considered, and why each is or is not usable here (a
+  `SYNTHETIC-` fixture is never usable as evidence);
+- the analysis you plan: the question, the dataset, the tool, and which
+  uncertainty it would settle — or why no analysis can run;
+- what the analysis returned, in one line, once it has;
+- what cannot be settled on this machine, and what would settle it.
+
+Two or three lines per entry. Leads, not findings: the orchestrator weighs them.
+
 ## ANNOTATE (message from the orchestrator)
 
 You receive one or more gene symbols, a perturbation, the target cell type, and
