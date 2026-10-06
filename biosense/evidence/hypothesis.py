@@ -29,13 +29,49 @@ _RANK = {'low': 0, 'moderate': 1, 'high': 2}
 _STRENGTH = {'weak': 0, 'moderate': 1, 'strong': 2, 'not_assessed': 0}
 
 
+CONTEXT_MATCH = ('in_context', 'partial_match', 'context_mismatch', 'not_assessed')
+# What an agent naturally writes, mapped to the one word the contract uses. A
+# run lost its whole hypothesis to 'partial_match' and 'match' once; the words
+# were right, only the spelling was not the schema's.
+_CONTEXT_WORDS = {
+    'in_context': 'in_context', 'match': 'in_context', 'matches': 'in_context',
+    'full_match': 'in_context', 'same_context': 'in_context', 'direct': 'in_context',
+    'partial_match': 'partial_match', 'partial': 'partial_match', 'partially': 'partial_match',
+    'related': 'partial_match', 'related_context': 'partial_match', 'close': 'partial_match',
+    'context_mismatch': 'context_mismatch', 'mismatch': 'context_mismatch',
+    'no_match': 'context_mismatch', 'different': 'context_mismatch',
+    'out_of_context': 'context_mismatch',
+    'not_assessed': 'not_assessed', 'unassessed': 'not_assessed', 'unknown': 'not_assessed',
+    '': 'not_assessed',
+}
+RELEVANCE = ('direct', 'indirect', 'mechanistic', 'analogous', 'background')
+
+
+def context_match_of(word):
+    """The contract's word for a context match, from an agent's own."""
+    if word is None:
+        return 'not_assessed'
+    key = str(word).strip().lower().replace(' ', '_').replace('-', '_')
+    if key not in _CONTEXT_WORDS:
+        raise K.ContractError(f'context_match {word!r} is not one of {CONTEXT_MATCH}')
+    return _CONTEXT_WORDS[key]
+
+
 def evidence_row(evidence_class, stance, summary, *, ref=None, strength='not_assessed',
-                 visibility='public', context_match='not_assessed', context_note=None):
+                 visibility='public', context_match='not_assessed', context_note=None,
+                 relevance=None, bearing=None):
     if evidence_class not in K.EVIDENCE_CLASSES:
         raise K.ContractError(f'unknown evidence_class {evidence_class!r}')
+    if relevance is not None and relevance not in RELEVANCE:
+        raise K.ContractError(f'relevance {relevance!r} is not one of {RELEVANCE}')
+    if relevance and relevance != 'direct' and not (bearing or '').strip():
+        raise K.ContractError(f'{relevance} evidence needs its bearing: the inference from what the '
+                              f'source shows to what the hypothesis claims')
     return {'evidence_class': evidence_class, 'stance': stance, 'strength': strength,
             'summary': summary, 'ref': ref, 'visibility': visibility,
-            'context_match': context_match, 'context_mismatch_note': context_note}
+            'context_match': context_match_of(context_match),
+            'context_mismatch_note': context_note,
+            'relevance': relevance, 'bearing': (bearing or '').strip() or None}
 
 
 def trade_offs(effects):
@@ -94,6 +130,13 @@ def confidence_from(evidence, effects):
     if any(e['context_match'] == 'context_mismatch' for e in supportive):
         reasons.append('some supporting evidence is outside the requested research context and '
                        'is counted at reduced relevance')
+    if any(e['context_match'] == 'partial_match' for e in supportive):
+        reasons.append('some supporting evidence comes from a partly matching context (another '
+                       'species, a related cell type or format) and is counted at reduced relevance')
+    if supportive and all(e.get('relevance') in ('indirect', 'mechanistic', 'analogous',
+                                                   'background') for e in supportive):
+        reasons.append('no source tests this change directly; the support is indirect, '
+                       'mechanistic or by analogy, and the hypothesis says how')
     return level, reasons
 
 

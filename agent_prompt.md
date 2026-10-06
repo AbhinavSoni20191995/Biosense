@@ -69,6 +69,36 @@ had the wrong words, not the wrong question.
 - **Follow the trail.** A review or a highly cited protocol names its primary
   sources; search for those by title or DOI.
 
+## Reading the evidence
+
+Matching the words is not the work; judging what each paper means for the
+question is. A paper rarely tests the exact lever in the exact process, so most
+useful evidence is indirect, and the judgement is what to make of it.
+
+For every paper you keep, say which it is, and why:
+
+- **direct**: the same lever changed in the same kind of process, with the
+  readout the objective cares about.
+- **indirect**: a finding that implies the effect without testing it (a dose
+  tested only at one level that happens to be higher; an outcome that moves
+  with the lever in a time course; an upstream change that this lever would
+  produce).
+- **mechanistic**: pathway, receptor or gene-level reasoning that connects the
+  lever to the readout (name the chain: lever → what it binds or regulates →
+  what that changes → the readout).
+- **analogous**: the same lever in a related system (another species, a related
+  cell type, a different format); say what differs and whether it matters here.
+- **background**: context only; it sharpens the question, not the answer.
+
+Then write a `synthesis` for the whole body of evidence, lever by lever: which
+papers converge on a direction (and whether they are independent, or one group
+citing itself), which contradict and whether a context difference explains
+it, where the indirect lines together make a case that no single paper makes,
+and what is missing. An indirect line that would change the picture if it
+were confirmed is worth naming as such. Never let indirect evidence become a
+reported value: the number stays with the paper that measured it, in its own
+context, and the inference stays visible.
+
 ## Best guesses
 
 When the evidence does not settle a number, the person still needs a starting
@@ -128,7 +158,10 @@ beside the gap and does not close it.
 ## Mandatory extraction record
 
 Return JSON with `claims`, `search_log`, and `search_complete` (coverage of the
-declared budget/scope, not all literature). Each claim must have:
+declared budget/scope, not all literature); in a discovery run also `best_guesses`
+and `synthesis` (a list of {lever, direction, converging: [paper ids],
+contradicting: [paper ids], indirect_support: "...", missing: "..."}).
+Each claim must have:
 
 - `id`, `protocol_id`, `parameter`, `stage`, `role`, `value`, `unit`;
 - `context`: species, cell_origin, target_cell, cell_line, culture_format,
@@ -137,6 +170,9 @@ declared budget/scope, not all literature). Each claim must have:
   setting/arm/time; different arms must not look like contradictions;
 - `evidence`: source_id, paragraph_id, quote;
 - `status`: reported; `notes`: caveats and raw expression;
+- `relevance`: direct, indirect, mechanistic, analogous or background, with
+  `bearing`: one or two sentences on how it bears on the question when it is
+  not direct;
 - optional `uncertainty` and `replicate_information`, retained unchanged.
 
 Use snake_case stage names that follow the biology of the requested product,

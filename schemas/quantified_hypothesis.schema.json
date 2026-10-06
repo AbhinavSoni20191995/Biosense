@@ -306,16 +306,35 @@
           "context_match": {
             "enum": [
               "in_context",
+              "partial_match",
               "context_mismatch",
               "not_assessed"
             ],
-            "description": "context_mismatch is shown, not hidden, and its relevance is reduced rather than its existence denied"
+            "description": "in_context: the same species, cell type and format. partial_match: some of them differ (another species, a related cell type, another format) and the evidence still bears on the question. context_mismatch is shown, not hidden, and its relevance is reduced rather than its existence denied"
           },
           "context_mismatch_note": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "relevance": {
+            "enum": [
+              "direct",
+              "indirect",
+              "mechanistic",
+              "analogous",
+              "background",
+              null
+            ],
+            "description": "How this evidence bears on the hypothesis: direct = tests the parameter in this process; indirect = a finding that implies the effect without testing it; mechanistic = pathway or gene-level reasoning; analogous = the same lever in a related system; background = context only"
+          },
+          "bearing": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For anything but direct evidence: the inference chain, in one or two sentences, from what the source shows to what the hypothesis claims"
           }
         }
       }

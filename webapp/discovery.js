@@ -548,6 +548,7 @@ function buildRequest() {
     project_id: $('#project').value,
     objective: $('#objective').value.trim(),
     runtime_mode: chosenRuntime(),
+    effort: ($('#effort') && $('#effort').value) || 'standard',
     dataset_ids: $$('#datasetPicks input:checked').map(i => i.value),
   };
   if (anyCtx) {
@@ -625,6 +626,7 @@ function watchRun(runId) {
       RV.agents($('#rvAgents'), snap);
       RV.timeline($('#rvTimeline'), snap);
       RV.limitations($('#rvLims'), snap);
+      renderInsights(snap);
       renderStages(snap.progress);
       (snap.events || []).forEach(seedEvent);
       $('#runBtn').disabled = RV.isLive(snap);
@@ -680,6 +682,44 @@ function stopFromButton() {
     + 'stopped — not as an answer.')) return;
   b.disabled = true; b.textContent = 'stopping…';
   stopRun(id);
+}
+
+/* The literature agent's running notes and the papers it found, live. These
+   are leads written while reading, shown before the orchestrator has weighed
+   them; the panel says so, and never calls them findings. */
+let insightsSeen = '';
+function renderInsights(snap) {
+  const panel = $('#insightsPanel'); if (!panel) return;
+  const ins = snap.insights, papers = snap.papers_found || [];
+  if (!ins && !papers.length) { panel.hidden = true; return; }
+  panel.hidden = false;
+  const key = `${ins ? ins.updated_at : 0}:${papers.length}`;
+  if (key === insightsSeen) return;
+  insightsSeen = key;
+  $('#insightsHead').textContent = ins ? `updated ${BS.fmt.ago(ins.updated_at)}` : '';
+  $('#insightsNote').textContent = ins ? ins.note : '';
+  const host = $('#insights'); host.textContent = '';
+  if (ins) {
+    ins.text.split(/\n{2,}/).map(b => b.trim()).filter(Boolean).forEach(block => {
+      host.append(el('p', 'm', block));
+    });
+  }
+  const list = $('#papersFound'); list.textContent = '';
+  if (!papers.length) list.append(el('p', 'dim', 'No search has been saved yet.'));
+  papers.forEach(p => {
+    const row = el('div', 'm');
+    const a = el('a', null, p.id || '?');
+    if (p.pmcid) a.href = `https://europepmc.org/articles/${p.pmcid}`;
+    else if (p.pmid) a.href = `https://pubmed.ncbi.nlm.nih.gov/${p.pmid}/`;
+    a.target = '_blank'; a.rel = 'noopener';
+    row.append(a, ` · ${p.year || '?'} · `, el('span', null, p.title));
+    const tags = [];
+    if (p.open_access === 'Y' || p.full_text_read) tags.push(p.full_text_read ? 'full text read' : 'open access');
+    if (p.cited_by) tags.push(`cited ${p.cited_by}`);
+    if (p.matched_queries > 1) tags.push(`${p.matched_queries} queries`);
+    if (tags.length) row.append(el('div', 'dim', tags.join(' · ')));
+    list.append(row);
+  });
 }
 
 /* Events seen in a snapshot are replayed into the record feed once each, so a
@@ -781,6 +821,17 @@ function renderEvidence(groups) {
         row.append(' ');
         row.append(el('span', 'warnc', 'CONTEXT MISMATCH'));
         if (it.context_mismatch_note) row.append(el('div', 'dim', it.context_mismatch_note));
+      } else if (it.context_match === 'partial_match') {
+        row.append(' ');
+        row.append(el('span', 'warnc', 'PARTIAL CONTEXT MATCH'));
+        if (it.context_mismatch_note) row.append(el('div', 'dim', it.context_mismatch_note));
+      }
+      /* Indirect evidence is shown with its inference chain: the reader judges
+         the step from what the source shows to what the hypothesis claims. */
+      if (it.relevance && it.relevance !== 'direct') {
+        row.append(' ');
+        row.append(el('span', 'tag', it.relevance.toUpperCase()));
+        if (it.bearing) row.append(el('div', 'dim', 'Bears on it because: ' + it.bearing));
       }
       if (it.visibility) { row.append(' '); row.append(term('visibility', it.visibility)); }
       w.append(row);

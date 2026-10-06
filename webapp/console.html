@@ -287,6 +287,14 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
         <div class="fld">
           <span class="lab">Runtime</span>
           <div class="rt-grid" id="runtimes"></div>
+          <!-- How much the specialists may spend. Most of a run's time is the
+               literature agent's turns, so this is the knob for faster or deeper. -->
+          <label class="lab" for="effort" style="margin-top:14px">Depth</label>
+          <select id="effort" class="select">
+            <option value="quick">Quick — about 4 searches, 2 full texts, ~5 min per specialist</option>
+            <option value="standard" selected>Standard — about 8 searches, 4 full texts, ~10 min</option>
+            <option value="thorough">Thorough — about 14 searches, 8 full texts, ~20 min</option>
+          </select>
           <p class="hint">A synthetic run and a real one are different claims about the same
             question. BioSense never substitutes one for the other: if a real runtime is
             unavailable the run fails with the reason, and says what fixes it.</p>
@@ -303,6 +311,16 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
         <button class="btn stop" id="stopBtn" type="button" hidden>Stop run</button>
       </div>
       <div id="runState" hidden style="margin-top:14px"></div>
+    </section>
+
+    <!-- What the literature agent writes as it reads, before the orchestrator has
+         weighed it: leads for the scientist watching, labelled as such. -->
+    <section class="glass card" id="insightsPanel" hidden>
+      <div class="head"><h3>Insights as they come</h3><span class="hint" id="insightsHead"></span></div>
+      <p class="dim" id="insightsNote"></p>
+      <div id="insights" class="insights"></div>
+      <div class="lab" style="margin-top:12px">Papers found</div>
+      <div id="papersFound"></div>
     </section>
 
     <section class="glass card" id="resultPanel" hidden>

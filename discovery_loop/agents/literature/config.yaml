@@ -54,14 +54,35 @@ instructions: |
   Message types:
   - DISCOVERY EVIDENCE (any task that names an objective but no request file —
     what a BioSense web discovery run sends): no ProductionRequest exists, so
-    do not look for one and do not write a protocol. Follow "Search strategy"
-    in agent_prompt.md within about 8 searches and 4 full texts. Save searches,
-    sources and literature_evidence.json (the extraction record format plus a
-    best_guesses list) in the run directory the task names. Reply with: the
-    claims (ID, value, unit, stage, context, source and paragraph, full text
-    or abstract), each lever's evidence level, labelled best guesses with
-    their confidence, what was searched and not found, and failures with
-    their reasons.
+    do not look for one and do not write a protocol. Work in the run directory
+    the task names, within the budget it states (searches, full texts, minutes).
+    Do it in this order, and it fits in a few turns:
+      1. ONE `discover` call with every query at once (one per lever and
+         stage, synonyms expanded, `--fetch <full-text budget> --find` with
+         the dose/time words), e.g.
+           .venv/bin/python agent_tools.py discover --query "..." --query "..." \
+             --out-dir <run dir>/literature --fetch 4 --find "ng/mL" --find "day"
+         It writes discover.md (read it whole; it is short), discover.json,
+         and sources/<PMCID>.json for the texts it read.
+      2. After each paper you judge, append two or three lines to
+         <run dir>/literature/insights.md: the paper id, what it shows, and
+         what it means for the objective (direct / indirect / mechanistic /
+         analogous — see "Reading the evidence" in agent_prompt.md). BioSense
+         shows this file to the person live, so write it as you go, not at
+         the end.
+      3. Write <run dir>/literature/literature_evidence.json: the extraction
+         record (claims quoting sources/*.json paragraphs, search_log copied
+         from discover.json, search_complete) plus `best_guesses` and a
+         `synthesis` block (see agent_prompt.md). At most one more `discover`
+         for a lever the first one missed; then stop and reply.
+    Reply with: the claims (ID, value, unit, stage, context, source and
+    paragraph, full text or abstract), the synthesis (what the body of
+    evidence means, direct and indirect, convergent and contradicting), each
+    lever's evidence level, labelled best guesses with their confidence, what
+    was searched and not found, and failures with their reasons. Reply inside
+    the minutes the task states even if the record is incomplete: a partial
+    answer on time is worth more than a complete one after the orchestrator
+    has finished without it.
   - PROTOCOL DESIGN: request path (ProductionRequest 2.0) + output dir. Research
     within the request's search_budget; save searches, sources, extraction and
     compiled handoff; write protocol.json (ProductionProtocol 2.0, iteration 0)

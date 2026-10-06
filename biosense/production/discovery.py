@@ -67,10 +67,25 @@ def _clean(text, *, field, limit, minimum=0):
     return s or None
 
 
+# How much each specialist may spend. What a run costs is mostly the literature
+# agent's turns — every search, fetch and extracted claim is a model turn — so
+# the budgets are what a person turns to get a faster or a deeper answer. They
+# bound the search; they never license a number the evidence does not support.
+EFFORT = {
+    'quick': {'label': 'Quick', 'searches': 4, 'full_texts': 2, 'minutes': 5,
+              'bio_queries': 3, 'hypotheses': 1},
+    'standard': {'label': 'Standard', 'searches': 8, 'full_texts': 4, 'minutes': 10,
+                 'bio_queries': 6, 'hypotheses': 2},
+    'thorough': {'label': 'Thorough', 'searches': 14, 'full_texts': 8, 'minutes': 20,
+                 'bio_queries': 10, 'hypotheses': 3},
+}
+DEFAULT_EFFORT = 'standard'
+
+
 def build(*, project_id, objective, runtime_mode, research_context=None, dataset_ids=(),
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
-          projects_dir=None):
+          projects_dir=None, effort=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -97,6 +112,10 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
     cands = _values('candidate_values', candidate_values, project)
     ctrl = dict(control) if control else None
 
+    effort = (effort or DEFAULT_EFFORT).strip().lower()
+    if effort not in EFFORT:
+        raise K.ContractError(f'effort must be one of {sorted(EFFORT)}; got {effort!r}')
+
     rid = request_id or f'disc-{uuid.uuid4().hex[:12]}'
     if not REQUEST_ID.match(rid):
         raise K.ContractError(f'request_id {rid!r} is not a usable identifier')
@@ -116,6 +135,7 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'control': ctrl,
         'candidate_values': cands,
         'runtime_mode': mode,
+        'effort': effort,
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
         'notes': _clean(notes, field='notes', limit=2000),
     }
@@ -261,6 +281,10 @@ def summarise(req, *, projects_dir=None):
     if c.get('notes'):
         lines.append(f'Constraint note: {c["notes"]}')
     lines.append(f'Runtime: {RT.LABELS[req["runtime_mode"]]}')
+    b = EFFORT[req.get('effort') or DEFAULT_EFFORT]
+    lines.append(f'Effort: {b["label"]} — about {b["searches"]} searches and {b["full_texts"]} '
+                 f'full texts for literature, {b["bio_queries"]} queries for bioinformatics, '
+                 f'about {b["minutes"]} minutes per specialist')
     return '\n'.join(lines)
 
 
@@ -295,6 +319,7 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None)
     prose around it says where to write, not what to conclude.
     """
     project = PJ.load(req['project_id'], projects_dir)
+    budget = EFFORT[req.get('effort') or DEFAULT_EFFORT]
     doc = json.dumps(req, indent=2, ensure_ascii=False)
     modelled = sorted(project.modelled_ids())
     not_modelled = sorted(p for p in project.parameter_ids if project.coverage(p) != 'modelled')
@@ -368,6 +393,24 @@ on a question ends the run with nothing to show. So:
   gave as a limitation and carry on with what you have. Do not do its job in
   your own session, and do not end the run because of it.
 
+## Budgets
+
+Effort for this run is **{budget['label']}**. Put these numbers in each task you
+send, and hold the specialists to them:
+
+- `literature`: about {budget['searches']} searches and {budget['full_texts']} full texts,
+  about {budget['minutes']} minutes. Tell it to use `agent_tools.py discover` (one
+  command runs every query, both indexes, and reads the top open-access texts) so
+  the budget goes on reading, not on typing commands.
+- `bioinformatics`: about {budget['bio_queries']} annotation or dataset queries, about
+  {budget['minutes']} minutes.
+- Yourself: at most {budget['hypotheses']} hypothesis file(s), the best-supported first.
+
+A specialist that has not answered when its minutes are well past is not
+waited for: write with what you have and record what is missing. A budget
+bounds the search, never the honesty of the answer: a magnitude the evidence
+does not give stays not established.
+
 ## The request
 
 This is the whole request, as the structured document BioSense validated. Treat
@@ -398,6 +441,17 @@ invent one for them, and do not drop them.
    about the genes and pathways behind each lever, to find or use the datasets
    named above, and to plan an analysis that resolves that named uncertainty —
    `plan` refuses without one.
+
+   **Read what the evidence means, not only what it matches.** The literature
+   agent labels every paper direct / indirect / mechanistic / analogous /
+   background and writes a synthesis per lever. Use it: an effect no single
+   paper tests can still be well supported when independent indirect lines
+   converge (a mechanism, a time course, the same lever in a related system).
+   Say so in the hypothesis — each evidence row carries `relevance` and, for
+   anything but direct, `bearing`: the inference from what the source shows to
+   what you claim. Contradictions are recorded with the context difference
+   that may explain them. Where a line of evidence would change the picture if
+   confirmed, that is the next experiment.
 
    **Weigh, then combine.** The sources answer different questions: the
    literature says what was done and what happened (doses, timings, outcomes in
@@ -501,6 +555,12 @@ These are the commands, run from the workspace root:
 {python} -m biosense.evidence.cli hypothesis --project {project.project_id}{pdir} \\
     --draft {loop_dir}/H01.draft.json --out {loop_dir}/quantified_hypothesis.json
 ```
+
+If you ever write one of these files by hand instead, run
+`{python} -m biosense.evidence.cli check <file>` and fix every error it lists;
+BioSense renders nothing that fails its schema, and a run has lost its whole
+hypothesis to one wrong word (`partial_match` is accepted; so are `[lower,
+upper]` search ranges).
 
 The draft (`*.draft.json`) is your input, not an artifact, and is the one file
 you write yourself: the statement, the uncertainty, the lever and its direction,

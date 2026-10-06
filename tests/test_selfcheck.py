@@ -130,6 +130,58 @@ class EvidenceCliTests(unittest.TestCase):
         self.assertEqual('low', e['judgement']['confidence'])
         self.assertEqual('candidate', h['claim_level'])
 
+    def test_the_words_an_agent_writes_for_context_match_are_accepted(self):
+        """A run lost its whole hypothesis to 'partial_match' and 'match'."""
+        import copy
+        rows = copy.deepcopy(EVCLI.TEMPLATE['evidence'])
+        rows[0]['context_match'] = 'match'
+        rows[1]['context_match'] = 'Partial match'
+        h = EVCLI.build_hypothesis(self.draft(evidence=rows), project_id='ipsc_macrophage')
+        self.assertEqual(['in_context', 'partial_match'],
+                         [e['context_match'] for e in h['evidence']])
+        self.assertEqual('mechanistic', h['evidence'][1]['relevance'])
+        self.assertIn('CSF1R', h['evidence'][1]['bearing'])
+        self.assertTrue(any('partly matching context' in r for r in h['confidence_basis']))
+        rows[0]['context_match'] = 'sort of'
+        with self.assertRaisesRegex(K.ContractError, 'context_match'):
+            EVCLI.build_hypothesis(self.draft(evidence=rows), project_id='ipsc_macrophage')
+        rows[0]['context_match'] = 'match'
+        rows[1]['bearing'] = None
+        with self.assertRaisesRegex(K.ContractError, 'bearing'):
+            EVCLI.build_hypothesis(self.draft(evidence=rows), project_id='ipsc_macrophage')
+
+    def test_a_search_range_in_any_honest_shape_is_taken(self):
+        for raw in ([20, 100], {'min': 20, 'max': 100}, {'low': 100, 'high': 20},
+                    {'lower': 20, 'upper': 100, 'basis': 'two protocols'}):
+            h = EVCLI.build_hypothesis(self.draft(search_range=raw), project_id='ipsc_macrophage')
+            sr = h['parameter']['search_range']
+            self.assertEqual((20.0, 100.0), (sr['lower'], sr['upper']), raw)
+            self.assertTrue(sr['basis'])
+        self.assertEqual('not stated in the draft',
+                         EVCLI._search_range([1, 2])['basis'], 'a basis is never invented')
+        with self.assertRaisesRegex(K.ContractError, 'both ends'):
+            EVCLI._search_range({'lower': 3})
+
+    def test_check_lists_every_error_of_a_hand_written_file(self):
+        import contextlib
+        import io
+        bad = {'schema_version': '2.0', 'hypothesis_id': 'H01', 'evidence': [
+            {'evidence_class': 'published_literature', 'stance': 'supportive', 'summary': 's',
+             'context_match': 'partial'}]}
+        K.write_json_atomic(self.tmp / 'quantified_hypothesis_H01.json', bad)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = EVCLI.main(['check', str(self.tmp / 'quantified_hypothesis_H01.json')])
+        doc = json.loads(out.getvalue())
+        self.assertEqual((1, False, 'quantified_hypothesis'), (code, doc['ok'], doc['kind']))
+        self.assertTrue(any('context_match' in e for e in doc['errors']))
+        self.assertTrue(any('required' in e for e in doc['errors']))
+        good = EVCLI.build_hypothesis(self.draft(), project_id='ipsc_macrophage')
+        K.write_json_atomic(self.tmp / 'quantified_hypothesis.json', good)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(0, EVCLI.main(['check', str(self.tmp / 'quantified_hypothesis.json')]))
+
     def test_a_magnitude_needs_typed_sourced_values(self):
         eff = {'metric': 'yield', 'unit': 'cells', 'baseline': 10, 'candidate': 12}
         with self.assertRaisesRegex(K.ContractError, 'estimate_type'):
@@ -251,6 +303,8 @@ class RunEndTests(unittest.TestCase):
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
         self.assertIn('/cancel', js)
         self.assertIn('/extend', js)
+        self.assertIn('id="insightsPanel"', html)
+        self.assertIn('id="effort"', html)
         rv = (K.ROOT / 'webapp' / 'runview.js').read_text()
         self.assertIn('snap.extendable', rv)
         self.assertIn("$('#stopBtn').addEventListener('click', stopFromButton)", js)

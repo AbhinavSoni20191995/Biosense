@@ -73,7 +73,17 @@ TEMPLATE = {
     'evidence': [
         {'evidence_class': 'published_literature', 'stance': 'supportive',
          'summary': 'What the source reports, in one sentence.', 'ref': 'PMID:<id>',
-         'strength': 'moderate', 'visibility': 'public', 'context_match': 'not_assessed'},
+         'strength': 'moderate', 'visibility': 'public', 'context_match': 'not_assessed',
+         'relevance': 'direct', 'bearing': None},
+        {'_comment': 'evidence that bears on the claim without testing it: say how. relevance is '
+                     'direct / indirect / mechanistic / analogous / background; context_match is '
+                     'in_context / partial_match / context_mismatch / not_assessed',
+         'evidence_class': 'published_literature', 'stance': 'supportive',
+         'summary': 'CSF1R signalling drives terminal macrophage differentiation in a related system.',
+         'ref': 'PMID:<id>', 'strength': 'weak', 'visibility': 'public',
+         'context_match': 'partial_match', 'relevance': 'mechanistic',
+         'bearing': 'M-CSF is the CSF1R ligand; more receptor engagement would be expected to '
+                    'raise the fraction completing differentiation, which is the readout here.'},
     ],
     'next_experiment': {'summary': 'A dose series against the current setting.',
                         'conditions': ['current dose', 'candidate dose'],
@@ -156,6 +166,38 @@ def _effect(spec, base_dir):
                             limitations=spec.get('limitations') or ())
 
 
+def _search_range(raw):
+    """A search range in the shape the contract wants, from the shapes agents write.
+
+    `[lo, hi]`, `{"min", "max"}`, `{"low", "high"}` and `{"lower", "upper"}` all
+    mean the same thing. The basis is the one field that cannot be guessed: it
+    says where the range came from, and when the draft leaves it out it is
+    recorded as not stated rather than invented.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (list, tuple)):
+        if len(raw) != 2:
+            raise K.ContractError('search_range as a list is [lower, upper]')
+        raw = {'lower': raw[0], 'upper': raw[1]}
+    if not isinstance(raw, dict):
+        raise K.ContractError('search_range is {"lower", "upper", "basis"} or [lower, upper]')
+    lo = next((raw[k] for k in ('lower', 'low', 'min', 'from') if raw.get(k) is not None), None)
+    hi = next((raw[k] for k in ('upper', 'high', 'max', 'to') if raw.get(k) is not None), None)
+    if lo is None or hi is None:
+        raise K.ContractError('search_range needs both ends: lower and upper')
+    try:
+        lo, hi = float(lo), float(hi)
+    except (TypeError, ValueError):
+        raise K.ContractError('search_range ends must be numbers') from None
+    out = {'lower': min(lo, hi), 'upper': max(lo, hi),
+           'basis': str(raw.get('basis') or raw.get('source') or raw.get('why')
+                        or 'not stated in the draft').strip()}
+    if raw.get('narrowed_by'):
+        out['narrowed_by'] = [str(x) for x in raw['narrowed_by']]
+    return out
+
+
 def build_hypothesis(draft, *, project_id, projects_dir=None, base_dir=None, created_by=None):
     """A validated QuantifiedHypothesis from an agent's draft. Raises ContractError."""
     if not isinstance(draft, dict):
@@ -174,6 +216,7 @@ def build_hypothesis(draft, *, project_id, projects_dir=None, base_dir=None, cre
         ref=r.get('ref'), strength=r.get('strength') or 'not_assessed',
         visibility=r.get('visibility') or 'public',
         context_match=r.get('context_match') or 'not_assessed',
+        relevance=r.get('relevance'), bearing=r.get('bearing'),
         context_note=r.get('context_mismatch_note'))
         for r in draft.get('evidence') or [] if isinstance(r, dict)]
     nxt = draft.get('next_experiment')
@@ -191,7 +234,7 @@ def build_hypothesis(draft, *, project_id, projects_dir=None, base_dir=None, cre
         direction=draft.get('direction') or 'unknown', effects=effects, evidence=evidence,
         next_experiment={k: v for k, v in nxt.items() if not k.startswith('_')},
         current_value=draft.get('current_value'), candidate_value=draft.get('candidate_value'),
-        search_range=draft.get('search_range'), research_context=ctx,
+        search_range=_search_range(draft.get('search_range')), research_context=ctx,
         limitations=draft.get('limitations') or (),
         created_by=created_by or draft.get('created_by') or 'orchestrator',
         status=draft.get('status') or 'proposed', supersedes=draft.get('supersedes'),
@@ -276,6 +319,45 @@ def cmd_simulate(a):
     return 0
 
 
+KINDS_BY_NAME = {'analysis_plan': 'analysis_plan', 'analysis_result': 'analysis_result',
+                 'quantified_hypothesis': 'quantified_hypothesis',
+                 'research_context': 'research_context', 'discovery_request': 'discovery_request'}
+
+
+def kind_of(path):
+    stem = Path(path).stem
+    for name, kind in KINDS_BY_NAME.items():
+        if stem == name or stem.startswith(name + '_'):
+            return kind
+    return None
+
+
+def cmd_check(a):
+    """Validate a file an agent wrote itself. The errors are the answer, in full.
+
+    BioSense shows nothing that fails its schema, so a hand-written file is
+    invisible until it is right; this is how to find out before the run ends.
+    """
+    kind = a.kind or kind_of(a.file)
+    if not kind:
+        print(json.dumps({'ok': False, 'file': a.file,
+                          'error': f'cannot tell the kind from the name; pass --kind one of '
+                                   f'{sorted(KINDS_BY_NAME)}'}))
+        return 1
+    try:
+        doc = K.read_json(a.file)
+    except Exception as e:  # noqa: BLE001 - the reason is the output
+        print(json.dumps({'ok': False, 'file': a.file, 'kind': kind, 'error': str(e)[:300]}))
+        return 1
+    errors = K.schema_errors(kind, doc)
+    print(json.dumps({'ok': not errors, 'file': a.file, 'kind': kind, 'errors': errors[:25],
+                      'note': None if not errors else
+                      'Fix every error and run check again; BioSense renders nothing that fails. '
+                      'The evidence.cli hypothesis command builds this file from a draft and '
+                      'cannot write an invalid one.'}, indent=1))
+    return 0 if not errors else 1
+
+
 def cmd_template(a):
     print(json.dumps(TEMPLATE, indent=2))
     return 0
@@ -308,6 +390,9 @@ def main(argv=None):
     p.add_argument('--seed', type=int, default=7)
     p.add_argument('--out', required=True)
     p.set_defaults(fn=cmd_simulate)
+    p = sub.add_parser('check', help='validate a BioSense artifact file and list every error')
+    p.add_argument('file'); p.add_argument('--kind', choices=sorted(KINDS_BY_NAME))
+    p.set_defaults(fn=cmd_check)
     p = sub.add_parser('template', help='print an example draft')
     p.add_argument('kind', choices=['hypothesis'])
     p.set_defaults(fn=cmd_template)

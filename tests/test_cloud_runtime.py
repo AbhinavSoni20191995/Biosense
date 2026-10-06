@@ -676,6 +676,45 @@ class StopAndTimeoutTests(unittest.TestCase):
         stopped.stop('cancelled', 'x')
         self.assertFalse(stopped.extend())
 
+    def test_the_literature_agents_running_notes_are_shown_as_they_grow(self):
+        """What the agent writes while reading reaches the person before the run
+        ends, labelled as leads; the papers it found are listed from its own
+        saved search, never from the model's words."""
+        import json
+        import tempfile
+        from biosense.production import app as APP
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / 'ai-x'
+            (out / 'literature').mkdir(parents=True)
+            run = APP.DiscoveryRun('j' * 16, req, out, 'local_real_ai')
+            run.scan_artifacts(force=True)
+            self.assertIsNone(run.snapshot()['insights'])
+            self.assertEqual([], run.snapshot()['papers_found'])
+            (out / 'literature' / 'insights.md').write_text(
+                'PMC1 — M-CSF at 100 ng/mL raised CD14+ fraction (direct).\n\n'
+                'PMC2 — CSF1R signalling drives maturation (mechanistic).\n')
+            (out / 'literature' / 'discover.json').write_text(json.dumps({'papers': [
+                {'pmcid': 'PMC1', 'pmid': '1', 'title': 'Synthetic A', 'pubYear': '2021',
+                 'isOpenAccess': 'Y', 'citedByCount': 4, 'matched_queries': ['q1', 'q2'],
+                 'source_file': 'sources/PMC1.json'},
+                {'pmid': '2', 'title': 'Synthetic B', 'pubYear': '2019', 'matched_queries': ['q1']}]}))
+            run.scan_artifacts(force=True)
+            snap = run.snapshot()
+            self.assertIn('CSF1R', snap['insights']['text'])
+            self.assertIn('Leads, not findings', snap['insights']['note'])
+            self.assertEqual(['PMC1', 'PMID:2'], [p['id'] for p in snap['papers_found']])
+            self.assertTrue(snap['papers_found'][0]['full_text_read'])
+            self.assertEqual(2, snap['papers_found'][0]['matched_queries'])
+            # Unchanged on disk, unchanged in the snapshot; grown, grown.
+            run.scan_artifacts(force=True)
+            with open(out / 'literature' / 'insights.md', 'a') as f:
+                f.write('\nPMC3 — a contradicting line.\n')
+            import os
+            os.utime(out / 'literature' / 'insights.md', (time.time() + 2, time.time() + 2))
+            run.scan_artifacts(force=True)
+            self.assertIn('PMC3', run.snapshot()['insights']['text'])
+
     def test_a_finished_run_cannot_be_stopped_again(self):
         from biosense.production import app as APP
         req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}

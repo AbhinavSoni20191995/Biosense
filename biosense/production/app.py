@@ -125,6 +125,10 @@ MAX_CONCURRENT_REAL = 1
 WRAP_UP_S = 5 * 60
 EXTENSION_S = 10 * 60
 MAX_EXTENSIONS = 2
+# The literature agent's running notes, shown live. Bounded so a snapshot stays
+# a snapshot; the whole file is on disk with the run.
+INSIGHTS_MAX_CHARS = 12000
+PAPERS_MAX = 40
 # Why a run stopped short, in the words the person reading it needs. Both are
 # recorded as `stopped`, never as a result: a run that was halted produced no
 # answer, and saying otherwise is the one thing this product must never do.
@@ -190,6 +194,12 @@ class Run:
         self.finished_at = None
         self.activity = ACT.Activity(started_at=self.started_at)
         self._scanned_at = 0.0
+        # What the literature agent writes as it reads, shown to the person
+        # while the run is still going: its running notes and the papers it
+        # found. Read off disk when the file changes, never from the model.
+        self.insights = None
+        self.papers_found = []
+        self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
 
@@ -285,6 +295,12 @@ class DiscoveryRun:
         self.finished_at = None
         self.activity = ACT.Activity(started_at=self.started_at)
         self._scanned_at = 0.0
+        # What the literature agent writes as it reads, shown to the person
+        # while the run is still going: its running notes and the papers it
+        # found. Read off disk when the file changes, never from the model.
+        self.insights = None
+        self.papers_found = []
+        self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
 
@@ -321,6 +337,46 @@ class DiscoveryRun:
         except OSError:
             return
         self.activity.observe_files(names, at=now)
+        self._read_live_notes()
+
+    def _read_live_notes(self):
+        """The literature agent's insights.md and discover.json, as they grow."""
+        for rel, reader in (('literature/insights.md', self._read_insights),
+                            ('literature/discover.json', self._read_papers)):
+            path = self.out_dir / rel
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if self._live_mtimes.get(rel) == mtime:
+                continue
+            self._live_mtimes[rel] = mtime
+            try:
+                reader(path, mtime)
+            except (OSError, ValueError):
+                continue
+
+    def _read_insights(self, path, mtime):
+        text = path.read_text(encoding='utf-8', errors='replace')
+        if len(text) > INSIGHTS_MAX_CHARS:
+            text = '…' + text[-INSIGHTS_MAX_CHARS:]
+        self.insights = {'text': text, 'updated_at': mtime,
+                         'by': 'literature agent, as it read',
+                         'note': 'Running notes written during the run by the literature agent, '
+                                 'before the orchestrator weighed them. Leads, not findings.'}
+
+    def _read_papers(self, path, mtime):
+        doc = K.read_json(path)
+        rows = []
+        for p in (doc.get('papers') or [])[:PAPERS_MAX]:
+            rows.append({'id': p.get('pmcid') or (f'PMID:{p["pmid"]}' if p.get('pmid') else p.get('id')),
+                         'pmcid': p.get('pmcid'), 'pmid': p.get('pmid'),
+                         'title': (p.get('title') or '')[:200], 'year': p.get('pubYear'),
+                         'open_access': p.get('isOpenAccess'),
+                         'cited_by': p.get('citedByCount'),
+                         'matched_queries': len(p.get('matched_queries') or []),
+                         'full_text_read': bool(p.get('source_file'))})
+        self.papers_found = rows
 
     def finish(self, status, result=None, error=None, reason=None, next_step=None):
         with self.cv:
@@ -482,6 +538,8 @@ class DiscoveryRun:
                 'updated_at': time.time(),
                 'last_activity_at': self.activity.last_at,
                 'activity': self.activity.snapshot(),
+                'insights': self.insights,
+                'papers_found': list(self.papers_found),
                 'stage_counts': ST.stage_counts(self.stages_reached,
                                                 terminal=self._terminal()),
                 'deadline_in_s': (round(self.deadline - time.time(), 1)
@@ -1231,7 +1289,7 @@ class Handler(BaseHTTPRequestHandler):
             process_constraints=body.get('process_constraints'),
             uncertainty=body.get('uncertainty'), control=body.get('control'),
             candidate_values=body.get('candidate_values'),
-            title=body.get('title'), notes=body.get('notes'),
+            title=body.get('title'), notes=body.get('notes'), effort=body.get('effort'),
             requested_by=identity.owner if identity.authenticated else None,
             projects_dir=self._projects_dir(identity))
 

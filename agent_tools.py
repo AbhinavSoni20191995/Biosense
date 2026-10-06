@@ -159,6 +159,98 @@ def find_paragraphs(source, terms, limit=40):
     hits = [p for p in source.get('paragraphs', []) if any(t in p['text'].lower() for t in wanted)]
     return [{'id': p['id'], 'section': p.get('section'), 'text': p['text'][:700]} for p in hits[:limit]]
 
+def _paper_key(p):
+    return p.get('pmid') or p.get('pmcid') or p.get('doi') or p.get('id')
+
+def discover(queries, *, out_dir, page_size=10, since=None, open_access=False, both=False,
+             fetch=0, find=(), sort='relevance'):
+    """Every query, both indexes when asked or needed, one ranked digest.
+
+    This is the mechanical loop the literature agent used to run by hand, one
+    model turn per command. Run here it costs one turn: the agent reads a
+    digest and spends its budget on judgement — which papers matter, what they
+    say, how far the context carries — instead of on typing searches."""
+    out = Path(out_dir); (out / 'sources').mkdir(parents=True, exist_ok=True)
+    log, papers = [], {}
+    for q in queries:
+        for index in (('europepmc', 'pubmed') if both else ('europepmc',)):
+            try:
+                r = search_literature(q, page_size, open_access=open_access, since=since, sort=sort) \
+                    if index == 'europepmc' else search_pubmed(q, page_size, since=since, sort=sort)
+            except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, ET.ParseError) as e:
+                log.append({'query': q, 'index': index, 'hit_count': None, 'error': f'{type(e).__name__}: {str(e)[:160]}'})
+                if index == 'europepmc' and not both:
+                    # The other index is the way on, not a second failure to record.
+                    try:
+                        r = search_pubmed(q, page_size, since=since, sort=sort)
+                    except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, ET.ParseError) as e2:
+                        log.append({'query': q, 'index': 'pubmed', 'hit_count': None, 'error': f'{type(e2).__name__}: {str(e2)[:160]}'})
+                        continue
+                else:
+                    continue
+            log.append({'query': q, 'index': r['index'], 'query_sent': r.get('query_sent'), 'hit_count': r['hit_count'], 'returned': len(r['papers'])})
+            for p in r['papers']:
+                k = _paper_key(p)
+                if not k:
+                    continue
+                row = papers.setdefault(k, {**p, 'matched_queries': []})
+                if q not in row['matched_queries']:
+                    row['matched_queries'].append(q)
+                if p.get('pmcid') and not row.get('pmcid'):
+                    row['pmcid'] = p['pmcid']
+                if p.get('isOpenAccess') and not row.get('isOpenAccess'):
+                    row['isOpenAccess'] = p['isOpenAccess']
+    def rank(p):
+        return (-len(p['matched_queries']), -(p.get('citedByCount') or 0), -int(p.get('pubYear') or 0))
+    ranked = sorted(papers.values(), key=rank)
+    excerpts = []
+    if fetch:
+        for p in [p for p in ranked if p.get('pmcid') and p.get('isOpenAccess') != 'N'][:fetch]:
+            try:
+                src = fetch_full_text(p['pmcid'])
+            except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, ET.ParseError) as e:
+                log.append({'fetch': p['pmcid'], 'error': f'{type(e).__name__}: {str(e)[:160]}'})
+                continue
+            (out / 'sources' / f"{p['pmcid']}.json").write_text(json.dumps(src, ensure_ascii=False, indent=2) + '\n')
+            p['source_file'] = f"sources/{p['pmcid']}.json"
+            if find:
+                hits = find_paragraphs(src, find, limit=8)
+                if hits:
+                    excerpts.append({'pmcid': p['pmcid'], 'title': src['title'], 'paragraphs': hits})
+    result = {'retrieved_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'queries': list(queries), 'search_log': log,
+              'paper_count': len(ranked), 'papers': ranked, 'excerpts': excerpts}
+    (out / 'discover.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
+    (out / 'discover.md').write_text(render_digest(result))
+    return result
+
+def render_digest(result, top=25):
+    """What the agent reads: enough to choose and to cite, short enough to read whole."""
+    lines = ['# Literature digest', '', f"{result['paper_count']} distinct papers from {len(result['queries'])} queries.", '']
+    for row in result['search_log']:
+        if 'query' in row:
+            lines.append(f"- `{row['query']}` on {row['index']}: " + (f"{row['hit_count']} hits" if row.get('hit_count') is not None else f"FAILED ({row.get('error')})"))
+        else:
+            lines.append(f"- fetch {row.get('fetch')}: FAILED ({row.get('error')})")
+    lines += ['', '## Papers (ranked: queries matched, citations, year)', '']
+    for p in result['papers'][:top]:
+        oa = 'OA' if p.get('isOpenAccess') == 'Y' or (p.get('isOpenAccess') is None and p.get('pmcid')) else 'closed'
+        ident = p.get('pmcid') or ('PMID:' + str(p.get('pmid'))) if (p.get('pmcid') or p.get('pmid')) else p.get('id')
+        src = f" · full text saved: {p['source_file']}" if p.get('source_file') else ''
+        lines.append(f"### {ident} · {p.get('pubYear') or '?'} · {oa} · cited {p.get('citedByCount') or 0} · matched {len(p['matched_queries'])} quer{'y' if len(p['matched_queries']) == 1 else 'ies'}{src}")
+        lines.append(f"**{(p.get('title') or '').strip()}**")
+        ab = normalize(p.get('abstractText') or '')
+        if ab:
+            lines.append(ab[:600] + ('…' if len(ab) > 600 else ''))
+        lines.append('')
+    if result.get('excerpts'):
+        lines += ['## Excerpts from the full texts (paragraphs matching the --find terms)', '']
+        for ex in result['excerpts']:
+            lines.append(f"### {ex['pmcid']} — {ex['title']}")
+            for para in ex['paragraphs']:
+                lines.append(f"- [{para['id']} · {para.get('section')}] {para['text']}")
+            lines.append('')
+    return '\n'.join(lines) + '\n'
+
 def summary(result):
     """What the command prints: enough to choose papers without opening the file."""
     return [{'id': p.get('id'), 'pmcid': p.get('pmcid'), 'year': p.get('pubYear') or (p.get('firstPublicationDate') or '')[:4] or None,
@@ -332,6 +424,14 @@ def main(argv=None):
         s = sub.add_parser(name); s.add_argument('query'); s.add_argument('--out', required=True); s.add_argument('--page-size', type=int, default=10)
         s.add_argument('--since', type=int, help='publication year from'); s.add_argument('--sort', choices=sorted(SORTS), default='relevance')
         if name == 'search': s.add_argument('--open-access', action='store_true', help='only papers whose full text can be fetched')
+    d = sub.add_parser('discover', help='every query, one ranked digest; the way to start')
+    d.add_argument('--query', action='append', required=True, help='repeatable; one per lever or stage')
+    d.add_argument('--out-dir', required=True); d.add_argument('--page-size', type=int, default=10)
+    d.add_argument('--since', type=int); d.add_argument('--open-access', action='store_true')
+    d.add_argument('--both', action='store_true', help='run every query on PubMed too, not only as fallback')
+    d.add_argument('--sort', choices=sorted(SORTS), default='relevance')
+    d.add_argument('--fetch', type=int, default=0, help='read the top N open-access full texts')
+    d.add_argument('--find', action='append', default=[], help='with --fetch: show paragraphs containing this (repeatable)')
     f = sub.add_parser('fetch'); f.add_argument('pmcid'); f.add_argument('--out', required=True); f.add_argument('--find', action='append', default=[], help='print paragraphs containing this text (repeatable)')
     a = sub.add_parser('abstract'); a.add_argument('--search-file', required=True, help='a saved search/pubmed result'); a.add_argument('--id', required=True, help='its id, PMID or PMCID'); a.add_argument('--out', required=True)
     c = sub.add_parser('compile'); c.add_argument('--request', required=True); c.add_argument('--extraction', required=True); c.add_argument('--sources', nargs='+', required=True); c.add_argument('--out', required=True)
@@ -339,6 +439,16 @@ def main(argv=None):
     read = lambda p: json.loads(Path(p).read_text())
     shown = {}
     try:
+        if args.command == 'discover':
+            result = discover(args.query, out_dir=args.out_dir, page_size=args.page_size, since=args.since,
+                              open_access=args.open_access, both=args.both, fetch=args.fetch, find=args.find, sort=args.sort)
+            print(json.dumps({'out': str(Path(args.out_dir) / 'discover.md'), 'papers': result['paper_count'],
+                              'full_texts_saved': sum(1 for p in result['papers'] if p.get('source_file')),
+                              'search_log': result['search_log'],
+                              'top': summary({'papers': result['papers'][:12]}),
+                              'next': 'read discover.md (it is short), then cite from sources/<PMCID>.json paragraphs'},
+                             ensure_ascii=False, indent=1))
+            return 0
         if args.command == 'search':
             result = search_literature(args.query, args.page_size, open_access=args.open_access, since=args.since, sort=args.sort)
         elif args.command == 'pubmed':

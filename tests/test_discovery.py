@@ -126,6 +126,21 @@ class RequestTests(unittest.TestCase):
         named = DISC.render_brief(a_request(dataset_ids=['GSE155719']), loop_dir='ai-x')
         self.assertNotIn('No dataset was named for this run', named)
 
+    def test_effort_sets_the_specialists_budgets_in_the_brief(self):
+        """Most of a run's time is the literature agent's turns; depth is the
+        knob the person has, and it travels as data into every task."""
+        self.assertEqual('standard', a_request()['effort'])
+        req = a_request(effort='quick')
+        brief = DISC.render_brief(req, loop_dir='ai-x')
+        self.assertIn('Effort for this run is **Quick**', brief)
+        self.assertIn('about 4 searches and 2 full texts', brief)
+        self.assertIn('agent_tools.py discover', brief)
+        self.assertIn('Effort: Quick', DISC.summarise(req))
+        with self.assertRaisesRegex(K.ContractError, 'effort'):
+            a_request(effort='maximum')
+        self.assertIn('what the evidence means', DISC.render_brief(req, loop_dir='ai-x'))
+        self.assertIn('evidence.cli check', brief)
+
     def test_a_benchmark_config_converts_rather_than_being_retyped(self):
         cfg = K.read_json(K.ROOT / 'benchmarks' / 'configs' / 'macrophage_mcsf_demo.json')
         req = DISC.from_benchmark_config(cfg, runtime_mode='synthetic_demo')

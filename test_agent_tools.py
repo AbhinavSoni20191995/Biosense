@@ -69,6 +69,7 @@ if __name__ == '__main__': unittest.main()
 import contextlib
 import io
 import json
+import shutil
 import tempfile
 import urllib.error
 from pathlib import Path
@@ -204,3 +205,52 @@ class FullTextFallbackTests(unittest.TestCase):
         self.assertIn('Europe PMC', doc['reason'])
         self.assertIn('NCBI PMC', doc['reason'])
         self.assertIn('abstract', doc['next'])
+
+
+class DiscoverTests(unittest.TestCase):
+    """One command for the mechanical loop: every query, both indexes when needed,
+    one ranked digest the agent can read whole."""
+
+    def setUp(self):
+        patcher = mock.patch.object(AT, '_sleep', lambda s: None)
+        patcher.start(); self.addCleanup(patcher.stop)
+        self.tmp = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def epmc(self, *papers):
+        return _Resp(json.dumps({'hitCount': len(papers), 'resultList': {'result': list(papers)}}).encode())
+
+    def test_queries_are_merged_ranked_and_written_as_a_digest(self):
+        a = {'id': '1', 'pmid': '1', 'pmcid': 'PMC1', 'title': 'Synthetic A', 'pubYear': '2021',
+             'citedByCount': 40, 'isOpenAccess': 'Y', 'abstractText': 'M-CSF at 100 ng/mL.'}
+        b = {'id': '2', 'pmid': '2', 'pmcid': None, 'title': 'Synthetic B', 'pubYear': '2023',
+             'citedByCount': 90, 'isOpenAccess': 'N', 'abstractText': 'Unrelated.'}
+        def fake(req, timeout):
+            if 'query=%28q1' in req.full_url: return self.epmc(a, b)
+            if 'query=%28q2' in req.full_url: return self.epmc(a)
+            if 'fullTextXML' in req.full_url: return _Resp(PMC_SET_XML.replace(b'pmc-articleset', b'x').replace(b'<x>', b'').replace(b'</x>', b''))
+            raise AssertionError(req.full_url)
+        with mock.patch('urllib.request.urlopen', fake):
+            r = AT.discover(['q1', 'q2'], out_dir=self.tmp, fetch=1, find=['M-CSF'])
+        self.assertEqual(['PMC1', None], [p.get('pmcid') for p in r['papers']],
+                         'the paper both queries found ranks first, over the more-cited one')
+        self.assertEqual(2, len(r['papers'][0]['matched_queries']))
+        self.assertEqual('sources/PMC1.json', r['papers'][0]['source_file'])
+        self.assertTrue((Path(self.tmp) / 'sources' / 'PMC1.json').exists())
+        md = (Path(self.tmp) / 'discover.md').read_text()
+        self.assertIn('Synthetic A', md); self.assertIn('`q1` on europepmc: 2 hits', md)
+        self.assertIn('Excerpts from the full texts', md); self.assertIn('50 ng/mL M-CSF', md)
+        self.assertTrue(all('query' in row or 'fetch' in row for row in r['search_log']))
+
+    def test_a_failed_index_is_logged_and_the_other_one_is_asked(self):
+        def fake(req, timeout):
+            if 'europepmc' in req.full_url:
+                raise urllib.error.URLError('down')
+            if 'esearch' in req.full_url:
+                return _Resp(b'{"esearchresult": {"count": "1", "idlist": ["111"]}}')
+            return _Resp(PUBMED_XML)
+        with mock.patch('urllib.request.urlopen', fake):
+            r = AT.discover(['q1'], out_dir=self.tmp)
+        self.assertEqual(1, r['paper_count'])
+        kinds = [(row['index'], row.get('error') is not None) for row in r['search_log']]
+        self.assertEqual([('europepmc', True), ('pubmed', False)], kinds)
+        self.assertIn('FAILED', (Path(self.tmp) / 'discover.md').read_text())
