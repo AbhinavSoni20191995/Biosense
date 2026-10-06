@@ -136,7 +136,7 @@ REASONS = {
         'write their artifacts where BioSense cannot read them.',
         'Start BioSense with --runs inside the workspace, or set BIOSENSE_OMNIGENT_WORKSPACE.'),
     'model_auth_missing': (
-        'The Omnigent runtime has no model provider credentials.',
+        'The model provider did not accept the runtime\'s credentials, or none reached it.',
         'Set ANTHROPIC_API_KEY where the runner runs, or run: claude auth login'),
     'probe_failed': (
         'The Omnigent server answered, but not in a way this version understands.',
@@ -163,8 +163,9 @@ HOSTED_STEPS = {
     'agent_not_registered': 'This is a fault in the hosted deployment, not in your request.',
     'sdk_not_installed': 'This is a fault in the hosted deployment, not in your request.',
     'workspace_mismatch': 'This is a fault in the hosted deployment, not in your request.',
-    'model_auth_missing': 'The hosted AI runtime has no model credentials configured. Nothing '
-                          'you can change fixes this; the demonstration path still works.',
+    'model_auth_missing': 'A fault in this deployment\'s model credentials, not in your request. '
+                          'The detail below is the provider\'s own answer; the demonstration '
+                          'path still works.',
     'probe_failed': 'This is a fault in the hosted deployment, not in your request.',
     'no_server_configured': 'This is a fault in the hosted deployment, not in your request.',
     'agent_sandbox_unavailable': 'This is a fault in the hosted deployment, not in your request. '

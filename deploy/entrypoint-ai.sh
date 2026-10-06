@@ -65,7 +65,7 @@ if [ "$sandbox_off" = yes ]; then
           "$APP_ROOT/.venv/bin/python" -m biosense.production.model_proxy --port "$port"
         sleep 2
       done
-    ) >>"$LOGS/model-proxy.log" 2>&1 &
+    ) 2>&1 | tee -a "$LOGS/model-proxy.log" &
     # Replace whichever credential this deployment holds with the placeholder,
     # and drop the other, so no process after this one holds either.
     if [ -n "${ANTHROPIC_API_KEY:-}" ]; then

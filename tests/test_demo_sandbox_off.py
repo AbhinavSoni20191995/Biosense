@@ -40,6 +40,15 @@ class _Upstream(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get('Content-Length') or 0))
         _Upstream.seen.append({k.lower(): v for k, v in self.headers.items()})
+        if self.path.startswith('/v1/deny'):
+            out = json.dumps({'type': 'error', 'error': {
+                'type': 'authentication_error', 'message': 'invalid bearer token'}}).encode()
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+            return
         if self.path.startswith('/v1/stream'):
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
@@ -100,6 +109,42 @@ class ModelProxyTests(unittest.TestCase):
         self.assertEqual(REAL_KEY, seen['x-api-key'])
         self.assertNotIn('authorization', seen)
         self.assertEqual('2023-06-01', seen['anthropic-version'])
+
+    def test_a_refusal_reaches_the_caller_intact_and_is_logged_without_headers(self):
+        import io
+        err = io.StringIO()
+        with mock.patch.object(MP.sys, 'stderr', err):
+            code, body = self.post('/v1/deny', {})
+        self.assertEqual(401, code)
+        self.assertEqual('invalid bearer token', json.loads(body)['error']['message'])
+        self.assertIn('upstream 401: authentication_error: invalid bearer token', err.getvalue())
+        self.assertNotIn(REAL_KEY, err.getvalue())
+
+    def test_claude_codes_reachability_check_is_forwarded(self):
+        """Claude Code sends HEAD /api/hello first; the proxy answered 501."""
+        _Upstream.do_HEAD = lambda h: (h.send_response(200),
+                                       h.send_header('Content-Length', '0'), h.end_headers())
+        self.addCleanup(delattr, _Upstream, 'do_HEAD')
+        r = urllib.request.Request(self.base + '/api/hello', method='HEAD')
+        with urllib.request.urlopen(r, timeout=10) as resp:
+            self.assertEqual(200, resp.status)
+
+    def test_a_credential_pasted_with_whitespace_is_trimmed(self):
+        """Claude Code trims its credential; a value with a trailing newline
+        worked directly and was refused through the proxy."""
+        _Upstream.seen = []
+        up = _serve(_Upstream)
+        proxy = _serve(MP.make_handler(f'  {REAL_KEY}\n', f'http://127.0.0.1:{up.server_address[1]}',
+                                       MP.Budget(0), 'oauth'))
+        try:
+            r = urllib.request.Request(f'http://127.0.0.1:{proxy.server_address[1]}/v1/m',
+                                       data=b'{}', method='POST')
+            urllib.request.urlopen(r, timeout=10).read()
+        finally:
+            for srv in (proxy, up):
+                srv.shutdown()
+                srv.server_close()
+        self.assertEqual(f'Bearer {REAL_KEY}', _Upstream.seen[-1]['authorization'])
 
     def test_a_streamed_response_arrives_whole_and_in_order(self):
         code, body = self.post('/v1/stream', {})

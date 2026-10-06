@@ -62,7 +62,21 @@ class Budget:
             return True
 
 
+def _error_message(data):
+    """The provider's error message from a response body, short and secret-free."""
+    try:
+        doc = json.loads(data)
+        msg = (doc.get('error') or {}).get('message') or doc.get('message') or ''
+        kind = (doc.get('error') or {}).get('type') or ''
+        return f'{kind}: {msg}'[:300]
+    except (ValueError, AttributeError):
+        return data[:200].decode('utf-8', 'replace')
+
+
 def make_handler(key, upstream, budget, kind='api_key'):
+    # Claude Code trims its credential; a value pasted into a dashboard with a
+    # trailing newline or space works there and is refused here unless trimmed.
+    key = (key or '').strip()
     up = urlsplit(upstream)
     conn_cls = http.client.HTTPSConnection if up.scheme == 'https' else http.client.HTTPConnection
 
@@ -111,6 +125,21 @@ def make_handler(key, upstream, budget, kind='api_key'):
                 return self._refuse(502, f'the model API could not be reached: '
                                          f'{type(e).__name__}')
             try:
+                if resp.status >= 400 and resp.getheader('Content-Length') is not None:
+                    # A refusal is small and is the thing worth seeing in the
+                    # deploy log: the provider's message, never a header.
+                    data = resp.read()
+                    sys.stderr.write(f'[model-proxy] upstream {resp.status}: '
+                                     f'{_error_message(data)}\n')
+                    self.send_response(resp.status, resp.reason)
+                    for k, v in resp.getheaders():
+                        if k.lower() not in HOP:
+                            self.send_header(k, v)
+                    self.send_header('Content-Length', str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    self.wfile.flush()
+                    return
                 self.send_response(resp.status, resp.reason)
                 for k, v in resp.getheaders():
                     if k.lower() not in HOP:
@@ -142,7 +171,9 @@ def make_handler(key, upstream, budget, kind='api_key'):
             finally:
                 conn.close()
 
-        do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = _forward
+        # HEAD too: Claude Code checks it can reach the API with HEAD /api/hello
+        # before it sends anything, and a 501 here is a failed check.
+        do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = do_HEAD = _forward
 
     return Handler
 

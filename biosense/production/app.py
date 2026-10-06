@@ -578,8 +578,11 @@ class DiscoveryRegistry:
                     err = summary.get('error') or 'the run failed'
                     code = OMNI.model_auth_reason(err)
                     if code:
+                        # The provider's own words are kept: "rejected" and "never
+                        # sent" have different fixes, and the code alone cannot
+                        # tell them apart. The CLI never prints a credential.
                         run.finish('unavailable', final, str(RT.RuntimeUnavailable(
-                            code, hosted=self.cfg.hosted)), reason=code,
+                            code, err[:600], hosted=self.cfg.hosted)), reason=code,
                             next_step=RT.next_step_for(code, hosted=self.cfg.hosted))
                         return
                     run.finish('error', final, err, reason='run_failed')
