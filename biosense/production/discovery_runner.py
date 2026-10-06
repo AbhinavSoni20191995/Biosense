@@ -206,8 +206,13 @@ def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
     # runner's working directory is the workspace, so the path it must be given
     # is the run directory relative to that workspace, which is exactly what
     # `check_workspace` already computes.
+    ws = Path(cfg_runtime.workspace).resolve() if cfg_runtime.workspace else None
+    python = '.venv/bin/python'
+    if ws and (ws / '.venv' / 'bin' / 'python').exists():
+        python = str(ws / '.venv' / 'bin' / 'python')
     brief = DISC.render_brief(request, loop_dir=run_dir_for_agents(cfg_runtime, out),
-                              projects_dir=projects_dir)
+                              projects_dir=projects_dir, python=python,
+                              workspace=str(ws) if ws else None)
     (out / 'brief.md').write_text(brief, encoding='utf-8')
     summary = OMNI.drive(cfg_runtime, brief,
                          title=f'BioSense: {request["objective"][:80]}',

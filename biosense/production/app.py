@@ -1893,6 +1893,10 @@ def main(argv=None):
     Handler.limits = limits
     Handler.policy = policy
     Handler.discovery = DiscoveryRegistry(runs, cfg, limits, policy)
+    # A run in flight when the last process stopped (a redeploy, a crash) is
+    # finished from what its agents had written, and kept, labelled partial.
+    from . import salvage as SV
+    SV.salvage_in_background(runs, log=lambda m: print(f'[salvage] {m}', flush=True))
     Handler.sessions = WS.SessionStore()
     Handler.default_identity = WS.identity_from_env()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)

@@ -311,7 +311,7 @@ def privacy(req):
 
 
 # ── the brief handed to the orchestrator ────────────────────────────────
-def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None):
+def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None, workspace=None):
     """The message an Omnigent session receives, with the request embedded as JSON.
 
     The request is embedded rather than described, so nothing is lost in
@@ -320,6 +320,22 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None)
     """
     project = PJ.load(req['project_id'], projects_dir)
     budget = EFFORT[req.get('effort') or DEFAULT_EFFORT]
+    # A specialist's shell can start in a per-session scratch directory, where
+    # every relative path in this brief is missing: one run lost its
+    # bioinformatics agent to ".venv/bin/python: No such file or directory".
+    # So the root is named, the interpreter is absolute, and every task must
+    # carry the same instruction.
+    where = ''
+    if workspace:
+        where = f"""## Where you are
+
+Every command in this brief runs from the workspace root `{workspace}`. Your
+shell, and a specialist's, can start somewhere else (a scratch directory),
+where `.venv/bin/python`, `agent_tools.py` and `{loop_dir}` do not exist. Start
+every shell command with `cd {workspace} && `, and put that same sentence,
+with this path, at the top of every task you send a specialist.
+
+"""
     doc = json.dumps(req, indent=2, ensure_ascii=False)
     modelled = sorted(project.modelled_ids())
     not_modelled = sorted(p for p in project.parameter_ids if project.coverage(p) != 'modelled')
@@ -379,7 +395,7 @@ on a question ends the run with nothing to show. So:
 - Only end the run once the files below are written, or once you have written
   down why they could not be.
 
-## Who does what
+{where}## Who does what
 
 - **Literature goes through the `literature` agent.** It is the one agent
   given network access for Europe PMC. Your own session may have none: a

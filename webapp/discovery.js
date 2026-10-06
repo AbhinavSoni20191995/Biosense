@@ -635,6 +635,13 @@ function watchRun(runId) {
         state.result = snap.result; renderResult(snap);
         note(snap.recovered ? 'Reopened from the server: this is the run you were last '
           + 'watching, read back from its saved record. Nothing went wrong.' : null);
+      } else if (!RV.isLive(snap) && snap.result && hasPartial(snap.result)) {
+        /* Stopped by the time limit, by a person, or by a restart: what the
+           agents had written is still worth reading. Shown, and labelled
+           partial — never as a finished answer. */
+        state.result = snap.result; renderResult(snap);
+        fail({ headline: 'Partial result — ' + (snap.error || 'this run did not finish'),
+          reason: snap.error_reason, next_step: snap.next_step, message: snap.error });
       } else if (!RV.isLive(snap)) {
         fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
           message: snap.error });
@@ -682,6 +689,11 @@ function stopFromButton() {
     + 'stopped — not as an answer.')) return;
   b.disabled = true; b.textContent = 'stopping…';
   stopRun(id);
+}
+
+function hasPartial(r) {
+  const b = (r && r.bundle) || {};
+  return !!(r.protocol || (b.hypotheses || []).length || (b.artifacts_ingested || 0) > 0);
 }
 
 /* The literature agent's running notes and the papers it found, live. These

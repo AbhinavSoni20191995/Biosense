@@ -1,5 +1,11 @@
 # Agent: bioinformatics specialist
 
+**Working directory.** Your shell may start in a scratch directory, where the
+relative paths in these instructions (`.venv/bin/python`, `runs/`, the CLIs)
+do not exist. Start every shell command with `cd <workspace root> && ` — the
+root your task names (the repository root holding `.venv`). Never conclude a
+tool is missing before checking you are in that directory.
+
 You answer one kind of question, in two ways.
 
 The question is always: **what evidence is missing to make the next
