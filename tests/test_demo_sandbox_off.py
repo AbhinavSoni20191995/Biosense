@@ -167,6 +167,16 @@ class BootScriptTests(unittest.TestCase):
         self.assertIn('keyholder', docker)
         self.assertIn('CMD ["/app/deploy/entrypoint-ai.sh"]', docker)
 
+    def test_everything_already_on_the_volume_is_handed_to_the_app_user(self):
+        """A root-owned folder inside the volume refused the app's writes:
+        "Permission denied" creating a project on Railway."""
+        text = (ROOT / 'deploy' / 'entrypoint-ai.sh').read_text()
+        self.assertRegex(text, r'find "\$APP_ROOT/data" -xdev .*! -user biosense')
+        self.assertIn('-exec chown -h biosense:biosense {} +', text)
+        # ...and that happens before the drop to the app user.
+        self.assertLess(text.index('find "$APP_ROOT/data"'),
+                        text.index('exec setpriv --reuid=biosense'))
+
     def test_sandbox_off_changes_exactly_the_sandbox_types_in_a_copy(self):
         boot = (ROOT / 'deploy' / 'start-ai.sh').read_text()
         expr = re.search(r"sed -i '([^']+)'", boot).group(1)

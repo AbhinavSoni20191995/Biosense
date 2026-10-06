@@ -24,8 +24,16 @@ if [ "$(id -u)" != 0 ]; then
 fi
 
 mkdir -p "$LOGS" "$APP_ROOT/data/runs" "$APP_ROOT/data/private"
-chown biosense:biosense "$LOGS" "$APP_ROOT/data" "$APP_ROOT/data/runs" \
-  "$APP_ROOT/data/private" 2>/dev/null || true
+chown biosense:biosense "$LOGS" 2>/dev/null || true
+# Everything on the volume belongs to the app user. A platform volume is often
+# mounted root-owned, and anything an earlier root process created inside it
+# (a workspace's projects folder, say) would otherwise refuse the app's writes —
+# "Permission denied" on creating a project. Only what is not already the app
+# user's is touched, so a large volume costs one walk, not one write per file.
+# The volume is never followed out of: -xdev stays on it, symlinks are not
+# dereferenced.
+find "$APP_ROOT/data" -xdev \( ! -user biosense -o ! -group biosense \) \
+  -exec chown -h biosense:biosense {} + 2>/dev/null || true
 
 if [ "${BIOSENSE_AGENT_SANDBOX:-on}" = 'off' ] && [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   port="${BIOSENSE_MODEL_PROXY_PORT:-6790}"
