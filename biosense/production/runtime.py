@@ -460,10 +460,39 @@ SANDBOX_RECHECK_S = 60.0
 _SANDBOX_CACHE = {'ok_at': None, 'failed_at': None, 'detail': None}
 
 
+AGENT_SANDBOX_ENV = 'BIOSENSE_AGENT_SANDBOX'     # 'off' = the operator turned it off
+
+
+def agent_sandbox_state(env=None):
+    """Whether the agents run in their OS sandbox here, as the operator set it.
+
+    'off' is an operator's decision for a host that refuses the sandbox (Railway),
+    taken knowingly for a demonstration. It is reported wherever a run can be
+    started, never hidden. `model_key` says where the API key lives then: in a
+    separate process the agents cannot read ('proxy'), or — if that process is
+    missing — in their own environment ('exposed').
+    """
+    env = os.environ if env is None else env
+    off = (env.get(AGENT_SANDBOX_ENV) or '').strip().lower() == 'off'
+    if not off:
+        return {'sandbox': 'on', 'model_key': 'not_in_agent_tools'}
+    proxied = (env.get('BIOSENSE_MODEL_PROXY') or '') == 'on'
+    return {'sandbox': 'off', 'model_key': 'proxy' if proxied else 'exposed',
+            'note': ('Demo deployment: this host cannot run the agents\' OS sandbox, so '
+                     'their commands run unconfined in its container. The model key is held '
+                     'by a separate process they cannot read.' if proxied else
+                     'Demo deployment: the agents\' OS sandbox is off and the model-key '
+                     'proxy is not running.')}
+
+
 def _sandbox_wanted(cfg, env=None):
     env = os.environ if env is None else env
     flag = (env.get(SANDBOX_CHECK_ENV) or '').strip().lower()
     if flag in ('0', 'false', 'no'):
+        return False
+    if agent_sandbox_state(env)['sandbox'] == 'off':
+        # Turned off on purpose; there is nothing to check, and saying so is
+        # agent_sandbox_state's job, not a refusal's.
         return False
     if cfg.mode != 'local_real_ai' or not sys.platform.startswith('linux'):
         # A remote runtime sandboxes on its own machine; macOS uses seatbelt.

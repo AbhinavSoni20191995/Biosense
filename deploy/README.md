@@ -22,9 +22,20 @@ Both serve `webapp/console.html` at `/`, keep the read-only tracker at
 
 > **Real AI needs a host that allows the agents' sandbox.** Railway's containers
 > refuse Linux user namespaces, so bubblewrap cannot start there and real runs are
-> refused with `agent_sandbox_unavailable`; Railway still serves the synthetic
-> path. For real AI, use **[deploy/vm](vm/README.md)**: the same image on a small
-> VM, behind HTTPS, with auto-redeploy on every push to `main`.
+> refused with `agent_sandbox_unavailable`. Two ways forward:
+>
+> - **A VM** — **[deploy/vm](vm/README.md)**: the same image, sandbox on, behind
+>   HTTPS, auto-redeploy on every push to `main`. The right home for real use.
+> - **Railway, demo mode** — set `BIOSENSE_AGENT_SANDBOX=off`. The agents then run
+>   **without** their OS sandbox: their commands can read files in the container
+>   (including other accounts' projects and runs) and reach the internet. The
+>   model key is protected: `deploy/entrypoint-ai.sh` gives it only to
+>   `biosense.production.model_proxy`, running as a separate user (`keyholder`)
+>   the agents cannot read, and everything else gets a placeholder and the proxy's
+>   loopback address; the proxy also caps model requests per day
+>   (`BIOSENSE_MODEL_PROXY_DAILY_REQUESTS`, default 5000). The Real AI card and the
+>   system check say the sandbox is off. Use it for a short demonstration with
+>   demo data, then remove the variable or move to the VM.
 
 ## A. The real-AI service (the hosted product)
 

@@ -113,6 +113,16 @@ def _json_out(stdout):
 # ── the checks ──────────────────────────────────────────────────────────
 def check_sandbox(c, found, hosted):
     t = time.monotonic()
+    from . import runtime as RT
+    state = RT.agent_sandbox_state()
+    if state['sandbox'] == 'off':
+        c.row('sandbox', 'Agents\' sandbox', WARN if state['model_key'] == 'proxy' else FAIL,
+              'OFF by operator choice (BIOSENSE_AGENT_SANDBOX=off): agent commands run '
+              'unconfined in this container. Model key: '
+              + ('held by a separate process the agents cannot read.'
+                 if state['model_key'] == 'proxy' else
+                 'IN THE AGENTS\' ENVIRONMENT — the key proxy is not running.'), t)
+        return
     if found['ok']:
         how = {'fresh_proc': 'bubblewrap works as Omnigent configures it',
                'bind_proc': 'bubblewrap works with the container /proc bound in'}.get(
@@ -429,6 +439,8 @@ def run(*, live=False, runs_dir=None, keep=False, cfg=None, hosted=None):
     hosted = bool(getattr(cfg, 'hosted', False)) if hosted is None else hosted
     found = SB.diagnose(str(workspace))
     sandboxed = found['ok'] and found['mode'] in ('fresh_proc', 'bind_proc')
+    if RT.agent_sandbox_state()['sandbox'] == 'off':
+        sandboxed = False     # the agents themselves run unconfined; so do these steps
     # The agents may write only under the runs directories inside the workspace.
     # A self-check pointed elsewhere cannot run its steps the way they do, so it
     # runs them directly and every row says so.
@@ -440,7 +452,9 @@ def run(*, live=False, runs_dir=None, keep=False, cfg=None, hosted=None):
         python = sys.executable
     c = Check(workspace, work, sandboxed=sandboxed, bind_proc=found['mode'] == 'bind_proc',
               python=python)
-    if found['ok'] and not sandboxed:
+    if RT.agent_sandbox_state()['sandbox'] == 'off':
+        c.unsandboxed_why = 'sandbox off by operator choice, as the agents run here'
+    elif found['ok'] and not sandboxed:
         c.unsandboxed_why = 'this runs directory is outside the agents\' write paths'
     elif not found['ok']:
         c.unsandboxed_why = 'the sandbox cannot start here'

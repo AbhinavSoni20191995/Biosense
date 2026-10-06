@@ -97,14 +97,18 @@ ENV RUNS_DIR=/app/data/runs \
 RUN mkdir -p /app/data/runs /app/data/private
 
 # A non-root user, as in the other image: this process accepts input from the
-# internet and starts work. uid 1000 for the same reason.
+# internet and starts work. uid 1000 for the same reason. The container starts as
+# root only for deploy/entrypoint-ai.sh, which fixes the volume's ownership,
+# starts the model-key proxy as `keyholder` when the agents' sandbox is off, and
+# then becomes `biosense` for everything else (setpriv, no capabilities kept).
 ENV UV_CACHE_DIR=/home/biosense/.cache/uv \
     HOME=/home/biosense
+COPY deploy/entrypoint-ai.sh ./deploy/entrypoint-ai.sh
 RUN useradd --uid 1000 --create-home --home-dir /home/biosense biosense \
+ && useradd --system --no-create-home --shell /usr/sbin/nologin keyholder \
  && mkdir -p "$UV_CACHE_DIR" \
- && chmod +x /app/deploy/start-ai.sh \
+ && chmod +x /app/deploy/start-ai.sh /app/deploy/entrypoint-ai.sh \
  && chown -R biosense /app /home/biosense
-USER biosense
 
 EXPOSE 8000
 # Liveness only, and deliberately so: /healthz answers as soon as the web process
@@ -114,4 +118,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",8000)}/healthz')"
 
-CMD ["/app/deploy/start-ai.sh"]
+CMD ["/app/deploy/entrypoint-ai.sh"]

@@ -49,22 +49,43 @@ else
   log '                   the deterministic demonstration path still works.'
 fi
 
+# The agent bundle Omnigent registers. Normally the one in the image, untouched.
+AGENT_BUNDLE="$APP_ROOT/discovery_loop"
+
 # The agents' OS sandbox, decided before Omnigent starts, because the runner reads
 # its environment once. biosense.production.sandbox runs the exact bwrap command
 # Omnigent would build and prints the variables that make it work here — today,
 # the /proc bind a container needs when a fresh procfs mount is refused. If no
-# form of the sandbox can start, it says why and real runs are refused; the
-# agents are never run without it.
-# Its output is NAME=VALUE lines; only the two names below are ever exported, and
-# nothing is evaluated as shell.
-while IFS='=' read -r name value; do
-  case "$name" in
-    OMNIGENT_HOST_SANDBOX_BACKEND|OMNIGENT_RUNNER_ENV_PASSTHROUGH)
-      export "$name=$value"
-      log "sandbox: ${name}=${value}" ;;
-  esac
-done < <("${UV[@]}" python -m biosense.production.sandbox --env 2>"$LOGS/sandbox.log")
-sed 's/^/[boot] /' "$LOGS/sandbox.log" 2>/dev/null
+# form of the sandbox can start, it says why and real runs are refused — unless
+# the operator has turned the sandbox off for this deployment (below).
+if [ "${BIOSENSE_AGENT_SANDBOX:-on}" = 'off' ]; then
+  # The operator turned the sandbox off for this deployment (a host that refuses
+  # user namespaces, e.g. Railway). The image's bundle is not edited; a copy with
+  # the sandbox type set to none is registered instead, and the runtime card and
+  # the system check say so. The model key is not in this process's environment:
+  # deploy/entrypoint-ai.sh gave it to a proxy running as another user.
+  AGENT_BUNDLE="/tmp/biosense-agents/discovery_loop"
+  rm -rf /tmp/biosense-agents
+  mkdir -p /tmp/biosense-agents
+  cp -r "$APP_ROOT/discovery_loop" "$AGENT_BUNDLE"
+  find "$AGENT_BUNDLE" -name config.yaml -exec sed -i 's/^\([[:space:]]*type:[[:space:]]*\)auto[[:space:]]*$/\1none/' {} +
+  log 'sandbox: OFF by operator choice (BIOSENSE_AGENT_SANDBOX=off). Agent commands run'
+  log '         unconfined in this container; the model key is held by a separate process.'
+  if [ "${BIOSENSE_MODEL_PROXY:-}" != 'on' ]; then
+    log 'WARNING: the model-key proxy is not running, so the agents can read the key.'
+  fi
+else
+  # Its output is NAME=VALUE lines; only the two names below are ever exported,
+  # and nothing is evaluated as shell.
+  while IFS='=' read -r name value; do
+    case "$name" in
+      OMNIGENT_HOST_SANDBOX_BACKEND|OMNIGENT_RUNNER_ENV_PASSTHROUGH)
+        export "$name=$value"
+        log "sandbox: ${name}=${value}" ;;
+    esac
+  done < <("${UV[@]}" python -m biosense.production.sandbox --env 2>"$LOGS/sandbox.log")
+  sed 's/^/[boot] /' "$LOGS/sandbox.log" 2>/dev/null
+fi
 
 server_up() { python -c "
 import sys,urllib.request
@@ -88,7 +109,7 @@ start_server() {
   # outside the container can reach the runtime, which is why it needs no login.
   "${UV[@]}" omnigent server \
     --host 127.0.0.1 --port "$OMNI_PORT" --no-open \
-    --agent "$APP_ROOT/discovery_loop" \
+    --agent "$AGENT_BUNDLE" \
     >>"$LOGS/omnigent-server.log" 2>&1 &
   SERVER_PID=$!
   log "omnigent server starting (pid $SERVER_PID) on $SERVER"

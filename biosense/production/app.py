@@ -1530,6 +1530,7 @@ class Handler(BaseHTTPRequestHandler):
                 except K.ContractError as e:
                     checks[mode] = RT.reason('probe_failed', str(e))
             out['availability'] = checks
+        out['agent_sandbox'] = RT.agent_sandbox_state()
         out['identity'] = self._identity_payload()
         out['limits'] = self.limits.describe()
         out['usage'] = self.discovery.ledger.state()

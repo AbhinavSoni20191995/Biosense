@@ -472,11 +472,14 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('local', env.get('BIOSENSE_ALLOWED_RUNTIMES', ''))
 
     def test_no_image_bakes_in_a_credential(self):
-        for name in ('Dockerfile', 'Dockerfile.ai', 'start-ai.sh', 'railway.json',
-                     'railway.ai.json'):
+        for name in ('Dockerfile', 'Dockerfile.ai', 'start-ai.sh', 'entrypoint-ai.sh',
+                     'railway.json', 'railway.ai.json'):
             text = (ROOT / 'deploy' / name).read_text()
             self.assertNotIn('sk-ant', text, name)
-            self.assertNotRegex(text, r'ANTHROPIC_API_KEY\s*=\s*\S', name)
+            # The one value allowed is the entrypoint's placeholder: the real key
+            # is handed to the model proxy, and this string is what replaces it.
+            self.assertNotRegex(
+                text, r"ANTHROPIC_API_KEY\s*=\s*(?!'held-by-the-biosense-model-proxy')\S", name)
 
     def test_the_vm_deployment_bakes_in_no_credential_and_evaluates_nothing(self):
         for name in ('docker-compose.yml', 'Caddyfile', 'env.example', 'setup.sh', 'update.sh'):
@@ -526,7 +529,10 @@ class DeploymentTests(unittest.TestCase):
         docker = (ROOT / 'deploy' / 'Dockerfile.ai').read_text()
         boot = (ROOT / 'deploy' / 'start-ai.sh').read_text()
         self.assertIn('COPY discovery_loop/', docker)
-        self.assertIn('--agent "$APP_ROOT/discovery_loop"', boot)
+        self.assertIn('AGENT_BUNDLE="$APP_ROOT/discovery_loop"', boot)
+        self.assertIn('--agent "$AGENT_BUNDLE"', boot)
+        # The only other bundle is a copy of that one, made from the image's own.
+        self.assertIn('cp -r "$APP_ROOT/discovery_loop" "$AGENT_BUNDLE"', boot)
 
     def test_the_runtime_is_bound_to_loopback_only(self):
         boot = (ROOT / 'deploy' / 'start-ai.sh').read_text()
@@ -546,7 +552,7 @@ class DeploymentTests(unittest.TestCase):
         """There is no user input in them to interpolate — the objective travels
         as a JSON value over HTTP — and `eval` is how that would stop being true.
         """
-        for name in ('deploy/start-ai.sh', 'scripts/start_local_ai.sh',
+        for name in ('deploy/start-ai.sh', 'deploy/entrypoint-ai.sh', 'scripts/start_local_ai.sh',
                      'scripts/check_local_ai.sh'):
             text = (ROOT / name).read_text()
             self.assertNotRegex(text, r'\beval\b', name)

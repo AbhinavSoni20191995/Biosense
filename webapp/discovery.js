@@ -240,6 +240,12 @@ function renderRuntimePicker() {
       }
       lab.append(why);
     }
+    // Said, not hidden: a demo deployment that runs the agents without their OS
+    // sandbox labels the real-AI choice with it.
+    const sb = state.runtime.agent_sandbox;
+    if (sb && sb.sandbox === 'off' && m.mode === 'local_real_ai' && sb.note) {
+      lab.append(el('div', 'why', sb.note));
+    }
     lab.addEventListener('change', updateBadge);
     host.append(lab);
   });
