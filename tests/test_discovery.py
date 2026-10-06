@@ -109,6 +109,23 @@ class RequestTests(unittest.TestCase):
         self.assertIn('Skip "Start of a loop" entirely', prompt)
         self.assertTrue(brief.startswith('# BioSense web discovery run'))
 
+    def test_the_brief_sends_literature_to_the_agent_that_has_the_network(self):
+        """An orchestrator without network ran the Europe PMC search itself and
+        failed on DNS; a failed specialist should be retried once, not replaced."""
+        brief = DISC.render_brief(a_request(), loop_dir='ai-x')
+        self.assertIn('Literature goes through the `literature` agent', brief)
+        self.assertIn('literature-it1-retry', brief)
+        self.assertIn('Do not do its job in\n  your own session', brief)
+        prompt = (K.ROOT / 'discovery_loop' / 'prompt.md').read_text()
+        self.assertIn('Never do a specialist\'s\njob in your own session', prompt)
+
+    def test_without_a_dataset_the_demo_fixtures_are_not_evidence(self):
+        brief = DISC.render_brief(a_request(), loop_dir='ai-x')
+        self.assertIn('No dataset was named for this run', brief)
+        self.assertIn('`SYNTHETIC-`', brief)
+        named = DISC.render_brief(a_request(dataset_ids=['GSE155719']), loop_dir='ai-x')
+        self.assertNotIn('No dataset was named for this run', named)
+
     def test_a_benchmark_config_converts_rather_than_being_retyped(self):
         cfg = K.read_json(K.ROOT / 'benchmarks' / 'configs' / 'macrophage_mcsf_demo.json')
         req = DISC.from_benchmark_config(cfg, runtime_mode='synthetic_demo')

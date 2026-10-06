@@ -306,6 +306,24 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None)
         pdir = f' --projects-dir {projects_dir}'
     wanted = '\n'.join(
         f'- `{loop_dir}/{name}` — a `{kind}`: {why}' for name, kind, why in ARTIFACTS)
+    # With no dataset named, the only tables in reach are the committed demo
+    # fixtures. An analysis of one runs, and proves the tools work; it says
+    # nothing about this objective, and the orchestrator has to be told so
+    # before it reads one as biology.
+    if req['dataset_ids']:
+        data_note = ''
+    else:
+        data_note = """
+   **No dataset was named for this run**, so there is no measured data here.
+   The offline dataset index holds only invented demo fixtures (accessions that
+   begin `SYNTHETIC-`). Do not plan or run an analysis on one: its numbers are
+   not evidence about this objective, and a hypothesis resting on them is a
+   demonstration, not a finding. Write the analysis plan only if you can name a
+   real dataset; otherwise record "no dataset provided" as a limitation, name
+   in the next experiment which data would settle the uncertainty, and build the
+   hypothesis from the literature, annotation and mechanism (`direction_only`
+   where the magnitude is not established).
+"""
 
     return f"""# BioSense web discovery run
 
@@ -332,6 +350,20 @@ on a question ends the run with nothing to show. So:
   your turn; the inbox wakes you with their answers.
 - Only end the run once the files below are written, or once you have written
   down why they could not be.
+
+## Who does what
+
+- **Literature goes through the `literature` agent.** It is the one agent
+  given network access for Europe PMC. Your own session may have none: a
+  search you run yourself can fail on DNS, and even where it works it skips the
+  agent that extracts and cites the claims. Do not run literature or web
+  searches yourself; send the question to `literature`.
+- Gene and dataset questions go to `bioinformatics`.
+- **If a specialist fails or refuses**, read its reply for the reason. Send it
+  once more, narrower (one gene, one parameter, a smaller budget), under a new
+  title such as `literature-it1-retry`. If that fails too, record the reason it
+  gave as a limitation and carry on with what you have. Do not do its job in
+  your own session, and do not end the run because of it.
 
 ## The request
 
@@ -361,7 +393,7 @@ invent one for them, and do not drop them.
 2. Gather evidence. Ask `literature` for cited claims. Ask `bioinformatics` to
    find or use the datasets named above and to plan an analysis that resolves
    that named uncertainty — `plan` refuses without one.
-3. **Execute the analysis with the tools, never by hand.** Run
+{data_note}3. **Where there is a plan, execute it with the tools, never by hand.** Run
    `{python} -m biosense.bioinformatics.cli analyse run --plan <plan.json> --out …`
    (the plan comes from `analyse plan`). Quote its numbers;
    do not retype them from memory and do not compute your own.

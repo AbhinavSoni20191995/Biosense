@@ -193,6 +193,42 @@ class ActivityTests(unittest.TestCase):
         a.observe_files(['quantified_hypothesis.json'], at=240)
         self.assertEqual(1, len(a.snapshot()['artifacts']), 'a file is announced once')
 
+    def test_a_tool_listing_that_describes_refusals_is_not_a_limitation(self):
+        """The tool registry says what it refuses ("Raw counts are refused"); every
+        listing of it was shown as a limitation card, twice, as raw JSON."""
+        listing = json.dumps({'stdout': json.dumps({'tools': [
+            {'name': 'expression.de', 'notes': 'Raw counts are refused.'}]}),
+            'stderr': '', 'exit_code': 0})
+        self.assertIsNone(ACT.refusal_in(listing))
+        self.assertIsNone(ACT.refusal_in('{"tools": [{"notes": "Raw counts are refus'))
+        a = ACT.Activity(started_at=0)
+        a.observe({'at': 1, 'kind': 'tool_result', 'tool': 'bash', 'technical': listing})
+        self.assertEqual([], a.snapshot()['limitations'])
+
+    def test_an_explicit_refusal_or_a_failed_command_is_a_limitation(self):
+        refused = json.dumps({'stdout': json.dumps(
+            {'refused': True, 'reason': 'metadata cannot be joined'}), 'stderr': '',
+            'exit_code': 1})
+        self.assertEqual('metadata cannot be joined', ACT.refusal_in(refused))
+        crashed = json.dumps({'stdout': '', 'stderr': 'ContractError: no plan',
+                              'exit_code': 1})
+        self.assertIn('no plan', ACT.refusal_in(crashed))
+        not_found = json.dumps({'stdout': '{"found": false}', 'stderr': '', 'exit_code': 2})
+        self.assertIsNone(ACT.refusal_in(not_found), 'an unannotated gene is an answer')
+        a = ACT.Activity(started_at=0)
+        for at in (1, 2):
+            a.observe({'at': at, 'kind': 'tool_result', 'tool': 'bash', 'technical': refused})
+        self.assertEqual(1, len(a.snapshot()['limitations']), 'the same refusal is one card')
+
+    def test_a_failed_specialist_says_why_as_a_limitation(self):
+        a = ACT.Activity(started_at=0)
+        a.observe({'at': 5, 'kind': 'subagent', 'agent': 'literature', 'state': 'failed',
+                   'child_session_id': 'conv_lit',
+                   'technical': 'child session conv_lit (literature:literature-it1-retry) '
+                                'failed: Europe PMC could not be reached'})
+        texts = [r['text'] for r in a.snapshot()['limitations']]
+        self.assertEqual(['Literature agent failed: Europe PMC could not be reached'], texts)
+
     def test_last_activity_is_what_says_a_quiet_run_is_alive(self):
         a = ACT.Activity.from_events(self.events(), started_at=0)
         self.assertEqual(200, a.snapshot(now=200)['last_activity_at'])

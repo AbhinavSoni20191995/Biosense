@@ -36,6 +36,7 @@ an empty panel beside a run that is plainly working.
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 
@@ -71,6 +72,58 @@ MAX_TIMELINE = 300
 MAX_LIMITATIONS = 60
 MAX_ARTIFACTS = 40
 MAX_TASK_CHARS = 140
+
+
+_EXIT_RE = re.compile(r'"exit_code":\s*(-?\d+)')
+
+
+def refusal_in(technical):
+    """The refusal a tool result carries, as readable text, or None.
+
+    Only an explicit refusal counts: a BioSense tool answering
+    {"refused": true, "reason": ...} or {"error": ...}, or a command that
+    exited non-zero. Matching words was wrong — the tool registry *describes*
+    what it refuses ("Raw counts are refused"), so every listing of it was
+    shown as a limitation, twice, as raw JSON.
+    """
+    text = (technical or '').strip()
+    if not text:
+        return None
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        doc = None
+    if isinstance(doc, dict) and 'stdout' in doc:
+        out, err = (doc.get('stdout') or '').strip(), (doc.get('stderr') or '').strip()
+        inner = _json_or_none(out)
+        if isinstance(inner, dict) and (inner.get('refused') or inner.get('error')):
+            return _short(str(inner.get('reason') or inner.get('message')
+                              or inner.get('error')), 300)
+        code = doc.get('exit_code')
+        if isinstance(code, int) and code not in (0, 2):
+            # 2 is the documented "found nothing" (an unannotated gene): an
+            # answer, not a failure.
+            return _short((err or out)[-300:] or f'the command exited {code}', 300)
+        return None
+    if isinstance(doc, dict) and (doc.get('refused') or doc.get('error')):
+        return _short(str(doc.get('reason') or doc.get('message') or doc.get('error')), 300)
+    if text.startswith('{'):
+        # A shell result cut short for display: trust only an explicit marker.
+        m = _EXIT_RE.search(text)
+        if m and int(m.group(1)) not in (0, 2):
+            return f'a command exited {m.group(1)}'
+        return None
+    # Plain text from a tool that answers in words: a short refusal sentence.
+    if len(text) <= 400 and REFUSAL_RE.search(text):
+        return _short(text, 300)
+    return None
+
+
+def _json_or_none(text):
+    try:
+        return json.loads(text)
+    except (TypeError, ValueError):
+        return None
 
 
 def agent_named(text):
@@ -177,8 +230,9 @@ class Activity:
                 self.agents[name]['last_activity_at'] = at
                 self._note(at, 'agent', f'{AGENT_LABEL[name]} agent received its task',
                            agent=name)
-        if REFUSAL_RE.search(event.get('technical') or ''):
-            self._limit(at, event.get('technical'), event.get('tool'))
+        reason = refusal_in(event.get('technical'))
+        if reason:
+            self._limit(at, reason, event.get('tool'))
 
     def _on_subagent(self, event, at):
         """A specialist's session, as the server reports it.
@@ -207,6 +261,13 @@ class Activity:
             self._note(at, 'agent', f'{AGENT_LABEL[name]} agent '
                        + ('finished' if state == 'finished' else 'stopped with an error'),
                        agent=name)
+            if state == 'failed':
+                # Its evidence is missing from the result, and why is the first
+                # thing a reader needs: a network refusal, a safeguard, a crash.
+                said = (event.get('technical') or '').split(': ', 1)
+                self._limit(at, f'{AGENT_LABEL[name]} agent failed'
+                                + (f': {said[1]}' if len(said) > 1 else
+                                   ' without saying why'), None)
 
     def _finish(self, at, event):
         stage = event.get('stage')
@@ -267,6 +328,8 @@ class Activity:
     def _limit(self, at, text, tool=None):
         if not text:
             return
+        if any(row['text'] == _short(text, 300) for row in self.limitations):
+            return          # the same refusal twice is one limitation
         row = {'at': at, 'rel_s': round(at - self.started_at, 1),
                'text': _short(text, 300), 'tool': tool}
         self.limitations.append(row)

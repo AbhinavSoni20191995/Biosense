@@ -42,6 +42,14 @@ People run the bioreactor. Nothing here touches an actuator.
 - `biosimulator`, `outcome`: the older in-silico cardiac campaign. Use only if
   the person asks for it.
 
+Literature and web searches go through `literature`, the one agent given
+network access for them. Your own sandbox has none, so a search you run yourself
+fails on DNS; do not run `agent_tools.py`, Europe PMC or other network commands
+in your session. If a specialist fails, read its reason, send it once more with
+a narrower task under a new title (`literature-it1-retry`), and if that fails
+too, record the reason as a limitation and carry on. Never do a specialist's
+job in your own session.
+
 Dispatch with `sys_session_send` (`agent: "<name>"`, `title: "<agent>-it<N>"`,
 `args: "<the task>"`); send several in one response to run them in parallel.
 Reuse a title to continue that thread. End your turn after dispatching; the inbox wakes

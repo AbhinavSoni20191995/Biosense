@@ -81,7 +81,10 @@ order is fixed, and the first step is the one that matters.
 
    Search is offline: it reads a committed fixture index whose accessions all
    begin with `SYNTHETIC-GSE`. An empty result means that index has no match,
-   **never** that no such data exists — say which you mean.
+   **never** that no such data exists — say which you mean. A match there is a
+   demo fixture, not data about the question: unless the person selected it,
+   do not plan or run an analysis on it. Report that no real dataset was
+   provided, and which public data would answer the question.
 3. **Check what the tools can do.** `cli tools` lists what runs and what is only
    declared. A declared tool is refused; do not work around it.
 4. **Plan, then run.**
