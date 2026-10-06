@@ -483,3 +483,10 @@ button{font-family:inherit}
   background:color-mix(in srgb,var(--warn) 10%,transparent)}
 .notest{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
   color:var(--ink-3)}
+
+/* A run that produced nothing says what happened. An empty panel reads as a
+   scientific conclusion when it is usually a mechanical one. */
+.diag{border:1px solid color-mix(in srgb,var(--warn) 32%,transparent);border-radius:12px;
+  padding:14px 16px;background:color-mix(in srgb,var(--warn) 6%,transparent)}
+.diag h4{margin:0 0 6px;font-size:14.5px;line-height:1.4}
+.diag p{margin:6px 0;font-size:13.5px;line-height:1.5}

@@ -146,10 +146,19 @@ class ActivityTests(unittest.TestCase):
         self.assertIn('metadata join', snap['limitations'][0]['text'])
         self.assertIn('limitation', [t['kind'] for t in snap['timeline']])
 
-    def test_artifacts_appear_as_they_are_written(self):
+    def test_an_artifact_is_a_file_that_exists_not_a_filename_in_a_tool_call(self):
+        """The brief ASKS for `analysis_plan.json` by name, so matching filenames
+        in tool text reported artifacts a run had never produced — the page
+        showed two files written by a run that wrote none."""
         a = ACT.Activity.from_events(self.events(), started_at=0)
-        self.assertIn('quantified_hypothesis.json',
-                      [x['name'] for x in a.snapshot()['artifacts']])
+        self.assertEqual([], a.snapshot()['artifacts'])
+        a.observe_files(['quantified_hypothesis.json', 'discovery_request.json',
+                         'brief.md'], at=210)
+        names = [x['name'] for x in a.snapshot()['artifacts']]
+        self.assertEqual(['quantified_hypothesis.json'], names,
+                         'the files BioSense writes itself are not agent output')
+        a.observe_files(['quantified_hypothesis.json'], at=240)
+        self.assertEqual(1, len(a.snapshot()['artifacts']), 'a file is announced once')
 
     def test_last_activity_is_what_says_a_quiet_run_is_alive(self):
         a = ACT.Activity.from_events(self.events(), started_at=0)
@@ -192,6 +201,48 @@ class ActivityTests(unittest.TestCase):
         self.assertNotIn('width:var(', bar, 'nothing may drive the bar from data')
 
 
+class EmptyRunDiagnosisTests(unittest.TestCase):
+    """A real run that produced nothing says what happened.
+
+    The page used to show "No hypothesis was formed by this run", which reads as
+    a scientific conclusion when it is almost always a mechanical one: the
+    orchestrator ended without asking a specialist, or the specialists wrote
+    nothing BioSense could read.
+    """
+
+    def _activity(self, *events):
+        a = ACT.Activity(started_at=0)
+        for e in events:
+            a.observe(e)
+        return a
+
+    def test_an_orchestrator_that_asked_nobody_is_named_as_such(self):
+        a = self._activity(
+            {'kind': 'accepted', 'at': 1, 'simple': 'Your question reached the agents.'},
+            {'kind': 'tool', 'tool': 'sys_os_shell', 'at': 4, 'technical': 'ls'},
+            {'kind': 'waiting', 'at': 9, 'omnigent_type': 'turn.completed', 'simple': 'turn 1'})
+        d = a.diagnose(artifacts_ingested=1, hypotheses=0)
+        self.assertIn('without asking any specialist', d['headline'])
+        self.assertEqual([], d['agents_dispatched'])
+        self.assertEqual(1, d['turns'])
+        self.assertTrue(d['next_steps'])
+
+    def test_specialists_that_wrote_nothing_are_named_too(self):
+        a = self._activity(
+            {'kind': 'tool', 'tool': 'sys_session_send', 'at': 5,
+             'technical': 'literature-it1: find claims'},
+            {'kind': 'tool_result', 'tool': 'sys_session_send', 'at': 60,
+             'technical': 'literature answered'})
+        d = a.diagnose(artifacts_ingested=1, hypotheses=0)
+        self.assertIn('Literature', d['headline'])
+        self.assertIn('no artifact was written', d['headline'])
+
+    def test_a_run_that_produced_a_hypothesis_is_not_diagnosed_at_all(self):
+        a = self._activity({'kind': 'accepted', 'at': 1, 'simple': 'x'})
+        self.assertIsNone(a.diagnose(artifacts_ingested=4, hypotheses=1))
+        self.assertIsNone(a.diagnose(artifacts_ingested=1, hypotheses=0, is_real=False))
+
+
 class CanonicalDirectoryTests(unittest.TestCase):
     """One directory per run, named the way the runner will resolve it."""
 
@@ -204,6 +255,24 @@ class CanonicalDirectoryTests(unittest.TestCase):
                           env={'BIOSENSE_RUNTIME_MODE': 'local',
                                'BIOSENSE_OMNIGENT_WORKSPACE': str(K.ROOT)})
         self.assertEqual('runs/ai-x', DR.run_dir_for_agents(cfg, K.ROOT / 'runs' / 'ai-x'))
+
+    def test_the_sandbox_permits_the_directory_the_agents_are_given(self):
+        """The hosted image mounts its volume at ./data, so the run directory is
+        ./data/runs. A sandbox that only allows ./runs refuses every artifact,
+        and the run finishes having written nothing — which looks exactly like a
+        model that gave up."""
+        import re as _re
+        env = {}
+        for m in _re.finditer(r'^\s*(?:ENV\s+)?([A-Z_][A-Z0-9_]*)=(\S+)',
+                              (K.ROOT / 'deploy' / 'Dockerfile.ai').read_text(), _re.M):
+            env.setdefault(m.group(1), m.group(2))
+        runs = Path(env['RUNS_DIR']).relative_to(Path(env['BIOSENSE_OMNIGENT_WORKSPACE']))
+        for config in sorted((K.ROOT / 'discovery_loop').rglob('config.yaml')):
+            text = config.read_text()
+            if 'write_paths' not in text:
+                continue
+            self.assertIn(f'./{runs}', text,
+                          f'{config.relative_to(K.ROOT)} cannot write the hosted run directory')
 
     def test_the_brief_names_that_one_directory_everywhere(self):
         from biosense.production import discovery as DISC

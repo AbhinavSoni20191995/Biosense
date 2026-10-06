@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 
 from .. import contracts as K
 from . import runtime as RT
@@ -48,6 +49,27 @@ from . import stages as ST
 STREAM_IDLE_TIMEOUT_S = 60 * 30
 PROBE_TIMEOUT_S = 6.0
 SESSION_TITLE_LIMIT = 200
+# A turn ending is not a session ending.
+#
+# The orchestrator is an async agent, and its own instructions say to dispatch to
+# a specialist and END THE TURN — the inbox wakes it when the specialist answers.
+# So `response.completed` arrives within seconds of the run starting, long before
+# any science has happened. Watching until the first one and then declaring the
+# run finished is why a real run came back in thirty seconds having written
+# nothing: BioSense stopped looking while the agents were still being asked.
+#
+# The session is finished when the SERVER says it is idle, having completed at
+# least one turn, and nothing more has arrived for a quiet period. Omnigent's own
+# session statuses are launching / running / waiting / idle / failed, and
+# `waiting` means exactly "the parent turn is parked on sub-agent work".
+STREAM_POLL_S = 5.0          # how often a quiet stream is checked against the server
+TURN_QUIET_S = 25.0          # idle this long after a turn before believing it is over
+IDLE_RECHECK_S = 3.0         # between the confirmations that the session really has stopped
+IDLE_CONFIRMATIONS = 2       # a momentary idle between turns must not end a run
+MAX_SILENCE_S = 900.0        # nothing at all for this long: stop watching and say so
+SESSION_LIVE = ('launching', 'running', 'waiting', 'in_progress', 'queued')
+SESSION_DONE = ('idle', 'completed', 'complete', 'finished', 'cancelled')
+
 
 
 def _sdk():
@@ -350,23 +372,87 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
                      'content': [{'type': 'input_text', 'text': brief}]}})
 
         reached, terminal, error = set(), None, None
-        async for raw in client.sessions.stream(session_id):
+        turns, last_event, stopped_because, settled = 0, time.monotonic(), None, 0
+        stream = client.sessions.stream(session_id).__aiter__()
+        while terminal is None:
             if should_stop and should_stop():
                 await client.sessions.interrupt(session_id)
-                terminal = terminal or 'failed'
-                error = error or 'the server stopped while the run was in flight'
+                terminal, error = 'failed', 'the run was stopped while it was in flight'
                 break
-            mapped = ST.map_event(raw)
-            if mapped is None:
+            raw = None
+            try:
+                raw = await asyncio.wait_for(stream.__anext__(), timeout=STREAM_POLL_S)
+            except asyncio.TimeoutError:
+                pass
+            except StopAsyncIteration:
+                # The server closed the tail. That is not the session ending —
+                # it does not replay, so the way to find out is to ask it.
+                stream = None
+            except Exception as e:  # noqa: BLE001 - a dropped tail is not a failed run
+                emit({'kind': 'note', 'stage': None, 'simple': None,
+                      'technical': f'event stream dropped ({type(e).__name__}); reconnecting'})
+                stream = None
+
+            if raw is not None:
+                last_event, settled = time.monotonic(), 0
+                mapped = ST.map_event(raw)
+                if mapped is None:
+                    continue
+                if mapped.get('stage'):
+                    reached.add(mapped['stage'])
+                if mapped['kind'] in ('terminal', 'error') \
+                        and mapped.get('stage') in ST.TERMINAL:
+                    if mapped['stage'] == 'failed':
+                        terminal, error = 'failed', mapped.get('technical')
+                        emit(mapped)
+                        break
+                    # A turn finished. The agents may now be working, or the
+                    # orchestrator may be about to be woken by its inbox, so this
+                    # is recorded and watched rather than treated as the end.
+                    turns += 1
+                    emit({'kind': 'waiting', 'stage': None, 'omnigent_type': 'turn.completed',
+                          'simple': f'The orchestrator finished turn {turns}. Waiting to see '
+                                    f'whether a specialist answers or it continues.',
+                          'technical': f'turn {turns} complete; session still being watched'})
+                    continue
+                emit(mapped)
                 continue
-            if mapped.get('stage'):
-                reached.add(mapped['stage'])
-            if mapped['kind'] in ('terminal', 'error') and mapped.get('stage') in ST.TERMINAL:
-                terminal = mapped['stage']
-                if mapped['stage'] == 'failed':
-                    error = mapped.get('technical')
-            emit(mapped)
-            if terminal:
+
+            # Nothing arrived. Ask the server what the session is actually doing,
+            # which is the only thing that can tell "parked on a sub-agent" from
+            # "finished": those look identical from a silent stream.
+            quiet = time.monotonic() - last_event
+            live = None
+            try:
+                live = await client.sessions.get(session_id)
+                status = (getattr(live, 'status', None) or '').lower()
+            except Exception:  # noqa: BLE001 - a failed poll is not a failed run
+                status = ''
+            if status == 'failed':
+                terminal, error = 'failed', _task_error(getattr(live, 'last_task_error', None))
+                break
+            if status in SESSION_LIVE:
+                # Working, or parked waiting for a specialist. Either way it is
+                # not over, so the tail is reopened and the wait continues.
+                settled = 0
+                if stream is None:
+                    stream = await _reopen(client, session_id)
+            else:
+                # Not live. Confirmed more than once before being believed,
+                # because a session is briefly idle between turns and ending the
+                # run there is exactly the bug this loop exists to fix.
+                settled += 1
+                if settled >= IDLE_CONFIRMATIONS and (stream is None or quiet >= TURN_QUIET_S):
+                    terminal = 'complete'
+                    break
+                if stream is None:
+                    await asyncio.sleep(IDLE_RECHECK_S)
+            if quiet >= MAX_SILENCE_S:
+                terminal = 'failed'
+                stopped_because = (
+                    f'nothing happened for {int(quiet // 60)} minutes and the session reports '
+                    f'{status or "no status"}')
+                error = stopped_because
                 break
 
         snapshot = await client.sessions.get(session_id)
@@ -378,6 +464,14 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop):
                 'status': snapshot.status}
     finally:
         await client.close()
+
+
+async def _reopen(client, session_id):
+    """A fresh tail on a session that is still working. None if it cannot be had."""
+    try:
+        return client.sessions.stream(session_id).__aiter__()
+    except Exception:  # noqa: BLE001 - try again on the next pass
+        return None
 
 
 def _task_error(err):

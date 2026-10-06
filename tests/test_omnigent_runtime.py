@@ -157,6 +157,23 @@ class _Harness:
         return self
 
 
+def setUpModule():
+    """Shrink the idle-confirmation delay.
+
+    The adapter deliberately confirms more than once, with a pause, that a
+    session has really stopped — a momentary idle between turns must not end a
+    run. The pause is a production safety margin and nothing is asserted about
+    its length, so the tests run with it at zero.
+    """
+    global _SAVED
+    _SAVED = (OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S)
+    OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S = 0.0, 0.01
+
+
+def tearDownModule():
+    OMNI.IDLE_RECHECK_S, OMNI.STREAM_POLL_S = _SAVED
+
+
 def cfg_for(mode='local_real_ai', **env):
     base = {'BIOSENSE_RUNTIME_MODE': 'local', 'BIOSENSE_ALLOWED_RUNTIMES': 'local,synthetic'}
     base.update(env)
@@ -212,15 +229,100 @@ class InjectionTests(unittest.TestCase):
             self.assertNotIn('secret-token-xyz', repr(e))
 
 
+class AsyncOrchestratorTests(unittest.TestCase):
+    """A turn ending is not the session ending.
+
+    The orchestrator is an async agent and its own instructions say to dispatch
+    to a specialist and END THE TURN — the inbox wakes it when the answer comes
+    back. So `response.completed` arrives seconds into a run, before any science
+    has happened. Watching until the first one and calling the run finished is
+    why a real run came back in thirty seconds having written nothing.
+    """
+
+    def _session_states(self, *states):
+        """A fake whose reported status walks through *states* as it is polled."""
+        seq = list(states)
+
+        class _Walking(_Session):
+            def __init__(inner):
+                super().__init__()
+                inner.status = seq[0]
+
+        return seq, _Walking
+
+    def test_a_completed_turn_does_not_end_the_run_while_the_session_works(self):
+        h = _Harness().install(self)
+        # Turn one: the orchestrator dispatches and ends its turn. Then the
+        # specialist answers, the orchestrator wakes, works, and finishes.
+        h.events = [
+            ev('session.created'),
+            ev('response.output_item.done',
+               item={'type': 'function_call', 'name': 'sys_session_send',
+                     'arguments': '{"title": "literature-it1"}'}),
+            ev('response.completed'),
+            ev('session.status', status='waiting'),
+            ev('response.output_item.done',
+               item={'type': 'function_call', 'name': 'bash',
+                     'arguments': 'biosense.bioinformatics.cli execute --plan p.json'}),
+            ev('response.completed'),
+        ]
+        events = []
+        out = OMNI.drive(cfg_for(), 'brief', on_event=events.append)
+        self.assertEqual('complete', out['terminal'])
+        # The work AFTER the first turn was seen, which is the whole point.
+        self.assertIn('running_analysis', out['stages_reached'])
+        self.assertTrue(any(e.get('tool') == 'sys_session_send' for e in events))
+
+    def test_the_end_of_a_turn_is_reported_as_waiting_not_as_finished(self):
+        h = _Harness().install(self)
+        h.events = [ev('response.completed')]
+        events = []
+        OMNI.drive(cfg_for(), 'brief', on_event=events.append)
+        turn = [e for e in events if e.get('omnigent_type') == 'turn.completed']
+        self.assertTrue(turn, 'the end of a turn was not reported')
+        self.assertEqual('waiting', turn[0]['kind'])
+        self.assertIn('turn 1', turn[0]['simple'])
+        # And nothing claimed the run was complete at that moment.
+        self.assertFalse([e for e in events
+                          if e.get('kind') == 'terminal' and e.get('stage') == 'complete'])
+
+    def test_a_failed_turn_still_ends_the_run_at_once(self):
+        h = _Harness().install(self)
+        h.events = [ev('response.failed', response={'error': {'message': 'the harness died'}})]
+        out = OMNI.drive(cfg_for(), 'brief')
+        self.assertEqual('failed', out['terminal'])
+        self.assertIn('harness died', out['error'])
+
+    def test_a_stop_request_is_honoured_while_waiting_between_turns(self):
+        h = _Harness().install(self)
+        h.events = [ev('response.completed')]
+        out = OMNI.drive(cfg_for(), 'brief', should_stop=lambda: True)
+        self.assertEqual('failed', out['terminal'])
+        self.assertIn('stopped', out['error'])
+        self.assertIn('interrupt', [c[0] for c in h.last_client.sessions.calls])
+
+    def test_the_session_statuses_that_mean_still_working_are_the_servers_own(self):
+        """Omnigent emits launching / running / waiting / idle / failed, and
+        `waiting` is precisely "the parent turn is parked on sub-agent work"."""
+        for live in ('launching', 'running', 'waiting'):
+            self.assertIn(live, OMNI.SESSION_LIVE, live)
+        self.assertIn('idle', OMNI.SESSION_DONE)
+        self.assertNotIn('waiting', OMNI.SESSION_DONE)
+
+
 # ── the sequence ────────────────────────────────────────────────────────
 class SessionTests(unittest.TestCase):
     def test_the_documented_order_is_followed(self):
         h = _Harness().install(self)
         h.events = [ev('session.created'), ev('response.completed')]
         OMNI.drive(cfg_for(), 'brief', title='BioSense: a question')
+        # The documented order, then the polls that ask the server whether the
+        # session has really finished. Those polls are the fix for a run ending
+        # at the orchestrator's first turn, so they belong in the sequence.
         names = [c[0] for c in h.last_client.sessions.calls]
         self.assertEqual(['resolve_agent', 'resolve_online_runner', 'create', 'bind',
-                          'post_event', 'stream', 'get'], names)
+                          'post_event', 'stream'], names[:6])
+        self.assertEqual({'get'}, set(names[6:]), names)
 
     def test_the_session_records_what_a_run_needs_to_be_found_again(self):
         h = _Harness().install(self)

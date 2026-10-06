@@ -122,6 +122,27 @@ A small global indicator sits in the header of every page:
 
 ## Completion is not a turn ending
 
+**This was the bug that made real runs useless.** The orchestrator is an *async*
+agent, and its own instructions say:
+
+> Dispatch with `sys_session_send` … **End your turn after dispatching; the inbox
+> wakes you.**
+
+So `response.completed` arrives within seconds of a run starting — the end of
+turn one, before any science has happened. BioSense stopped watching at that
+event and called the run finished, which is why a real run came back in thirty
+seconds having written nothing and showing no hypothesis. The agents were never
+given the chance to answer.
+
+A turn ending is now recorded and watched, not treated as the end. The session is
+finished when the **server** says so: Omnigent's session statuses are
+`launching` / `running` / `waiting` / `idle` / `failed`, and `waiting` means
+precisely "the parent turn is parked on sub-agent work". BioSense keeps the tail
+open (reopening it when the server closes it), and ends the run when the session
+reports a non-live status, confirmed more than once, with nothing arriving in
+between — or when it fails, is stopped, or hits its deadline.
+
+
 During a real Codex run the parent turn completed while child agents were still
 writing. A run marked COMPLETE at that moment shows a result missing the files
 that were still landing. So a run reports:
@@ -166,6 +187,13 @@ it, and the run list holds your own work and nobody else's. See
   watch it. There is no queue: the refusal is immediate and explicit.
 * **Run history is a directory scan**, capped at 200 records. It is right for a
   working instance and is not a database.
+* **The sandbox must permit the run directory.** The agent bundle allows
+  `./runs` and `./data/runs`, which covers a laptop and the hosted image. A
+  layout that puts the runs directory anywhere else makes every agent finish
+  having written nothing, which looks exactly like a model that gave up.
+* **Most agents run with `allow_network: false`** — only the literature agent has
+  network. A real run therefore cannot search public dataset repositories, which
+  limits what the bioinformatics agent can find.
 * **A restarted process cannot re-attach to a live Omnigent session.** Its
   record says `INTERRUPTED`, which is the honest answer; it does not resume.
 * **An anonymous workspace is a cookie.** Clearing it loses the link to those

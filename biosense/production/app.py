@@ -133,6 +133,7 @@ STOP_MESSAGES = {
 # sits in FINALIZING until the directory stops changing and the ingestion is
 # done. QUIET is how long nothing may change before the artifacts are called
 # settled; MAX is how long that is waited for at all.
+ARTIFACT_SCAN_S = 2.0        # how often a run looks at its own directory
 ARTIFACT_QUIET_S = 6.0
 ARTIFACT_SETTLE_MAX_S = 150.0
 # How long a readiness probe is believed before the server asks the runtime
@@ -178,6 +179,7 @@ class Run:
         self.started_at = time.time()
         self.finished_at = None
         self.activity = ACT.Activity(started_at=self.started_at)
+        self._scanned_at = 0.0
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
 
@@ -262,6 +264,7 @@ class DiscoveryRun:
         self.started_at = time.time()
         self.finished_at = None
         self.activity = ACT.Activity(started_at=self.started_at)
+        self._scanned_at = 0.0
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
 
@@ -283,8 +286,21 @@ class DiscoveryRun:
         # Journalled outside the lock: a slow disk must not stall the stream.
         if row is not None:
             RS.append_event(self.out_dir, row)
+        self.scan_artifacts()
         if new_stage:
             self.persist()
+
+    def scan_artifacts(self, *, force=False):
+        """Notice the files the agents have written. Throttled; never fatal."""
+        now = time.time()
+        if not force and now - self._scanned_at < ARTIFACT_SCAN_S:
+            return
+        self._scanned_at = now
+        try:
+            names = [p.name for p in self.out_dir.iterdir() if p.is_file()]
+        except OSError:
+            return
+        self.activity.observe_files(names, at=now)
 
     def finish(self, status, result=None, error=None, reason=None, next_step=None):
         with self.cv:
@@ -298,12 +314,14 @@ class DiscoveryRun:
         self.persist()
 
     def persist(self):
+        """Write the snapshot beside the artifacts, so a reload can find it."""
         """Write the snapshot beside the artifacts, so a reload can find it.
 
         Events are already journalled line by line; this is the header. Failure
         is survivable and silent on purpose: losing recoverability is bad, and
         killing a paid-for run because a disk was full would be worse.
         """
+        self.scan_artifacts(force=True)
         snap = self.snapshot(after=-1)
         snap['events'] = []            # the journal holds those
         RS.write_state(self.out_dir, snap)
@@ -346,12 +364,20 @@ class DiscoveryRun:
         else:
             self.persist()
 
+    def _terminal(self):
+        """How this run ended, or None while it is still going.
+
+        One definition, used by both the tick list and the count beside it —
+        they disagreed before, so a finished run showed a ticked stage next to
+        "0 / 10".
+        """
+        return ('complete' if self.status == 'done'
+                else 'failed' if self.status in ('error', 'refused', 'unavailable',
+                                                 'stopped', 'interrupted')
+                else None)
+
     def progress(self):
-        terminal = ('complete' if self.status == 'done'
-                    else 'failed' if self.status in ('error', 'refused', 'unavailable',
-                                                     'stopped', 'interrupted')
-                    else None)
-        return ST.progress(self.stages_reached, terminal=terminal)
+        return ST.progress(self.stages_reached, terminal=self._terminal())
 
     def snapshot(self, after=-1, *, include_result=True):
         with self.lock:
@@ -381,7 +407,8 @@ class DiscoveryRun:
                 'updated_at': time.time(),
                 'last_activity_at': self.activity.last_at,
                 'activity': self.activity.snapshot(),
-                'stage_counts': ST.stage_counts(self.stages_reached),
+                'stage_counts': ST.stage_counts(self.stages_reached,
+                                                terminal=self._terminal()),
                 'deadline_in_s': (round(self.deadline - time.time(), 1)
                                   if self.deadline and not self.finished_at else None),
                 'cancellable': self.finished_at is None,
@@ -518,6 +545,13 @@ class DiscoveryRegistry:
                 self._settle(run)
                 final = DRUN.finish(run.request, run.out_dir, runtime_mode=run.runtime_mode,
                                     session=run.session, projects_dir=run.projects_dir)
+                # A real run that wrote nothing is the most confusing outcome
+                # this product can produce. It says what happened instead of
+                # leaving an empty hypothesis panel.
+                final['diagnosis'] = run.activity.diagnose(
+                    artifacts_ingested=(final.get('bundle') or {}).get('artifacts_ingested', 0),
+                    hypotheses=len((final.get('bundle') or {}).get('hypotheses') or []),
+                    is_real=True)
                 if run.cancelled:
                     # Stopped, not finished. Whatever the agents wrote is kept
                     # and reported as what it is; no partial run is a result.

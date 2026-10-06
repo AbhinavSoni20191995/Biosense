@@ -28,7 +28,14 @@ os_env:
   sandbox:
     type: auto
     write_paths:
+      # Where the runs directory is, in every layout BioSense uses. The hosted
+      # image mounts its volume at ./data, so the run directory is ./data/runs;
+      # a laptop and the CLI use ./runs. The agents are given the exact path for
+      # the run they are working on, and the sandbox has to permit it — a run
+      # whose artifacts the sandbox refuses finishes having written nothing,
+      # which looks exactly like a model that gave up.
       - ./runs
+      - ./data/runs
     cwd_allow_hidden:
       - .venv
     allow_network: false

@@ -16,7 +16,11 @@ os_env:
   sandbox:
     type: auto
     write_paths:
+      # ./runs on a laptop, ./data/runs in the hosted image, where the volume is
+      # mounted at ./data. A sandbox that refuses the run directory makes an
+      # agent finish having written nothing.
       - ./runs
+      - ./data/runs
     cwd_allow_hidden:
       - .venv
     allow_network: false

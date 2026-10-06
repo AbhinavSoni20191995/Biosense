@@ -841,8 +841,33 @@ function renderHypothesis(selected, all) {
   const host = $('#hypothesis'); if (!host) return;
   host.textContent = '';
   if (!selected) {
-    /* "No hypothesis" with no reason is indistinguishable from a fault. When one
-       is withheld, the reason is the output. */
+    /* "No hypothesis" with no reason is indistinguishable from a fault. Two
+       different things can be true here and they need different words: the
+       science withheld one, or the run never produced anything to form one
+       from. */
+    const diag = state.result && state.result.diagnosis;
+    if (diag) {
+      const box = el('div', 'diag');
+      box.append(el('h4', null, diag.headline));
+      box.append(el('p', null, diag.why));
+      const facts = [];
+      if (diag.turns) facts.push(`${diag.turns} orchestrator turn(s)`);
+      facts.push((diag.agents_dispatched || []).length
+        ? `agents asked: ${diag.agents_dispatched.join(', ')}`
+        : 'no specialist agent was asked');
+      facts.push((diag.files_written || []).length
+        ? `files written: ${diag.files_written.join(', ')}`
+        : 'no file written to the run directory');
+      box.append(el('p', 'dim mono', facts.join(' · ')));
+      (diag.limitations || []).forEach(l => box.append(el('p', 'caveat', l)));
+      if ((diag.next_steps || []).length) {
+        const ul = el('ul', 'tight');
+        diag.next_steps.forEach(n => ul.append(el('li', null, n)));
+        box.append(el('div', 'lab', 'What to check'), ul);
+      }
+      host.append(box);
+      return;
+    }
     const why = (state.result && state.result.bundle
       && state.result.bundle.hypothesis_withheld_reason)
       || (state.result && state.result.benchmark

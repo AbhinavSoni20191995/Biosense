@@ -15,7 +15,8 @@ What it tracks:
     timeline     a short, readable history of what happened and when
     limitations  tool refusals and analysis limitations, kept where a reader can
                  see them instead of disappearing into a log
-    artifacts    which canonical files the run has produced so far
+    artifacts    which files the agents have actually written, read from the
+                 run directory — never guessed from the text of a tool call
     last_at      when anything last happened, which is what tells somebody
                  watching that a quiet run is alive rather than wedged
 
@@ -55,9 +56,10 @@ QUEUED, RUNNING, COMPLETE, FAILED, CANCELLED = (
 # A dispatch names its specialist in the arguments; the same names the stage map
 # already keys on, so the two cannot drift.
 AGENT_RE = {name: re.compile(rf'\b{name}\b', re.I) for name in AGENTS if name != 'orchestrator'}
-ARTIFACT_RE = re.compile(
-    r'\b(analysis_plan|analysis_result|quantified_hypothesis|research_context|'
-    r'protocol_summary|benchmark|reasoning_report|summary)\.(json|md|html)\b')
+# Files BioSense writes itself. An agent's output is everything else, and the
+# distinction is what tells "the agents produced nothing" from "a run happened".
+OURS = ('discovery_request.json', 'brief.md', 'app_run.json', 'events.jsonl',
+        'protocol_summary.json', 'protocol_summary.md')
 # What a refusal looks like when a tool declines rather than fails. These are
 # scientific content — "the metadata join is unsupported" is a finding about the
 # data — so they are surfaced, not swallowed.
@@ -90,6 +92,7 @@ class Activity:
         self.timeline = []
         self.limitations = []
         self.artifacts = []
+        self.turns = 0              # orchestrator turns that have ended
         self._pending = []          # agents dispatched and not yet returned, newest last
         self._seen_artifacts = set()
 
@@ -108,6 +111,8 @@ class Activity:
         self._touch('orchestrator', at)
         if kind == 'accepted':
             self._note(at, 'started', event.get('simple') or 'Run started.')
+        if event.get('omnigent_type') == 'turn.completed':
+            self.turns += 1
         if kind == 'tool':
             self._on_tool(event, at, text)
         elif kind == 'tool_result':
@@ -121,7 +126,6 @@ class Activity:
         stage = event.get('stage')
         if stage and stage not in ST.TERMINAL:
             self._note(at, 'stage', ST.STAGE_LABEL.get(stage, stage), stage=stage)
-        self._artifacts(at, text)
 
     def _on_tool(self, event, at, text):
         tool = event.get('tool') or ''
@@ -208,14 +212,22 @@ class Activity:
         del self.limitations[:-MAX_LIMITATIONS]
         self._note(at, 'limitation', text)
 
-    def _artifacts(self, at, text):
-        for m in ARTIFACT_RE.finditer(text or ''):
-            name = m.group(0)
-            if name in self._seen_artifacts:
+    def observe_files(self, names, at=None):
+        """Record the files that now exist in the run directory.
+
+        Artifacts used to be detected by matching filenames in the text of tool
+        calls, which reported `analysis_plan.json written` because the brief
+        *asks* for a file by that name — the page showed artifacts a run had
+        never produced. A file is an artifact when it is on disk.
+        """
+        at = time.time() if at is None else at
+        for name in sorted(names or ()):
+            if name in self._seen_artifacts or name in OURS:
                 continue
             self._seen_artifacts.add(name)
             self.artifacts.append({'name': name, 'at': at,
-                                   'rel_s': round(at - self.started_at, 1)})
+                                   'rel_s': round(at - self.started_at, 1),
+                                   'by': 'agents'})
             del self.artifacts[:-MAX_ARTIFACTS]
             self._note(at, 'artifact', f'{name} written')
 
@@ -231,6 +243,51 @@ class Activity:
             'idle_s': round(max(0.0, now - self.last_at), 1),
             'active_agents': [AGENT_LABEL[n] for n in AGENTS
                               if self.agents[n]['status'] == RUNNING and n != 'orchestrator'],
+        }
+
+    def diagnose(self, *, artifacts_ingested=0, hypotheses=0, is_real=True):
+        """Why a run produced nothing, in facts rather than an empty panel.
+
+        A real run that writes no artifact is the single most confusing outcome
+        this product has: the page said "no hypothesis", which reads as a
+        scientific conclusion when it is usually a mechanical one. This says what
+        the agents actually did, and leaves the reader able to tell "the model
+        gave up" from "nothing was ever asked of a specialist".
+        """
+        if not is_real or hypotheses or artifacts_ingested > 1:
+            return None
+        dispatched = [AGENT_LABEL[n] for n in AGENTS
+                      if n != 'orchestrator' and self.agents[n]['status'] != QUEUED]
+        wrote = [a['name'] for a in self.artifacts]
+        if not dispatched:
+            headline = ('The orchestrator ended without asking any specialist agent for '
+                        'anything.')
+            why = ('No dispatch to the literature, bioinformatics or analysis agents was '
+                   'observed, so no evidence was gathered and there was nothing to form a '
+                   'hypothesis from.')
+        elif not wrote:
+            headline = (f'{", ".join(dispatched)} ran, and no artifact was written to the '
+                        f'run directory.')
+            why = ('The specialists were asked and produced nothing BioSense could read. A '
+                   'file written outside the run directory is invisible here, and so is one '
+                   'that failed its contract.')
+        else:
+            headline = 'The agents wrote files, and none of them carried a hypothesis.'
+            why = f'Files written: {", ".join(wrote)}.'
+        return {
+            'headline': headline,
+            'why': why,
+            'turns': self.turns,
+            'agents_dispatched': dispatched,
+            'files_written': wrote,
+            'limitations': [limit['text'] for limit in self.limitations[-5:]],
+            'next_steps': [
+                'Check the run directory: the agents are given one canonical path, and a file '
+                'written anywhere else is not read.',
+                'Check that the runtime has model credentials and that its sandbox permits '
+                'writing to the run directory.',
+                'Read the Activity timeline: it shows every tool call that was observed.',
+            ],
         }
 
     @classmethod
