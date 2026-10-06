@@ -215,11 +215,13 @@ pre .k { color: var(--orch); } pre .s { color: var(--lab); } pre .c { color: var
     <div class="brand"><h1>Agent Tracker</h1><span class="loopid" id="loopid">loop-cart-20260404-0930</span></div>
   <nav class="modes" aria-label="Section">
     <a href="console.html">AI Discovery</a>
-    <a href="loop.html">Quick loop</a>
+    <a href="runs.html">Runs</a>
     <a href="simulator.html">Simulator</a>
     <a href="data.html">Data</a>
-    <a href="index.html" aria-current="page">Runs</a>
+    <a href="loop.html">Quick loop</a>
+    <a href="index.html" aria-current="page">Loop tracker</a>
   </nav>
+  <span id="runbeacon" hidden></span>
     <span class="pill run live" id="statuspill"><span class="led"></span><span id="statustext">idle</span></span>
     <span class="pill warn" id="autonomypill">checkpoints</span>
     <span class="pill idle" id="iterpill">iteration 0</span>
@@ -834,3 +836,5 @@ LIVE.start().then(ok => {
   if (ok) el("graphhint").textContent = "live";
 });
 </script>
+<script src="runstate.js"></script>
+<script>mountRunBeacon();</script>

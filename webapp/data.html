@@ -61,11 +61,13 @@ body[data-view="simple"] .tech{display:none}
   </div>
   <nav class="modes" aria-label="Section">
     <a href="console.html">AI Discovery</a>
-    <a href="loop.html">Quick loop</a>
+    <a href="runs.html">Runs</a>
     <a href="simulator.html">Simulator</a>
     <a href="data.html" aria-current="page">Data</a>
-    <a href="index.html">Runs</a>
+    <a href="loop.html">Quick loop</a>
+    <a href="index.html">Loop tracker</a>
   </nav>
+  <span id="runbeacon" hidden></span>
   <div class="spacer"></div>
   <button class="btn" id="viewBtn" aria-pressed="false">Technical view</button>
   <button class="btn" id="theme" title="Switch light / dark">Theme</button>
@@ -234,5 +236,7 @@ async function projects() {
 
 datasets(); tools(); projects();
 </script>
+<script src="runstate.js"></script>
+<script>mountRunBeacon();</script>
 </body>
 </html>

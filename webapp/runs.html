@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BioSense · Runs</title>
+<meta name="description" content="Every BioSense discovery run: what is working now, what finished, and what each one found. Runs are background jobs on the server — closing this page does not stop them.">
+<link rel="icon" type="image/png" href="assets/biosense-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="brand.css">
+<style>
+.runs{display:flex;flex-direction:column;gap:14px;margin-top:4px}
+.grp{margin-top:6px}
+.grp > h3{font-size:13px;font-family:var(--mono);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);margin:18px 0 10px;display:flex;align-items:center;gap:10px}
+.grp > h3 .n{font-weight:700;color:var(--ink-2)}
+.run{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 18px;padding:14px 16px;
+  border:1px solid var(--line);border-radius:13px;background:var(--glass-2);cursor:pointer}
+.run:hover{border-color:color-mix(in srgb,var(--brand) 45%,var(--line))}
+.run .obj{font-size:15px;font-weight:600;line-height:1.4}
+.run .meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12.5px;
+  color:var(--ink-3);font-family:var(--mono)}
+.run .right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;white-space:nowrap}
+.run .hyp{grid-column:1/-1;font-size:13.5px;color:var(--ink-2);margin-top:2px}
+.empty{color:var(--ink-3);font-size:14px;padding:18px 0}
+.detail{margin-top:18px}
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"><span></span><span></span></div>
+<div class="wrap">
+
+<header class="bar">
+  <div class="brand">
+    <img src="assets/biosense-mark.png" alt="">
+    <div>
+      <div class="nm">BioSense<span>AI</span></div>
+      <div class="sub">Agentic orchestration</div>
+    </div>
+  </div>
+  <nav class="modes" aria-label="Section">
+    <a href="console.html">AI Discovery</a>
+    <a href="runs.html" aria-current="page">Runs</a>
+    <a href="simulator.html">Simulator</a>
+    <a href="data.html">Data</a>
+    <a href="loop.html">Quick loop</a>
+    <a href="index.html">Loop tracker</a>
+  </nav>
+  <div class="spacer"></div>
+  <span id="runbeacon" hidden></span>
+  <span id="identity" class="row" style="margin:0;gap:8px"></span>
+  <button class="btn" id="theme" title="Switch light / dark">Theme</button>
+</header>
+
+<section class="glass card">
+  <div class="head">
+    <h3>Runs</h3>
+    <span class="hint" id="scope"></span>
+  </div>
+  <p class="caveat">Every discovery run you have started. A run is a background job on the
+    server: closing this page, switching project or losing the network observes less of it —
+    none of them stops it. Only <b>Stop run</b> does.</p>
+  <div class="row" style="margin-top:12px">
+    <select id="projectFilter" style="max-width:22rem"></select>
+    <span class="dim" id="counts"></span>
+  </div>
+  <div class="runs" id="runs"><p class="empty">Loading…</p></div>
+</section>
+
+<section class="glass card detail" id="detailCard" hidden>
+  <div class="head">
+    <h3 id="detailTitle">Run</h3>
+    <span class="hint" id="detailHint"></span>
+  </div>
+  <div id="detail"></div>
+</section>
+
+<footer class="foot">
+  <span>BioSense · runs are durable server-side jobs</span>
+</footer>
+</div>
+<script src="runstate.js"></script>
+<script src="runview.js"></script>
+<script src="runs.js"></script>
+</body>
+</html>

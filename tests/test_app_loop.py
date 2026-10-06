@@ -696,7 +696,8 @@ class AppServerTests(unittest.TestCase):
     def test_the_four_way_nav_is_the_same_on_every_page(self):
         """A nav that differs per page is how a section quietly becomes
         unreachable from the one place someone looks for it."""
-        want = ['console.html', 'loop.html', 'simulator.html', 'data.html', 'index.html']
+        want = ['console.html', 'runs.html', 'loop.html', 'simulator.html', 'data.html',
+                'index.html']
         for page in want:
             code, body = self._get('/' + page)
             self.assertEqual(200, code, page)
@@ -704,6 +705,15 @@ class AppServerTests(unittest.TestCase):
             for href in want:
                 self.assertIn(f'href="{href}"', text, f'{page} does not link to {href}')
             self.assertEqual(1, text.count('aria-current="page"'), page)
+
+    def test_every_page_carries_the_global_run_indicator(self):
+        """AI working somewhere else in the application is the one thing a
+        person must not have to go looking for."""
+        for page in ('console.html', 'runs.html', 'loop.html', 'simulator.html',
+                     'data.html', 'index.html'):
+            text = self._get('/' + page)[1].decode()
+            self.assertIn('id="runbeacon"', text, page)
+            self.assertIn('runstate.js', text, page)
 
     def test_the_dataset_endpoint_says_it_lists_public_data_only(self):
         code, body = self._get('/api/datasets')

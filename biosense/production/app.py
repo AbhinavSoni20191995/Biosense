@@ -80,6 +80,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .. import contracts as K
 from .. import glossary as GL
 from .. import workspace as WS
+from . import activity as ACT
 from . import authz as AZ
 from . import budget as BU
 from . import discovery as DISC
@@ -125,6 +126,15 @@ STOP_MESSAGES = {
                  'was stopped. Nothing here is a finished answer.',
     'shutdown': 'The server shut down while this run was in flight.',
 }
+# After the agent stream ends, BioSense is still working: discovering the files
+# the agents wrote, validating them, ingesting them and building the payload the
+# page renders. A parent turn completing is not the run completing — during a
+# recorded Codex run child agents kept writing for a further minute — so the run
+# sits in FINALIZING until the directory stops changing and the ingestion is
+# done. QUIET is how long nothing may change before the artifacts are called
+# settled; MAX is how long that is waited for at all.
+ARTIFACT_QUIET_S = 6.0
+ARTIFACT_SETTLE_MAX_S = 150.0
 # How long a readiness probe is believed before the server asks the runtime
 # again. A health page that re-probes on every request becomes its own load.
 READY_CACHE_S = 10
@@ -137,6 +147,18 @@ TRUTH_FOR = {
     'ipsc_tcell': K.ROOT / 'examples' / 'ipsc_tcell' / 'standin_truth.synthetic.json',
     'tcell': K.ROOT / 'examples' / 'cart' / 'standin_truth.synthetic.json',
 }
+
+
+def _slug(name):
+    """A project id from a name, so nobody has to invent one to get started."""
+    import unicodedata
+    raw = unicodedata.normalize('NFKD', (name or '')).encode('ascii', 'ignore').decode()
+    out = re.sub(r'[^a-z0-9]+', '_', raw.lower()).strip('_')
+    out = re.sub(r'^[^a-z]+', '', out)[:64]
+    if len(out) < 3:
+        raise K.ContractError(
+            'a project needs a name with at least three letters, or an explicit project_id')
+    return out
 
 
 class Run:
@@ -155,6 +177,7 @@ class Run:
         self.error = None
         self.started_at = time.time()
         self.finished_at = None
+        self.activity = ACT.Activity(started_at=self.started_at)
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
 
@@ -206,7 +229,7 @@ class DiscoveryRun:
 
     def __init__(self, run_id, request, out_dir, runtime_mode, *, runtime_label=None,
                  deadline=None, owner=None, credential_mode='platform_demo',
-                 started_by_admin=False):
+                 started_by_admin=False, projects_dir=None):
         self.id = run_id
         self.request = request
         self.out_dir = Path(out_dir)
@@ -218,6 +241,10 @@ class DiscoveryRun:
         self.owner = owner
         self.credential_mode = credential_mode
         self.started_by_admin = bool(started_by_admin)
+        # Where this run's project profile lives. A project somebody created is
+        # in their workspace, not in the committed set, and a run that cannot
+        # find its own project refuses for a reason that reads like a fault.
+        self.projects_dir = projects_dir
         # The badge as this deployment says it: a hosted service's loopback
         # runtime is ONLINE to the person reading it, not LOCAL.
         self.runtime_label = runtime_label or RT.LABELS[runtime_mode]
@@ -234,6 +261,7 @@ class DiscoveryRun:
         self.benchmark = None
         self.started_at = time.time()
         self.finished_at = None
+        self.activity = ACT.Activity(started_at=self.started_at)
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
 
@@ -243,10 +271,14 @@ class DiscoveryRun:
             if event.get('stage'):
                 self.stages_reached.add(event['stage'])
             row = None
+            now = time.time()
             if len(self.events) < MAX_EVENTS_PER_RUN:
-                row = dict(event, seq=len(self.events),
-                           t=round(time.time() - self.started_at, 2))
+                # Both clocks: `t` for a reader ("4.2s in"), `at` so a journal
+                # replayed after a restart rebuilds the same activity state.
+                row = dict(event, seq=len(self.events), at=now,
+                           t=round(now - self.started_at, 2))
                 self.events.append(row)
+                self.activity.observe(row)
             self.cv.notify_all()
         # Journalled outside the lock: a slow disk must not stall the stream.
         if row is not None:
@@ -300,6 +332,20 @@ class DiscoveryRun:
             return True
         return False
 
+    @property
+    def is_live(self):
+        return self.finished_at is None
+
+    def set_status(self, status, *, note=None):
+        """Move a run to a non-terminal status and say so in its stream."""
+        with self.cv:
+            self.status = status
+            self.cv.notify_all()
+        if note:
+            self.add({'kind': 'note', 'stage': None, 'simple': note, 'technical': status})
+        else:
+            self.persist()
+
     def progress(self):
         terminal = ('complete' if self.status == 'done'
                     else 'failed' if self.status in ('error', 'refused', 'unavailable',
@@ -322,6 +368,8 @@ class DiscoveryRun:
                 'events': [e for e in self.events if e['seq'] > after],
                 'event_count': len(self.events),
                 'omnigent_session_id': (self.session or {}).get('omnigent_session_id'),
+                'engine': (self.session or {}).get('harness'),
+                'model': (self.session or {}).get('llm_model'),
                 'owner': self.owner,
                 'credential_mode': self.credential_mode,
                 'started_by_admin': self.started_by_admin,
@@ -330,6 +378,10 @@ class DiscoveryRun:
                 'result': self.result if include_result else None,
                 'elapsed_s': round((self.finished_at or time.time()) - self.started_at, 1),
                 'started_at': self.started_at,
+                'updated_at': time.time(),
+                'last_activity_at': self.activity.last_at,
+                'activity': self.activity.snapshot(),
+                'stage_counts': ST.stage_counts(self.stages_reached),
                 'deadline_in_s': (round(self.deadline - time.time(), 1)
                                   if self.deadline and not self.finished_at else None),
                 'cancellable': self.finished_at is None,
@@ -366,7 +418,7 @@ class DiscoveryRegistry:
         while len(self.order) > MAX_RUNS_TRACKED:
             self.runs.pop(self.order.pop(0), None)
 
-    def start(self, request, *, identity=None, client=None):
+    def start(self, request, *, identity=None, client=None, projects_dir=None):
         mode = request['runtime_mode']
         target = self.cfg.for_mode(mode)
         if mode not in self.cfg.allowed:
@@ -388,7 +440,9 @@ class DiscoveryRegistry:
             if target.is_real and self.active_real >= MAX_CONCURRENT_REAL:
                 raise K.ContractError(
                     f'a real-AI discovery run is already in flight and the limit is '
-                    f'{MAX_CONCURRENT_REAL}. Wait for it, or watch it in the run list.')
+                    f'{MAX_CONCURRENT_REAL}. That run is not affected by this one being '
+                    f'refused: it keeps going, and it is in your run list. Start this one '
+                    f'when it finishes, or stop it first.')
             if not target.is_real and self.active_synthetic >= MAX_CONCURRENT:
                 raise K.ContractError(
                     f'{self.active_synthetic} runs are already going and the limit is '
@@ -403,7 +457,8 @@ class DiscoveryRegistry:
                                          if target.is_real else None),
                                owner=getattr(identity, 'owner', None),
                                credential_mode=credential_mode,
-                               started_by_admin=(role == AZ.ROLE_ADMIN))
+                               started_by_admin=(role == AZ.ROLE_ADMIN),
+                               projects_dir=projects_dir)
             self.runs[rid] = run
             self.order.append(rid)
             if target.is_real:
@@ -416,6 +471,33 @@ class DiscoveryRegistry:
         t.start()
         return run
 
+    def _settle(self, run):
+        """Wait for the run directory to stop changing, within a bound.
+
+        The agent stream ending is not the work ending: a parent turn completes
+        while child agents are still writing, and a run marked COMPLETE at that
+        moment shows a result that is missing the files that were still landing.
+        So the run reports FINALIZING and this waits for the directory to go
+        quiet — bounded, because a wait with no end is its own failure.
+        """
+        if not run.out_dir.is_dir():
+            return
+        deadline = time.time() + ARTIFACT_SETTLE_MAX_S
+        last_change, signature = time.time(), None
+        while time.time() < deadline:
+            try:
+                now_sig = sorted((p.name, p.stat().st_mtime, p.stat().st_size)
+                                 for p in run.out_dir.iterdir() if p.is_file())
+            except OSError:
+                return
+            if now_sig != signature:
+                signature, last_change = now_sig, time.time()
+            elif time.time() - last_change >= ARTIFACT_QUIET_S:
+                return
+            if run.cancelled:
+                return
+            time.sleep(0.75)
+
     def _work(self, run, target):
         try:
             run.status = 'running'
@@ -423,11 +505,19 @@ class DiscoveryRegistry:
                 res = DRUN.run_real(target, run.request, run.out_dir, on_event=run.add,
                                     on_session=lambda sess: setattr(run, 'session',
                                                                     sess.public()),
-                                    should_stop=run.should_stop)
+                                    should_stop=run.should_stop,
+                                    projects_dir=run.projects_dir)
                 summary = res['omnigent']
                 run.session = summary['session']
+                # AI execution is over; BioSense's is not. Everything from here
+                # — settling, discovering, validating, ingesting, assembling —
+                # is reported as FINALIZING RESULTS rather than as COMPLETE.
+                run.set_status('finalizing',
+                               note='The agents have finished. BioSense is collecting and '
+                                    'validating what they wrote.')
+                self._settle(run)
                 final = DRUN.finish(run.request, run.out_dir, runtime_mode=run.runtime_mode,
-                                    session=run.session)
+                                    session=run.session, projects_dir=run.projects_dir)
                 if run.cancelled:
                     # Stopped, not finished. Whatever the agents wrote is kept
                     # and reported as what it is; no partial run is a result.
@@ -451,10 +541,13 @@ class DiscoveryRegistry:
                     run.finish('error', final, err, reason='run_failed')
                     return
             else:
-                res = DRUN.run_synthetic(run.request, run.out_dir, on_event=run.add)
+                res = DRUN.run_synthetic(run.request, run.out_dir, on_event=run.add,
+                                         projects_dir=run.projects_dir)
                 run.benchmark = res['benchmark']
+                run.set_status('finalizing')
                 final = DRUN.finish(run.request, run.out_dir, runtime_mode=run.runtime_mode,
-                                    benchmark=res['benchmark'])
+                                    benchmark=res['benchmark'],
+                                    projects_dir=run.projects_dir)
             run.finish('done', final)
         except RT.RuntimeUnavailable as e:
             # Never a fallback. The run ends saying which of the seven things is
@@ -530,6 +623,61 @@ class DiscoveryRegistry:
             from . import omnigent_runtime as OMNI
             OMNI.interrupt(self.cfg.for_mode(run.runtime_mode), sess)
         return run
+
+    def listing(self, *, owner=None, project_id=None, limit=200):
+        """Every run this caller may see: the live ones and the durable ones.
+
+        One list, assembled once, so the Discovery page and the Runs page cannot
+        disagree about what exists or what state it is in. A run held in memory
+        wins over its own record on disk, because the record is written as it
+        goes and the object is current.
+        """
+        with self.lock:
+            live = [self.runs[r] for r in reversed(self.order) if r in self.runs]
+        mine = [r for r in live
+                if (owner is None or r.owner is None or r.owner == owner)
+                and (not project_id or r.request.get('project_id') == project_id)]
+        rows, seen = [], set()
+        for run in mine:
+            snap = run.snapshot(after=10 ** 9, include_result=False)
+            row = RS.summarise(dict(snap, project_id=run.request.get('project_id'),
+                                    objective=run.request.get('objective'),
+                                    run_dir=run.out_dir.name,
+                                    activity=snap.get('activity')),
+                               live_ids={run.id})
+            row['recovered'] = False
+            found = ((run.result or {}).get('bundle') or {}).get('hypotheses') or []
+            row['hypothesis'] = found[0].get('statement') if found else None
+            row['hypothesis_count'] = len(found)
+            row['has_protocol'] = bool((run.result or {}).get('protocol'))
+            rows.append(row)
+            seen.add(run.id)
+        live_ids = {r.id for r in live}
+        for row in RS.listing(self.runs_dir, owner=owner, project_id=project_id,
+                              live_ids=live_ids, limit=limit):
+            if row['run_id'] not in seen:
+                rows.append(row)
+        rows.sort(key=lambda r: r.get('started_at') or 0, reverse=True)
+        return rows[:limit]
+
+    def project_counts(self, *, owner=None):
+        """Active and total runs per project, for the selector and the detail panel.
+
+        So switching project can say what is still working in the one being left
+        behind — which is the question somebody is actually asking when they
+        hesitate before switching.
+        """
+        out = {}
+        for row in self.listing(owner=owner):
+            pid = row.get('project_id') or '—'
+            slot = out.setdefault(pid, {'active': 0, 'total': 0, 'last_at': None})
+            slot['total'] += 1
+            if row['group'] == 'active':
+                slot['active'] += 1
+            started = row.get('started_at') or 0
+            if started and (slot['last_at'] or 0) < started:
+                slot['last_at'] = started
+        return out
 
     def recent(self, *, owner=None):
         """Runs this caller may see. Never everybody's.
@@ -919,8 +1067,9 @@ class Handler(BaseHTTPRequestHandler):
     def _start_discovery(self, body):
         req = self._discovery_request(body)
         try:
-            run = self.discovery.start(req, identity=self._identity(),
-                                       client=self._client())
+            identity = self._identity()
+            run = self.discovery.start(req, identity=identity, client=self._client(),
+                                       projects_dir=self._projects_dir(identity))
         except RT.RuntimeUnavailable as e:
             # 503, not 500: the request was fine, the runtime is not there. The
             # browser shows the reason and the command that fixes it, and it
@@ -980,16 +1129,38 @@ class Handler(BaseHTTPRequestHandler):
         req = DISC.from_benchmark_config(
             cfg, runtime_mode=body.get('runtime_mode') or 'synthetic_demo')
         try:
-            run = self.discovery.start(req, identity=self._identity(),
-                                       client=self._client())
+            identity = self._identity()
+            run = self.discovery.start(req, identity=identity, client=self._client(),
+                                       projects_dir=self._projects_dir(identity))
         except RT.RuntimeUnavailable as e:
             return self._send(503, {'error': str(e), 'refused': True, 'reason': e.reason,
                                     'headline': e.headline, 'next_step': e.next_step})
         return self._send(202, run.snapshot())
 
     def _create_project(self, body):
+        """Create a durable project, and say which one is now selected.
+
+        Three ways in, one outcome: a validated ProjectProfile written into this
+        account's workspace, which survives a refresh, a restart and a redeploy
+        because it is a file and not a page's state.
+        """
         identity = self._identity()
         template = (body.get('template_of') or '').strip()
+        if body.get('quick') or (not template and not body.get('stages')):
+            doc = PB.quick_build(
+                project_id=body.get('project_id') or _slug(body.get('name')),
+                name=body.get('name'), species=body.get('species'),
+                starting_cell=body.get('starting_cell'), target_cell=body.get('target_cell'),
+                cell_state=body.get('cell_state'),
+                process_context=body.get('process_context'),
+                goal=body.get('goal'), description=body.get('description'),
+                parameters=body.get('parameters'))
+            PB.save(identity, doc, overwrite=bool(body.get('overwrite')))
+            from .. import projects as PJ
+            return self._send(201, {'project': PJ.Project(doc).summary(),
+                                    'project_id': doc['project_id'],
+                                    'selected': doc['project_id'],
+                                    'owner': self._identity_payload(identity)})
         if template:
             doc = PB.from_template(template, project_id=body.get('project_id'),
                                    name=body.get('name'),
@@ -1007,6 +1178,8 @@ class Handler(BaseHTTPRequestHandler):
         PB.save(identity, doc, overwrite=bool(body.get('overwrite')))
         from .. import projects as PJ
         return self._send(201, {'project': PJ.Project(doc).summary(),
+                                'project_id': doc['project_id'],
+                                'selected': doc['project_id'],
                                 'owner': self._identity_payload(identity)})
 
     # ── GET ─────────────────────────────────────────────────
@@ -1107,12 +1280,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {'identity': self._identity_payload()})
         if path == '/api/workspace/projects':
             identity = self._identity()
+            counts = self.discovery.project_counts(owner=identity.owner)
+            projects = PB.available_for(identity)
+            for row in projects:
+                row['runs'] = counts.get(row['project_id'], {'active': 0, 'total': 0,
+                                                             'last_at': None})
             return self._send(200, {
-                'projects': PB.available_for(identity),
+                'projects': projects,
                 'owner': self._identity_payload(identity),
                 'note': 'Projects you create are stored in your workspace under the private '
                         'data root. They are never written into the repository and never '
                         'served as files.'})
+        m = re.fullmatch(r'/api/projects/([^/]+)', path)
+        if m:
+            return self._project_detail(m.group(1))
         if path == '/api/project-catalogue':
             return self._send(200, PB.catalogue())
         if path == '/api/project-templates':
@@ -1123,7 +1304,20 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             return self._benchmark(m.group(1))
         if path == '/api/discovery':
-            return self._send(200, self.discovery.recent(owner=self._identity().owner))
+            owner = self._identity().owner
+            pid = (q.get('project_id') or [None])[0]
+            rows = self.discovery.listing(owner=owner, project_id=pid)
+            groups = {}
+            for row in rows:
+                groups.setdefault(row['group'], []).append(row['run_id'])
+            return self._send(200, {
+                'runs': rows,
+                'counts': {g: len(ids) for g, ids in groups.items()},
+                'active': len(groups.get('active', [])),
+                'projects': self.discovery.project_counts(owner=owner),
+                'note': 'Every run you have started, live or finished, from this process and '
+                        'from its records on disk. A run keeps going whether or not this page '
+                        'is open: closing the browser observes less, it does not stop work.'})
         m = re.fullmatch(r'/api/discovery/([^/]+)', path)
         if m:
             after = int((q.get('after') or ['-1'])[0] or -1)
@@ -1255,6 +1449,42 @@ class Handler(BaseHTTPRequestHandler):
             'BioSense never substitutes one for the other: if a real runtime is unavailable '
             'the run fails with the reason and the command that fixes it.')
         return self._send(200, out)
+
+    def _project_detail(self, pid):
+        """One project as a workspace: its biology, its knobs, and its work.
+
+        Deliberately a view and not a management screen. What a scientist asks of
+        a project is "what is this process, what can it predict, what is running,
+        and what did I learn" — so that is what it answers, from the same
+        authoritative run list the Runs page reads.
+        """
+        identity = self._identity()
+        try:
+            project = PB.load_for(identity, pid)
+        except K.ContractError as e:
+            return self._send(404, {'error': str(e), 'project_id': pid})
+        runs = self.discovery.listing(owner=identity.owner, project_id=project.project_id)
+        hypotheses = []
+        for row in runs:
+            if row.get('hypothesis'):
+                hypotheses.append({'run_id': row['run_id'], 'statement': row['hypothesis'],
+                                   'at': row.get('finished_at') or row.get('started_at'),
+                                   'runtime_mode': row.get('runtime_mode')})
+        summary = project.summary()
+        summary['modelled_parameter_ids'] = sorted(project.modelled_ids())
+        summary['has_simulator'] = bool(summary.get('simulator', {}).get('model_id'))
+        return self._send(200, {
+            'project': summary,
+            'owned': any(pr.project_id == project.project_id
+                         for pr in PB.workspace_projects(identity)),
+            'runs': runs,
+            'active_runs': [r for r in runs if r['group'] == 'active'],
+            'recent_runs': [r for r in runs if r['group'] != 'active'][:10],
+            'hypotheses': hypotheses[:10],
+            'benchmarks': [r['run_id'] for r in runs if r.get('benchmark')],
+            'datasets': list((runs[0].get('dataset_ids') if runs else None) or []),
+            'note': 'Everything this project has: its process, its parameters, what is running '
+                    'now and what it has produced. Runs belong to the project and to you.'})
 
     def _benchmarks(self):
         """Every benchmark this instance can show or run, without a clone."""

@@ -105,12 +105,14 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   </div>
   <nav class="modes" aria-label="Section">
     <a href="console.html" aria-current="page">AI Discovery</a>
-    <a href="loop.html">Quick loop</a>
+    <a href="runs.html">Runs</a>
     <a href="simulator.html">Simulator</a>
     <a href="data.html">Data</a>
-    <a href="index.html">Runs</a>
+    <a href="loop.html">Quick loop</a>
+    <a href="index.html">Loop tracker</a>
   </nav>
   <div class="spacer"></div>
+  <span id="runbeacon" hidden></span>
   <span id="identity" class="row" style="margin:0;gap:8px"></span>
   <button class="btn" id="viewBtn" aria-pressed="false">Technical view</button>
   <button class="btn" id="theme" title="Switch light / dark">Theme</button>
@@ -155,9 +157,64 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div class="fields">
         <div class="fld">
           <label for="project">Project</label>
-          <select id="project"></select>
+          <div class="row" style="margin:0;gap:10px;flex-wrap:nowrap">
+            <select id="project" style="flex:1 1 auto;min-width:0"></select>
+            <button class="btn" id="newProjectBtn" type="button">+ Create project</button>
+          </div>
           <p class="hint" id="projectNote"></p>
+          <div class="row" style="margin-top:8px;gap:10px">
+            <span class="dim" id="projectRuns"></span>
+            <button class="btn" id="projectDetailBtn" type="button" aria-expanded="false">
+              Project detail</button>
+          </div>
+          <div id="projectDetail" hidden></div>
         </div>
+
+        <section class="glass card" id="newProjectCard" hidden
+                 style="margin:4px 0 6px;padding:18px 20px">
+          <div class="head"><h3>Create project</h3>
+            <span class="hint">a durable workspace: it survives a refresh, a restart and a
+              redeploy</span></div>
+          <form id="newProjectForm" class="fields">
+            <div class="fld">
+              <label for="npName">Name</label>
+              <input type="text" id="npName" placeholder="Human Macrophage Optimization"
+                     required maxlength="120">
+            </div>
+            <div class="two">
+              <div class="fld"><label for="npSpecies">Species</label>
+                <input type="text" id="npSpecies" placeholder="Human"></div>
+              <div class="fld"><label for="npTarget">Cell type / lineage</label>
+                <input type="text" id="npTarget" placeholder="Macrophage"></div>
+            </div>
+            <div class="two">
+              <div class="fld"><label for="npStart">Starting cell</label>
+                <input type="text" id="npStart" placeholder="iPSC"></div>
+              <div class="fld"><label for="npState">Cell state (optional)</label>
+                <input type="text" id="npState" placeholder="CD14+ monocyte-derived"></div>
+            </div>
+            <div class="fld">
+              <label for="npProcess">Process / therapy context</label>
+              <input type="text" id="npProcess" placeholder="iPSC → macrophage">
+            </div>
+            <div class="fld">
+              <label for="npGoal">Goal</label>
+              <input type="text" id="npGoal" placeholder="Improve viable macrophage output">
+            </div>
+            <div class="fld">
+              <label for="npTemplate">Start from a profile (optional)</label>
+              <select id="npTemplate"></select>
+              <p class="hint">A template brings a described process and, where it has one, a
+                mechanistic model. Without one the project is created with the shared
+                bioreactor parameters and no simulator — which it says plainly.</p>
+            </div>
+            <div class="row">
+              <button class="btn go" type="submit">Create project</button>
+              <button class="btn" type="button" id="npCancel">Cancel</button>
+              <span class="dim" id="npMsg"></span>
+            </div>
+          </form>
+        </section>
 
         <div class="fld">
           <label for="objective">Scientific objective</label>
@@ -270,9 +327,16 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
   <div class="stack">
     <section class="glass card" id="progressPanel" hidden>
-      <div class="head"><h3>Progress</h3>
-        <span class="rt-badge synthetic_demo" id="runBadge"></span></div>
-      <ul class="stages" id="stages"></ul>
+      <div class="head"><h3>Live</h3>
+        <span class="hint" id="runRef"></span></div>
+      <div id="rvHead"></div>
+      <div class="lab">Workflow</div>
+      <div id="rvStages"></div>
+      <div class="lab">Agents</div>
+      <div class="agents" id="rvAgents"></div>
+      <div class="lab">Activity</div>
+      <div class="tlbox" id="rvTimeline"></div>
+      <div class="lims" id="rvLims" hidden></div>
     </section>
 
     <section class="glass card fold" data-open="1">
@@ -351,6 +415,8 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   });
 })();
 </script>
+<script src="runstate.js"></script>
+<script src="runview.js"></script>
 <script src="discovery.js"></script>
 </body>
 </html>

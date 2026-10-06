@@ -403,9 +403,9 @@ class HttpRoleTests(unittest.TestCase):
     def test_the_run_list_holds_only_the_callers_own_runs(self):
         rid = self._run(self.user_sid)
         for sid in (self.other_sid, self.admin_sid):
-            listed = self._req('GET', '/api/discovery', sid=sid)[1]
+            listed = self._req('GET', '/api/discovery', sid=sid)[1]['runs']
             self.assertNotIn(rid, [r['run_id'] for r in listed])
-        own = self._req('GET', '/api/discovery', sid=self.user_sid)[1]
+        own = self._req('GET', '/api/discovery', sid=self.user_sid)[1]['runs']
         self.assertIn(rid, [r['run_id'] for r in own])
 
     def test_a_restored_run_keeps_its_owner(self):
@@ -427,10 +427,10 @@ class HttpRoleTests(unittest.TestCase):
         self.assertIn(WS.ANON_COOKIE, cookie, 'a stranger got no workspace of their own')
         value = cookie.split(f'{WS.ANON_COOKIE}=')[1].split(';')[0]
         theirs = self._req('GET', '/api/discovery',
-                           headers={'Cookie': f'{WS.ANON_COOKIE}={value}'})[1]
+                           headers={'Cookie': f'{WS.ANON_COOKIE}={value}'})[1]['runs']
         self.assertIn(d['run_id'], [r['run_id'] for r in theirs])
         somebody_else = self._req('GET', '/api/discovery',
-                                  headers={'Cookie': f'{WS.ANON_COOKIE}=something-else'})[1]
+                                  headers={'Cookie': f'{WS.ANON_COOKIE}=something-else'})[1]['runs']
         self.assertNotIn(d['run_id'], [r['run_id'] for r in somebody_else])
 
     def test_a_project_id_cannot_walk_out_of_a_workspace(self):

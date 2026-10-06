@@ -132,7 +132,8 @@ def run_synthetic(request, out_dir, *, on_event=None, projects_dir=None, dirs=No
     emit({'kind': 'note', 'stage': 'identifying_uncertainty',
           'simple': cfg['uncertainty']['statement'],
           'technical': f'uncertainty {cfg["uncertainty"]["ref"]}'})
-    result = BR.run(cfg, dirs=dirs, private_root=private_root, artifacts_out=out)
+    result = BR.run(cfg, dirs=dirs, private_root=private_root, artifacts_out=out,
+                    projects_dir=projects_dir)
     BR.write(result, out)
 
     # The artifacts the ingestion path reads, written out individually so a
@@ -164,6 +165,24 @@ def run_synthetic(request, out_dir, *, on_event=None, projects_dir=None, dirs=No
     return {'benchmark': result, 'config': cfg, 'out_dir': str(out)}
 
 
+def run_dir_for_agents(cfg_runtime, out_dir):
+    """The run directory as the runner will see it, relative to its workspace.
+
+    Every parent and child agent is given this one path, so there is exactly one
+    canonical directory per run and no artifact can land somewhere BioSense does
+    not read. If the runs directory is not inside the workspace, `check_workspace`
+    has already refused the run, so there is no case here where the two disagree.
+    """
+    out = Path(out_dir).resolve()
+    ws = Path(cfg_runtime.workspace).resolve() if cfg_runtime.workspace else None
+    if ws:
+        try:
+            return str(out.relative_to(ws))
+        except ValueError:
+            pass
+    return str(out)
+
+
 def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
              should_stop=None, projects_dir=None):
     """The agent path. Starts an Omnigent session and streams it.
@@ -179,7 +198,16 @@ def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     K.write_json_atomic(out / 'discovery_request.json', request)
-    brief = DISC.render_brief(request, loop_dir=out.name, projects_dir=projects_dir)
+    # The one directory, named the way the RUNNER will resolve it.
+    #
+    # This used to be `out.name` — a bare directory name — so the agents wrote
+    # `<workspace>/ai-2026…/` while BioSense read `<runs dir>/ai-2026…/`, and a
+    # real run left artifacts in two places with the person seeing neither. The
+    # runner's working directory is the workspace, so the path it must be given
+    # is the run directory relative to that workspace, which is exactly what
+    # `check_workspace` already computes.
+    brief = DISC.render_brief(request, loop_dir=run_dir_for_agents(cfg_runtime, out),
+                              projects_dir=projects_dir)
     (out / 'brief.md').write_text(brief, encoding='utf-8')
     summary = OMNI.drive(cfg_runtime, brief,
                          title=f'BioSense: {request["objective"][:80]}',

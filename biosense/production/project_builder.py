@@ -444,3 +444,66 @@ def available_for(identity, *, templates_dir=None):
                      'has_simulator': bool(p.simulator.get('model_id')),
                      'template_of': None})
     return rows
+
+
+# ── the lightweight create ──────────────────────────────────────────────
+# A scientist starting work has a cell type, a goal and a process in mind. They
+# do not yet have a stage list, a parameter set or a readout table, and
+# demanding those before a project can exist is how a "create project" button
+# becomes a form nobody finishes.
+#
+# So `quick_build` asks for what somebody actually knows on day one and supplies
+# the rest from the shared vessel: the universal bioreactor stages everyone has,
+# the universal parameter set, the default readouts. Everything it supplies is
+# the same in every project and carries no biological claim — which is exactly
+# why it is safe to default. What it will NOT default is biology: no simulator,
+# no modelled parameter, no invented cell-type-specific knob. The project is
+# created with `no_simulator` coverage and says so.
+QUICK_STAGES = (
+    {'stage_id': 'expansion', 'label': 'Expansion',
+     'purpose': 'Grow the starting population.', 'default_days': 7},
+    {'stage_id': 'differentiation', 'label': 'Differentiation',
+     'purpose': 'Drive the starting population toward the target cell.', 'default_days': 10},
+    {'stage_id': 'maturation', 'label': 'Maturation / harvest',
+     'purpose': 'Mature, characterise and harvest the product.', 'default_days': 5},
+)
+
+
+def quick_build(*, project_id, name, species=None, starting_cell=None, target_cell=None,
+                cell_state=None, process_context=None, goal=None, description=None,
+                template_of=None, parameters=None):
+    """A real project from the few things somebody knows when they start one.
+
+    Everything here is durable the moment it is saved: this returns the same
+    validated ProjectProfile `build` does, with the shared vessel filled in and
+    the biology left to the person.
+    """
+    bio = {
+        'species': (species or '').strip() or 'unspecified',
+        'starting_cell': (starting_cell or '').strip() or 'unspecified starting population',
+        'target_cell': (target_cell or '').strip() or 'unspecified target population',
+    }
+    if (cell_state or '').strip():
+        bio['target_subtype'] = cell_state.strip()
+    if (process_context or '').strip():
+        bio['culture_format'] = process_context.strip()
+    goal = (goal or '').strip()
+    note = (description or '').strip() or None
+    if goal:
+        note = f'Goal: {goal}' + (f'\n\n{note}' if note else '')
+    chosen = list(parameters or [])
+    if not chosen:
+        chosen = [{'parameter_id': p['parameter_id'], 'stages': p['stages'] or ['expansion'],
+                   'simulator_coverage': 'not_modelled'}
+                  for p in universal_parameters()]
+    stages = [dict(st) for st in QUICK_STAGES]
+    stage_ids = {st['stage_id'] for st in stages}
+    for row in chosen:
+        row['stages'] = [s for s in (row.get('stages') or []) if s in stage_ids] or ['expansion']
+    return build(project_id=project_id, name=name, biological_system=bio,
+                 stages=stages, parameters=chosen, description=note,
+                 template_of=template_of,
+                 limitations=['Created from the lightweight project form: the stages and the '
+                              'shared bioreactor parameters are defaults, not a description of '
+                              'a validated process. Nothing about this project\'s biology was '
+                              'inferred.'])

@@ -143,11 +143,13 @@ select:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   </a>
   <nav class="modes" aria-label="Section">
     <a href="console.html">AI Discovery</a>
-    <a href="loop.html">Quick loop</a>
+    <a href="runs.html">Runs</a>
     <a href="simulator.html" aria-current="page">Simulator</a>
     <a href="data.html">Data</a>
-    <a href="index.html">Runs</a>
+    <a href="loop.html">Quick loop</a>
+    <a href="index.html">Loop tracker</a>
   </nav>
+  <span id="runbeacon" hidden></span>
   <span class="spacer"></span>
   <span class="pill idle" id="status"><span class="led"></span><span id="statusTxt">ready</span></span>
   <button class="btn" id="themeBtn" type="button" aria-label="Switch theme">theme</button>
@@ -299,5 +301,7 @@ and nothing here decides anything.</p>
 
 </div>
 <script src="simulator.js"></script>
+<script src="runstate.js"></script>
+<script>mountRunBeacon();</script>
 </body>
 </html>

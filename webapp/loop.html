@@ -234,11 +234,13 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   </div>
   <nav class="modes" aria-label="Section">
     <a href="console.html">AI Discovery</a>
-    <a href="loop.html" aria-current="page">Quick loop</a>
+    <a href="runs.html">Runs</a>
     <a href="simulator.html">Simulator</a>
     <a href="data.html">Data</a>
-    <a href="index.html">Runs</a>
+    <a href="loop.html" aria-current="page">Quick loop</a>
+    <a href="index.html">Loop tracker</a>
   </nav>
+  <span id="runbeacon" hidden></span>
   <div class="spacer"></div>
   <span class="pill idle" id="status"><span class="led"></span><span id="statusText">ready</span></span>
   <span class="mono dim tnum" id="clock" style="min-width:4.2rem;text-align:right"></span>
@@ -1077,5 +1079,7 @@ loadHypotheses();
   });
 })();
 </script>
+<script src="runstate.js"></script>
+<script>mountRunBeacon();</script>
 </body>
 </html>

@@ -69,7 +69,7 @@ def _row(cap, ok, detail):
     return {'capability': cap, 'status': 'PASS' if ok else 'FAIL', 'detail': detail}
 
 
-def run(config, *, dirs=None, private_root=None, artifacts_out=None):
+def run(config, *, dirs=None, private_root=None, artifacts_out=None, projects_dir=None):
     """Execute a benchmark configuration. Returns the BenchmarkResult.
 
     *artifacts_out* additionally writes each full AnalysisPlan and AnalysisResult
@@ -81,7 +81,10 @@ def run(config, *, dirs=None, private_root=None, artifacts_out=None):
     K.require_valid('benchmark_config', config)
     t0 = time.time()
     rows, warnings, notes = [], [], []
-    project = PJ.load(config['project_id'])
+    # A project somebody created lives in their workspace, not in the committed
+    # set. Without this a run against a project the person made refuses with
+    # "no such project", which reads as a fault and is really a missing argument.
+    project = PJ.load(config['project_id'], projects_dir)
 
     rows.append(_row('objective_interpreted', bool(config['objective'].strip()),
                      f'objective: {config["objective"]}'))

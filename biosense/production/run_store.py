@@ -101,12 +101,111 @@ def read_events(out_dir, after=-1):
     return rows
 
 
+# Statuses a run can hold. `finalizing` is not an afterthought: it is the window
+# where AI execution is done and BioSense is still collecting, validating and
+# assembling, and a run shown as COMPLETE during it is showing a result that is
+# missing files still landing.
+LIVE_STATUSES = ('queued', 'running', 'finalizing')
+DONE_STATUSES = ('done',)
+FAILED_STATUSES = ('error', 'refused', 'unavailable', 'interrupted')
+STOPPED_STATUSES = ('stopped',)
+
+
+def group_for(status):
+    """Which column of the Runs page a status belongs in."""
+    if status in LIVE_STATUSES:
+        return 'active'
+    if status in DONE_STATUSES:
+        return 'complete'
+    if status in STOPPED_STATUSES:
+        return 'cancelled'
+    return 'failed'
+
+
 def _read_state(path):
     try:
         d = json.loads(Path(path).read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return None
     return d if isinstance(d, dict) and d.get('run_id') else None
+
+
+def summarise(state, *, live_ids=()):
+    """One run as a row in a list: enough to judge it, not enough to render it.
+
+    Deliberately small and deliberately the same shape wherever a run is listed,
+    so the Discovery page and the Runs page cannot disagree about what a run is.
+    The full scientific state is read through the run itself.
+    """
+    status = state.get('status')
+    if status in LIVE_STATUSES and state.get('run_id') not in live_ids:
+        # On disk it says running; nothing is running it. Saying so is the only
+        # honest answer — it is neither finished nor in flight.
+        status = 'interrupted'
+    activity = state.get('activity') or {}
+    result = state.get('result') or {}
+    protocol = result.get('protocol') or {}
+    bundle = result.get('bundle') or {}
+    hypotheses = bundle.get('hypotheses') or []
+    return {
+        'run_id': state.get('run_id'),
+        'project_id': state.get('project_id'),
+        'owner': state.get('owner'),
+        'objective': state.get('objective'),
+        'status': status,
+        'group': group_for(status),
+        'live': status in LIVE_STATUSES,
+        'runtime_mode': state.get('runtime_mode'),
+        'runtime_label': state.get('runtime_label'),
+        'is_real': state.get('is_real'),
+        'engine': state.get('engine'),
+        'model': state.get('model'),
+        'credential_mode': state.get('credential_mode'),
+        'started_by_admin': state.get('started_by_admin'),
+        'started_at': state.get('started_at'),
+        'finished_at': state.get('finished_at'),
+        'last_activity_at': activity.get('last_activity_at') or state.get('written_at'),
+        'elapsed_s': state.get('elapsed_s'),
+        'stage_counts': state.get('stage_counts'),
+        'current_stage': (state.get('stage_counts') or {}).get('current'),
+        'active_agents': activity.get('active_agents') or [],
+        'event_count': state.get('event_count'),
+        'hypothesis': (hypotheses[0].get('statement') if hypotheses else None),
+        'hypothesis_count': len(hypotheses),
+        'has_protocol': bool(protocol),
+        'benchmark': bool(result.get('benchmark')),
+        'run_dir': state.get('run_dir'),
+        'recovered': True,
+    }
+
+
+def listing(runs_dir, *, owner=None, project_id=None, live_ids=(), limit=200):
+    """Every run on disk this caller may see, newest first.
+
+    The durable half of the run list. A process holds its own runs in memory and
+    forgets them on restart; the directory holds all of them, which is what makes
+    history survive a redeploy. Ownership is applied here rather than by the
+    caller, so there is one place it can be got wrong.
+    """
+    root = Path(runs_dir)
+    if not root.is_dir():
+        return []
+    dirs = sorted((d for d in root.iterdir() if d.is_dir()),
+                  key=lambda d: d.stat().st_mtime if d.exists() else 0, reverse=True)
+    rows = []
+    for d in dirs[:limit * 2]:
+        state = _read_state(state_path(d))
+        if state is None:
+            continue
+        if owner is not None and state.get('owner') and state['owner'] != owner:
+            continue
+        if project_id and state.get('project_id') != project_id:
+            continue
+        rows.append(summarise(state, live_ids=live_ids))
+        if len(rows) >= limit:
+            break
+    rows.sort(key=lambda r: r.get('started_at') or 0, reverse=True)
+    return rows
 
 
 def find(runs_dir, run_id):

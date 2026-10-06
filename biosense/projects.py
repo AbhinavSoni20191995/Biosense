@@ -329,11 +329,21 @@ PROJECT_ID = re.compile(r'^[a-z][a-z0-9_]{2,63}$')
 
 
 def load(project_id, directory=None):
-    d = Path(directory or PROFILE_DIR)
+    """A project profile by id: the given directory first, then the committed set.
+
+    The fallback is what makes a project somebody created usable. Their projects
+    live in their workspace and the shipped templates live in the repository, and
+    a run has to be able to name either — so a caller passes the workspace and
+    gets "mine, or the shared one", which is the same rule
+    `project_builder.load_for` applies when it resolves a name.
+    """
     if not PROJECT_ID.match((project_id or '').strip()):
         raise K.ContractError(
             f'{project_id!r} is not a project id. An id is a name, not a path: lower-case '
             f'letters, digits and underscores.')
+    d = Path(directory or PROFILE_DIR)
+    if directory and not (d / f'{project_id}.json').is_file():
+        d = PROFILE_DIR
     path = d / f'{project_id}.json'
     if not path.is_file():
         raise K.ContractError(

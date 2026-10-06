@@ -306,3 +306,17 @@ def _message_text(item):
         elif isinstance(block, str):
             parts.append(block)
     return ' '.join(p for p in parts if p).strip()[:4000]
+
+
+def stage_counts(reached, *, terminal=None):
+    """How many of the workflow's stages are done, as a count and not a percentage.
+
+    A count is a fact about the deterministic stage list. A percentage would
+    imply the remaining work is proportional to the remaining stages, which is
+    not true of a run that spends eleven minutes inside one analysis — and a
+    progress bar that lies is worse than one that only says "still working".
+    """
+    rows = progress(reached, terminal=terminal)
+    done = sum(1 for r in rows if r['status'] == 'done')
+    return {'done': done, 'total': len(rows),
+            'current': next((r['stage'] for r in rows if r['status'] == 'current'), None)}

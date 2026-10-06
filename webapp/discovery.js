@@ -37,7 +37,7 @@ function rememberedRun() {
 
 const state = {
   glossary: null, runtime: null, projects: [], project: null, datasets: [],
-  run: null, es: null, result: null, benchmark: null,
+  run: null, es: null, detach: null, result: null, benchmark: null,
   candidates: {}, projectParams: [],
 };
 
@@ -112,6 +112,15 @@ async function boot() {
   await Promise.all([loadRuntime(), loadProjects(), loadDatasets(), loadBenchmarks()]);
   wire();
   renderStages(null);
+  mountRunBeacon();
+  /* The selector's active-run counts come from the same list the Runs page
+     reads, so "1 active investigation" means the same thing on both. */
+  BS.onChange(() => {
+    /* Not while somebody is using it: rebuilding a select that has focus closes
+       the list under their cursor. */
+    if (document.activeElement === $('#project')) return;
+    loadProjects().catch(() => {});
+  });
   await resume();
 }
 
@@ -123,29 +132,9 @@ async function boot() {
 async function resume() {
   const id = (new URLSearchParams(location.search)).get('run') || rememberedRun();
   if (!id) return;
-  let snap;
-  try { snap = await get(`/api/discovery/${id}`); }
-  catch (_) { forgetRun(); return; }
-  state.run = snap;
-  $('#progressPanel').hidden = false;
-  $('#runBadge').textContent = snap.runtime_label;
-  $('#runBadge').className = 'rt-badge ' + snap.runtime_mode;
-  (snap.events || []).forEach(pushEvent);
-  renderStages(snap.progress);
-  if (snap.status === 'running' || snap.status === 'queued') {
-    renderRunState(snap);
-    attach(id, (snap.events || []).reduce((m, e) => Math.max(m, e.seq), -1));
-    return;
-  }
-  if (snap.status === 'done' && snap.result) {
-    state.result = snap.result;
-    renderResult(snap);
-    note(snap.recovered ? 'This is the run you were last watching, read back from its own '
-      + 'record on the server.' : null);
-  } else {
-    fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
-      message: snap.error });
-  }
+  /* Re-attach to the run that is already going. Never start another: the browser
+     observes a server-side job, and a reload is a new observer, not a new run. */
+  watchRun(id);
 }
 
 function note(text) {
@@ -309,7 +298,7 @@ function updateBadge() {
   host.append(term('runtime_mode', mode, modeLabel(mode)));
 }
 
-async function loadProjects() {
+async function loadProjects(select) {
   let d;
   try { d = await get('/api/workspace/projects'); } catch (_) { return; }
   /* Your own projects first, then templates; a project with a model ahead of one
@@ -319,12 +308,24 @@ async function loadProjects() {
     (a.source === 'workspace' ? 0 : 1) - (b.source === 'workspace' ? 0 : 1)
     || (b.has_simulator ? 1 : 0) - (a.has_simulator ? 1 : 0)
     || a.name.localeCompare(b.name));
-  const sel = $('#project'); sel.textContent = '';
+  const sel = $('#project');
+  const want = select || sel.value || BS.selected.get();
+  sel.textContent = '';
   state.projects.forEach(p => {
-    const o = el('option', null, p.name + (p.source === 'template' ? '  (template)' : ''));
+    const runs = p.runs || {};
+    const o = el('option', null, p.name
+      + (p.source === 'template' ? '  (template)' : '')
+      + (runs.active ? `   ● ${runs.active} active` : ''));
     o.value = p.project_id; sel.append(o);
   });
-  sel.addEventListener('change', showProject);
+  if (want && state.projects.some(p => p.project_id === want)) sel.value = want;
+  if (!sel.dataset.wired) {
+    sel.dataset.wired = '1';
+    /* Switching project changes what you are looking at and nothing else. No
+       run is touched: they are server-side jobs, and the one you were watching
+       keeps working while you read another project. */
+    sel.addEventListener('change', () => { BS.selected.set(sel.value); showProject(); });
+  }
   showProject();
 }
 
@@ -333,14 +334,90 @@ async function showProject() {
   const row = state.projects.find(p => p.project_id === id);
   const note = $('#projectNote');
   if (!row) { note.textContent = ''; return; }
+  BS.selected.set(id);
   note.textContent = row.has_simulator
     ? 'This project has a mechanistic model, so candidate parameters it covers get a prediction.'
     : 'This project has no mechanistic model. Parameters are real design variables; nothing '
       + 'here predicts what they would do, and no other project’s model is borrowed.';
+  const runs = row.runs || {};
+  const r = $('#projectRuns');
+  if (r) {
+    r.textContent = runs.active
+      ? `● ${runs.active} active investigation${runs.active === 1 ? '' : 's'}`
+        + (runs.total > runs.active ? ` · ${runs.total} total` : '')
+      : (runs.total ? `${runs.total} run${runs.total === 1 ? '' : 's'}` : 'No runs yet');
+  }
+  if (!$('#projectDetail').hidden) renderProjectDetail(id);
 
   state.candidates = {};
   renderCandidatePicks();
   loadProjectParameters(id);
+}
+
+function currentProject() { const s = $('#project'); return s ? s.value : null; }
+
+/* The project as a workspace: what the process is, what is running in it, and
+   what it has produced. A panel, deliberately — not a management screen. */
+async function renderProjectDetail(id) {
+  const host = $('#projectDetail');
+  host.hidden = false;
+  host.textContent = '';
+  let d;
+  try { d = await get(`/api/projects/${encodeURIComponent(id)}`); }
+  catch (e) { host.append(el('p', 'dim', e.message || 'That project is not available.')); return; }
+  const p = d.project || {};
+  const box = el('div', 'pdetail');
+  const bio = p.biological_system || {};
+  const facts = [
+    ['Species', bio.species], ['From', bio.starting_cell], ['To', bio.target_cell],
+    ['State', bio.target_subtype], ['Process', bio.culture_format],
+    ['Stages', (p.stages || []).map(s => s.label || s.stage_id).join(' → ')],
+    ['Parameters', String((p.parameters || []).length)],
+    ['Simulator', p.has_simulator ? p.simulator.model_id : 'none — no prediction is produced'],
+  ];
+  const dl = el('div', 'pfacts');
+  facts.forEach(([k, v]) => {
+    if (!v) return;
+    const row = el('div', 'pf');
+    row.append(el('div', 'k', k), el('div', 'v', v));
+    dl.append(row);
+  });
+  box.append(dl);
+  if ((d.active_runs || []).length) {
+    box.append(el('div', 'lab', 'Active investigation'));
+    d.active_runs.forEach(r => {
+      const row = el('div', 'prun');
+      row.append(el('span', 'rv-status go', BS.fmt.status(r)));
+      row.append(el('span', 'dim', [r.engine ? (r.engine.includes('codex') ? 'Codex' : 'Claude')
+        : null, (r.active_agents || [])[0], BS.fmt.elapsed(r.started_at)]
+        .filter(Boolean).join(' · ')));
+      const open = el('button', 'btn', 'Open run');
+      open.addEventListener('click', () => watchRun(r.run_id));
+      row.append(open);
+      box.append(row);
+    });
+  }
+  if ((d.recent_runs || []).length) {
+    box.append(el('div', 'lab', 'Recent runs'));
+    d.recent_runs.slice(0, 5).forEach(r => {
+      const row = el('div', 'prun');
+      row.append(el('span', 'dim mono', BS.fmt.status(r)));
+      row.append(el('span', null, r.objective || r.run_id));
+      const open = el('button', 'btn', 'Open');
+      open.addEventListener('click', () => watchRun(r.run_id));
+      row.append(open);
+      box.append(row);
+    });
+  }
+  if ((d.hypotheses || []).length) {
+    box.append(el('div', 'lab', 'Hypotheses from this project'));
+    d.hypotheses.slice(0, 5).forEach(h => box.append(el('p', 'phyp', h.statement)));
+  }
+  if ((p.limitations || []).length) {
+    box.append(el('div', 'lab', 'Limitations'));
+    p.limitations.forEach(l => box.append(el('p', 'dim', l)));
+  }
+  host.append(box);
 }
 
 /* The parameters this project actually has. Read per project rather than from
@@ -516,79 +593,68 @@ async function start() {
 }
 
 function startWatching(run) {
-  state.run = run;
-  rememberRun(run.run_id);
+  watchRun(run.run_id);
+}
+
+/* One run, one viewer, one source of truth. The Runs page renders this same
+   snapshot with this same component — so the two pages cannot disagree about
+   whether something is working, which they could when each kept its own idea
+   of a run. */
+function watchRun(runId) {
+  if (state.detach) state.detach();
+  rememberRun(runId);
   $('#progressPanel').hidden = false;
-  $('#runBadge').textContent = run.runtime_label;
-  $('#runBadge').className = 'rt-badge ' + run.runtime_mode;
-  renderStages(run.progress);
-  renderRunState(run);
-  attach(run.run_id, -1);
-}
-
-/* The live stream, from a given sequence number. Separated from starting a run
-   because re-attaching after a reload is the same operation from a later point,
-   and the server replays the events it has journalled. */
-function attach(id, after) {
-  if (state.es) state.es.close();
-  state.es = new EventSource(`/api/discovery/${id}/events?after=${after}`);
-  state.es.onmessage = ev => {
-    try { pushEvent(JSON.parse(ev.data)); } catch (_) { /* a malformed frame is not fatal */ }
-  };
-  state.es.addEventListener('closed', () => {
-    state.es.close(); state.es = null; refresh(id);
+  $('#runRef').textContent = runId;
+  state.detach = RV.attach(runId, {
+    snapshot(snap) {
+      state.run = snap;
+      RV.header($('#rvHead'), snap, { onStop: stopRun });
+      RV.stages($('#rvStages'), snap);
+      RV.agents($('#rvAgents'), snap);
+      RV.timeline($('#rvTimeline'), snap);
+      RV.limitations($('#rvLims'), snap);
+      renderStages(snap.progress);
+      (snap.events || []).forEach(seedEvent);
+      $('#runBtn').disabled = RV.isLive(snap);
+      if (snap.status === 'done' && snap.result) {
+        state.result = snap.result; renderResult(snap);
+        note(snap.recovered ? 'This is the run you were last watching, read back from its own '
+          + 'record on the server.' : null);
+      } else if (!RV.isLive(snap)) {
+        fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
+          message: snap.error });
+      }
+      BS.runs(currentProject()).catch(() => {});
+    },
+    event(e) { pushEvent(e); },
+    error() {
+      $('#runBtn').disabled = false;
+      forgetRun();
+      $('#progressPanel').hidden = true;
+    },
   });
-  state.es.onerror = () => { refresh(id); };
 }
 
-/* While it runs: what is running, how long it may run, and how to stop it.
-   A real run is money per minute, so stopping one is a button and not a wait. */
-function renderRunState(run) {
-  const box = $('#runState');
-  if (!box) return;
-  box.hidden = false; box.textContent = '';
-  const w = el('div', 'state');
-  const head = el('div', 'row');
-  head.append(el('span', 'rt-badge ' + run.runtime_mode, run.runtime_label),
-    el('span', 'dim', run.is_real
-      ? 'Running. The agents are working; this page follows them live.'
-      : 'Running the deterministic demonstration path.'));
-  w.append(head);
-  if (run.deadline_in_s) {
-    w.append(el('p', 'dim', `This deployment stops a single real run after `
-      + `${Math.round(run.deadline_in_s / 60)} more minutes.`));
+async function stopRun(runId) {
+  try { await post(`/api/discovery/${runId}/cancel`); }
+  catch (e) { fail(e); }
+}
+
+/* Events seen in a snapshot are replayed into the record feed once each, so a
+   reload shows the history rather than starting the feed empty. */
+const seenEvents = new Set();
+function seedEvent(e) {
+  const key = `${e.seq}`;
+  if (seenEvents.has(key)) return;
+  seenEvents.add(key);
+  pushEvent(e, { quiet: true });
+}
+
+function pushEvent(e, opts) {
+  if (!(opts && opts.quiet)) {
+    if (seenEvents.has(`${e.seq}`)) return;
+    seenEvents.add(`${e.seq}`);
   }
-  if (run.cancellable !== false) {
-    const stop = el('button', 'btn', 'Stop this run');
-    stop.addEventListener('click', async () => {
-      stop.disabled = true; stop.textContent = 'stopping…';
-      try { await post(`/api/discovery/${run.run_id}/cancel`); }
-      catch (e) { fail(e); }
-    });
-    w.append(stop);
-  }
-  w.append(el('p', 'dim mono', `run ${run.run_id} · reload this page and it comes back`));
-  box.append(w);
-}
-
-async function refresh(id) {
-  try {
-    const snap = await get(`/api/discovery/${id}?after=999999`);
-    renderStages(snap.progress);
-    $('#runBtn').disabled = false;
-    if (snap.status === 'done' && snap.result) { state.result = snap.result; renderResult(snap); }
-    else if (snap.status === 'running' || snap.status === 'queued') {
-      renderRunState(snap);
-    } else {
-      /* Stopped, interrupted, refused or failed. Each says what it was. None of
-         them renders a result, because none of them produced one. */
-      fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
-        message: snap.error });
-    }
-  } catch (_) { /* the run keeps going; the snapshot is a view of it */ }
-}
-
-function pushEvent(e) {
   const feed = $('#feed');
   if (feed.firstElementChild && feed.firstElementChild.tagName === 'P') feed.textContent = '';
   const row = el('div', 'ev');
@@ -993,8 +1059,77 @@ function renderExports(snap) {
     'Built from the artifacts this run already produced. The biology is not run again.'));
 }
 
+/* ── creating a project ───────────────────────────────────────────────────
+   A project is a durable scientific workspace, so this writes one on the server
+   and then selects it. Nothing about a project lives in this page: refreshing,
+   restarting the server or redeploying leaves it exactly where it was. */
+async function createProject(ev) {
+  ev.preventDefault();
+  const msg = $('#npMsg');
+  const name = $('#npName').value.trim();
+  if (name.length < 3) { msg.textContent = 'a project needs a name'; return; }
+  msg.textContent = 'creating…';
+  const body = {
+    name,
+    species: $('#npSpecies').value.trim(),
+    starting_cell: $('#npStart').value.trim(),
+    target_cell: $('#npTarget').value.trim(),
+    cell_state: $('#npState').value.trim(),
+    process_context: $('#npProcess').value.trim(),
+    goal: $('#npGoal').value.trim(),
+  };
+  const template = $('#npTemplate').value;
+  if (template) { body.template_of = template; } else { body.quick = true; }
+  try {
+    const d = await post('/api/projects', body);
+    msg.textContent = '';
+    $('#newProjectCard').hidden = true;
+    $('#newProjectForm').reset();
+    /* Selected immediately, and nothing else disturbed: a run in another
+       project keeps working while this one is created. */
+    await loadProjects(d.selected || d.project_id);
+    await BS.runs(currentProject()).catch(() => {});
+  } catch (e) {
+    msg.textContent = e.message || 'could not create that project';
+  }
+}
+
+async function loadProjectTemplates() {
+  const sel = $('#npTemplate'); if (!sel) return;
+  sel.textContent = '';
+  sel.append(Object.assign(el('option', null, 'None — shared bioreactor set only'),
+    { value: '' }));
+  try {
+    const d = await get('/api/project-templates');
+    (d.templates || []).forEach(t => {
+      const o = el('option', null, `${t.name || t.project_id}`
+        + (t.has_simulator ? '  (has a model)' : '  (no model)'));
+      o.value = t.project_id; sel.append(o);
+    });
+  } catch (_) { /* the form still works without templates */ }
+}
+
 /* ── wiring ──────────────────────────────────────────────────────────────── */
 function wire() {
+  const np = $('#newProjectBtn');
+  if (np) {
+    np.addEventListener('click', () => {
+      const card = $('#newProjectCard');
+      card.hidden = !card.hidden;
+      if (!card.hidden) { loadProjectTemplates(); $('#npName').focus(); }
+    });
+    $('#npCancel').addEventListener('click', () => { $('#newProjectCard').hidden = true; });
+    $('#newProjectForm').addEventListener('submit', createProject);
+  }
+  const pd = $('#projectDetailBtn');
+  if (pd) {
+    pd.addEventListener('click', () => {
+      const host = $('#projectDetail');
+      const open = host.hidden;
+      pd.setAttribute('aria-expanded', String(open));
+      if (open) renderProjectDetail(currentProject()); else host.hidden = true;
+    });
+  }
   $('#runBtn').addEventListener('click', start);
   const add = $('#candAdd');
   if (add) {
