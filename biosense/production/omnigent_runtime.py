@@ -608,14 +608,26 @@ class _Children:
                 # finished was quick, and still gets its start recorded.
                 self._say(cid, row, 'started')
             if not working and prev != now_state:
-                self._say(cid, row, now_state)
+                # The tree row only carries a message preview; a child that
+                # crashed before answering has none, and its reason is on the
+                # session itself. One extra read, only on a failure.
+                why = await self._why(cid) if now_state == 'failed' else None
+                self._say(cid, row, now_state, why)
             self.state[cid] = now_state
             if working:
                 self._tail(cid)
         self.busy = busy
         return busy
 
-    def _say(self, cid, row, state):
+    async def _why(self, cid):
+        try:
+            live = await self.client.sessions.get(cid)
+        except Exception:  # noqa: BLE001 - the failure is already being reported
+            return None
+        err = getattr(live, 'last_task_error', None)
+        return _task_error(err) if err else None
+
+    def _say(self, cid, row, state, why=None):
         self.changes += 1
         agent = self.agent.get(cid)
         name = (AC.AGENT_LABEL.get(agent)
@@ -626,8 +638,9 @@ class _Children:
                   'failed': f'{name} agent stopped with an error.'}[state]
         technical = f'child session {cid} ({row.get("agent_name") or row.get("title") or "?"})' \
                     f' {state}'
-        if preview and state != 'started':
-            technical += f': {preview}'
+        detail = AC._short(why, 300) or preview
+        if detail and state != 'started':
+            technical += f': {detail}'
         self.out({'kind': 'subagent', 'agent': agent, 'child_session_id': cid, 'state': state,
                   'task': row.get('title'),
                   'stage': ST.stage_for_agent(agent) if state == 'started' else None,

@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 
 from biosense import contracts as K
+from biosense.production import activity as AC
 from biosense.production import discovery as DISC
 from biosense.production import omnigent_runtime as OMNI
 from biosense.production import runtime as RT
@@ -113,7 +114,10 @@ class _Sessions:
 
     async def get(self, sid):
         self.calls.append(('get', sid))
-        return _Session()
+        s = _Session(sid)
+        if sid == 'conv_lit' and getattr(self.outer, 'child_error', None):
+            s.last_task_error = self.outer.child_error
+        return s
 
     async def interrupt(self, sid):
         self.calls.append(('interrupt', sid))
@@ -387,11 +391,12 @@ class SubAgentTests(unittest.TestCase):
     its stream. Watching the parent alone ended runs early and showed nothing of
     what the specialists did."""
 
-    def harness(self, busy_polls=4, end='completed', child_events=()):
+    def harness(self, busy_polls=4, end='completed', child_events=(), child_error=None):
         h = _Harness()
         h.sessions_cls = _TreeSessions
         h.child_busy_polls = busy_polls
         h.child_end = end
+        h.child_error = child_error
         h.child_events = list(child_events)
         h.events = [ev('session.created'),
                     ev('response.output_item.done',
@@ -436,6 +441,25 @@ class SubAgentTests(unittest.TestCase):
         out = OMNI.drive(cfg_for(), 'brief', on_event=events.append)
         self.assertEqual('complete', out['terminal'])
         self.assertIn('failed', [e['state'] for e in events if e.get('kind') == 'subagent'])
+
+    def test_a_dead_childs_own_error_reaches_the_report(self):
+        """The card said only "Failed": the tree row's preview is empty when a
+        child crashes before answering, and the reason sits on the session as
+        last_task_error, which was never read for children."""
+        self.harness(busy_polls=1, end='failed',
+                     child_error={'code': 'model_refused',
+                                  'message': 'the provider closed the stream'})
+        events = []
+        OMNI.drive(cfg_for(), 'brief', on_event=events.append)
+        failed = [e for e in events if e.get('kind') == 'subagent' and e['state'] == 'failed']
+        self.assertTrue(failed)
+        self.assertIn('the provider closed the stream', failed[0]['technical'])
+        a = AC.Activity(started_at=0)
+        for e in events:
+            a.observe({**e, 'at': 1})
+        texts = [r['text'] for r in a.snapshot()['limitations']]
+        self.assertTrue(any('Literature agent failed' in t
+                            and 'provider closed the stream' in t for t in texts), texts)
 
     def test_stopping_a_run_stops_its_working_children(self):
         h = self.harness(busy_polls=10 ** 6)
