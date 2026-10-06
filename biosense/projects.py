@@ -26,6 +26,7 @@ quietly mislead someone:
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -322,8 +323,17 @@ def available(directory=None):
     return sorted(p.stem for p in d.glob('*.json')) if d.is_dir() else []
 
 
+# A project id is a name. Loading builds a filename from it, so an id that is
+# a path would read a file the caller has no business reading.
+PROJECT_ID = re.compile(r'^[a-z][a-z0-9_]{2,63}$')
+
+
 def load(project_id, directory=None):
     d = Path(directory or PROFILE_DIR)
+    if not PROJECT_ID.match((project_id or '').strip()):
+        raise K.ContractError(
+            f'{project_id!r} is not a project id. An id is a name, not a path: lower-case '
+            f'letters, digits and underscores.')
     path = d / f'{project_id}.json'
     if not path.is_file():
         raise K.ContractError(

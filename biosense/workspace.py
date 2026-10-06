@@ -12,6 +12,13 @@ What that buys, stated precisely, because the difference matters:
 
 * **A signed-in workspace is authenticated.** The owner id came from a server
   that checked a password. Another person cannot claim it by typing it.
+* **Only the configured issuer counts.** Which Omnigent server authenticates
+  this deployment's users is a deployment decision (`BIOSENSE_AUTH_SERVER`), not
+  a request parameter. Without it, sign-in still works against a server the
+  caller names — useful on a laptop — but such an identity can never be an
+  administrator here, because the server vouching for it is one this deployment
+  never agreed to trust. See `production/authz.py`.
+
 * **A local workspace is not.** When no Omnigent server is configured — the
   synthetic-only deployment, or a laptop before anyone logs in — there is one
   workspace called `local`, and it is private because the machine is private,
@@ -44,6 +51,14 @@ from .data import roots as DR
 
 OWNER_RE = re.compile(r'^[a-z0-9][a-z0-9._@+-]{0,95}$')
 LOCAL_OWNER = 'local'
+# A browser that has not signed in still needs somewhere of its own on a hosted
+# deployment, or every visitor shares one workspace and can read every other
+# visitor's runs and objectives. The cookie is an opaque random value; the owner
+# id is its hash, so the value that identifies the workspace is never the value
+# stored in anybody's record.
+ANON_COOKIE = 'biosense_anon'
+ANON_PREFIX = 'anon-'
+ANON_TTL_S = 30 * 24 * 60 * 60
 SESSION_TTL_S = 12 * 60 * 60
 MAX_SESSIONS = 500
 SESSION_COOKIE = 'biosense_session'
@@ -90,27 +105,44 @@ class WorkspaceIdentity:
     """Who a request is acting as."""
 
     def __init__(self, owner, *, authenticated=False, server=None, token=None,
-                 display=None, is_admin=False):
+                 display=None, provider_is_admin=False, anonymous=False):
         self.owner = normalise_owner(owner)
         self.authenticated = bool(authenticated)
         self.server = server
         self.token = token            # never serialised; see public()
         self.display = display or self.owner
-        self.is_admin = bool(is_admin)
+        # What the Omnigent server says about its OWN administration. Kept for
+        # display and diagnostics and never consulted for authorisation here:
+        # a BioSense operator is a different role, decided by this deployment's
+        # own configuration in `authz.py`. See that module for why.
+        self.provider_is_admin = bool(provider_is_admin)
+        self.anonymous = bool(anonymous)
 
     @property
     def is_local(self):
         return self.owner == LOCAL_OWNER and not self.authenticated
 
-    def public(self):
-        """What the browser may see. No token, ever."""
+    def public(self, *, role=None):
+        """What the browser may see. No token, ever.
+
+        *role* is supplied by the caller rather than computed here, because the
+        role is a deployment policy decision and this object must not be able to
+        award itself one.
+        """
         return {
-            'owner': self.owner, 'display': self.display,
+            'owner': self.owner if not self.anonymous else None,
+            'display': self.display,
             'authenticated': self.authenticated,
-            'server': self.server, 'is_admin': self.is_admin,
+            'anonymous': self.anonymous,
+            'server': self.server,
+            'role': role,
             'note': (
-                'Signed in through Omnigent. Your projects are stored under your account and '
-                'are not listed for anyone else.' if self.authenticated else
+                'Signed in through Omnigent. Your projects, runs and reports are stored under '
+                'your account and are not listed for anyone else.' if self.authenticated else
+                'Not signed in. This browser has its own unnamed workspace on this instance: '
+                'its runs are not listed for anyone else, and nothing here checked who you '
+                'are. Sign in for an account that keeps your work across browsers.'
+                if self.anonymous else
                 'Not signed in. This instance has one local workspace, private because this '
                 'machine is private — nothing here checked who you are. Sign in through an '
                 'Omnigent server for an account-owned workspace.'),
@@ -119,6 +151,28 @@ class WorkspaceIdentity:
 
 def local_identity():
     return WorkspaceIdentity(LOCAL_OWNER, authenticated=False, display='local workspace')
+
+
+def anon_owner(cookie_value):
+    """The workspace id for an unsigned-in browser, from its opaque cookie.
+
+    Hashed rather than used directly so the cookie value — the thing that grants
+    access — never appears in a run record, a directory name or a log line. It
+    is a privacy partition between strangers on a shared demo, not an
+    authentication boundary, and `authenticated` stays False to say so.
+    """
+    digest = hashlib.sha256(('biosense-anon:' + (cookie_value or '')).encode()).hexdigest()
+    return ANON_PREFIX + digest[:16]
+
+
+def new_anon_cookie():
+    return secrets.token_urlsafe(24)
+
+
+def anon_identity(cookie_value):
+    owner = anon_owner(cookie_value)
+    return WorkspaceIdentity(owner, authenticated=False, anonymous=True,
+                             display='this browser')
 
 
 # ── sessions ────────────────────────────────────────────────────────────
@@ -193,12 +247,22 @@ def sign_in(server, username, password, *, login_fn=None):
     result = fn(server, username.strip(), password)
     token = result.get('token')
     user = result.get('user') or {}
-    uid = user.get('id') or username
+    uid = (user.get('id') or '').strip()
     if not token:
         raise AuthError('the Omnigent server accepted the request but returned no session',
                         reason='auth_failed')
+    if not uid:
+        # Deliberately NOT falling back to the username that was typed. The
+        # owner id decides which workspace the request acts as, and on a
+        # deployment with administrators it also decides who is one; taking it
+        # from the request rather than from the server would let a caller choose
+        # both. A server that authenticates somebody must say who they are.
+        raise AuthError(
+            'that server authenticated the request but did not say which account it '
+            'belongs to, so there is no workspace to open. BioSense does not infer an '
+            'account id from what was typed.', reason='no_account_id')
     return WorkspaceIdentity(uid, authenticated=True, server=server, token=token,
-                             display=uid, is_admin=bool(user.get('is_admin')))
+                             display=uid, provider_is_admin=bool(user.get('is_admin')))
 
 
 def _omnigent_login(server, username, password):
@@ -243,7 +307,7 @@ def whoami(server, token, *, fetch_fn=None):
     if not user or not user.get('id'):
         return None
     return WorkspaceIdentity(user['id'], authenticated=True, server=server, token=token,
-                             display=user['id'], is_admin=bool(user.get('is_admin')))
+                             display=user['id'], provider_is_admin=bool(user.get('is_admin')))
 
 
 def _omnigent_me(server, token):

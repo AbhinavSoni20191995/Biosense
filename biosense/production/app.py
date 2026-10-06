@@ -80,6 +80,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .. import contracts as K
 from .. import glossary as GL
 from .. import workspace as WS
+from . import authz as AZ
 from . import budget as BU
 from . import discovery as DISC
 from . import discovery_runner as DRUN
@@ -204,11 +205,19 @@ class DiscoveryRun:
     """
 
     def __init__(self, run_id, request, out_dir, runtime_mode, *, runtime_label=None,
-                 deadline=None):
+                 deadline=None, owner=None, credential_mode='platform_demo',
+                 started_by_admin=False):
         self.id = run_id
         self.request = request
         self.out_dir = Path(out_dir)
         self.runtime_mode = runtime_mode
+        # Who this run belongs to. Every route that can show a run checks it
+        # against the caller, so a guessed id reaches nothing: a run id is not a
+        # capability. Role is deliberately not part of that check — an operator
+        # account is exempt from spending caps, not from other people's privacy.
+        self.owner = owner
+        self.credential_mode = credential_mode
+        self.started_by_admin = bool(started_by_admin)
         # The badge as this deployment says it: a hosted service's loopback
         # runtime is ONLINE to the person reading it, not LOCAL.
         self.runtime_label = runtime_label or RT.LABELS[runtime_mode]
@@ -313,6 +322,9 @@ class DiscoveryRun:
                 'events': [e for e in self.events if e['seq'] > after],
                 'event_count': len(self.events),
                 'omnigent_session_id': (self.session or {}).get('omnigent_session_id'),
+                'owner': self.owner,
+                'credential_mode': self.credential_mode,
+                'started_by_admin': self.started_by_admin,
                 'error': self.error, 'error_reason': self.error_reason,
                 'next_step': self.next_step,
                 'result': self.result if include_result else None,
@@ -328,10 +340,11 @@ class DiscoveryRun:
 class DiscoveryRegistry:
     """Discovery runs in this process, and the caps that bound them."""
 
-    def __init__(self, runs_dir, runtime_config, limits=None):
+    def __init__(self, runs_dir, runtime_config, limits=None, policy=None):
         self.runs_dir = Path(runs_dir)
         self.cfg = runtime_config
         self.limits = limits or BU.Limits()
+        self.policy = policy or AZ.Policy()
         self.ledger = BU.Ledger(self.limits)
         self.runs = {}
         self.order = []
@@ -358,14 +371,18 @@ class DiscoveryRegistry:
         target = self.cfg.for_mode(mode)
         if mode not in self.cfg.allowed:
             raise RT.RuntimeUnavailable('not_configured', hosted=self.cfg.hosted)
+        role = self.policy.role_for(identity)
+        credential_mode = self.policy.credential_mode(identity)
         if target.is_real:
             # Checked before anything is written, so a run that cannot possibly
             # work never appears in the list as if it might.
             from . import omnigent_runtime as OMNI
             OMNI.ensure_available(target)
-            # And then the budget, which refuses by name and never downgrades the
-            # request into a synthetic run.
-            self.ledger.authorise(client or 'unknown', is_real=True)
+            # And then the demo budget, which refuses by name and never
+            # downgrades the request into a synthetic run. An operator account is
+            # exempt here and nowhere else: the concurrency gate below, the
+            # deadline, and every size limit apply to them unchanged.
+            self.ledger.authorise(client or 'unknown', is_real=True, role=role)
         with self.lock:
             self._evict()
             if target.is_real and self.active_real >= MAX_CONCURRENT_REAL:
@@ -383,7 +400,10 @@ class DiscoveryRegistry:
             run = DiscoveryRun(rid, request, out, mode,
                                runtime_label=self.cfg.label_for(mode),
                                deadline=(self.limits.deadline_from(time.time())
-                                         if target.is_real else None))
+                                         if target.is_real else None),
+                               owner=getattr(identity, 'owner', None),
+                               credential_mode=credential_mode,
+                               started_by_admin=(role == AZ.ROLE_ADMIN))
             self.runs[rid] = run
             self.order.append(rid)
             if target.is_real:
@@ -458,10 +478,22 @@ class DiscoveryRegistry:
                 else:
                     self.active_synthetic = max(0, self.active_synthetic - 1)
 
-    def get(self, rid):
-        return self.runs.get(rid) if DISCOVERY_ID.match(rid or '') else None
+    def get(self, rid, *, owner=None):
+        """A run in this process, if the caller owns it.
 
-    def restore(self, rid, *, after=-1):
+        *owner* is required of every route a browser can reach. The default of
+        None is for internal callers only and is not reachable from HTTP.
+        """
+        if not DISCOVERY_ID.match(rid or ''):
+            return None
+        run = self.runs.get(rid)
+        if run is None:
+            return None
+        if owner is not None and run.owner is not None and run.owner != owner:
+            return None
+        return run
+
+    def restore(self, rid, *, after=-1, owner=None):
         """A run this process no longer holds, read back from its own directory.
 
         This is what makes a browser refresh survivable: the run id is enough,
@@ -471,9 +503,16 @@ class DiscoveryRegistry:
         """
         if not DISCOVERY_ID.match(rid or ''):
             return None
-        return RS.restore(self.runs_dir, rid, after=after)
+        found = RS.restore(self.runs_dir, rid, after=after)
+        if found is None:
+            return None
+        if owner is not None and found.get('owner') and found['owner'] != owner:
+            # Not "forbidden": a run somebody else owns is, to this caller,
+            # a run that does not exist. Saying otherwise confirms the id.
+            return None
+        return found
 
-    def cancel(self, rid, *, reason='cancelled'):
+    def cancel(self, rid, *, reason='cancelled', owner=None):
         """Stop a run in flight. Returns the run, or None if there is nothing to stop.
 
         A real run is money per minute, so stopping one has to be available to
@@ -481,7 +520,7 @@ class DiscoveryRegistry:
         interrupted as well as the local loop, because stopping the stream alone
         would leave the agents working and the bill running.
         """
-        run = self.get(rid)
+        run = self.get(rid, owner=owner)
         if run is None or run.finished_at is not None:
             return None
         if not run.stop(reason, STOP_MESSAGES[reason]):
@@ -492,10 +531,16 @@ class DiscoveryRegistry:
             OMNI.interrupt(self.cfg.for_mode(run.runtime_mode), sess)
         return run
 
-    def recent(self):
+    def recent(self, *, owner=None):
+        """Runs this caller may see. Never everybody's.
+
+        An owner of None is an internal caller; every HTTP route passes one, so
+        a visitor's list holds their own work and nothing else.
+        """
         with self.lock:
-            return [self.runs[r].snapshot(after=10 ** 9, include_result=False)
-                    for r in reversed(self.order) if r in self.runs]
+            rows = [self.runs[r] for r in reversed(self.order) if r in self.runs]
+        return [r.snapshot(after=10 ** 9, include_result=False) for r in rows
+                if owner is None or r.owner is None or r.owner == owner]
 
 
 class Registry:
@@ -597,13 +642,41 @@ class Handler(BaseHTTPRequestHandler):
     sessions = None
     default_identity = None
     limits = BU.Limits()
+    policy = AZ.Policy()
     _ready = {'at': 0.0, 'body': None, 'code': 503}
     _ready_lock = threading.Lock()
 
     def log_message(self, fmt, *args):
         sys.stderr.write(f'{self.address_string()} {fmt % args}\n')
 
+    def handle_one_request(self):
+        """Reset per-request state before the handler runs.
+
+        A handler instance serves every request on a keep-alive connection, so
+        anything cached on `self` outlives the request that made it. Two things
+        here must not: the resolved identity (recomputing it mid-request would
+        mint a second anonymous workspace, and the run would be owned by a
+        cookie the browser never kept) and the queued Set-Cookie headers (which
+        would otherwise be re-sent on every later request).
+        """
+        self._identity_cache = None
+        self._cookies = []
+        return super().handle_one_request()
+
+    def _set_cookie(self, cookie):
+        """Queue a Set-Cookie for whatever this handler answers with.
+
+        Used by `_identity` so an unsigned-in browser is given its own workspace
+        on the first request that needs one, without every handler having to know
+        about it.
+        """
+        pending = getattr(self, '_cookies', None)
+        if pending is None:
+            pending = self._cookies = []
+        pending.append(cookie)
+
     def _send(self, code, body, ctype='application/json; charset=utf-8', extra=()):
+        extra = list(extra) + [('Set-Cookie', c) for c in getattr(self, '_cookies', [])]
         if isinstance(body, (dict, list)):
             body = json.dumps(body, indent=2, default=str).encode()
         elif isinstance(body, str):
@@ -685,6 +758,10 @@ class Handler(BaseHTTPRequestHandler):
                 with SIM_GATE:
                     return self._send(200, SM.seed_brief(SM.simulate(self._body())))
             return self._send(404, {'error': 'no such endpoint'})
+        except AZ.Forbidden as e:
+            return self._send(403, {'error': str(e), 'refused': True, 'reason': 'forbidden',
+                                    'required_role': e.required_role,
+                                    'headline': 'Not allowed for this account'})
         except BU.BudgetExceeded as e:
             # 429, and the limit is named: a cap that refuses without saying
             # which cap or when to come back reads like a fault.
@@ -704,25 +781,87 @@ class Handler(BaseHTTPRequestHandler):
                              self.headers.get('X-Forwarded-For'))
 
     # ── identity ────────────────────────────────────────────
+    def _cookie(self, name):
+        for part in (self.headers.get('Cookie') or '').split(';'):
+            key, _, value = part.strip().partition('=')
+            if key == name:
+                return value
+        return None
+
     def _identity(self):
         """Who this request is acting as.
 
-        A signed-in session when there is one, otherwise the instance's local
-        workspace. The cookie carries an opaque session id and nothing else: the
-        Omnigent token it maps to never leaves this process.
+        A signed-in session when there is one. Otherwise, on a deployment that
+        serves strangers, this browser's own unnamed workspace — because one
+        shared workspace on a public URL means every visitor can list every
+        other visitor's runs and read their objectives. The anonymous cookie is
+        an opaque random value and the workspace id is its hash, so the thing
+        that grants access is never the thing written into a record.
+
+        On a single-user instance (no hosted posture configured) the local
+        workspace stays exactly as it was: one workspace, private because the
+        machine is.
         """
-        raw = self.headers.get('Cookie') or ''
-        for part in raw.split(';'):
-            name, _, value = part.strip().partition('=')
-            if name == WS.SESSION_COOKIE:
-                found = self.sessions.get(value)
-                if found is not None:
-                    return found
-        return self.default_identity
+        cached = getattr(self, '_identity_cache', None)
+        if cached is not None:
+            return cached
+        found = self._resolve_identity()
+        self._identity_cache = found
+        return found
+
+    def _resolve_identity(self):
+        sid = self._cookie(WS.SESSION_COOKIE)
+        if sid:
+            found = self.sessions.get(sid)
+            if found is not None:
+                return found
+        if not self.runtime_cfg.hosted:
+            return self.default_identity
+        value = self._cookie(WS.ANON_COOKIE)
+        if not value:
+            value = WS.new_anon_cookie()
+            secure = '; Secure' if self.headers.get('X-Forwarded-Proto') == 'https' else ''
+            self._set_cookie(f'{WS.ANON_COOKIE}={value}; Path=/; HttpOnly; SameSite=Lax'
+                             f'; Max-Age={WS.ANON_TTL_S}{secure}')
+        return WS.anon_identity(value)
+
+    def _role(self, identity=None):
+        return self.policy.role_for(identity if identity is not None else self._identity())
+
+    def _identity_payload(self, identity=None):
+        """The safe shape of "who am I", for /api/identity and the pages.
+
+        Carries a display name, whether the caller is authenticated, and the
+        role this deployment grants them. It carries no token, no provider key,
+        no session id and no filesystem path — and the role is computed here,
+        from configuration, never read from anything the caller sent.
+        """
+        identity = identity or self._identity()
+        role = self._role(identity)
+        out = identity.public(role=role)
+        out['display_name'] = identity.display
+        out['role_label'] = AZ.LABELS[role]
+        out['is_admin'] = role == AZ.ROLE_ADMIN
+        out['credential_mode'] = self.policy.credential_mode(identity)
+        out['allowance'] = self.discovery.ledger.allowance(self._client(), role=role)
+        out['sign_in_available'] = bool(self.policy.auth_server or self.runtime_cfg.is_real)
+        return out
 
     def _login(self, body):
-        server = (body.get('server') or '').strip() or (
-            self.runtime_cfg.server if self.runtime_cfg.is_real else '')
+        asked = (body.get('server') or '').strip()
+        trusted = self.policy.auth_server
+        if trusted:
+            # One issuer, chosen by the deployment. Before this, the server URL
+            # came from the request body, so a caller could sign in against an
+            # Omnigent server they ran themselves and be whoever they liked —
+            # including an id this deployment lists as an administrator.
+            if asked and asked.rstrip('/') != trusted:
+                raise WS.AuthError(
+                    'this deployment signs people in through one configured accounts server, '
+                    'and that is not it.', reason='untrusted_issuer', status=400)
+            server = trusted
+        else:
+            server = asked or (self.runtime_cfg.server if self.runtime_cfg.is_real else '')
         if not server:
             raise WS.AuthError(
                 'this instance has no Omnigent server configured, so there is no account to '
@@ -736,7 +875,7 @@ class Handler(BaseHTTPRequestHandler):
         secure = '; Secure' if (self.headers.get('X-Forwarded-Proto') == 'https') else ''
         cookie = (f'{WS.SESSION_COOKIE}={sid}; Path=/; HttpOnly; SameSite=Lax'
                   f'; Max-Age={WS.SESSION_TTL_S}{secure}')
-        return self._send(200, {'identity': identity.public()},
+        return self._send(200, {'identity': self._identity_payload(identity)},
                           extra=[('Set-Cookie', cookie)])
 
     def _logout(self):
@@ -746,7 +885,7 @@ class Handler(BaseHTTPRequestHandler):
             if name == WS.SESSION_COOKIE:
                 self.sessions.drop(value)
         cookie = f'{WS.SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
-        return self._send(200, {'identity': self.default_identity.public()},
+        return self._send(200, {'identity': self._identity_payload()},
                           extra=[('Set-Cookie', cookie)])
 
     # ── discovery ───────────────────────────────────────────
@@ -800,9 +939,10 @@ class Handler(BaseHTTPRequestHandler):
         started it. On a real run this also interrupts the Omnigent session,
         because the cost is in the agents, not in the stream.
         """
-        run = self.discovery.cancel(rid)
+        owner = self._identity().owner
+        run = self.discovery.cancel(rid, owner=owner)
         if run is None:
-            live = self.discovery.get(rid)
+            live = self.discovery.get(rid, owner=owner)
             if live is not None:
                 return self._send(409, {'error': 'that run has already finished',
                                         'status': live.status})
@@ -812,7 +952,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _make_benchmark(self, rid):
         from ..benchmark import from_run as FR
-        run = self.discovery.get(rid)
+        run = self.discovery.get(rid, owner=self._identity().owner)
         if not run:
             return self._send(404, {'error': 'no such discovery run in this process'})
         if run.status != 'done' or not run.result:
@@ -867,7 +1007,7 @@ class Handler(BaseHTTPRequestHandler):
         PB.save(identity, doc, overwrite=bool(body.get('overwrite')))
         from .. import projects as PJ
         return self._send(201, {'project': PJ.Project(doc).summary(),
-                                'owner': identity.public()})
+                                'owner': self._identity_payload(identity)})
 
     # ── GET ─────────────────────────────────────────────────
     def do_GET(self):
@@ -964,12 +1104,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/runtime':
             return self._runtime_state(q)
         if path == '/api/auth/me':
-            return self._send(200, {'identity': self._identity().public()})
+            return self._send(200, {'identity': self._identity_payload()})
         if path == '/api/workspace/projects':
             identity = self._identity()
             return self._send(200, {
                 'projects': PB.available_for(identity),
-                'owner': identity.public(),
+                'owner': self._identity_payload(identity),
                 'note': 'Projects you create are stored in your workspace under the private '
                         'data root. They are never written into the repository and never '
                         'served as files.'})
@@ -983,18 +1123,19 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             return self._benchmark(m.group(1))
         if path == '/api/discovery':
-            return self._send(200, self.discovery.recent())
+            return self._send(200, self.discovery.recent(owner=self._identity().owner))
         m = re.fullmatch(r'/api/discovery/([^/]+)', path)
         if m:
             after = int((q.get('after') or ['-1'])[0] or -1)
-            run = self.discovery.get(m.group(1))
+            owner = self._identity().owner
+            run = self.discovery.get(m.group(1), owner=owner)
             if run:
                 return self._send(200, run.snapshot(after=after))
             # Not in memory: the browser was reloaded, or this process was
             # replaced. The run wrote its own record beside its artifacts, so the
             # id is enough to get it back — and a run that was interrupted says so
             # rather than being reported as finished.
-            found = self.discovery.restore(m.group(1), after=after)
+            found = self.discovery.restore(m.group(1), after=after, owner=owner)
             if found:
                 return self._send(200, found)
             return self._send(404, {'error': 'no record of that discovery run',
@@ -1002,14 +1143,17 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r'/api/discovery/([^/]+)/events', path)
         if m:
             return self._sse_discovery(m.group(1), int((q.get('after') or ['-1'])[0] or -1))
+        if path == '/api/identity':
+            return self._send(200, self._identity_payload())
         m = re.fullmatch(r'/api/discovery/([^/]+)/protocol', path)
         if m:
-            run = self.discovery.get(m.group(1))
+            owner = self._identity().owner
+            run = self.discovery.get(m.group(1), owner=owner)
             # A finished run's protocol is in the record it wrote, so exporting
             # it works after a reload or a restart, not only while the process
             # that produced it is still alive.
             result = (run.result if run
-                      else (self.discovery.restore(m.group(1)) or {}).get('result'))
+                      else (self.discovery.restore(m.group(1), owner=owner) or {}).get('result'))
             protocol = (result or {}).get('protocol')
             if not protocol:
                 return self._send(404, {'error': 'no protocol summary for that run'})
@@ -1103,7 +1247,7 @@ class Handler(BaseHTTPRequestHandler):
                 except K.ContractError as e:
                     checks[mode] = RT.reason('probe_failed', str(e))
             out['availability'] = checks
-        out['identity'] = self._identity().public()
+        out['identity'] = self._identity_payload()
         out['limits'] = self.limits.describe()
         out['usage'] = self.discovery.ledger.state()
         out['note'] = (
@@ -1162,7 +1306,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {'error': f'that benchmark could not be read: {e}'})
 
     def _sse_discovery(self, rid, after):
-        run = self.discovery.get(rid)
+        run = self.discovery.get(rid, owner=self._identity().owner)
         if not run:
             return self._send(404, {'error': 'no such discovery run in this process'})
         return self._stream(run, after)
@@ -1257,12 +1401,14 @@ def main(argv=None):
     # reason rather than let it start and refuse every run.
     cfg = RT.from_env(runs_dir=runs)
     limits = BU.from_env()
+    policy = AZ.from_env()
     Handler.runs_dir = runs
     Handler.static_dir = Path(a.static) if a.static else None
     Handler.registry = Registry(runs)
     Handler.runtime_cfg = cfg
     Handler.limits = limits
-    Handler.discovery = DiscoveryRegistry(runs, cfg, limits)
+    Handler.policy = policy
+    Handler.discovery = DiscoveryRegistry(runs, cfg, limits, policy)
     Handler.sessions = WS.SessionStore()
     Handler.default_identity = WS.identity_from_env()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)

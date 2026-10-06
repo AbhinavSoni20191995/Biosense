@@ -395,12 +395,30 @@ def workspace_projects(identity):
     return out
 
 
+def check_project_id(project_id):
+    """A project id, or a refusal. The id is a name and never a path.
+
+    Both loaders build a filename from it, and the template loader reads from a
+    directory outside the workspace — so without this an id containing `..`
+    walks out of the caller's workspace and reads somebody else's project. The
+    same pattern a project is created under is the one it is loaded under.
+    """
+    pid = (project_id or '').strip()
+    if not PROJECT_ID.match(pid):
+        raise K.ContractError(
+            f'{project_id!r} is not a project id. An id is lower-case letters, digits and '
+            f'underscores, 3 to 64 characters, starting with a letter — it is a name, not '
+            f'a path.')
+    return pid
+
+
 def load_for(identity, project_id, *, templates_dir=None):
     """A project by id: the workspace's own first, then the committed templates.
 
     Own first, deliberately: a person who makes a project named after a template
     means theirs.
     """
+    project_id = check_project_id(project_id)
     d = WS.projects_dir(identity)
     path = d / f'{project_id}.json'
     if path.is_file():

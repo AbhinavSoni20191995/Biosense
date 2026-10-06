@@ -145,6 +145,54 @@ Worth knowing:
 - A stopped or timed-out run is recorded as `stopped`, with whatever the agents
   had written. It is never reported as a finished answer.
 
+### Designating an operator account
+
+A deployment that you develop against will hit its own demo caps, which is
+correct for strangers and tiresome for you. Two variables fix that, and both are
+server-side configuration a request can never reach:
+
+```bash
+railway variables set BIOSENSE_AUTH_SERVER=https://your-omnigent-accounts-server
+railway variables set BIOSENSE_ADMIN_USER_IDS=you@yourlab.example
+```
+
+`BIOSENSE_AUTH_SERVER` is the one Omnigent accounts server this deployment trusts
+to say who somebody is; `BIOSENSE_ADMIN_USER_IDS` is a comma-separated list of
+ids on that server. **Both are required**: naming administrators without naming
+the issuer refuses to start, because anyone can run an Omnigent server and return
+any id they like, so an id alone is not an identity.
+
+Signed in as a listed account, the page reads `ADMIN · REAL AI — ONLINE` and the
+demo caps do not apply — not the per-caller daily cap, not the deployment daily
+cap, not the cooldown. The run timeout, the one-at-a-time gate, the size limits,
+the fixed agent bundle and every data boundary still do, and **other accounts'
+runs and projects remain invisible**: an exemption from spending caps is not a
+key to anybody's science. Operator runs are counted as
+`admin_real_runs_today`, separately from the public ones, because they are not
+free.
+
+Nothing needs an admin identifier in source, and nothing needs editing to add or
+remove one: change the variable and redeploy. The full model, and the planned
+user-provided-key design that is **not** implemented, are in
+[docs/ACCOUNTS.md](../docs/ACCOUNTS.md).
+
+### Running an accounts server for sign-in
+
+The runtime server inside the container is a loopback single-user server, so it
+has no accounts and no `/auth/login`. Sign-in therefore needs an Omnigent server
+running in **accounts** mode, which is a separate process (a second small service,
+or one you already run):
+
+```bash
+OMNIGENT_AUTH_ENABLED=1 OMNIGENT_AUTH_PROVIDER=accounts OMNIGENT_ACCOUNTS_ENABLED=1 OMNIGENT_ACCOUNTS_COOKIE_SECRET="$(openssl rand -hex 32)" OMNIGENT_ACCOUNTS_BASE_URL=https://your-omnigent-accounts-server OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD='<first-boot admin password>'   omnigent server --host 0.0.0.0 --port "$PORT" --no-open
+```
+
+On first boot that creates one admin account (named `root` unless the accounts
+store says otherwise) and invites are issued from there. Point
+`BIOSENSE_AUTH_SERVER` at it. Verified in this repository against a real accounts
+server: `POST /auth/login` returns `{"token": ..., "user": {"id": ..., "is_admin": ...}}`
+and `GET /auth/me` returns the same id, which is exactly the shape BioSense reads.
+
 ### What a visitor can and cannot do
 
 Still enforced in code, exactly as in the synthetic image:
@@ -180,6 +228,8 @@ Still enforced in code, exactly as in the synthetic image:
 | | `OMNIGENT_LOCAL_SINGLE_USER` | `1` | loopback, no login |
 | Model | `ANTHROPIC_API_KEY` | **no — you set it** | a platform secret, never in the image |
 | Remote | `BIOSENSE_OMNIGENT_TOKEN` / `_TOKEN_FILE` | no | only for `remote` mode |
+| Accounts | `BIOSENSE_AUTH_SERVER` | **no — you set it** | the one issuer sign-in is accepted from |
+| | `BIOSENSE_ADMIN_USER_IDS` | **no — you set it** | operator ids on that server |
 
 `tests/test_cloud_runtime.py` asserts that no image or script bakes in a
 credential.

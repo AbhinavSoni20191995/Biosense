@@ -141,6 +141,29 @@ protocol, the simulator, the benchmarks), simulator mode, and the benchmarks.
 If the hosted runtime is down, the page says **which part** is missing and that
 the demonstration path still works. It never disappears and never pretends.
 
+### Accounts
+
+BioSense accounts keep each scientist's **projects, private datasets, discovery
+runs and reports** separate. A run belongs to the account that started it and to
+the project it was run against; another account asking for it by id gets a 404,
+not a copy. Not signed in, on a hosted instance, your browser still gets a
+workspace of its own — it just has no name and does not follow you to another
+machine.
+
+Sign-in is an **Omnigent account**: BioSense forwards your credentials to the
+configured accounts server once, keeps only the session it returns, server-side,
+and stores no password of its own.
+
+Hosted Real AI currently runs on **BioSense-managed demo access** — this
+deployment's own model credentials, under the caps above. A later version may let
+you connect your own model-provider credentials; that is
+[planned and not implemented](docs/ACCOUNTS.md), and nothing in the interface
+asks you for a key.
+
+Operators of a deployment can be given an **ADMIN** role, which skips the demo
+caps and nothing else — not the run timeout, not the one-at-a-time gate, and not
+anybody else's data. How to designate one: [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
+
 ### Run it yourself, if you need one of these
 
 | You want | Why the hosted app cannot give it to you |
@@ -694,7 +717,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 848 tests
+uv run --frozen python -m unittest     # 884 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 ```
 
@@ -712,6 +735,8 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 | [`biosense/production/runtime.py`](biosense/production/runtime.py) | which runtime answers, and why one cannot |
 | [`biosense/production/health.py`](biosense/production/health.py) | `/readyz`: the four-part readiness truth, with no secrets |
 | [`biosense/production/budget.py`](biosense/production/budget.py) | what a visitor may spend on real AI |
+| [`biosense/production/authz.py`](biosense/production/authz.py) | the three roles, and the one place any of them is decided |
+| [`biosense/workspace.py`](biosense/workspace.py) | who is asking, and where their work lives |
 | [`biosense/production/run_store.py`](biosense/production/run_store.py) | a run's own record, so a reload is not a loss |
 | [`scripts/start_local_ai.sh`](scripts/start_local_ai.sh) | one command to real AI on your machine |
 | [`deploy/Dockerfile.ai`](deploy/Dockerfile.ai) | the hosted image: app + Omnigent server + executor |

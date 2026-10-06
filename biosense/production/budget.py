@@ -14,6 +14,20 @@ platform, not a quota service and not an identity system. It caps four things:
     per deployment  how many real runs this service may start in a day
     duration        a wall-clock deadline, after which the run is stopped
 
+**Demo policy and system safety are different categories**, and the difference
+decides what an operator may bypass. What is in this module — the per-caller
+cap, the deployment cap and the cooldown — exists to bound what strangers can
+spend on BioSense's provider key. An administrator of the deployment is not a
+stranger, so `authorise()` exempts them by role and records their runs
+separately. What is NOT in this module — the single-real-run concurrency gate,
+the wall-clock deadline, the prompt and body size limits, the private-data
+boundary, the fixed agent bundle — exists to keep the service and its data safe
+from any caller, including its operator, and none of it consults role anywhere.
+
+The deadline is the one that sits across the line: it is configured here because
+it is a cost control, and it is applied to every run including an admin's,
+because a run nobody can stop is a bill nobody can stop.
+
 Design notes worth keeping:
 
 * **A refusal is never a downgrade.** Hitting a cap raises `BudgetExceeded`,
@@ -115,6 +129,7 @@ class Limits:
             'max_real_runs_per_client_per_day': self.per_client or None,
             'real_run_timeout_s': self.timeout_s or None,
             'real_run_cooldown_s': self.cooldown_s or None,
+            'admin_exempt': True,
             'note': ('This deployment runs real AI on its own credentials, so real runs are '
                      'capped. A cap refuses the run and says when to come back; it never '
                      'silently gives you a synthetic one instead.'
@@ -172,10 +187,15 @@ class Ledger:
         self._lock = threading.Lock()
         self._by_client = {}
         self._all = []
+        # Counted apart from the public ones rather than exempted into
+        # invisibility. An operator's runs are not free, and a deployment should
+        # be able to see how much of its spend was its own development.
+        self._admin = []
 
     def _prune(self, now):
         cut = now - DAY_S
         self._all = [t for t in self._all if t > cut]
+        self._admin = [t for t in self._admin if t > cut]
         for key in list(self._by_client):
             kept = [t for t in self._by_client[key] if t > cut]
             if kept:
@@ -183,16 +203,30 @@ class Ledger:
             else:
                 del self._by_client[key]
 
-    def authorise(self, client, *, is_real=True):
+    def authorise(self, client, *, is_real=True, role=None):
         """Record one real-run start, or refuse it by name.
 
         Called before anything is written, so a run that is not allowed never
         appears in the run list as though it might have worked.
+
+        *role* comes from `authz.Policy.role_for`, which reads a server-side
+        configuration and a server-verified identity. An administrator is
+        recorded and exempted; nothing a request can carry reaches this
+        argument, which is the property that makes the exemption safe.
         """
         lim = self.limits
-        if not is_real or not lim.any_cap:
+        if not is_real:
             return
         now = self._now()
+        if role == 'admin':
+            with self._lock:
+                self._prune(now)
+                self._admin.append(now)
+            return
+        # Recorded whether or not caps are configured: the counts are
+        # observability, and a deployment that has not set a limit still wants to
+        # know what it spent. Each check below is guarded by its own limit, so
+        # "no caps" means nothing is refused, not that nothing is counted.
         with self._lock:
             self._prune(now)
             mine = self._by_client.get(client, [])
@@ -231,5 +265,41 @@ class Ledger:
         with self._lock:
             self._prune(now)
             return {'real_runs_last_24h': len(self._all),
+                    'public_real_runs_today': len(self._all),
+                    'admin_real_runs_today': len(self._admin),
                     'callers_last_24h': len(self._by_client),
                     'limits': self.limits.describe()}
+
+    def allowance(self, client, *, role=None):
+        """What this caller has left, for the interface to show before it refuses.
+
+        Only facts the server actually knows: a count it is keeping, or a
+        cooldown it is enforcing. A deployment with no caps reports none rather
+        than inventing a number.
+        """
+        lim = self.limits
+        if role == 'admin':
+            return {'role': 'admin', 'capped': False,
+                    'note': 'Operator account: public demo caps do not apply. Runs still '
+                            'spend this deployment\'s model credits, and every safety limit '
+                            '— the run timeout, the one-at-a-time gate, the size limits — '
+                            'still applies.'}
+        if not lim.any_cap:
+            return {'role': role or 'public', 'capped': False,
+                    'note': 'No run caps are configured on this instance.'}
+        now = self._now()
+        with self._lock:
+            self._prune(now)
+            mine = list(self._by_client.get(client, []))
+            used_all = len(self._all)
+        out = {'role': role or 'public', 'capped': True,
+               'real_runs_used_today': len(mine)}
+        if lim.per_client:
+            out['real_runs_remaining_today'] = max(0, lim.per_client - len(mine))
+        if lim.daily:
+            out['deployment_runs_remaining_today'] = max(0, lim.daily - used_all)
+        if lim.cooldown_s and mine:
+            wait = lim.cooldown_s - (now - max(mine))
+            if wait > 0:
+                out['next_run_in_s'] = int(wait) + 1
+        return out

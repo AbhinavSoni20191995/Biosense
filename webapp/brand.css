@@ -239,6 +239,12 @@ button{font-family:inherit}
    reader can see before they hit it is information, not a warning. */
 .rt-badge.demo-limits{color:var(--ink-dim);border-color:var(--line);
   background:var(--glass-2)}
+/* The operator badge. Distinct from a runtime badge on purpose: it says who is
+   running something, never what kind of answer came back. */
+.rt-badge.admin{color:var(--human);
+  border-color:color-mix(in srgb,var(--human) 55%,transparent);
+  background:color-mix(in srgb,var(--human) 12%,transparent)}
+.rt-badge .role{font-weight:800;opacity:.85}
 .limits{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;
   font-size:12.5px}
 .limits .note{flex:0 0 100%;font-size:12px;color:var(--ink-dim);margin:0}

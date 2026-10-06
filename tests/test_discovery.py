@@ -28,6 +28,8 @@ from biosense.production import ingest as IN
 from biosense.production import project_builder as PB
 from biosense.production import protocol_summary as PS
 from biosense.production import response_model as RM
+from biosense.production import authz as AZ
+from biosense.production import budget as BU
 from biosense.production import runtime as RT
 from biosense.production import sim_candidate as SC
 
@@ -413,6 +415,11 @@ class ApiTests(unittest.TestCase):
         APP.Handler.static_dir = K.ROOT / 'webapp'
         APP.Handler.registry = APP.Registry(cls.tmp / 'runs')
         APP.Handler.runtime_cfg = cfg
+        # Handler configuration is class-level, so a suite that leaves a policy
+        # behind configures this one. Each suite states the deployment it is
+        # testing rather than inheriting whichever ran first.
+        APP.Handler.limits = BU.Limits()
+        APP.Handler.policy = AZ.Policy()
         APP.Handler.discovery = APP.DiscoveryRegistry(cls.tmp / 'runs', cfg)
         APP.Handler.sessions = WS.SessionStore()
         APP.Handler.default_identity = WS.local_identity()

@@ -163,25 +163,59 @@ async function loadRuntime() {
   renderIdentity();
 }
 
+/* The account area. Three things belong here and nothing else: who you are,
+   what this deployment lets you do, and the way in or out. The role comes from
+   the server on every load — the page cannot award itself one, and setting
+   is_admin in a console does nothing but lie to the person who typed it. */
 function renderIdentity() {
   const box = $('#identity'); if (!box) return;
   const id = state.runtime && state.runtime.identity;
   box.textContent = '';
   if (!id) return;
+  if (id.is_admin) box.append(el('span', 'rt-badge admin', 'ADMIN'));
   if (id.authenticated) {
-    box.append(el('span', 'mono dim', id.display), ' ');
+    box.append(el('span', 'mono dim', id.display_name || id.display), ' ');
     const out = el('button', 'btn', 'Sign out');
     out.addEventListener('click', async () => {
       await post('/api/auth/logout'); location.reload();
     });
     box.append(out);
-  } else {
+  } else if (id.sign_in_available) {
     const inBtn = el('button', 'btn', 'Sign in');
     inBtn.addEventListener('click', () => $('#signinCard').hidden = !$('#signinCard').hidden);
     box.append(inBtn);
   }
   const note = $('#identityNote');
   if (note) note.textContent = id.note || '';
+  renderAllowance(id);
+}
+
+/* What is left, and only where the server actually knows. A page that invents a
+   remaining-run count is worse than one that shows none. */
+function renderAllowance(id) {
+  const host = $('#allowance'); if (!host) return;
+  host.textContent = '';
+  const a = (id && id.allowance) || null;
+  if (!a) { host.hidden = true; return; }
+  host.hidden = false;
+  if (a.role === 'admin') {
+    host.append(el('span', 'rt-badge admin', 'ADMIN ACCESS'),
+      el('span', 'dim', 'Public demo limits do not apply. Runs still spend this '
+        + 'deployment\u2019s model credits.'));
+    return;
+  }
+  if (!a.capped) { host.hidden = true; return; }
+  const bits = [];
+  if (a.real_runs_remaining_today != null) {
+    bits.push(`${a.real_runs_remaining_today} Real AI run`
+      + (a.real_runs_remaining_today === 1 ? '' : 's') + ' remaining today');
+  }
+  if (a.next_run_in_s) bits.push(`next run available in ${a.next_run_in_s}s`);
+  if (a.deployment_runs_remaining_today != null) {
+    bits.push(`${a.deployment_runs_remaining_today} left across this service today`);
+  }
+  host.append(el('span', 'rt-badge demo-limits', 'BIOSENSE DEMO AI'),
+    el('span', 'dim', bits.join(' \u00b7 ')));
 }
 
 function renderRuntimePicker() {
@@ -264,9 +298,14 @@ function chosenRuntime() {
 function updateBadge() {
   const mode = chosenRuntime();
   const host = $('#runtimeBadge'); if (!host) return;
+  const id = state.runtime && state.runtime.identity;
   host.textContent = '';
   host.className = 'rt-badge ' + mode;
   host.append(el('span', 'dot'));
+  /* "ADMIN · REAL AI — ONLINE". The role says who is running it; the runtime
+     says what kind of answer it is. Neither word changes the other's meaning:
+     an operator's synthetic run is still synthetic. */
+  if (id && id.is_admin) host.append(el('span', 'role', 'ADMIN \u00b7 '));
   host.append(term('runtime_mode', mode, modeLabel(mode)));
 }
 
