@@ -112,13 +112,17 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual([1], self.sleeps)
 
     def test_a_not_found_is_an_answer_and_is_not_retried(self):
+        """Each archive is asked once; a 404 moves on to the other, never
+        back to the same one."""
         calls = []
         def fake(req, timeout):
             calls.append(req.full_url)
             raise urllib.error.HTTPError(req.full_url, 404, 'Not Found', {}, None)
-        with mock.patch('urllib.request.urlopen', fake), self.assertRaises(urllib.error.HTTPError):
+        with mock.patch('urllib.request.urlopen', fake), self.assertRaisesRegex(ValueError, 'no archive'):
             AT.fetch_full_text('PMC1')
-        self.assertEqual(1, len(calls))
+        self.assertEqual(2, len(calls))
+        self.assertIn('europepmc', calls[0]); self.assertIn('efetch', calls[1])
+        self.assertEqual([], self.sleeps)
 
     def test_filters_are_added_to_the_query_actually_sent(self):
         seen = []
@@ -163,3 +167,40 @@ class RetrievalTests(unittest.TestCase):
         self.assertTrue(doc['refused'])
         self.assertIn('pubmed', doc['next'])
         self.assertEqual(3, len(self.sleeps) + 1, 'retried before refusing')
+
+
+PMC_SET_XML = b'''<?xml version="1.0"?><pmc-articleset><article article-type="research-article">
+<front><article-meta><title-group><article-title>Synthetic: mirrored article</article-title></title-group></article-meta></front>
+<body><sec><title>Methods</title><p>Cells received 50 ng/mL M-CSF from day 7.</p></sec></body></article></pmc-articleset>'''
+
+
+class FullTextFallbackTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(AT, '_sleep', lambda s: None)
+        patcher.start(); self.addCleanup(patcher.stop)
+
+    def test_an_archive_answering_500_is_not_the_end_of_the_paper(self):
+        seen = []
+        def fake(req, timeout):
+            seen.append(req.full_url)
+            if 'europepmc' in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 500, 'Server Error', {}, None)
+            return _Resp(PMC_SET_XML)
+        with mock.patch('urllib.request.urlopen', fake):
+            src = AT.fetch_full_text('PMC999')
+        self.assertEqual('ncbi_pmc', src['archive'])
+        self.assertEqual(3, sum('europepmc' in u for u in seen), 'the first archive was retried')
+        self.assertIn('50 ng/mL M-CSF', src['paragraphs'][0]['text'])
+        self.assertEqual('body / Methods', src['paragraphs'][0]['section'])
+
+    def test_both_archives_failing_is_one_refusal_naming_both(self):
+        def fake(req, timeout):
+            raise urllib.error.HTTPError(req.full_url, 500, 'Server Error', {}, None)
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as d, mock.patch('urllib.request.urlopen', fake), contextlib.redirect_stdout(out):
+            code = AT.main(['fetch', 'PMC999', '--out', str(Path(d) / 'f.json')])
+        doc = json.loads(out.getvalue())
+        self.assertEqual(1, code)
+        self.assertIn('Europe PMC', doc['reason'])
+        self.assertIn('NCBI PMC', doc['reason'])
+        self.assertIn('abstract', doc['next'])

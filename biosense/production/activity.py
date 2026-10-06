@@ -265,9 +265,11 @@ class Activity:
                 # Its evidence is missing from the result, and why is the first
                 # thing a reader needs: a network refusal, a safeguard, a crash.
                 said = (event.get('technical') or '').split(': ', 1)
+                # A sandbox or SDK error carries its own remediation at the
+                # end; cut at 300 characters it lost exactly that part.
                 self._limit(at, f'{AGENT_LABEL[name]} agent failed'
                                 + (f': {said[1]}' if len(said) > 1 else
-                                   ' without saying why'), None)
+                                   ' without saying why'), None, cap=700)
 
     def _finish(self, at, event):
         stage = event.get('stage')
@@ -325,13 +327,14 @@ class Activity:
         self.timeline.append(row)
         del self.timeline[:-MAX_TIMELINE]
 
-    def _limit(self, at, text, tool=None):
+    def _limit(self, at, text, tool=None, cap=300):
         if not text:
             return
-        if any(row['text'] == _short(text, 300) for row in self.limitations):
+        text = _short(text, cap)
+        if any(row['text'] == text for row in self.limitations):
             return          # the same refusal twice is one limitation
         row = {'at': at, 'rel_s': round(at - self.started_at, 1),
-               'text': _short(text, 300), 'tool': tool}
+               'text': text, 'tool': tool}
         self.limitations.append(row)
         del self.limitations[:-MAX_LIMITATIONS]
         self._note(at, 'limitation', text)

@@ -166,12 +166,25 @@ def summary(result):
             for p in result.get('papers', [])]
 
 def fetch_full_text(pmcid):
-    """Fetch open-access JATS XML through the documented Europe PMC endpoint."""
+    """Fetch open-access JATS XML: Europe PMC first, then NCBI's PMC when it errors.
+
+    Both archives carry the open-access subset; either can be down, or answer
+    500 for one article, and a paper lost to one outage is a claim nobody gets
+    to cite. The source records which archive answered."""
     if not re.fullmatch(r'PMC[0-9]+', pmcid):
         raise ValueError('Expected a PMCID such as PMC7076930')
-    raw = get_bytes(BASE + '/' + pmcid + '/fullTextXML')
+    try:
+        raw, archive = get_bytes(BASE + '/' + pmcid + '/fullTextXML'), 'europepmc'
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as first:
+        try:
+            raw, archive = _eutils('efetch.fcgi', db='pmc', id=pmcid, retmode='xml'), 'ncbi_pmc'
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as second:
+            raise ValueError(f'no archive returned {pmcid}: Europe PMC {first}; NCBI PMC {second}')
     root = ET.fromstring(raw)
-    article_type = root.attrib.get('article-type', 'unknown')
+    article = root if root.tag == 'article' else root.find('.//article')
+    if article is None:
+        raise ValueError(f'{archive} returned no article for {pmcid}')
+    article_type = article.attrib.get('article-type', 'unknown')
     paragraphs = []
     def visit(node, section):
         if node.tag == 'sec':
@@ -183,14 +196,14 @@ def fetch_full_text(pmcid):
             return
         for child in node:
             visit(child, section)
-    body = root.find('body')
+    body = article.find('body')
     if body is None:
-        raise ValueError('No article body available; cannot verify full-text evidence')
+        raise ValueError(f'No article body available from {archive}; cannot verify full-text evidence')
     visit(body, 'body')
-    title = root.find('.//article-title')
-    licenses = [normalize(''.join(n.itertext())) for n in root.findall('.//license')]
-    supplements = [dict(n.attrib) for n in root.findall('.//supplementary-material')]
-    return {'id': pmcid, 'url': 'https://europepmc.org/articles/' + pmcid, 'title': normalize(''.join(title.itertext())) if title is not None else '', 'retrieved_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'sha256': hashlib.sha256(raw).hexdigest(), 'article_type': article_type, 'license': licenses, 'supplements_retrieved': False, 'supplement_count': len(supplements), 'paragraphs': paragraphs}
+    title = article.find('.//article-title')
+    licenses = [normalize(''.join(n.itertext())) for n in article.findall('.//license')]
+    supplements = [dict(n.attrib) for n in article.findall('.//supplementary-material')]
+    return {'id': pmcid, 'url': 'https://europepmc.org/articles/' + pmcid, 'archive': archive, 'title': normalize(''.join(title.itertext())) if title is not None else '', 'retrieved_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'sha256': hashlib.sha256(raw).hexdigest(), 'article_type': article_type, 'license': licenses, 'supplements_retrieved': False, 'supplement_count': len(supplements), 'paragraphs': paragraphs}
 
 def convert_unit(value, source_unit, target_unit):
     if source_unit not in UNITS or target_unit not in UNITS:
@@ -307,8 +320,9 @@ NEXT_STEP = {
     'search': 'Europe PMC did not answer. Run the same query with `pubmed`, or retry later; '
               'record the failure in search_log rather than reporting no evidence.',
     'pubmed': 'PubMed did not answer. Run the same query with `search` (Europe PMC), or retry later.',
-    'fetch': 'No open-access full text came back. Use the paper\'s abstract (`abstract`), mark '
-             'claims from it abstract-level, or choose another open-access paper.',
+    'fetch': 'Neither Europe PMC nor NCBI PMC returned open-access full text. Use the '
+             'paper\'s abstract (`abstract`), mark claims from it abstract-level, or choose '
+             'another open-access paper.',
 }
 
 def main(argv=None):

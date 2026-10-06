@@ -25,6 +25,13 @@ os_env:
     # through the CLI, which refuses to serve or copy a private payload. An
     # agent that could write there could also move a private file somewhere
     # servable.
+    read_paths:
+      # On a developer laptop the repo's .venv/bin/python is a symlink into
+      # uv's toolchain under the home directory, outside the project. The
+      # macOS sandbox will not widen its read view to a home directory on its
+      # own and refuses to launch the helper interpreter, so the toolchain is
+      # named here, narrowly. Absent on the hosted image, where it is ignored.
+      - ~/.local/share/uv/python
     cwd_allow_hidden:
       - .venv
     # Offline by default. Live annotation lookups need a request that sets

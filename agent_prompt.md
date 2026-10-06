@@ -53,7 +53,12 @@ had the wrong words, not the wrong question.
   PubMed: `[tiab]`, `[mh]` and `[pt]` work the same way (`review[pt]` finds
   reviews to mine for primary sources).
 - **Use both indexes.** `search` (Europe PMC) and `pubmed` rank differently and
-  either can be down. If one refuses, run the same query on the other.
+  either can be down. If one refuses, run the same query on the other. Europe
+  PMC also indexes preprints: add `SRC:PPR` to a query to include bioRxiv and
+  medRxiv, and label a claim from a preprint as not peer-reviewed.
+- **Full text comes from two archives.** `fetch` tries Europe PMC and then
+  NCBI PMC on its own; a refusal means neither has the open-access text, and
+  the abstract is the way on.
 - **Too many hits:** add the stage or the format. **None:** drop the least
   essential term, then try synonyms. Record every query, its hit count and
   index in `search_log`, including the ones that found nothing.

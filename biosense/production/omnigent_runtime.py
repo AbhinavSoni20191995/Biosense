@@ -638,7 +638,7 @@ class _Children:
                   'failed': f'{name} agent stopped with an error.'}[state]
         technical = f'child session {cid} ({row.get("agent_name") or row.get("title") or "?"})' \
                     f' {state}'
-        detail = AC._short(why, 300) or preview
+        detail = AC._short(why, 700) or preview
         if detail and state != 'started':
             technical += f': {detail}'
         self.out({'kind': 'subagent', 'agent': agent, 'child_session_id': cid, 'state': state,
