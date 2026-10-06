@@ -373,7 +373,21 @@ class DeploymentTests(unittest.TestCase):
         self.assertTrue(Path(runs).is_relative_to(Path(ws)), f'{runs} is not inside {ws}')
         cfg = RT.from_env(runs_dir=runs, env={'BIOSENSE_RUNTIME_MODE': 'local',
                                               'BIOSENSE_OMNIGENT_WORKSPACE': ws})
-        self.assertEqual('runs', RT.check_workspace(cfg))
+        self.assertEqual(str(Path(runs).relative_to(Path(ws))), RT.check_workspace(cfg))
+
+    def test_the_private_data_root_is_on_the_volume_too(self):
+        """Projects accounts create are files under the private root. With the
+        root inside the image rather than the volume, every project a scientist
+        makes is lost on the next redeploy — which is the opposite of what
+        "create project" promises."""
+        env = self.ai_env()
+        runs, private = env.get('RUNS_DIR'), env.get('BIOSENSE_PRIVATE_DATA')
+        self.assertTrue(private, 'the AI image declares no private data root')
+        self.assertEqual(Path(runs).parent, Path(private).parent,
+                         'runs and private data must sit on one mounted volume')
+        # And they must stay disjoint, or a server rooted in one serves the other.
+        self.assertFalse(Path(runs).is_relative_to(Path(private)))
+        self.assertFalse(Path(private).is_relative_to(Path(runs)))
 
     def test_the_ai_image_declares_the_hosted_posture_and_the_caps(self):
         env = self.ai_env()

@@ -97,20 +97,64 @@ def confidence_from(evidence, effects):
     return level, reasons
 
 
+def claim_level_of(effects, coverage):
+    """What kind of claim these effects add up to. Computed, never asserted.
+
+    The distinction the whole policy turns on:
+
+      candidate   a plausible relationship worth testing. A direction, and
+                  possibly no magnitude at all. This is a real scientific output
+                  — most useful hypotheses start here — and it is NOT a failed
+                  quantified one.
+      quantified  at least one effect carries a magnitude from measurement or
+                  derivation.
+      simulated   an effect came from a model that covers the parameter.
+
+    A system that may only speak when it can quantify will stay silent exactly
+    when a scientist most needs a lead.
+    """
+    kinds = {e.get('estimate_type') for e in effects or []}
+    sized = [e for e in effects or [] if e.get('magnitude_estimated')]
+    if kinds & {'simulated'} and coverage == 'modelled':
+        return 'simulated', None
+    if any(e.get('estimate_type') in ('measured', 'derived', 'predicted') for e in sized):
+        return 'quantified', None
+    reasons = sorted({e.get('withheld_reason') for e in (effects or [])
+                      if e.get('withheld_reason')})
+    return 'candidate', (reasons[0] if reasons else
+                         'no effect carries a magnitude, so the direction is the claim')
+
+
 def hypothesis(hypothesis_id, statement, *, project, uncertainty_ref, parameter_id, direction,
                effects, evidence, next_experiment, current_value=None, candidate_value=None,
                search_range=None, research_context=None, limitations=(), created_by='orchestrator',
                loop_id=None, iteration=None, status='proposed', supersedes=None,
-               superseded_reason=None, confidence=None, stage=None):
+               superseded_reason=None, confidence=None, stage=None,
+               parameter_label=None):
     """Assemble and validate. `project` is a loaded Project."""
     if not isinstance(project, PJ.Project):
         raise K.ContractError('hypothesis() needs a loaded Project, so that the parameter and '
                               'its simulator coverage come from the system being optimised')
-    pid = PR.resolve(parameter_id)
-    canonical = PR.BY_ID[pid]
-    coverage = project.coverage(pid)
-    note = None
-    if coverage == 'not_in_project':
+    # An unregistered parameter is a vocabulary gap, not a scientific one. The
+    # hypothesis is kept, labelled, and barred from a protocol until the
+    # parameter is mapped — because discarding a plausible lever to protect the
+    # registry throws away the science to keep the filing tidy.
+    registered, proposed_label, note = True, None, None
+    try:
+        pid = PR.resolve(parameter_id)
+        canonical = PR.BY_ID[pid]
+    except K.ContractError:
+        registered = False
+        pid = str(parameter_id or '').strip() or 'unregistered_parameter'
+        proposed_label = parameter_label or pid.replace('_', ' ')
+        canonical = None
+    coverage = project.coverage(pid) if registered else 'not_in_project'
+    if not registered:
+        note = (f'CANDIDATE PARAMETER — NOT YET REGISTERED: {proposed_label!r} is not in the '
+                f'canonical parameter registry, so BioSense has no units, bounds or simulator '
+                f'term for it. The hypothesis stands and can be tested; no protocol may adopt '
+                f'this value until the parameter is added and mapped.')
+    if registered and coverage == 'not_in_project':
         note = (f'{pid} is a canonical parameter but {project.project_id} does not expose it, so '
                 f'this project can neither set nor predict it.')
     elif coverage == 'not_modelled':
@@ -121,8 +165,11 @@ def hypothesis(hypothesis_id, statement, *, project, uncertainty_ref, parameter_
                 f'produced. Evidence and analysis are unaffected.')
 
     if not effects:
-        raise K.ContractError('a quantified hypothesis needs at least one expected effect, even '
-                              'if its magnitude is withheld')
+        raise K.ContractError(
+            'a hypothesis needs at least one expected effect, even if its magnitude is '
+            'withheld. `estimates.direction_only(...)` is the right shape when the direction '
+            'is supportable and the size is not: a null magnitude with a stated reason is a '
+            'valid scientific claim, and an invented number is not.')
     for e in effects:
         K.require_valid('estimate', e)
     if coverage != 'modelled' and any(e['estimate_type'] in ('simulated', 'predicted')
@@ -133,7 +180,9 @@ def hypothesis(hypothesis_id, statement, *, project, uncertainty_ref, parameter_
             f'not cover would be invented.')
 
     level, reasons = (confidence, []) if confidence else confidence_from(evidence, effects)
-    pp = project.parameter(pid) if coverage in ('modelled', 'not_modelled', 'no_simulator') else None
+    level_name, level_why = claim_level_of(effects, coverage)
+    pp = (project.parameter(pid)
+          if registered and coverage in ('modelled', 'not_modelled', 'no_simulator') else None)
 
     h = {
         'schema_version': K.PRODUCTION_VERSION, 'hypothesis_id': hypothesis_id,
@@ -143,13 +192,17 @@ def hypothesis(hypothesis_id, statement, *, project, uncertainty_ref, parameter_
         'research_context': research_context,
         'uncertainty_ref': dict(uncertainty_ref),
         'parameter': {
-            'parameter_id': pid, 'label': (pp.label if pp else canonical.label),
-            'unit': canonical.unit, 'stage': stage or (pp.stage if pp else None),
+            'parameter_id': pid,
+            'label': (pp.label if pp else (canonical.label if canonical else proposed_label)),
+            'unit': canonical.unit if canonical else None,
+            'stage': stage or (pp.stage if pp else None),
             'direction': direction,
             'current_value': current_value, 'candidate_value': candidate_value,
             'search_range': search_range,
             'simulator_coverage': coverage, 'coverage_note': note,
+            'registered': registered, 'proposed_label': proposed_label,
         },
+        'claim_level': level_name, 'claim_level_reason': level_why,
         'expected_effects': list(effects),
         'trade_offs': trade_offs(effects),
         'evidence': list(evidence),

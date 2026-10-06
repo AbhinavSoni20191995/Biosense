@@ -204,6 +204,23 @@ def run(config, *, dirs=None, private_root=None, artifacts_out=None, projects_di
                                'basis': 'declared by the benchmark configuration; no analysis in '
                                         'this run produced evidence for it',
                                'confidence': 'low', 'arm_scope': None, 'suggested_range': None})
+    # Expert knowledge that names a parameter is a third source of a lever, and
+    # ignoring it was one of the ways a run with real evidence produced nothing:
+    # an analysis is how a magnitude is established, not the only way a parameter
+    # becomes worth testing.
+    for k in knowledge:
+        for claim in k.get('parameter_claims') or []:
+            cid = PR.resolve(claim['parameter_id'])
+            if any(c['parameter'] == cid for c in candidates):
+                continue
+            candidates.append({
+                'parameter': cid,
+                'direction': claim.get('direction') or 'revisit',
+                'basis': f'named by expert knowledge {k["knowledge_id"]}; no analysis in this '
+                         f'run produced a magnitude for it',
+                'confidence': 'low', 'arm_scope': None, 'suggested_range': None,
+                'source_evidence_class': 'expert_knowledge',
+                'source_visibility': 'private'})
     rows.append(_row('candidate_parameter_generated', bool(candidates),
                      ', '.join(f'{c["parameter"]} ({c["direction"]})' for c in candidates)
                      or 'no candidate parameter was produced'))
@@ -320,8 +337,22 @@ def run(config, *, dirs=None, private_root=None, artifacts_out=None, projects_di
             limitations=notes)
         hypotheses.append(h)
 
+    # Withholding a hypothesis is a scientific decision and gets a reason, so
+    # "no hypothesis" is never just an empty panel. It is reserved for the case
+    # where nothing — not an analysis, not expert knowledge, not a value the
+    # person asked about — names a lever worth testing.
+    withheld = None if hypotheses else (
+        'No candidate lever could be identified: no analysis produced one, no expert knowledge '
+        'names one, and the request named no value to test. A hypothesis here would be a guess '
+        'about which knob matters, which is the one thing this path must not invent. Name a '
+        'parameter to explore, add a dataset, or ask the literature agent for evidence that '
+        'points at one.')
     rows.append(_row('hypothesis_generated', bool(hypotheses),
-                     hypotheses[0]['hypothesis_id'] if hypotheses else 'no hypothesis'))
+                     hypotheses[0]['hypothesis_id'] if hypotheses
+                     else f'withheld: {withheld[:90]}'))
+    # A candidate hypothesis is a pass for "a hypothesis exists" and an honest
+    # fail for "a magnitude was established" — two different capabilities, and
+    # collapsing them is how the system learned to stay silent.
     quantified = bool(hypotheses) and any(e['magnitude_estimated']
                                           for e in hypotheses[0]['expected_effects'])
     rows.append(_row('quantitative_effect_supported', bool(hypotheses),
@@ -376,6 +407,7 @@ def run(config, *, dirs=None, private_root=None, artifacts_out=None, projects_di
                       'candidate_process_parameters': a['candidate_process_parameters'],
                       'provenance': a['provenance']} for a in analyses],
         'hypotheses': hypotheses,
+        'hypothesis_withheld_reason': withheld,
         'selected_hypothesis': hypotheses[0]['hypothesis_id'] if hypotheses else None,
         'candidate_parameters': candidates,
         'simulator': sim,

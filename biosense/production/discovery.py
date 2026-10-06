@@ -337,15 +337,52 @@ invent one for them, and do not drop them.
 3. **Execute the analysis with the tools, never by hand.** Run
    `{python} -m biosense.bioinformatics.cli execute --plan …`. Quote its numbers;
    do not retype them from memory and do not compute your own.
-4. Form a **quantified hypothesis**: the parameter, its direction, its candidate
-   value, each expected effect as an Estimate with its own estimate_type, and
-   the evidence rows behind it. Several hypotheses are expected; mark the ones
-   the evidence contradicts as `contradicted` and the ones a later one replaces
-   as `superseded`, with the reason. A hypothesis you discarded is part of the
-   result, not a mistake to hide.
+4. Form a **hypothesis**. The parameter, its direction, its candidate value
+   where one is supportable, each expected effect as an Estimate with its own
+   estimate_type, and the evidence rows behind it.
+
+   **A hypothesis does not require a number, a dataset, a simulator or an
+   executed analysis.** Those decide how strong a claim it is, not whether it may
+   exist:
+
+   - direction supportable, magnitude not → use `direction_only` with the reason.
+     `effect_estimate = null` is a valid scientific claim; an invented number is
+     not. The result is a CANDIDATE hypothesis, which is a real output.
+   - a magnitude from a measurement or a derivation → QUANTIFIED.
+   - an effect from a model that covers the parameter → SIMULATED.
+
+   So: no exact dataset is an **uncertainty**, not a reason to return nothing.
+   An analysis that refused — too large, metadata cannot be joined, tool
+   unavailable — is an **analysis limitation**: record it, and carry on
+   synthesising from the literature, the public metadata, expert knowledge and
+   the mechanism. A parameter the registry does not have yet is a **candidate
+   parameter**: name it, say it is unregistered, and keep the hypothesis. A
+   simulator with no term for this biology blocks a SIMULATED prediction and
+   nothing else.
+
+   Returning no hypothesis at all is reserved for the case where no plausible
+   testable relationship can responsibly be proposed — and then say which
+   evidence would change that.
+
+   Language follows the strength: *may*, *suggests*, *worth testing*,
+   *candidate*, *estimated*, *not established*. Never *will*, *proven*,
+   *validated* or *optimal* unless a measurement supports it.
+
+   Several hypotheses are expected; mark the ones the evidence contradicts as
+   `contradicted` and the ones a later one replaces as `superseded`, with the
+   reason. A hypothesis you discarded is part of the result, not a mistake to
+   hide.
 5. Check **simulator coverage** against the project before predicting anything,
-   and run the comparison only for the parameters it models.
+   and run the comparison only for the parameters it models. `NOT MODELLED` is
+   an answer to report beside the hypothesis, not a reason to withhold it.
 6. Recommend the **next experiment**: the conditions, what to measure, and why.
+   This matters most when the magnitude is unknown — the experiment is how it
+   stops being unknown.
+
+Whatever else happens, try to come back with: the main uncertainty, what the
+evidence says, one or more candidate hypotheses, the lever each names, its
+direction where supportable, a magnitude **or "not established"**, a confidence,
+the limitations, and the next experiment.
 
 ## Where to write it
 

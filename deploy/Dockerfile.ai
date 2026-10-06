@@ -59,13 +59,22 @@ COPY discovery_loop/ ./discovery_loop/
 COPY deploy/start-ai.sh ./deploy/start-ai.sh
 RUN uv sync --locked --extra omnigent
 
-# RUNS_DIR is inside the runner's workspace, and that is not cosmetic: the agents
-# write under ./runs relative to the workspace, and runtime.check_workspace
-# REFUSES to start a real run if BioSense is reading anywhere else — because such
-# a run would succeed and produce artifacts nobody ever sees. Mount the Railway
-# volume at /app/runs. Mounting it at /data/runs instead will make the service
-# refuse every real run, by design, with that reason.
-ENV RUNS_DIR=/app/runs \
+# One volume, mounted at /app/data, holding both durable things:
+#
+#   /app/data/runs      run artifacts and the run journals
+#   /app/data/private   the private data root, which is where accounts' PROJECTS
+#                       live. Without this on the volume, every project a
+#                       scientist creates is lost on the next redeploy — the
+#                       image's filesystem is ephemeral and a project is a file.
+#
+# Both are inside the runner's workspace (/app), and that is not cosmetic: the
+# agents write under the run directory relative to the workspace, and
+# runtime.check_workspace REFUSES to start a real run if BioSense is reading
+# anywhere else — because such a run would succeed and produce artifacts nobody
+# ever sees. The two roots must also stay disjoint, which `roots.assert_disjoint`
+# enforces at startup: a server rooted inside the private root would serve it.
+ENV RUNS_DIR=/app/data/runs \
+    BIOSENSE_PRIVATE_DATA=/app/data/private \
     PORT=8000 \
     BIOSENSE_OMNIGENT_PORT=6767 \
     BIOSENSE_RUNTIME_MODE=local \
@@ -75,7 +84,7 @@ ENV RUNS_DIR=/app/runs \
     BIOSENSE_PUBLIC_DEMO=1 \
     OMNIGENT_LOCAL_SINGLE_USER=1 \
     OMNIGENT_HOST_NO_OPEN=1
-RUN mkdir -p /app/runs
+RUN mkdir -p /app/data/runs /app/data/private
 
 # A non-root user, as in the other image: this process accepts input from the
 # internet and starts work. uid 1000 for the same reason.

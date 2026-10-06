@@ -269,7 +269,38 @@ RUNTIME_MODES = {
     },
 }
 
+CLAIM_LEVELS = {
+    'candidate': {
+        'label': 'CANDIDATE HYPOTHESIS',
+        'short': 'A plausible relationship worth testing. Direction, not size.',
+        'long': 'Something the evidence makes worth testing, with no magnitude attached — and '
+                'that is a real scientific output, not a failed quantified one. Most useful '
+                'hypotheses start here. It may rest on indirect evidence, on a related '
+                'differentiation system, or on mechanism, and the next experiment is how it '
+                'stops being a candidate. It can never change a protocol on its own.',
+    },
+    'quantified': {
+        'label': 'QUANTIFIED HYPOTHESIS',
+        'short': 'A hypothesis with an estimated size, from measurement or derivation.',
+        'long': 'At least one expected effect carries a magnitude computed from data rather '
+                'than asserted. The size is an estimate about the system that was measured; '
+                'whether it transfers to yours is what the next experiment asks.',
+    },
+    'simulated': {
+        'label': 'SIMULATED PREDICTION',
+        'short': "A hypothesis run through a model that covers this parameter.",
+        'long': 'A model with a term for this parameter produced the number. It is not a '
+                'validated digital twin, and a simulated effect is never evidence that '
+                'something happened — only what the model implies if its assumptions hold.',
+    },
+}
+
 GROUPS = {
+    'claim_level': {'title': 'How strong a claim a hypothesis is', 'terms': CLAIM_LEVELS,
+                    'rules': ['A missing dataset, a refused analysis, an absent simulator or an '
+                              'unestablished magnitude lower the claim level. They do not stop a '
+                              'hypothesis existing: proposing one and adopting one into a '
+                              'protocol are different acts with different requirements.']},
     'estimate_type': {'title': 'How a number was produced', 'terms': ESTIMATE_TYPES,
                       'rules': ESTIMATE_RULES},
     'model_basis': {'title': 'Where a predicted number\'s model came from', 'terms': MODEL_BASIS},
@@ -330,4 +361,9 @@ def missing_terms():
     for m in RT.MODES:
         if m not in RUNTIME_MODES:
             gaps.append(f'runtime_mode:{m}')
+    import json
+    schema = json.loads((K.ROOT / 'schemas' / 'quantified_hypothesis.schema.json').read_text())
+    for level in schema['properties']['claim_level']['enum']:
+        if level not in CLAIM_LEVELS:
+            gaps.append(f'claim_level:{level}')
     return sorted(gaps)

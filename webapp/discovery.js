@@ -792,6 +792,26 @@ function renderAnalyses(cards) {
 }
 
 function effectRow(e) {
+  if (e && e.magnitude_estimated === false) {
+    /* The honest shape of "we know which way, not how far". A blank row here
+       reads as a missing number; this reads as the claim it is. */
+    const row = el('div', 'eff');
+    const left = el('div', null);
+    left.append(el('div', null, e.label || e.metric));
+    if (e.withheld_reason) left.append(el('div', 'm', e.withheld_reason));
+    const amt = el('div', 'amt');
+    amt.append(el('span', 'notest', 'NOT ESTABLISHED'));
+    if (e.direction && e.direction !== 'unknown') {
+      amt.append(el('span', 'rel', `direction: ${e.direction}`));
+    }
+    amt.append(term('estimate_type', e.estimate_type, null, 'et ' + e.estimate_type));
+    row.append(left, amt);
+    return row;
+  }
+  return effectRowSized(e);
+}
+
+function effectRowSized(e) {
   const r = el('div', 'eff');
   r.append(el('div', null, e.label || e.metric));
   const amt = el('div', 'amt');
@@ -820,9 +840,33 @@ function effectRow(e) {
 function renderHypothesis(selected, all) {
   const host = $('#hypothesis'); if (!host) return;
   host.textContent = '';
-  if (!selected) { host.append(el('p', 'dim', 'No hypothesis was formed.')); return; }
+  if (!selected) {
+    /* "No hypothesis" with no reason is indistinguishable from a fault. When one
+       is withheld, the reason is the output. */
+    const why = (state.result && state.result.bundle
+      && state.result.bundle.hypothesis_withheld_reason)
+      || (state.result && state.result.benchmark
+        && state.result.benchmark.hypothesis_withheld_reason);
+    host.append(el('p', 'dim', why || 'No hypothesis was formed by this run.'));
+    return;
+  }
   const w = el('div', 'hyp');
+  /* The claim level comes first, because it is what tells a reader how much
+     weight the sentence under it can carry. A CANDIDATE is a real output —
+     most useful hypotheses start there — and not a degraded QUANTIFIED one. */
+  const level = selected.claim_level || 'candidate';
+  const head = el('div', 'ev-row');
+  head.append(el('span', 'claim ' + level,
+    { candidate: 'CANDIDATE HYPOTHESIS', quantified: 'QUANTIFIED HYPOTHESIS',
+      simulated: 'SIMULATED PREDICTION' }[level] || level.toUpperCase()));
+  if (selected.parameter && selected.parameter.registered === false) {
+    head.append(el('span', 'flag', 'CANDIDATE PARAMETER — NOT YET REGISTERED'));
+  }
+  w.append(head);
   w.append(el('h4', null, selected.statement));
+  if (selected.claim_level_reason) {
+    w.append(el('p', 'caveat', selected.claim_level_reason));
+  }
   const p = selected.parameter;
   const move = el('div', 'move');
   if (p.current_value != null && p.candidate_value != null) {

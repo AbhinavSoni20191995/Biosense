@@ -141,6 +141,48 @@ protocol, the simulator, the benchmarks), simulator mode, and the benchmarks.
 If the hosted runtime is down, the page says **which part** is missing and that
 the demonstration path still works. It never disappears and never pretends.
 
+### Projects and runs
+
+A **project** is a durable scientific workspace — a name, a species, a cell type,
+a goal — and it is a file on the server, so it survives a refresh, a restart and
+a redeploy. Create one from the Discovery page; it is selected immediately.
+
+A **run is a background job on the server**, not a page's state. Open Runs, open
+the Simulator, switch project, create another project, refresh, or close the
+browser: the investigation keeps working. Only **Stop run** ends it. Reopen
+BioSense later and the run is where you left it — still running, or finished —
+with no duplicate session started.
+
+**Discovery and Runs show the same run**, from the same object, through the same
+viewer: the status, the engine, elapsed time, last activity, the workflow stages
+as a count, which agent is working and on what, a timeline of what happened, and
+the tool refusals that are findings rather than log lines. The activity bar is
+indeterminate on purpose — it means *the system is active*, and no percentage is
+invented. A header indicator says when AI is working somewhere else:
+`● 2 AI RUNS ACTIVE`.
+
+Full design, including what happens on a backend restart →
+**[docs/PRODUCT_STATE.md](docs/PRODUCT_STATE.md)**
+
+### Hypotheses: four claim levels
+
+BioSense proposes hypotheses and designs the experiments that settle them, so it
+does not require proof before it may propose one. A missing dataset, a refused
+analysis or an absent simulator lowers the claim and the confidence; it does not
+produce silence.
+
+| Level | Needs | Example |
+|---|---|---|
+| **CANDIDATE** | a plausible relationship, evidence that may be indirect | "Increasing G-CSF during granulocytic commitment **may** increase neutrophil output. Magnitude: NOT ESTABLISHED." |
+| **QUANTIFIED** | a magnitude from measurement or derivation | "50 → 100 ng/mL is estimated to increase output by ~20%." |
+| **SIMULATED** | a model with a term for that parameter | labelled SIMULATED, never a measurement |
+| **ADOPTABLE** | the full protocol gates | a named human approver, registered parameter, provenance |
+
+A candidate is a real output, not a failed quantified one — and it can never
+change a protocol. When nothing can responsibly be proposed, the reason is the
+output rather than an empty panel →
+**[docs/HYPOTHESIS_POLICY.md](docs/HYPOTHESIS_POLICY.md)**
+
 ### Accounts
 
 BioSense accounts keep each scientist's **projects, private datasets, discovery
@@ -738,6 +780,9 @@ bash scripts/check.sh                  # + offline loop smoke tests + agent-spec
 | [`biosense/production/authz.py`](biosense/production/authz.py) | the three roles, and the one place any of them is decided |
 | [`biosense/workspace.py`](biosense/workspace.py) | who is asking, and where their work lives |
 | [`biosense/production/run_store.py`](biosense/production/run_store.py) | a run's own record, so a reload is not a loss |
+| [`biosense/production/activity.py`](biosense/production/activity.py) | what is happening now, from typed events only |
+| [`webapp/runview.js`](webapp/runview.js) | how a run looks, wherever it is looked at |
+| [`webapp/runs.html`](webapp/runs.html) | the durable run history and monitoring view |
 | [`scripts/start_local_ai.sh`](scripts/start_local_ai.sh) | one command to real AI on your machine |
 | [`deploy/Dockerfile.ai`](deploy/Dockerfile.ai) | the hosted image: app + Omnigent server + executor |
 | [`biosense/parameters.py`](biosense/parameters.py) | the canonical identity of every process parameter |

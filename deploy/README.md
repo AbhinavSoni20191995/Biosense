@@ -76,18 +76,30 @@ restarts the container.
 ```bash
 railway init
 railway up                                  # deploy/railway.ai.json -> Dockerfile.ai
-railway volume add --mount-path /app/runs    # NOT /data/runs. See below.
+railway volume add --mount-path /app/data     # NOT /data. See below.
 railway variables set ANTHROPIC_API_KEY=sk-...
 ```
 
-**The mount path is load-bearing.** The agents write under `./runs` relative to
-the runner's workspace (`/app`), and `runtime.check_workspace` **refuses** a real
-run when BioSense is reading anywhere else — because that run would otherwise
-succeed and produce artifacts nobody ever sees. Mount the volume at `/app/runs`.
-Mounting it at `/data/runs` makes the service refuse every real run, by design,
+**The mount path is load-bearing, and it holds two things.** The volume at
+`/app/data` carries `runs/` (artifacts and run journals) and `private/` (the
+private data root, which is where the **projects accounts create** live). Both
+must be on the volume: a project is a file, and an image filesystem is
+ephemeral, so without `private/` on the volume every project a scientist makes is
+lost on the next redeploy.
+
+Both must also be inside the runner's workspace (`/app`): the agents write under
+the run directory relative to that workspace, and `runtime.check_workspace`
+**refuses** a real run when BioSense is reading anywhere else — because that run
+would otherwise succeed and produce artifacts nobody ever sees. Mounting the
+volume at `/data` instead makes the service refuse every real run, by design,
 with that reason. `tests/test_cloud_runtime.py` asserts the image's own
 `RUNS_DIR` is inside its workspace, so the image cannot drift out of agreement
 with itself.
+
+Migrating an existing deployment whose volume is at `/app/runs`: either move the
+mount to `/app/data`, or keep it and set `RUNS_DIR=/app/runs` with
+`BIOSENSE_PRIVATE_DATA=/app/runs/_private` — the two roots must stay disjoint,
+which the server checks at startup and refuses to run without.
 
 ### Is it working? `GET /readyz`
 
@@ -220,7 +232,8 @@ Still enforced in code, exactly as in the synthetic image:
 | App | `BIOSENSE_RUNTIME_MODE` | `local` | the container's own loopback |
 | | `BIOSENSE_ALLOWED_RUNTIMES` | `synthetic,local` | what the picker may offer |
 | | `BIOSENSE_OMNIGENT_WORKSPACE` | `/app` | the runner's working directory |
-| | `RUNS_DIR` | `/app/runs` | must be inside the workspace |
+| | `RUNS_DIR` | `/app/data/runs` | must be inside the workspace |
+| | `BIOSENSE_PRIVATE_DATA` | `/app/data/private` | accounts' projects: must be on the volume |
 | | `BIOSENSE_HOSTED` | `1` | badge reads ONLINE, remedies are a visitor's |
 | | `BIOSENSE_PUBLIC_DEMO` | `1` | turns the caps on |
 | | `PORT` | `8000` | the platform overrides it |

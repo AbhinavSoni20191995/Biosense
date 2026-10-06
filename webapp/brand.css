@@ -241,9 +241,9 @@ button{font-family:inherit}
   background:var(--glass-2)}
 /* The operator badge. Distinct from a runtime badge on purpose: it says who is
    running something, never what kind of answer came back. */
-.rt-badge.admin{color:var(--human);
-  border-color:color-mix(in srgb,var(--human) 55%,transparent);
-  background:color-mix(in srgb,var(--human) 12%,transparent)}
+.rt-badge.admin{color:var(--warn);
+  border-color:color-mix(in srgb,var(--warn) 55%,transparent);
+  background:color-mix(in srgb,var(--warn) 12%,transparent)}
 .rt-badge .role{font-weight:800;opacity:.85}
 .limits{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;
   font-size:12.5px}
@@ -396,7 +396,7 @@ button{font-family:inherit}
   background:color-mix(in srgb,var(--brand) 10%,transparent)}
 .rv-status.ok{color:var(--brand)}
 .rv-status.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
-.rv-status.bad{color:var(--stop);border-color:color-mix(in srgb,var(--stop) 45%,transparent)}
+.rv-status.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
 
 /* Indeterminate on purpose. It means "the system is active" and nothing else:
    a percentage here would be invented, and invented progress is worse than
@@ -426,7 +426,7 @@ button{font-family:inherit}
 .agent .tick{font-size:13px;color:var(--ink-3);line-height:1.5}
 .agent.running .tick{color:var(--brand)}
 .agent.complete .tick{color:var(--brand);opacity:.75}
-.agent.failed .tick{color:var(--stop)}
+.agent.failed .tick{color:var(--bad)}
 .agent .t{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase}
 .agent .s{font-size:13px;color:var(--ink-2)}
 .agent.running .s{color:var(--brand)}
@@ -438,7 +438,7 @@ button{font-family:inherit}
 .tl.limitation .tx{color:var(--warn)}
 .tl.agent .tx{color:var(--ink)}
 .tl.artifact .tx{color:var(--brand)}
-.tl.error .tx{color:var(--stop)}
+.tl.error .tx{color:var(--bad)}
 
 .lims{display:flex;flex-direction:column;gap:10px;margin-top:14px}
 .lim{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:11px;
@@ -468,3 +468,18 @@ button{font-family:inherit}
   border-bottom:1px solid var(--line)}
 .prun:last-child{border-bottom:0}
 .phyp{font-size:13.5px;margin:6px 0;color:var(--ink-2)}
+
+/* A claim level is what tells a reader how much weight a hypothesis carries.
+   CANDIDATE is a real scientific output, not a failed QUANTIFIED one, so it is
+   styled as a statement of kind rather than as a warning. */
+.claim{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;padding:4px 9px;border-radius:999px;border:1px solid var(--line);
+  color:var(--ink-2)}
+.claim.candidate{color:var(--s1);border-color:color-mix(in srgb,var(--s1) 45%,transparent);
+  background:color-mix(in srgb,var(--s1) 10%,transparent)}
+.claim.quantified{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 50%,transparent);
+  background:color-mix(in srgb,var(--brand) 10%,transparent)}
+.claim.simulated{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent);
+  background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.notest{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
+  color:var(--ink-3)}

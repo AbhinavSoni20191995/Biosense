@@ -200,6 +200,17 @@
             "string",
             "null"
           ]
+        },
+        "registered": {
+          "type": "boolean",
+          "description": "Whether parameter_id is in the canonical ParameterRegistry. False means the hypothesis names a biologically relevant lever BioSense does not yet have a canonical entry for: it may be proposed and discussed, it is labelled CANDIDATE PARAMETER \u2014 NOT YET REGISTERED, and it can never reach a protocol until it is mapped. Dropping the hypothesis instead would discard the science to protect the vocabulary."
+        },
+        "proposed_label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What the unregistered lever was called."
         }
       }
     },
@@ -396,6 +407,21 @@
       "items": {
         "type": "string"
       }
+    },
+    "claim_level": {
+      "enum": [
+        "candidate",
+        "quantified",
+        "simulated"
+      ],
+      "description": "How strong a claim this is, computed from its own contents and never asserted. candidate: a biologically plausible relationship worth testing, with a direction and possibly no magnitude at all. quantified: at least one effect carries a magnitude from measurement or derivation. simulated: an effect came from a model that covers the parameter, and is labelled SIMULATED. A candidate is a real scientific output, not a degraded one: hypothesis generation is a different act from protocol adoption, and the requirements of the latter must never suppress the former."
+    },
+    "claim_level_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why this level and not a stronger one."
     }
   }
 }
