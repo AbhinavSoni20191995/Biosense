@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field
 from ... import contracts as K
 
 MODALITIES = ('bulk_rna', 'single_cell_rna', 'chip_seq', 'atac_seq', 'flow_cytometry',
-              'cytometry_summary', 'generic_table')
+              'cytometry_summary', 'proteomics', 'secretome', 'generic_table')
 
 
 @dataclass

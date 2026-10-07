@@ -36,7 +36,7 @@ CYTO_HINTS = ('viability', 'cd14', 'cd16', 'cd206', 'cd3', 'cd4', 'cd8', 'cd11b'
               'live_pct', 'live%', 'pct', 'percent', 'freq', 'frequency', 'mfi')
 
 MODALITIES = ('bulk_rna', 'single_cell_rna', 'chip_seq', 'atac_seq', 'flow_cytometry',
-              'cytometry_summary', 'generic_table')
+              'cytometry_summary', 'proteomics', 'secretome', 'generic_table')
 
 
 def infer_modality(t):

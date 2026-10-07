@@ -99,7 +99,9 @@
         "atac_seq",
         "flow_cytometry",
         "cytometry_summary",
-        "generic_table"
+        "generic_table",
+        "proteomics",
+        "secretome"
       ],
       "description": "Executed today: bulk_rna, cytometry_summary, generic_table, single_cell_rna (needs the singlecell extra; without it the tool is not registered and a plan is refused when it is planned) and atac_seq/chip_seq from called peaks. flow_cytometry is executed only as processed, gated tables; raw FCS is not read. The members no tool runs are still declarable, so a manifest written today stays valid when their tools land."
     },

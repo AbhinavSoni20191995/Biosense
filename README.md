@@ -118,7 +118,7 @@ decides, and the envelope can refuse.
 | | |
 |---|---|
 | **Evidence** | Literature with quotes and paragraph locators; proxies with their conversion when the exact value is not reported; widening search circles; a server-wide **cell production library** every run starts from |
-| **Data** | Public GEO series of any species made analysable (NCBI processed counts, or the depositors' own table) with an evidence weight; private uploads; deterministic statistics, cytometry and bulk expression |
+| **Data** | Public GEO series of any species made analysable (NCBI processed counts, or the depositors' own table) with an evidence weight; private uploads; deterministic statistics over cytometry, bulk expression (genes, named gene sets, Reactome/GO pathways), proteomics and secretome panels, single-cell identity and purity, and chromatin peaks; one readout pooled across series |
 | **Analysis** | An AI **data analyst** plans against the data, repairs refused plans, writes labelled scripts for what the tools cannot express, and interprets each result with a confidence capped by species, route and closeness |
 | **Hypotheses** | Direction, magnitude and confidence as typed estimates (measured, derived, simulated, predicted, judgement); contradicted and superseded ideas kept |
 | **Protocol** | The production chain as a timeline: stages by days, factors over their windows, every value with provenance (R/A/D/GAP) and a confidence bar; shared setpoints filled from the **process reference**; new levers registered into your project |
@@ -973,9 +973,12 @@ An evaluator should know the limits before the features.
   NCBI is blocked in the environment it was developed in, so the fetch is
   tested against recorded response shapes; its first contact with the real
   service is a hosted run. A failure there is reported, never filled in.
-- **Single cell, ChIP-seq, ATAC-seq and raw FCS are declared, not implemented.**
-  The contracts accept them so a manifest written today stays valid; calling one
-  is refused with a message saying why.
+- **Raw-data processing is declared, not implemented.** Single cell runs from a
+  processed .h5ad (pseudobulk, identity purity), ChIP-seq and ATAC-seq from
+  called peaks, and proteomics from processed tables; clustering, peak calling,
+  motif analysis and raw FCS gating are not done here. The contracts accept them
+  so a manifest written today stays valid; calling one is refused with a message
+  saying why.
 - **Only one project has a mechanistic model.** `ipsc_macrophage` has
   `ipsc_monocyte_v1`; `cart_expansion` has none, and every parameter there
   reports `no_simulator` rather than borrowing one. A candidate parameter the

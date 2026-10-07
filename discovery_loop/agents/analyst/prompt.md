@@ -63,6 +63,34 @@ You receive one or more dataset ids, the question, the uncertainty it bears on
    all; run both when the module is the question but an unexpected responder
    would change the plan.
 
+   The other shapes a question takes, and the tool for each (`tools` lists
+   them with their options; pass options as `--option KEY=VALUE`):
+
+   - **Which programmes moved?** `--analysis-type pathway_enrichment --tool
+     bulk.pathway_enrichment --option library=reactome` (or `go_bp`, or a
+     panel a person added). The library must be on the machine first:
+     `datasets genesets` lists what is; ask the bioinformatics agent to fetch
+     a public one (`datasets fetch-genesets --library reactome
+     --i-have-network-permission`) when the run permits public data. It needs
+     a genome-wide table (50+ genes; fetch a series with a larger
+     `--max-genes` if needed), and its background is the measured genes only.
+   - **Did the protein, or the secreted cytokine, change?** A processed
+     proteomics or cytokine-panel table (long, or one row per sample):
+     `--analysis-type protein_abundance_comparison --tool
+     proteomics.abundance_comparison`. Missing values are never imputed; a
+     protein seen in one condition only is listed, not tested.
+   - **What fraction of the product is on-identity?** A single-cell .h5ad
+     with a sample column: `--analysis-type identity_purity --tool
+     single_cell.identity_purity --readouts <MARKER> <MARKER> ...` (and
+     `--option min_markers=N`). Purity is counted per cell and compared per
+     sample, so n is the number of samples, never cells.
+   - **Do several series agree?** After running the same readout in two or
+     more series, pool it: `analyse combine --results <r1.json> <r2.json> ...
+     --readouts <GENE> | "gene set score" --out <run dir>/analyst/pooled.json`.
+     It reports the pooled standardised effect, how much the series disagree
+     (I²), and a confidence no higher than the best series. Say so when the
+     series asked different contrasts.
+
 3. **Repair, up to three times.** A refusal names what is wrong (a column the
    table does not have, a level that is not there, raw counts where the tool
    wants normalised values, too few samples per group). Read it, fix the plan

@@ -153,6 +153,23 @@ Two things the statistics layer does that a bare t-test does not:
 Multiplicity is corrected with Benjamini–Hochberg across the readouts in a
 result, and the q-value is reported *beside* the p-value, never instead of it.
 
+### Which tool answers which question
+
+| Question | Tool | Notes |
+|---|---|---|
+| Did the gated populations change? | `cytometry.population_comparison` | processed population tables |
+| Which genes responded? | `bulk.expression_comparison` | a screen; DESeq2 behind the external adapter for counts |
+| Did a named module (identity genes, a pathway) move together? | `bulk.gene_set_score` | the set is the planner's, named in the plan |
+| Which programmes moved? | `bulk.pathway_enrichment` | Reactome (CC0) or GO biological process (CC BY), fetched with `datasets fetch-genesets`; or a person's own GMT. Background = the measured genes |
+| Did a protein or secreted cytokine change? | `proteomics.abundance_comparison` | processed proteomics or cytokine-panel tables; missing values never imputed |
+| What fraction of the product is on-identity? | `single_cell.identity_purity` | per-cell marker rule, compared per sample (n = samples) |
+| How does a single-cell culture differ? | `single_cell.pseudobulk_comparison` | collapsed per sample first |
+| Do chromatin peak sets differ? | `chromatin.peak_overlap` | called peaks only |
+| Do several series agree? | `analyse combine` | Hedges' g, random effects, I² reported; confidence no higher than the best series |
+
+Tool settings are passed as `--option KEY=VALUE` and recorded with the result;
+a tool refuses an option it does not know.
+
 ---
 
 ## From a finding to a parameter
@@ -242,10 +259,12 @@ live HTTP server and four URL shapes aimed at a registered private manifest.
 
 ## Planned, not implemented
 
-Single-cell (h5ad, Scanpy, pseudobulk) · ChIP-seq and ATAC-seq peak tools · raw
-FCS parsing, automated gating, FlowSOM, UMAP, CyTOF, spectral · real R execution
-· live adapters beyond one gated GEO path · multi-user isolation and consent
-capture · multi-omics integration.
+Single-cell clustering and annotation (Scanpy) · ChIP-seq and ATAC-seq peak
+calling and motif enrichment · raw FCS parsing, automated gating, FlowSOM, UMAP,
+CyTOF, spectral · peptide-level proteomics rollup and imputation · calibrating
+simulator terms from bioreactor data (waits for an installed bioreactor) · live
+adapters beyond GEO and the gene-set libraries · multi-user isolation and
+consent capture · multi-omics integration.
 
 The `DatasetManifest` and `ToolSpec` contracts already accept all of them: a
 manifest written today for an h5ad file stays valid when its reader lands, and

@@ -123,6 +123,22 @@ order is fixed, and the first step is the one that matters.
    a limitation with the exact public query to run, instead of improvising a
    client.
 
+   **Gene-set libraries for pathway enrichment.** When the analyst will ask
+   which programmes moved, fetch an openly licensed library once (it is kept
+   on the server with its version and checksum):
+   `.venv/bin/python -m biosense.bioinformatics.cli datasets fetch-genesets
+   --library reactome --i-have-network-permission` (or `go_bp`);
+   `datasets genesets` lists what is already there. MSigDB is not offered:
+   its licence restricts redistribution. Fetch the series itself with enough
+   genes for a ranking (`--max-genes 5000`) when enrichment is planned.
+
+   **Proteomics, secretome and single cells.** A processed proteomics or
+   cytokine-panel table, or a single-cell .h5ad, is analysed by the analyst
+   like any other registered dataset; your part is finding it and saying what
+   it is (PRIDE or a paper's supplementary table for proteomics; GEO or the
+   Single Cell Expression Atlas for single cells) and its modality
+   (`proteomics`, `secretome`, `single_cell_rna`).
+
    **Resolve a series together with its paper.** `geo-samples` returns the
    series summary, its overall design and `pubmed_ids` (with links). Read them
    before choosing a comparison: depositors name samples and table columns the

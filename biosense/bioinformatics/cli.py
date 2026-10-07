@@ -109,6 +109,22 @@ def cmd_fetch_geo(a):
     return _emit(doc, a.out)
 
 
+def cmd_fetch_genesets(a):
+    from . import genesets as GS
+    return _emit(GS.fetch(a.library, i_have_network_permission=a.i_have_network_permission),
+                 None)
+
+
+def cmd_add_genesets(a):
+    from . import genesets as GS
+    return _emit(GS.add_local(a.file, name=a.name, license=a.license, added_by=a.added_by), None)
+
+
+def cmd_genesets(a):
+    from . import genesets as GS
+    return _emit(GS.available(), None)
+
+
 def cmd_live_lookup(a):
     if not a.i_have_network_permission:
         _print({'refused': 'live lookups touch the network. Pass --i-have-network-permission only when the '
@@ -209,14 +225,38 @@ def cmd_analyse_plan(a):
         comparison=({'group_column': a.group_column, 'control': a.control,
                      'treatment': a.treatment_level, 'paired': a.paired, 'covariates': [],
                      'readouts': a.readouts or [], 'value_column': a.value_column,
-                     'feature_column': a.feature_column}
-                    if a.group_column or a.control or a.value_column else None),
+                     'feature_column': a.feature_column, 'options': _options(a.option)}
+                    if a.group_column or a.control or a.value_column or a.option else None),
         loop_id=a.loop_id, iteration=a.iteration, analysis_report=report,
         recorded_gaps=[a.evidence_gap] if a.evidence_gap else ())
     if a.out:
         K.write_json_atomic(a.out, p)
     _print({**p, 'out': a.out})
     return 0
+
+
+def _options(pairs):
+    """['k=v', ...] -> {k: number | bool | text}, or None."""
+    out = {}
+    for kv in pairs or []:
+        if '=' not in kv:
+            raise K.ContractError(f'--option takes KEY=VALUE, got {kv!r}')
+        k, v = (x.strip() for x in kv.split('=', 1))
+        if v.lower() in ('true', 'false'):
+            out[k] = v.lower() == 'true'
+            continue
+        try:
+            out[k] = int(v) if v.lstrip('-').isdigit() else float(v)
+        except ValueError:
+            out[k] = v
+    return out or None
+
+
+def cmd_analyse_combine(a):
+    from . import combine as CB
+    doc = CB.combine([K.read_json(Path(f)) for f in a.results], a.readouts,
+                     created_by=a.created_by)
+    return _emit(doc, a.out)
 
 
 def cmd_analyse_run(a):
@@ -365,6 +405,18 @@ def main(argv=None):
     p.add_argument('--i-have-network-permission', action='store_true')
     p.add_argument('--out')
     p.set_defaults(fn=cmd_fetch_geo)
+    p = ds.add_parser('fetch-genesets', help='download an openly licensed gene-set library '
+                                             '(reactome, go_bp) for pathway enrichment (network)')
+    p.add_argument('--library', required=True)
+    p.add_argument('--i-have-network-permission', action='store_true')
+    p.set_defaults(fn=cmd_fetch_genesets)
+    p = ds.add_parser('add-genesets', help='add your own gene-set library from a GMT file')
+    p.add_argument('--file', required=True); p.add_argument('--name', required=True)
+    p.add_argument('--license', required=True); p.add_argument('--added-by')
+    p.set_defaults(fn=cmd_add_genesets)
+    p = ds.add_parser('genesets', help='gene-set libraries stored here, and those that can be '
+                                       'fetched')
+    p.set_defaults(fn=cmd_genesets)
     p = ds.add_parser('search', help='find candidate datasets (offline by default)')
     p.add_argument('--query', required=True)
     p.add_argument('--source', default='geo')
@@ -394,11 +446,21 @@ def main(argv=None):
     p.add_argument('--group-column'); p.add_argument('--control')
     p.add_argument('--treatment-level'); p.add_argument('--paired', action='store_true')
     p.add_argument('--readouts', nargs='*')
+    p.add_argument('--option', action='append', default=[], metavar='KEY=VALUE',
+                   help='a tool-specific setting (see the tool in `tools`), recorded with the '
+                        'result; repeat for several')
     p.add_argument('--value-column', help='the measured column, when its name is not a usual one')
     p.add_argument('--feature-column', help='the gene/feature column, when its name is not a usual one')
     p.add_argument('--created-by', default='bioinformatics_agent')
     p.add_argument('--loop-id'); p.add_argument('--iteration', type=int)
     p.add_argument('--out'); p.set_defaults(fn=cmd_analyse_plan)
+    p = an.add_parser('combine', help='pool one readout across several analysis results '
+                                       '(random effects, heterogeneity reported)')
+    p.add_argument('--results', nargs='+', required=True)
+    p.add_argument('--readouts', nargs='+', required=True,
+                   help='gene symbols, or "gene set score" for a set score')
+    p.add_argument('--created-by', default='bioinformatics_agent')
+    p.add_argument('--out'); p.set_defaults(fn=cmd_analyse_combine)
     p = an.add_parser('run', help='execute a plan and write the AnalysisResult')
     p.add_argument('--plan', required=True)
     p.add_argument('--analysis-id'); p.add_argument('--executed-by', default='bioinformatics_agent')

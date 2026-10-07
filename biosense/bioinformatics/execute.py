@@ -158,11 +158,16 @@ def _narrate(rows, m, frag, levers, no_lever_reason):
     findings = []
     for r in signif[:8]:
         unit = '' if r['effect_type'].startswith('difference_in_log2') else ''
+        # A row that is not two group means (a pathway, a pooled estimate) says
+        # what it found in its own words; the numbers beside it are still computed.
+        what = r.get('summary') if r.get('mean_a') is None else (
+            f'{r["readout"]}: {r["mean_a"]:.4g} in {a} vs {r["mean_b"]:.4g} in {b} '
+            f'({"+" if (r["effect"] or 0) > 0 else ""}{r["effect"]:.4g}{unit})')
+        sizes = (f'n={r["n_a"]} vs {r["n_b"]}' if r.get('n_a') is not None
+                 else f'n={r.get("n")}')
         findings.append({
-            'finding': (f'{r["readout"]}: {r["mean_a"]:.4g} in {a} vs {r["mean_b"]:.4g} in {b} '
-                        f'({"+" if (r["effect"] or 0) > 0 else ""}{r["effect"]:.4g}{unit})'),
-            'basis': (f'{r["test"]}, p={r["p_value"]:.3g}, BH-q={r["q_value"]:.3g}, '
-                      f'n={r["n_a"]} vs {r["n_b"]}'
+            'finding': what or f'{r["readout"]}: effect {r["effect"]:.4g} ({r["effect_type"]})',
+            'basis': (f'{r["test"]}, p={r["p_value"]:.3g}, BH-q={r["q_value"]:.3g}, {sizes}'
                       + (f', 95% CI [{r["ci_low"]:.3g}, {r["ci_high"]:.3g}]'
                          if r.get('ci_low') is not None else '')),
         })
@@ -232,7 +237,8 @@ def render(result):
           + (r['comparison'] or {}).get('treatment', 'B') + ' | Effect | p | BH-q |',
           '|---|---|---|---|---|---|']
     for s in r['statistics'][:25]:
-        L.append(f'| {s["readout"]} | {_n(s["mean_a"])} | {_n(s["mean_b"])} | {_n(s["effect"])} | '
+        L.append(f'| {s["readout"]} | {_n(s.get("mean_a"))} | {_n(s.get("mean_b"))} | '
+                 f'{_n(s["effect"])} | '
                  f'{_n(s["p_value"])} | {_n(s["q_value"])} |')
     L += ['', '## Findings', '']
     L += [f'- {f["finding"]}  \n  _{f["basis"]}_' for f in r['key_findings']]

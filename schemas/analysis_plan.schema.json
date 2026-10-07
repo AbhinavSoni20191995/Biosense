@@ -113,7 +113,9 @@
         "atac_seq",
         "flow_cytometry",
         "cytometry_summary",
-        "generic_table"
+        "generic_table",
+        "proteomics",
+        "secretome"
       ]
     },
     "analysis_type": {
@@ -128,7 +130,10 @@
         "pseudobulk_comparison",
         "cell_composition_comparison",
         "peak_overlap_comparison",
-        "gene_set_score"
+        "gene_set_score",
+        "protein_abundance_comparison",
+        "pathway_enrichment",
+        "identity_purity"
       ],
       "description": "Phase 2 set. Single-cell pseudobulk needs the optional singlecell environment; chromatin reads processed peak files. A tool that cannot run is not registered, so an unavailable analysis is refused at planning rather than at execution."
     },
@@ -189,6 +194,20 @@
             "null"
           ],
           "description": "The column naming each gene or feature, when the tool cannot tell from its name."
+        },
+        "options": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Tool-specific settings named in the plan (KEY=VALUE), each recorded with the result. A tool refuses an option it does not know.",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
         }
       }
     },

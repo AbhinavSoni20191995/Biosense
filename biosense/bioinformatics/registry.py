@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from .. import contracts as K
 from .toolkit.bulk import basic_de
 from .toolkit.bulk import gene_set_score
+from .toolkit.bulk import pathway_enrichment
+from .toolkit.proteomics import abundance
 from .toolkit.chromatin import peak_overlap
 from .toolkit.cytometry import population_stats
 
@@ -109,6 +111,37 @@ register(ToolSpec(
           'genome-wide top-genes list does not answer. Not a background-controlled enrichment.'))
 
 register(ToolSpec(
+    name=pathway_enrichment.NAME, label='Pathway enrichment (which programmes moved)',
+    version=pathway_enrichment.VERSION,
+    modalities=pathway_enrichment.MODALITIES,
+    analysis_types=pathway_enrichment.ANALYSIS_TYPES,
+    required_inputs=('a long-format table with a feature column and a normalised expression '
+                     'column', 'a gene-set library fetched with `datasets fetch-genesets`'),
+    required_metadata=pathway_enrichment.REQUIRED_METADATA,
+    parameters={'library': 'reactome or go_bp (option library=…), fetched beforehand',
+                'q': 'gene q-value for the over-representation list (option, default 0.05)'},
+    outputs=('per pathway: rank-shift and over-representation statistics with BH-q',
+             'the genes behind each pathway', 'the library, its version and checksum'),
+    runner=pathway_enrichment.run,
+    notes='Openly licensed libraries only (Reactome CC0, Gene Ontology CC BY). The background '
+          'is the genes this table measured, never the genome.'))
+
+register(ToolSpec(
+    name=abundance.NAME, label='Protein abundance comparison (proteomics, secretome)',
+    version=abundance.VERSION,
+    modalities=abundance.MODALITIES,
+    analysis_types=abundance.ANALYSIS_TYPES,
+    required_inputs=('a processed protein or analyte table: long (protein, sample, condition, '
+                     'value) or one row per sample with one column per analyte',),
+    required_metadata=abundance.REQUIRED_METADATA,
+    parameters={'min_valid': 'values needed in each group to test a protein (option)'},
+    outputs=('per protein: difference in log2 abundance with BH-q',
+             'proteins detected in one condition only, listed rather than imputed'),
+    runner=abundance.run,
+    notes='Processed tables only (MaxQuant, DIA-NN, Olink, Luminex exports). Missing values '
+          'are never imputed: a protein seen in one condition only is reported as such.'))
+
+register(ToolSpec(
     name=peak_overlap.NAME, label='Chromatin peak overlap and peak-to-gene association',
     version=peak_overlap.VERSION,
     modalities=peak_overlap.MODALITIES,
@@ -159,6 +192,36 @@ def _register_single_cell():
 
 
 _SINGLE_CELL = _register_single_cell()
+
+
+def _register_identity_purity():
+    """Per-sample identity and purity from single cells; needs the same optional reader."""
+    from ..data.readers import h5ad as H5
+    if not H5.available():
+        return None
+    from .toolkit.single_cell import identity_purity as IP
+    return register(ToolSpec(
+        name=IP.NAME, label='Single-cell identity and purity per sample',
+        version=IP.VERSION,
+        modalities=IP.MODALITIES,
+        analysis_types=IP.ANALYSIS_TYPES,
+        required_inputs=('an .h5ad matrix with a sample column in obs',
+                         'the identity markers, named in the plan (--readouts)'),
+        required_metadata=IP.REQUIRED_METADATA,
+        parameters={'readouts': 'the identity marker set, by symbol',
+                    'min_markers': 'markers a cell must express to count as on-identity '
+                                   '(option)'},
+        outputs=('per sample: the fraction of cells on-identity', 'that fraction compared '
+                 'between conditions, n = samples', 'per-marker detection rates'),
+        software='numpy + scipy + anndata, in process',
+        file_types=('h5ad',),
+        external_dependency='singlecell',
+        runner=IP.run,
+        notes='Purity is counted per cell and compared per sample: the sample is the unit of '
+              'replication. A marker rule, stated in the result, not a clustering.'))
+
+
+_IDENTITY_PURITY = _register_identity_purity()
 
 
 def _register_deseq2():

@@ -115,7 +115,7 @@ def plan(*, plan_id, question, uncertainty_ref, why_requested, dataset_ids, anal
                                  f'run {spec.name} v{spec.version}',
                                  'correct for multiplicity across readouts (Benjamini-Hochberg)',
                                  'map the result to candidate process parameters, or say why not'],
-        'tool': {'name': spec.name, 'parameters': dict((comparison or {}).get('parameters') or {}),
+        'tool': {'name': spec.name, 'parameters': dict((comparison or {}).get('options') or {}),
                  'external': bool(spec.external_dependency)},
         'required_metadata': list(spec.required_metadata),
         'expected_outputs': list(expected_outputs) or list(spec.outputs),
