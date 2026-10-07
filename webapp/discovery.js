@@ -669,7 +669,8 @@ function fail(e) {
       : e.reason === 'cancelled' || e.reason === 'timed_out' ? 'Run stopped'
       : e.reason === 'interrupted' ? 'Run interrupted'
       : e.headline ? 'Real AI runtime unavailable' : 'Refused'));
-  w.append(el('p', null, e.headline || e.message || String(e)));
+  w.append(el('p', null, e.headline || e.message
+    || (typeof e === 'string' ? e : 'The run ended without a result to show.')));
   if (e.next_step) w.append(el('code', null, e.next_step));
   if (e.retry_after_s) {
     w.append(el('p', 'dim', `Try again in about ${Math.ceil(e.retry_after_s / 60)} minute(s).`));
@@ -897,9 +898,9 @@ let genoSeen = '';
    unknowns, the arms against one control, what to measure, and what the next
    run does with each outcome — fixed before any result exists. */
 let planSeen = '';
-function renderRoundPlan(p) {
+function renderRoundPlan(p, snap) {
   const host = $('#roundInsights'); if (!host) return;
-  const key = JSON.stringify(p);
+  const key = JSON.stringify([p, snap && snap.measurements, snap && snap.status]);
   if (key === planSeen) return;
   planSeen = key;
   host.textContent = '';
@@ -935,6 +936,116 @@ function renderRoundPlan(p) {
   host.append(el('p', 'dim', (p.status || '') + ' Rules fixed before any result existed'
     + (p.commitment_sha256 ? ` (sha256 ${p.commitment_sha256.slice(0, 12)}…)` : '') + '. '
     + 'When you have results, use "Follow up with results" on this run.'));
+  if (snap && !RV.isLive(snap)) host.append(runTheRound(p, snap));
+}
+
+/* Running the round: two routes in, one record. A connected bioreactor (not
+   yet: the panel shows how the experiment would be assembled and sends
+   nothing), or a scientist entering what they measured against the plan's own
+   arms and readouts. Either way each value keeps its source. */
+function runTheRound(p, snap) {
+  const box = el('div', 'm round-run');
+  box.append(el('b', null, `Run round ${p.round || 1}`));
+  const reps = Math.max(1, p.replicates || 1);
+  const arms = p.arms || [], readouts = p.readouts || [];
+
+  const send = el('button', 'btn more', 'Send to bioreactor');
+  send.title = 'The instrument interface is not connected yet. This shows how the experiment '
+    + 'would be assembled; nothing is sent.';
+  const enter = el('button', 'btn more', 'Enter results');
+  const act = el('div', 'rv-actions'); act.append(send, enter);
+  box.append(act);
+
+  const inst = el('div', 'rv-follow-box'); inst.hidden = true;
+  inst.append(el('b', null, 'Instrument interface — not connected'));
+  inst.append(el('p', 'dim', 'When a bioreactor is connected, the agents or a scientist '
+    + 'assemble the run here from this plan: one vessel per arm and replicate, its setpoints '
+    + 'and schedule, and the readouts to stream back. A named person approves the protocol '
+    + 'before anything runs. Nothing is sent from this page today.'));
+  const vt = el('table', 'rp-arms');
+  const vh = el('tr'); ['Vessel', 'Arm', 'Replicate', 'Setpoints'].forEach(h => vh.append(el('th', null, h)));
+  vt.append(vh);
+  let v = 1;
+  arms.forEach(a => { for (let r = 1; r <= reps; r++) {
+    const tr = el('tr');
+    const sp = Object.entries(a.setpoints || {}).map(([k, x]) => `${k} ${x}`).join(', ');
+    [`V${v++}`, `${a.arm_id}${a.control ? ' (control)' : ''}`, String(r), sp || 'current process']
+      .forEach(c => tr.append(el('td', null, c)));
+    vt.append(tr);
+  } });
+  inst.append(vt);
+  const go = el('button', 'btn', 'Start on the bioreactor');
+  go.disabled = true; go.title = 'Available once an instrument is connected and the protocol is approved by name.';
+  inst.append(go);
+  send.addEventListener('click', () => { inst.hidden = !inst.hidden; });
+  box.append(inst);
+
+  const form = el('div', 'rv-follow-box'); form.hidden = true;
+  form.append(el('p', 'dim', 'One value per arm, replicate and readout, as measured. Leave a '
+    + 'cell empty if it was not measured. A value entered again replaces the earlier one, '
+    + 'which is kept as a correction.'));
+  const t = el('table', 'rp-arms');
+  const hr = el('tr'); ['Arm', 'Rep', ...readouts.map(r => `${r.name} (${r.unit})`)].forEach(h => hr.append(el('th', null, h)));
+  t.append(hr);
+  const have = {};
+  ((snap.measurements || {}).entries || []).filter(e => e.source === 'scientist')
+    .forEach(e => { have[`${e.arm_id}|${e.replicate}|${e.readout}`] = e.value; });
+  const inputs = [];
+  arms.forEach(a => { for (let r = 1; r <= reps; r++) {
+    const tr = el('tr');
+    tr.append(el('td', null, a.arm_id + (a.control ? ' (control)' : '')), el('td', null, String(r)));
+    readouts.forEach(ro => {
+      const i = el('input'); i.type = 'number'; i.step = 'any';
+      const k = `${a.arm_id}|${r}|${ro.name}`;
+      if (k in have) i.value = have[k];
+      inputs.push({ i, arm_id: a.arm_id, replicate: r, readout: ro.name });
+      const td = el('td'); td.append(i); tr.append(td);
+    });
+    t.append(tr);
+  } });
+  form.append(t);
+  const save = el('button', 'btn go', 'Save results');
+  const msg = el('span', 'dim');
+  save.addEventListener('click', async () => {
+    const entries = inputs.filter(x => x.i.value.trim() !== '')
+      .map(x => ({ arm_id: x.arm_id, replicate: x.replicate, readout: x.readout, value: Number(x.i.value) }));
+    if (!entries.length) { msg.textContent = ' Enter at least one value.'; return; }
+    save.disabled = true; save.textContent = 'saving…';
+    try {
+      await post(`/api/discovery/${encodeURIComponent(snap.run_id)}/results`, { entries });
+      msg.textContent = ` Saved ${entries.length} value(s).`;
+      if (state.run && state.run.run_id === snap.run_id) watchRun(snap.run_id);
+    } catch (e) { msg.textContent = ' ' + (e.message || e); }
+    save.disabled = false; save.textContent = 'Save results';
+  });
+  const row = el('div', 'rv-actions'); row.append(save, msg);
+  form.append(row);
+  enter.addEventListener('click', () => { form.hidden = !form.hidden; });
+  box.append(form);
+
+  /* Measurements: what came back, by source. Empty until something does. */
+  const m = snap.measurements;
+  const meas = el('div', 'm');
+  meas.append(el('b', null, 'Measurements'));
+  meas.append(el('div', 'dim', 'From the bioreactor: not connected — nothing received.'));
+  const sci = (m && m.by_source && m.by_source.scientist) || 0;
+  meas.append(el('div', 'dim', `Entered by a scientist: ${sci ? sci + ' value(s)' : 'none yet'}`
+    + (m && m.corrections ? ` (${m.corrections} correction(s) kept)` : '') + '.'));
+  if (m && (m.means || []).length) {
+    const mt = el('table', 'rp-arms');
+    const mh = el('tr'); ['Arm', 'Readout', 'n', 'Mean'].forEach(h => mh.append(el('th', null, h)));
+    mt.append(mh);
+    m.means.forEach(x => {
+      const tr = el('tr');
+      [x.arm_id, x.readout, String(x.n), Number(x.mean).toPrecision(4)].forEach(c => tr.append(el('td', null, c)));
+      mt.append(tr);
+    });
+    meas.append(mt);
+    meas.append(el('div', 'dim', 'The follow-up run compares each arm with the control using '
+      + 'the statistics tool, then applies the rules above as they were written.'));
+  }
+  box.append(meas);
+  return box;
 }
 
 /* Terms the run proposed for levers the base reactor has no equation for: the
@@ -1168,7 +1279,7 @@ function renderInsights(snap) {
   wireSection('roundSec', true);
   $('#roundSec').hidden = !plan;
   if (plan) {
-    renderRoundPlan(plan);
+    renderRoundPlan(plan, snap);
     $('#roundTitle').textContent = `Round ${plan.round || 1} at the bench`;
     $('#roundSum').textContent = `${(plan.unknowns || []).length} unknown(s) · `
       + `${(plan.arms || []).length} arms × ${plan.replicates} · PROPOSED`;

@@ -36,9 +36,9 @@ const RV = (() => {
   function lineage(snap) {
     const c = snap.continued_from;
     if (!c || !c.run_id) return null;
-    return c.kind === 'follow_up'
-      ? `Round ${c.round || 2} · follows run ${c.run_id}`
-      : `Continues run ${c.run_id}`;
+    if (c.kind !== 'follow_up') return `Continues run ${c.run_id}`;
+    const chain = (c.chain || []).map(x => `round ${x.round} (${x.run_id})`).join(' → ');
+    return `Round ${c.round || 2} · connected runs: ${chain || 'run ' + c.run_id}`;
   }
 
   /* The next round: the person ran the experiment and brings the results back.
@@ -58,6 +58,9 @@ const RV = (() => {
     });
     const box = el('div', 'rv-follow-box');
     box.hidden = !d.open;
+    const measured = ((snap.measurements || {}).count || 0);
+    if (measured) box.append(el('p', null, `${measured} value(s) recorded against this run's round `
+      + 'plan go with the follow-up; anything you add below goes too.'));
     box.append(el('p', 'dim', 'What did you measure? Per arm, the readouts and their values, '
       + 'with n. Numbers you type are your report of this process; for a full table, register '
       + 'it on the Data page and name its id below so the tools analyse it.'));
@@ -73,7 +76,9 @@ const RV = (() => {
     const msg = el('span', 'dim');
     go.addEventListener('click', async () => {
       const ids = d.ds.split(',').map(s => s.trim()).filter(Boolean);
-      if (!d.text.trim() && !ids.length) { msg.textContent = ' Describe the results or name a dataset.'; return; }
+      if (!d.text.trim() && !ids.length && !measured) {
+        msg.textContent = ' Enter results against the round plan, describe them, or name a dataset.'; return;
+      }
       go.disabled = true; go.textContent = 'starting…';
       try {
         await onFollowUp(snap.run_id, { results: d.text.trim(), dataset_ids: ids });

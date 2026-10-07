@@ -47,6 +47,8 @@ Endpoints
     POST /api/discovery/<id>/pause    hold a live run now; the clock stops with it
     POST /api/discovery/<id>/continue resume a paused run with the time it had left, or
                                   start a fresh run seeded with an ended run's artifacts
+    POST /api/discovery/<id>/results     a scientist's measurements, entered against the
+                                  run's round plan (arm, replicate, readout, value)
     POST /api/discovery/<id>/follow-up   the next round: an ended run's artifacts, plus the
                                   results a person measured, read against its round plan
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
@@ -604,6 +606,13 @@ class DiscoveryRun:
                     'stand_in', 'stand_in_note', 'used', 'not_represented', 'control_label')}
                 return
 
+    def _measurements(self):
+        """What came back from the round this run planned. Only once the run has ended."""
+        if self.finished_at is None:
+            return None
+        from ..evidence import round_results as RR
+        return RR.summary(self.out_dir)
+
     def _read_round_plan(self):
         """The round plan the run wrote: what it could not settle, as an experiment."""
         f = self.out_dir / 'round_plan.json'
@@ -944,6 +953,7 @@ class DiscoveryRun:
                 'followable': (self.finished_at is not None
                                and self.runtime_mode in RT.REAL_MODES),
                 'round_plan': self.round_plan,
+                'measurements': self._measurements(),
                 'continued_from': self.request.get('continued_from'),
                 'extensions_left': self.extensions_left,
                 'extension_s': EXTENSION_S,
@@ -982,7 +992,7 @@ class DiscoveryRegistry:
             self.runs.pop(self.order.pop(0), None)
 
     def start(self, request, *, identity=None, client=None, projects_dir=None,
-              seed_from=None):
+              seed_from=None, seed_round=None):
         mode = request['runtime_mode']
         target = self.cfg.for_mode(mode)
         if mode not in self.cfg.allowed:
@@ -1030,7 +1040,7 @@ class DiscoveryRegistry:
             else:
                 self.active_synthetic += 1
         if seed_from:
-            self._seed(out, seed_from)
+            self._seed(out, seed_from, connected_round=seed_round)
         run.persist()
         t = threading.Thread(target=self._work, args=(run, target), daemon=True,
                              name=f'discovery-{rid[:6]}')
@@ -1038,7 +1048,7 @@ class DiscoveryRegistry:
         return run
 
     @staticmethod
-    def _seed(out_dir, prior_dir):
+    def _seed(out_dir, prior_dir, connected_round=None):
         """Copy an ended run's artifacts into a new run's directory, before it starts.
 
         A continued run begins with everything the old one wrote, so the agents
@@ -1052,6 +1062,16 @@ class DiscoveryRegistry:
         if not src.is_dir():
             return
         dst.mkdir(parents=True, exist_ok=True)
+        if connected_round is not None:
+            # A follow-up is a new round, not the same run resumed: the earlier
+            # rounds go under connected/, one folder each, and this run's own
+            # directory starts empty so nothing of theirs is mistaken for its own.
+            here = dst / 'connected'
+            if (src / 'connected').is_dir():
+                shutil.copytree(src / 'connected', here, dirs_exist_ok=True)
+            dst = here / f'round-{connected_round}-{src.name}'
+            dst.mkdir(parents=True, exist_ok=True)
+            skip = skip | {'connected'}
         for p in src.iterdir():
             if p.name in skip or p.name.startswith('.'):
                 continue
@@ -1607,6 +1627,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/continue', path)
             if m:
                 return self._continue_discovery(m.group(1))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/results', path)
+            if m:
+                return self._record_results(m.group(1), self._body(MAX_BODY_DISCOVERY))
             m = re.fullmatch(r'/api/discovery/([^/]+)/follow-up', path)
             if m:
                 return self._continue_ended(m.group(1), self._identity(),
@@ -2173,6 +2196,36 @@ class Handler(BaseHTTPRequestHandler):
                                              'nothing to continue'})
         return self._continue_ended(rid, identity)
 
+    def _ended_run_dir(self, rid, identity):
+        """(directory, status) of an ended run the caller owns, or (None, http error)."""
+        run = self.discovery.get(rid, owner=identity.owner)
+        if run is not None:
+            if run.finished_at is None:
+                return None, (409, {'error': 'that run is still going'})
+            return run.out_dir, run.status
+        d = RS.find(self.discovery.runs_dir, rid) if DISCOVERY_ID.match(rid or '') else None
+        state = RS._read_state(RS.state_path(d)) if d else None
+        if not state or (state.get('owner') is not None and state.get('owner') != identity.owner):
+            return None, (404, {'error': 'no such discovery run'})
+        return d, state.get('status')
+
+    def _record_results(self, rid, body):
+        """A scientist's measurements of a round, entered against that round's plan.
+
+        The bioreactor will write the same record with source "instrument" once
+        one is connected; until then the only way in is a person, named.
+        """
+        from ..evidence import round_results as RR
+        identity = self._identity()
+        d, status = self._ended_run_dir(rid, identity)
+        if d is None:
+            return self._send(*status)
+        who = str(getattr(identity, 'display', None) or identity.owner or 'local user')[:80]
+        doc = RR.add(d, body.get('entries'), source='scientist', entered_by=who, run_id=rid)
+        return self._send(200, {'run_id': rid, 'measurements': RR.summary(d),
+                                'recorded': len(body.get('entries') or []),
+                                'note': doc['note']})
+
     def _continue_ended(self, rid, identity, follow_up=None):
         """A fresh run that picks up where an ended one left off.
 
@@ -2220,19 +2273,29 @@ class Handler(BaseHTTPRequestHandler):
         # and the continuation named, so the brief can say what this run is.
         cont = {'run_id': rid, 'run_dir': Path(old_dir).name, 'status': old_status}
         datasets = list(prior.get('dataset_ids') or [])
+        seed_round = None
         if follow_up is not None:
+            from ..evidence import round_results as RR
             results = str(follow_up.get('results') or '').strip()
             added = [str(d).strip() for d in follow_up.get('dataset_ids') or [] if str(d).strip()]
-            if not results and not added:
-                return self._send(400, {'error': 'a follow-up brings results: describe what was '
-                                                 'measured, attach a results dataset, or both'})
+            measured = bool((RR.load(old_dir) or {}).get('entries'))
+            if not results and not added and not measured:
+                return self._send(400, {'error': 'a follow-up brings results: enter them against '
+                                                 'the round plan, describe what was measured, '
+                                                 'attach a results dataset, or any of these'})
             if len(results) > 4000:
                 return self._send(400, {'error': 'results are limited to 4000 characters; attach '
                                                  'the full table as a dataset instead'})
             before = (prior.get('continued_from') or {})
-            cont.update(kind='follow_up', results=results or None,
-                        round=(int(before.get('round') or 1) + 1
-                               if before.get('kind') == 'follow_up' else 2),
+            # The rounds of this one line of work, oldest first. Only these are
+            # carried forward; other runs in the project stay independent.
+            seed_round = (int(before.get('round') or 2)
+                          if before.get('kind') == 'follow_up' else 1)
+            chain = (list(before.get('chain') or [])
+                     if before.get('kind') == 'follow_up' else [])
+            chain.append({'run_id': rid, 'run_dir': Path(old_dir).name, 'round': seed_round})
+            cont.update(kind='follow_up', results=results or None, chain=chain,
+                        round=seed_round + 1,
                         reported_by=(str(getattr(identity, 'display', None) or owner)[:200]
                                      if identity.authenticated else None))
             datasets += [d for d in added if d not in datasets]
@@ -2244,7 +2307,8 @@ class Handler(BaseHTTPRequestHandler):
             # given; the earlier rounds' files came with the directory.
             before = prior['continued_from']
             cont.update(kind='follow_up', round=before.get('round'),
-                        results=before.get('results'), reported_by=before.get('reported_by'))
+                        results=before.get('results'), reported_by=before.get('reported_by'),
+                        chain=before.get('chain') or [])
         else:
             cont['kind'] = 'continue'
         req = dict(prior,
@@ -2261,7 +2325,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             new = self.discovery.start(req, identity=identity, client=self._client(),
                                        projects_dir=self._projects_dir(identity),
-                                       seed_from=old_dir)
+                                       seed_from=old_dir, seed_round=seed_round)
         except RT.RuntimeUnavailable as e:
             return self._send(503, {'error': str(e), 'refused': True, 'reason': e.reason,
                                     'headline': e.headline, 'next_step': e.next_step,

@@ -197,6 +197,9 @@ button{font-family:inherit}
   font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);
   background:var(--panel, transparent);color:inherit}
 .rp-arms{width:100%;border-collapse:collapse;margin:8px 0}
+.rp-arms input{width:6.5em;font:inherit;padding:4px 6px;border-radius:6px;
+  border:1px solid var(--line);background:transparent;color:inherit}
+.round-run{margin-top:14px}
 .rp-arms th,.rp-arms td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);
   vertical-align:top}
 .btn.more{margin-left:10px;border-color:color-mix(in srgb,var(--brand) 55%,transparent);color:var(--brand)}

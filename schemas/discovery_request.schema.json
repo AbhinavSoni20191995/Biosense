@@ -275,6 +275,37 @@
             "null"
           ],
           "maxLength": 200
+        },
+        "chain": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "The connected runs this one follows, oldest first: the rounds of one line of work. Only these are read; other runs in the same project are independent.",
+          "items": {
+            "type": "object",
+            "required": [
+              "run_id",
+              "round"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "run_id": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "run_dir": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 128
+              },
+              "round": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            }
+          }
         }
       }
     }

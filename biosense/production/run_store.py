@@ -321,6 +321,10 @@ def restore(runs_dir, run_id, *, after=-1):
     # Any ended real run can come back with results as its next round.
     snap['followable'] = bool(snap.get('is_real') and has_request)
     snap['pausable'] = False
+    # Read fresh: results are entered after the run ended, so the stored
+    # header never has them.
+    from ..evidence import round_results as RR
+    snap['measurements'] = RR.summary(d)
     _settle_counts(snap)
     snap.pop('written_at', None)
     return snap

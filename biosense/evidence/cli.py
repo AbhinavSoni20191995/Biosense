@@ -432,6 +432,18 @@ def cmd_round_plan(a):
     return 0
 
 
+def cmd_round_compare(a):
+    from . import round_results as RR
+    doc = RR.compare(K.read_json(Path(a.plan)), K.read_json(Path(a.results)))
+    out = _write(doc, a.out)
+    print(json.dumps({'written': str(out), 'control': doc['control'],
+                      'rows': [{k: r.get(k) for k in ('readout', 'arm_id', 'mean_a', 'mean_b',
+                                                       'effect', 'p_value', 'q_value', 'note')}
+                               for r in doc['rows']],
+                      'note': doc['note']}, indent=2, default=str))
+    return 0
+
+
 def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, seed=7,
                         effects=None, project=None):
     """Wild type against an engineered line on the reactor, with this project's values.
@@ -703,6 +715,11 @@ def main(argv=None):
     p.add_argument('--run-id'); p.add_argument('--created-by')
     p.add_argument('--out', required=True)
     p.set_defaults(fn=cmd_round_plan)
+    p = sub.add_parser('round-compare', help='each arm of a round against its control, per '
+                                             'readout, from the recorded results')
+    p.add_argument('--plan', required=True); p.add_argument('--results', required=True)
+    p.add_argument('--out', required=True)
+    p.set_defaults(fn=cmd_round_compare)
     p = sub.add_parser('design-choices',
                        help='reasoned starting values for setpoints no source sets here')
     p.add_argument('--project', required=True); p.add_argument('--projects-dir')

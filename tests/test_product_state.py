@@ -490,7 +490,12 @@ class ApiTests(unittest.TestCase):
         req = DISC.build(project_id='ipsc_macrophage', runtime_mode='local_real_ai',
                          objective='increase viable macrophage yield from iPSC')
         (d / 'discovery_request.json').write_text(json.dumps(req))
-        (d / 'round_plan.json').write_text(json.dumps({'kind': 'round_plan', 'round': 1}))
+        (d / 'round_plan.json').write_text(json.dumps({
+            'kind': 'round_plan', 'round': 1, 'commitment_sha256': 'c' * 64, 'replicates': 2,
+            'arms': [{'arm_id': 'A0', 'control': True, 'setpoints': {}},
+                     {'arm_id': 'A1', 'control': False, 'setpoints': {'mcsf_ng_ml': 50}}],
+            'readouts': [{'name': 'CD14+', 'unit': '%', 'when': 'harvest'}],
+            'decision_rules': []}))
         RS.write_state(d, {'run_id': rid, 'status': status, 'is_real': True,
                            'runtime_mode': 'local_real_ai', 'owner': None,
                            'project_id': 'ipsc_macrophage', 'objective': req['objective'],
@@ -518,7 +523,7 @@ class ApiTests(unittest.TestCase):
                 return {'run_id': 'abcabcabcabcabca'}
 
         def start(req, **kw):
-            seen.update(req=req, seed=kw.get('seed_from'))
+            seen.update(req=req, seed=kw.get('seed_from'), round=kw.get('seed_round'))
             return Started()
         with mock.patch.object(self.APP.Handler.discovery, 'start', side_effect=start):
             code, body = self._req('POST', f'/api/discovery/{rid}/follow-up', {
@@ -528,7 +533,31 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(('follow_up', 2, rid), (cont['kind'], cont['round'], cont['run_id']))
         self.assertIn('CD206+ 52%', cont['results'])
         self.assertEqual(d, Path(seen['seed']))
+        self.assertEqual(1, seen['round'], 'round 1 goes under connected/')
+        self.assertEqual([{'run_id': rid, 'run_dir': d.name, 'round': 1}], cont['chain'])
         K.require_valid('discovery_request', seen['req'])
+
+    def test_a_scientist_enters_results_against_the_plan_and_follows_up_with_them(self):
+        from unittest import mock
+        rid = 'abc1239876543211'
+        self._ended_real_run(rid)
+        code, body = self._req('POST', f'/api/discovery/{rid}/results', {'entries': [
+            {'arm_id': 'A9', 'replicate': 1, 'readout': 'CD14+', 'value': 40}]})
+        self.assertEqual(400, code, body)
+        code, body = self._req('POST', f'/api/discovery/{rid}/results', {'entries': [
+            {'arm_id': 'A0', 'replicate': 1, 'readout': 'CD14+', 'value': 40},
+            {'arm_id': 'A1', 'replicate': 1, 'readout': 'CD14+', 'value': 61}]})
+        self.assertEqual(200, code, body)
+        self.assertEqual(2, body['measurements']['by_source']['scientist'])
+        code, snap = self._req('GET', f'/api/discovery/{rid}')
+        self.assertEqual(2, snap['measurements']['count'], 'read fresh for an ended run')
+
+        class Started:
+            def snapshot(self):
+                return {'run_id': 'abcabcabcabcabcb'}
+        with mock.patch.object(self.APP.Handler.discovery, 'start', return_value=Started()):
+            code, body = self._req('POST', f'/api/discovery/{rid}/follow-up', {})
+        self.assertEqual(202, code, 'recorded measurements are results enough')
 
     def test_a_synthetic_run_is_rerun_not_followed_up(self):
         rid = '0123456789abcdef'
