@@ -32,6 +32,66 @@ const RV = (() => {
   /* A results box survives the header being redrawn on the next snapshot:
      what a person typed is theirs until they send it. */
   const followDrafts = {};
+  const benchOpen = {};
+
+  /* How a round plan would be assembled on a bioreactor: one vessel per arm
+     and replicate, with its setpoints. The instrument interface is not
+     connected, so this shows the assembly and sends nothing; starting waits
+     for an instrument and a protocol approved by a named person. */
+  function assembly(plan) {
+    const box = el('div');
+    box.append(el('b', null, 'Instrument interface — not connected'));
+    box.append(el('p', 'dim', 'When a bioreactor is connected, the agents or a scientist '
+      + 'assemble the run here from the round plan: one vessel per arm and replicate, its '
+      + 'setpoints and schedule, and the readouts to stream back. A named person approves the '
+      + 'protocol before anything runs. Nothing is sent from this page today.'));
+    if (!plan) {
+      box.append(el('p', null, 'This run left no round plan, so there is nothing to assemble '
+        + 'yet. You can still run your own experiment and bring the results back with "Follow '
+        + 'up with results".'));
+      return box;
+    }
+    if (plan.assembled_by === 'biosense') {
+      box.append(el('p', 'dim', 'The plan was assembled by BioSense from the hypotheses (one '
+        + 'arm per proposed lever), because the agents wrote none.'));
+    }
+    const reps = Math.max(1, plan.replicates || 1);
+    const t = el('table', 'rp-arms');
+    const h = el('tr'); ['Vessel', 'Arm', 'Replicate', 'Setpoints'].forEach(x => h.append(el('th', null, x)));
+    t.append(h);
+    let v = 1;
+    (plan.arms || []).forEach(a => { for (let r = 1; r <= reps; r++) {
+      const tr = el('tr');
+      const sp = Object.entries(a.setpoints || {}).map(([k, x]) => `${k} ${x}`).join(', ');
+      [`V${v++}`, `${a.arm_id}${a.control ? ' (control)' : ''}`, String(r), sp || 'current process']
+        .forEach(c => tr.append(el('td', null, c)));
+      t.append(tr);
+    } });
+    box.append(t);
+    const go = el('button', 'btn', 'Start on the bioreactor');
+    go.disabled = true;
+    go.title = 'Available once an instrument is connected and the protocol is approved by name.';
+    box.append(go);
+    return box;
+  }
+
+  function benchButton(snap) {
+    const wrap = el('div', 'rv-follow');
+    const open = !!benchOpen[snap.run_id];
+    const b = el('button', 'btn more', open ? 'Hide bioreactor' : 'Send to bioreactor');
+    b.title = 'Shows how this run’s round plan would be assembled on a bioreactor. The '
+      + 'instrument interface is not connected yet; nothing is sent.';
+    const panel = el('div', 'rv-follow-box');
+    panel.hidden = !open;
+    panel.append(assembly(snap.round_plan));
+    b.addEventListener('click', () => {
+      benchOpen[snap.run_id] = !benchOpen[snap.run_id];
+      panel.hidden = !benchOpen[snap.run_id];
+      b.textContent = benchOpen[snap.run_id] ? 'Hide bioreactor' : 'Send to bioreactor';
+    });
+    wrap.append(b, panel);
+    return wrap;
+  }
 
   function lineage(snap) {
     const c = snap.continued_from;
@@ -234,6 +294,7 @@ const RV = (() => {
       row.append(go);
       host.append(row);
     }
+    if (!isLive(snap) && snap.followable) host.append(benchButton(snap));
     if (!isLive(snap) && snap.followable && opts.onFollowUp) {
       host.append(followUpForm(snap, opts.onFollowUp));
     }
@@ -365,5 +426,6 @@ const RV = (() => {
     return () => { stopped = true; clearInterval(poll); if (es) es.close(); };
   }
 
-  return { header, stages, agents, timeline, limitations, attach, isLive, statusText, el };
+  return { header, stages, agents, timeline, limitations, attach, isLive, statusText, el,
+    assembly };
 })();

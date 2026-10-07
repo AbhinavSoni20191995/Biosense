@@ -72,7 +72,8 @@ def _text(v, field, limit, minimum=1):
     return s
 
 
-def build(draft, project, *, run_id=None, created_by=None, extra_levers=()):
+def build(draft, project, *, run_id=None, created_by=None, extra_levers=(),
+          assembled_by='orchestrator'):
     """A validated round plan, or a refusal naming what is wrong.
 
     *extra_levers* are parameters the run proposed terms for: they may be set in
@@ -184,10 +185,74 @@ def build(draft, project, *, run_id=None, created_by=None, extra_levers=()):
                         if replicates < 2 else []),
         'status': ('PROPOSED. A person reviews the arms, approves a protocol with a named '
                    'approver, and runs it; nothing here actuates anything.'),
+        'assembled_by': assembled_by,
     }
     # The rules are fixed before any result exists. The digest is what a follow-up
     # checks, so a rule quietly rewritten after the results arrive is visible.
     plan['commitment_sha256'] = hashlib.sha256(json.dumps(
         {k: plan[k] for k in ('unknowns', 'arms', 'readouts', 'replicates', 'decision_rules')},
         sort_keys=True).encode()).hexdigest()
+    return plan
+
+
+def from_hypotheses(project, hypotheses, *, run_id=None, replicates=3):
+    """A round plan assembled by BioSense when the agents wrote none, or None.
+
+    Mechanical, and labelled so: one control, and one arm per hypothesis that
+    names a numeric value for its lever, setting only that lever. The unknown
+    each arm settles is that hypothesis; the readouts are the project's own;
+    the rule is the same for every arm — carry it forward if the readout moves
+    the hypothesised way beyond replicate spread, mark it contradicted if not.
+    Nothing here decides what is interesting: that was the hypotheses' job.
+    """
+    readouts = [{'name': r.get('label') or r['readout_id'], 'unit': r.get('unit') or 'unit',
+                 'when': r.get('instrument') or 'at harvest'}
+                for r in (project.readouts or [])[:6]]
+    arms, unknowns, rules, extra = [], [], [], []
+    for h in hypotheses or []:
+        par = h.get('parameter') or {}
+        value, pid = par.get('candidate_value'), par.get('parameter_id')
+        if (h.get('status') or 'proposed') not in ('proposed', 'supported') or not pid \
+                or isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        rid = PR.resolve(pid, required=False) or pid
+        if project.has(rid):
+            q = project.parameter(rid)
+            if (q.minimum is not None and value < q.minimum) or (
+                    q.maximum is not None and value > q.maximum):
+                continue
+        else:
+            extra.append(rid)
+        i = len(arms) + 1
+        uid, label = f'U{i}', par.get('proposed_label') or par.get('label') or rid
+        statement = (h.get('statement') or '').strip() or f'Does changing {label} help?'
+        unknowns.append({'id': uid, 'question': statement[:400].ljust(10, '.'),
+                         'why_unresolved': ('its effect here has not been measured; the run '
+                                            'proposed it as hypothesis '
+                                            f'{h.get("hypothesis_id")}'),
+                         'levers': [rid]})
+        arms.append({'arm_id': f'A{i}', 'label': f'{label} {value}{" " + par["unit"] if par.get("unit") else ""}',
+                     'setpoints': {rid: value},
+                     'basis': f'the value hypothesis {h.get("hypothesis_id")} proposes'})
+        direction = par.get('direction') or 'the hypothesised direction'
+        rules += [{'unknown': uid, 'if': f'A{i} moves the readouts in {direction} beyond '
+                                         f'replicate spread against A0',
+                   'then': f'carry {label} forward and refine its value next round'},
+                  {'unknown': uid, 'if': f'A{i} does not differ from A0 beyond replicate spread',
+                   'then': f'mark hypothesis {h.get("hypothesis_id")} contradicted at this value'}]
+        if len(arms) >= MAX_ARMS - 1:
+            break
+    if not arms or not readouts:
+        return None
+    draft = {'round': 1, 'purpose': ('Test each lever the run proposed against the current '
+                                     'process, one lever per arm.'),
+             'unknowns': unknowns,
+             'arms': [{'arm_id': 'A0', 'label': 'control: current process', 'control': True,
+                       'setpoints': {}}] + arms,
+             'readouts': readouts, 'replicates': replicates, 'decision_rules': rules}
+    plan = build(draft, project, run_id=run_id, created_by='biosense',
+                 extra_levers=extra, assembled_by='biosense')
+    plan['status'] = ('ASSEMBLED BY BIOSENSE from the hypotheses, because the run wrote no round '
+                      'plan: one arm per proposed lever at its proposed value, against the '
+                      'current process. ' + plan['status'])
     return plan

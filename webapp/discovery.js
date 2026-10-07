@@ -957,26 +957,7 @@ function runTheRound(p, snap) {
   box.append(act);
 
   const inst = el('div', 'rv-follow-box'); inst.hidden = true;
-  inst.append(el('b', null, 'Instrument interface — not connected'));
-  inst.append(el('p', 'dim', 'When a bioreactor is connected, the agents or a scientist '
-    + 'assemble the run here from this plan: one vessel per arm and replicate, its setpoints '
-    + 'and schedule, and the readouts to stream back. A named person approves the protocol '
-    + 'before anything runs. Nothing is sent from this page today.'));
-  const vt = el('table', 'rp-arms');
-  const vh = el('tr'); ['Vessel', 'Arm', 'Replicate', 'Setpoints'].forEach(h => vh.append(el('th', null, h)));
-  vt.append(vh);
-  let v = 1;
-  arms.forEach(a => { for (let r = 1; r <= reps; r++) {
-    const tr = el('tr');
-    const sp = Object.entries(a.setpoints || {}).map(([k, x]) => `${k} ${x}`).join(', ');
-    [`V${v++}`, `${a.arm_id}${a.control ? ' (control)' : ''}`, String(r), sp || 'current process']
-      .forEach(c => tr.append(el('td', null, c)));
-    vt.append(tr);
-  } });
-  inst.append(vt);
-  const go = el('button', 'btn', 'Start on the bioreactor');
-  go.disabled = true; go.title = 'Available once an instrument is connected and the protocol is approved by name.';
-  inst.append(go);
+  inst.append(RV.assembly(p));
   send.addEventListener('click', () => { inst.hidden = !inst.hidden; });
   box.append(inst);
 

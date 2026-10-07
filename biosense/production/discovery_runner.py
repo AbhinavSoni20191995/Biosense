@@ -221,6 +221,28 @@ def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
     return {'omnigent': summary, 'out_dir': str(out)}
 
 
+def ensure_round_plan(out_dir, project, hypotheses):
+    """Write a BioSense-assembled round plan when the agents wrote none.
+
+    A finished run should always leave something to take to the bench. When
+    the orchestrator skipped the step, the plan is assembled mechanically from
+    the hypotheses (one arm per proposed lever, against the current process)
+    and says so; when it cannot be (no hypothesis names a value), nothing is
+    written and the run page says there is no plan.
+    """
+    from ..evidence import round_plan as RP
+    path = Path(out_dir) / 'round_plan.json'
+    if path.exists():
+        return None
+    try:
+        plan = RP.from_hypotheses(project, hypotheses, run_id=Path(out_dir).name)
+    except K.ContractError:
+        return None
+    if plan:
+        K.write_json_atomic(path, plan)
+    return plan
+
+
 def read_round_artifacts(out_dir):
     """(round plan, what the reactor played, proposed terms) from a run directory.
 
@@ -317,6 +339,7 @@ def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
         # Reasoned starting values, when the run proposed any: a setpoint with a
         # stated basis is a design choice a person approves, not a gap.
         choices, why_not = read_design_choices(out_dir, project)
+        ensure_round_plan(out_dir, project, bundle['hypotheses'])
         plan, ran, terms = read_round_artifacts(out_dir)
         protocol = PS.from_bundle(
             bundle, project=project, objective=request['objective'],

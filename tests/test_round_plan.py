@@ -76,3 +76,51 @@ class RoundPlanTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FallbackPlanTests(unittest.TestCase):
+    """When the agents write no round plan, BioSense assembles one, labelled."""
+
+    def setUp(self):
+        self.addCleanup(PR.forget_local, 'csf2_ng_ml')
+
+    def hyps(self):
+        return [
+            {'hypothesis_id': 'H01', 'status': 'proposed',
+             'statement': 'Raising M-CSF may raise monocyte output.',
+             'parameter': {'parameter_id': 'mcsf_ng_ml', 'candidate_value': 50,
+                           'direction': 'increase', 'unit': 'ng/mL'}},
+            {'hypothesis_id': 'H02', 'status': 'proposed',
+             'statement': 'GM-CSF in maturation may give alveolar identity.',
+             'parameter': {'parameter_id': 'csf2_ng_ml', 'candidate_value': 100,
+                           'proposed_label': 'GM-CSF (maturation)', 'unit': 'ng/mL'}},
+            {'hypothesis_id': 'H03', 'status': 'contradicted', 'statement': 'Ruled out here.',
+             'parameter': {'parameter_id': 'il3_ng_ml', 'candidate_value': 5}},
+            {'hypothesis_id': 'H04', 'status': 'proposed', 'statement': 'A direction only.',
+             'parameter': {'parameter_id': 'il3_ng_ml', 'direction': 'increase'}},
+        ]
+
+    def test_one_arm_per_live_lever_against_the_current_process(self):
+        plan = RP.from_hypotheses(PJ.load('ipsc_macrophage'), self.hyps(), run_id='ai-x')
+        self.assertEqual('biosense', plan['assembled_by'])
+        self.assertIn('ASSEMBLED BY BIOSENSE', plan['status'])
+        self.assertEqual([{}, {'mcsf_ng_ml': 50}, {'csf2_ng_ml': 100}],
+                         [a['setpoints'] for a in plan['arms']],
+                         'contradicted and direction-only hypotheses get no arm')
+        self.assertTrue(plan['arms'][0]['control'])
+        self.assertEqual(4, len(plan['decision_rules']))
+
+    def test_the_runner_writes_it_only_when_the_agents_did_not(self):
+        import json
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from biosense.production import discovery_runner as DRUN
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        project = PJ.load('ipsc_macrophage')
+        self.assertIsNotNone(DRUN.ensure_round_plan(d, project, self.hyps()))
+        self.assertEqual('biosense', json.loads((d / 'round_plan.json').read_text())['assembled_by'])
+        (d / 'round_plan.json').write_text('{"kind": "round_plan", "round": 1}')
+        self.assertIsNone(DRUN.ensure_round_plan(d, project, self.hyps()), 'never overwritten')
+        self.assertIsNone(RP.from_hypotheses(project, self.hyps()[2:]), 'nothing to test')

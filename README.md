@@ -862,7 +862,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1147 tests
+uv run --frozen python -m unittest     # 1198 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

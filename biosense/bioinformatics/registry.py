@@ -134,7 +134,10 @@ register(ToolSpec(
     required_inputs=('a processed protein or analyte table: long (protein, sample, condition, '
                      'value) or one row per sample with one column per analyte',),
     required_metadata=abundance.REQUIRED_METADATA,
-    parameters={'min_valid': 'values needed in each group to test a protein (option)'},
+    parameters={'min_valid': 'values needed in each group to test a protein (option; '
+                             'default 2)',
+                'scale': 'auto, log or linear (option); linear values are log2-transformed '
+                         'once'},
     outputs=('per protein: difference in log2 abundance with BH-q',
              'proteins detected in one condition only, listed rather than imputed'),
     runner=abundance.run,
@@ -208,9 +211,13 @@ def _register_identity_purity():
         required_inputs=('an .h5ad matrix with a sample column in obs',
                          'the identity markers, named in the plan (--readouts)'),
         required_metadata=IP.REQUIRED_METADATA,
-        parameters={'readouts': 'the identity marker set, by symbol',
+        parameters={'readouts': 'the identity marker set, by symbol (2 to 50)',
                     'min_markers': 'markers a cell must express to count as on-identity '
-                                   '(option)'},
+                                   '(option; default half the markers present, rounded up)',
+                    'detect_threshold': 'a marker counts as expressed strictly above this '
+                                        'value (option; default 0)',
+                    'negative_markers': 'comma-separated symbols; a cell expressing any is '
+                                        'off-identity (option)'},
         outputs=('per sample: the fraction of cells on-identity', 'that fraction compared '
                  'between conditions, n = samples', 'per-marker detection rates'),
         software='numpy + scipy + anndata, in process',

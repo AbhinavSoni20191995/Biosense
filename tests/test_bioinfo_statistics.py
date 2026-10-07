@@ -199,7 +199,7 @@ class PublicSearchTests(unittest.TestCase):
     def test_a_candidate_with_an_unknown_modality_is_refused(self):
         from biosense.data.sources.base import DatasetCandidate
         with self.assertRaises(K.ContractError):
-            DatasetCandidate('X1', 't', 'proteomics', 'Homo sapiens', 'geo', 'http://x')
+            DatasetCandidate('X1', 't', 'metabolomics', 'Homo sapiens', 'geo', 'http://x')
 
 
 class GateTests(unittest.TestCase):

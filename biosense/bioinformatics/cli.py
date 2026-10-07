@@ -226,7 +226,8 @@ def cmd_analyse_plan(a):
                      'treatment': a.treatment_level, 'paired': a.paired, 'covariates': [],
                      'readouts': a.readouts or [], 'value_column': a.value_column,
                      'feature_column': a.feature_column, 'options': _options(a.option)}
-                    if a.group_column or a.control or a.value_column or a.option else None),
+                    if (a.group_column or a.control or a.value_column or a.option
+                        or a.readouts) else None),
         loop_id=a.loop_id, iteration=a.iteration, analysis_report=report,
         recorded_gaps=[a.evidence_gap] if a.evidence_gap else ())
     if a.out:
