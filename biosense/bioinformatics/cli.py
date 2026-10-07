@@ -104,6 +104,7 @@ def cmd_fetch_geo(a):
                    treatments=a.treatment, keep=keep, genes=a.genes, max_genes=a.max_genes,
                    dataset_id=a.dataset_id, cell_type=a.cell_type,
                    supplementary=a.supplementary, column_map=cmap or None,
+                   infer_columns=a.infer_columns, column_map_basis=a.column_map_basis,
                    i_have_network_permission=a.i_have_network_permission)
     return _emit(doc, a.out)
 
@@ -355,6 +356,12 @@ def main(argv=None):
     p.add_argument('--supplementary', help='use this supplementary file name (any species)')
     p.add_argument('--column-map', nargs='*', default=[], metavar='HEADER=GSM',
                    help='which table column is which sample, when headers are not GSM ids or titles')
+    p.add_argument('--infer-columns', action='store_true',
+                   help='apply confident name-similarity suggestions to columns not matched '
+                        'exactly (recorded with their basis and as a dataset limitation)')
+    p.add_argument('--column-map-basis',
+                   help='why the column map is right (e.g. "series overall design and paper '
+                        'Fig. 1 name MoCul = monocyte culture"); recorded with the dataset')
     p.add_argument('--i-have-network-permission', action='store_true')
     p.add_argument('--out')
     p.set_defaults(fn=cmd_fetch_geo)

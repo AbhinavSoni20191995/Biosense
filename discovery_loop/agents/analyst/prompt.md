@@ -51,6 +51,18 @@ You receive one or more dataset ids, the question, the uncertainty it bears on
      --decision-relevance "..." --out <run dir>/analyst/analysis_plan_<name>.json
    ```
 
+   **Match the tool to the question's shape.** A question about a module or
+   identity programme ("does the cue shift the alveolar genes PPARG, ABCG1,
+   MRC1, MARCO, SIGLEC1?") is answered by scoring that set, not by a
+   genome-wide top-genes list, which can miss a module that moves together
+   modestly: `--analysis-type gene_set_score --tool bulk.gene_set_score
+   --readouts <GENE> <GENE> ...` (2 to 200 symbols, taken from the cited
+   claims or the question). It reports the set's score difference, each
+   member gene with its own statistics, and which genes the table lacks. Use
+   `bulk.expression_comparison` when the question is which genes respond at
+   all; run both when the module is the question but an unexpected responder
+   would change the plan.
+
 3. **Repair, up to three times.** A refusal names what is wrong (a column the
    table does not have, a level that is not there, raw counts where the tool
    wants normalised values, too few samples per group). Read it, fix the plan

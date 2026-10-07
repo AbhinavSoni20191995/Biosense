@@ -29,6 +29,66 @@ const RV = (() => {
 
   function isLive(snap) { return LIVE.has(snap && snap.status); }
 
+  /* A results box survives the header being redrawn on the next snapshot:
+     what a person typed is theirs until they send it. */
+  const followDrafts = {};
+
+  function lineage(snap) {
+    const c = snap.continued_from;
+    if (!c || !c.run_id) return null;
+    return c.kind === 'follow_up'
+      ? `Round ${c.round || 2} · follows run ${c.run_id}`
+      : `Continues run ${c.run_id}`;
+  }
+
+  /* The next round: the person ran the experiment and brings the results back.
+     A fresh run starts from everything this one wrote and reads the results
+     against the round plan it fixed before they existed. */
+  function followUpForm(snap, onFollowUp) {
+    const d = followDrafts[snap.run_id] || (followDrafts[snap.run_id] = { open: false, text: '', ds: '' });
+    const wrap = el('div', 'rv-follow');
+    const round = ((snap.continued_from || {}).kind === 'follow_up'
+      ? (snap.continued_from.round || 2) : 1) + 1;
+    const toggle = el('button', 'btn more', d.open ? 'Hide' : `Follow up with results (round ${round})`);
+    toggle.title = 'You ran this run’s round plan (or another experiment): bring the results '
+      + 'back, and a new run starts from everything this one wrote.';
+    toggle.addEventListener('click', () => {
+      d.open = !d.open; toggle.textContent = d.open ? 'Hide' : `Follow up with results (round ${round})`;
+      box.hidden = !d.open;
+    });
+    const box = el('div', 'rv-follow-box');
+    box.hidden = !d.open;
+    box.append(el('p', 'dim', 'What did you measure? Per arm, the readouts and their values, '
+      + 'with n. Numbers you type are your report of this process; for a full table, register '
+      + 'it on the Data page and name its id below so the tools analyse it.'));
+    const ta = el('textarea');
+    ta.rows = 5; ta.maxLength = 4000; ta.value = d.text;
+    ta.placeholder = 'e.g. A0 control: CD206+ 31% (n=3). A2 GM-CSF 50 ng/mL: CD206+ 52% (n=3); '
+      + 'viable cells per input iPSC unchanged.';
+    ta.addEventListener('input', () => { d.text = ta.value; });
+    const ds = el('input');
+    ds.type = 'text'; ds.value = d.ds; ds.placeholder = 'results dataset id(s), comma-separated (optional)';
+    ds.addEventListener('input', () => { d.ds = ds.value; });
+    const go = el('button', 'btn go', `Start round ${round}`);
+    const msg = el('span', 'dim');
+    go.addEventListener('click', async () => {
+      const ids = d.ds.split(',').map(s => s.trim()).filter(Boolean);
+      if (!d.text.trim() && !ids.length) { msg.textContent = ' Describe the results or name a dataset.'; return; }
+      go.disabled = true; go.textContent = 'starting…';
+      try {
+        await onFollowUp(snap.run_id, { results: d.text.trim(), dataset_ids: ids });
+        delete followDrafts[snap.run_id];
+      } catch (e) {
+        go.disabled = false; go.textContent = `Start round ${round}`;
+        msg.textContent = ' ' + (e.message || e);
+      }
+    });
+    const row = el('div', 'rv-actions'); row.append(go, msg);
+    box.append(ta, ds, row);
+    wrap.append(toggle, box);
+    return wrap;
+  }
+
   /* The header: what it is, what it is doing, and whether it is alive. */
   function header(host, snap, opts) {
     opts = opts || {};
@@ -40,6 +100,8 @@ const RV = (() => {
     if (snap.engine) top.append(el('span', 'rv-engine', engineLabel(snap)));
     top.append(el('span', 'rv-status ' + (STATUS_CLASS[snap.status] || ''), statusText(snap)));
     host.append(top);
+    const from = lineage(snap);
+    if (from) host.append(el('p', 'rv-note', from));
 
     if (isLive(snap)) {
       const bar = el('div', 'rv-bar');
@@ -166,6 +228,9 @@ const RV = (() => {
       });
       row.append(go);
       host.append(row);
+    }
+    if (!isLive(snap) && snap.followable && opts.onFollowUp) {
+      host.append(followUpForm(snap, opts.onFollowUp));
     }
   }
 

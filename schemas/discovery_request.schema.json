@@ -228,7 +228,7 @@
         "run_dir"
       ],
       "additionalProperties": false,
-      "description": "Set when this run picks up where an ended run left off. The prior run's artifacts are copied into this run's directory before the agents start, and the brief says so.",
+      "description": "Set when this run picks up from an earlier one. kind 'continue': the earlier run ended before finishing and this run completes it. kind 'follow_up': the earlier run finished, a person ran its round plan (or other experiment) and reports the results; this run is the next round. Either way the earlier run's artifacts are copied into this run's directory before the agents start, and the brief says so.",
       "properties": {
         "run_id": {
           "type": "string",
@@ -246,6 +246,35 @@
             "null"
           ],
           "maxLength": 32
+        },
+        "kind": {
+          "enum": [
+            "continue",
+            "follow_up"
+          ]
+        },
+        "round": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 100
+        },
+        "results": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 4000,
+          "description": "What the person measured, in their words. A person's report of this process: it can settle a direction and update a hypothesis; numbers in it are never retyped as a cited value."
+        },
+        "reported_by": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
         }
       }
     }

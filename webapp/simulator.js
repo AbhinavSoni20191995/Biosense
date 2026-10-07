@@ -307,11 +307,12 @@ function applyProtocolHandoff(h) {
     + ` — ${h.project_name || h.project_id}`;
   box.append(t);
   if (!ownServed) {
-    box.append(el('div', 'warnc', `STAND-IN MODEL. ${h.project_name || h.project_id} has no model `
-      + `of its own, so its reactor setpoints run on the ${model.name} model. Growth, shear, `
-      + `oxygen, feeding and waste carry over by physics; the differentiation biology of `
-      + `${h.project_name || 'this process'} is NOT modelled, so the harvest and identity `
-      + `readouts below are this model's cell type, not yours. Read the trends, not the numbers.`));
+    box.append(el('div', 'warnc', `BUILT ON THE BASE REACTOR. ${h.project_name || h.project_id} `
+      + `is simulated as the calibrated ${model.name} model plus its own terms. Growth, shear, `
+      + `oxygen, feeding and waste carry over by physics. The biology specific to `
+      + `${h.project_name || 'this process'} is NOT modelled until the project gives it a term `
+      + `(a stated response on a parameter, or one a run proposes), so the harvest and `
+      + `identity readouts below are the base cell type's. Read the trends, not the numbers.`));
   }
   box.append(el('div', null, 'Candidate setpoints: ' + (used.length
     ? used.map(v => `${v.label || v.parameter_id} ${v.value}${v.unit ? ' ' + v.unit : ''}`

@@ -323,7 +323,7 @@ class RunEndTests(unittest.TestCase):
         self.assertIn('Simulate this protocol', js)
         sim = (K.ROOT / 'webapp' / 'simulator.js').read_text()
         self.assertIn("h.kind === 'protocol'", sim)
-        self.assertIn('STAND-IN MODEL', sim)
+        self.assertIn('BUILT ON THE BASE REACTOR', sim)
         self.assertIn('is NOT modelled', sim)
         # Bioinformatics plans and notes show live; uploads stay private.
         self.assertIn('function renderBioInsights', js)

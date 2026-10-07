@@ -201,12 +201,10 @@ def parse_genotype(raw):
         raise K.ContractError(f'kind must be one of {ASSUMED_KINDS}; got {kind!r}')
     default = 'added factor' if kind == 'factor' else 'edited line'
     label = str(raw.get('label') or default).strip()[:40] or default
-    stage = raw.get('stage')
-    stage = None if stage in (None, '', 'all') else str(stage).strip()
-    if stage is not None and stage not in STAGE_BY_ID:
-        raise K.ContractError(f'the reactor\'s stages are {", ".join(STAGE_BY_ID)} (or "all"); '
-                              f'got {stage!r}')
+    stage, mapped_from = _base_stage(raw.get('stage'))
     out = {'label': label, 'kind': kind, 'stage': stage}
+    if mapped_from:
+        out['stage_mapped_from'] = mapped_from
     for key in ('growth_ratio', 'diff_ratio'):
         try:
             v = float(raw.get(key, 1.0))
@@ -241,17 +239,37 @@ def reactor_stage(stage_id, label=None):
     return next((s for k, s in STAGE_HINTS if k in text), None)
 
 
+def _base_stage(raw):
+    """(base reactor stage or None for the whole run, the project stage it was mapped from).
+
+    A project built on this reactor may name its own stages — a maturation
+    stage, a differentiation stage — that the base reactor does not have. They
+    are mapped onto the base stage that carries the same biology (a maturation
+    or harvest stage onto the myeloid harvest, where the product is made), and
+    the mapping is returned so it is shown, never silent. A name that maps onto
+    nothing is refused with the stages there are.
+    """
+    stage = None if raw in (None, '', 'all') else str(raw).strip()
+    if stage is None or stage in STAGE_BY_ID:
+        return stage, None
+    mapped = reactor_stage(stage)
+    if mapped is None:
+        raise K.ContractError(
+            f'{stage!r} is not a stage of the base reactor ({", ".join(STAGE_BY_ID)}) and '
+            f'cannot be mapped onto one; name the base stage it acts in, or "all"')
+    return mapped, stage
+
+
 def parse_effects(raw):
     """[{label, stage, growth_ratio, diff_ratio, ...}] -> clamped effects, or []."""
     out = []
     for e in raw or []:
         if not isinstance(e, dict):
             raise K.ContractError('each assumed effect is an object')
-        stage = e.get('stage')
-        stage = None if stage in (None, '', 'all') else str(stage)
-        if stage is not None and stage not in STAGE_BY_ID:
-            raise K.ContractError(f'assumed effect stage must be one of {", ".join(STAGE_BY_ID)}')
+        stage, mapped_from = _base_stage(e.get('stage'))
         row = {'label': str(e.get('label') or 'assumed effect')[:60], 'stage': stage}
+        if mapped_from:
+            row['stage_mapped_from'] = mapped_from
         for key in ('growth_ratio', 'diff_ratio'):
             try:
                 v = float(e.get(key, 1.0))
@@ -293,8 +311,11 @@ def effects_from_project(project, values):
                                 'why': (f'acts on {rm["target"]}, which this reactor has no '
                                         f'lever for' if key is None else 'no value to compare')})
             continue
-        stage = reactor_stage(rm.get('stage') or q.stage, labels.get(rm.get('stage') or q.stage))
+        own = rm.get('stage') or q.stage
+        stage = reactor_stage(own, labels.get(own))
         effects.append({'label': q.label, 'parameter_id': pid, 'stage': stage,
+                        'stage_mapped_from': (own if stage and own not in (stage, 'all')
+                                              else None),
                         'growth_ratio': m if key == 'growth_ratio' else 1.0,
                         'diff_ratio': m if key == 'diff_ratio' else 1.0,
                         'multiplier': round(m, 4), 'target': rm['target'],

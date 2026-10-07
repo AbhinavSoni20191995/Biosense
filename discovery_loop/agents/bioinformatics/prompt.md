@@ -123,6 +123,25 @@ order is fixed, and the first step is the one that matters.
    a limitation with the exact public query to run, instead of improvising a
    client.
 
+   **Resolve a series together with its paper.** `geo-samples` returns the
+   series summary, its overall design and `pubmed_ids` (with links). Read them
+   before choosing a comparison: depositors name samples and table columns the
+   way their methods section does (`MoCul_GMCSF_n1` = monocyte culture,
+   GM-CSF, replicate 1), and the paper says which arms exist, what the
+   control is and how replicates pair. When the design is not clear from GEO
+   alone, ask the orchestrator to have `literature` read that paper's methods
+   for the sample layout. Then, when `fetch-geo` refuses because the table's
+   columns do not match GSM ids or titles:
+   - read the suggested map it prints (each header with the sample it most
+     likely is, and the headers it could not resolve);
+   - check it against the design and the paper; if it agrees, rerun with
+     `--infer-columns --column-map-basis "<what you checked: the paper's
+     naming, the series design>"`; if it is wrong or incomplete, pass your own
+     `--column-map HEADER=GSM ...` with the same `--column-map-basis`.
+   The assignment and its basis are written onto the dataset as a limitation.
+   A sample you cannot place from the design or the paper is left out, never
+   guessed.
+
    Choose the series whose cells, stage and treatment are closest to the
    uncertainty; read its samples before choosing the comparison, and take the
    condition values exactly as GEO wrote them. Try a few series (and a few

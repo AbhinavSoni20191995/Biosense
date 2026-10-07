@@ -47,7 +47,8 @@ STAGES = (
     ('building_hypothesis', 'Building the hypothesis',
      'A parameter, a direction, a quantified effect, and the evidence behind each number.'),
     ('testing_simulator', 'Testing it in the simulator',
-     'Only for parameters this project\'s model actually has a term for.'),
+     'The base reactor plus this project\'s terms — including any the run proposes for a '
+     'lever the reactor lacks, labelled DE NOVO.'),
     ('generating_report', 'Writing the report',
      'The summary, the limitations and the recommended next experiment.'),
     ('complete', 'Complete', 'The run finished.'),

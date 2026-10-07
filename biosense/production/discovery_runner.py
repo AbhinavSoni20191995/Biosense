@@ -221,6 +221,46 @@ def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
     return {'omnigent': summary, 'out_dir': str(out)}
 
 
+def read_round_artifacts(out_dir):
+    """(round plan, what the reactor played, proposed terms) from a run directory.
+
+    Each is read only from the file its CLI validated, and a file that does not
+    parse is skipped rather than half-read: the protocol then simply says
+    nothing was planned or played, which is true of what can be shown.
+    """
+    out = Path(out_dir)
+
+    def load(name):
+        try:
+            doc = K.read_json(out / name)
+        except (OSError, ValueError):
+            return None
+        return doc if isinstance(doc, dict) else None
+
+    plan = load('round_plan.json')
+    plan = plan if plan and plan.get('kind') == 'round_plan' else None
+    terms = load('proposed_terms.json')
+    terms = ([{k: t.get(k) for k in ('parameter_id', 'label', 'unit', 'stage', 'description')}
+              for t in terms.get('terms') or [] if isinstance(t, dict)]
+             if terms and terms.get('kind') == 'proposed_terms' else None)
+    ran = None
+    for f in sorted(out.glob('simulation*.json'), reverse=True):
+        g = (load(f.name) or {}).get('genotype_simulation')
+        if isinstance(g, dict) and g.get('assumption'):
+            ran = {'assumption': g.get('assumption'), 'verdict': g.get('verdict'),
+                   'stand_in_note': g.get('stand_in_note'),
+                   'effects': [{k: e.get(k) for k in ('label', 'stage', 'stage_mapped_from',
+                                                       'growth_ratio', 'diff_ratio')}
+                               for e in (g.get('genotype') or {}).get('effects') or []]
+                              or None,
+                   'genotype': {k: (g.get('genotype') or {}).get(k) for k in (
+                       'label', 'stage', 'stage_mapped_from', 'growth_ratio', 'diff_ratio')},
+                   'used': g.get('used'), 'not_represented': g.get('not_represented'),
+                   'file': f.name}
+            break
+    return plan, ran, terms
+
+
 def read_design_choices(out_dir, project):
     """{parameter_id: choice} from the run directory, and why any file was not used.
 
@@ -277,12 +317,14 @@ def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
         # Reasoned starting values, when the run proposed any: a setpoint with a
         # stated basis is a design choice a person approves, not a gap.
         choices, why_not = read_design_choices(out_dir, project)
+        plan, ran, terms = read_round_artifacts(out_dir)
         protocol = PS.from_bundle(
             bundle, project=project, objective=request['objective'],
             runtime_mode=runtime_mode, run_id=Path(out_dir).name,
             request_id=request['request_id'],
             research_context=request.get('research_context'), privacy=priv,
-            design_choices=choices, extra_limitations=why_not)
+            design_choices=choices, extra_limitations=why_not,
+            round_plan=plan, simulation_ran=ran, proposed_terms=terms)
     if protocol is not None:
         K.write_json_atomic(Path(out_dir) / 'protocol_summary.json', protocol)
         (Path(out_dir) / 'protocol_summary.md').write_text(

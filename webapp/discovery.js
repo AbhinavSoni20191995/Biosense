@@ -714,7 +714,8 @@ function watchRun(runId) {
     snapshot(snap) {
       state.run = snap;
       RV.header($('#rvHead'), snap, { onStop: stopRun, onExtend: extendRun,
-                                      onPause: pauseRun, onContinue: continueRun });
+                                      onPause: pauseRun, onContinue: continueRun,
+                                      onFollowUp: followUpRun });
       RV.stages($('#rvStages'), snap);
       RV.agents($('#rvAgents'), snap);
       RV.timeline($('#rvTimeline'), snap);
@@ -770,6 +771,13 @@ async function pauseRun(runId) {
   catch (e) { fail(e); }
 }
 
+/* The next round: results come back, and a fresh run starts from this one's
+   files. It throws so the form can show why a follow-up was refused. */
+async function followUpRun(runId, body) {
+  const d = await post(`/api/discovery/${runId}/follow-up`, body);
+  if (d && d.run_id) watchRun(d.run_id);
+}
+
 /* Continue a run. A paused one resumes in place; an ended one comes back as a
    fresh run seeded with its artifacts, and the tracker follows the new one. */
 async function continueRun(runId) {
@@ -805,6 +813,20 @@ function stopFromButton() {
    planned (question, dataset, tool, the uncertainty it targets), what came
    back, and its running notes. */
 let bioSeen = '';
+/* A finding arrives as text, as {finding, basis}, or as that object already
+   serialised to a string by whatever wrote the result. Each shape reads as
+   the finding, with its statistics beneath it — never as raw JSON. */
+function findingLine(f) {
+  if (typeof f === 'string' && f.trim().startsWith('{')) {
+    try { f = JSON.parse(f); } catch (_) { /* plain text that starts with a brace */ }
+  }
+  const box = el('div');
+  if (typeof f === 'string') { box.append('• ' + f); return box; }
+  box.append('• ' + (f.finding || f.statement || f.summary || JSON.stringify(f)));
+  if (f.basis) box.append(el('div', 'dim', f.basis));
+  return box;
+}
+
 function renderBioInsights(bio) {
   const host = $('#bioInsights'); if (!host) return;
   const key = JSON.stringify(bio || null);
@@ -825,7 +847,7 @@ function renderBioInsights(bio) {
     const row = el('div', 'm');
     row.append(el('span', 'tag', 'RESULT'), ' ', el('b', null, r.question || r.analysis_id));
     if (r.source) row.append(el('span', 'dim', `  from ${r.source}${r.confidence ? ' · ' + r.confidence : ''}`));
-    (r.key_findings || []).forEach(f => row.append(el('div', null, '• ' + (typeof f === 'string' ? f : (f.statement || f.summary || JSON.stringify(f))))));
+    (r.key_findings || []).forEach(f => row.append(findingLine(f)));
     host.append(row);
   });
   (bio.agent_analyses || []).forEach(r => {
@@ -833,7 +855,7 @@ function renderBioInsights(bio) {
     row.append(el('span', 'tag warn', 'AGENT-WRITTEN'), ' ', el('b', null, r.question || r.analysis_id));
     if (!r.succeeded) row.append(el('div', 'dim', 'Did not run: ' + (r.problem || 'unknown')));
     if (r.method) row.append(el('div', 'dim', r.method));
-    (r.findings || []).forEach(f => row.append(el('div', null, '• ' + f)));
+    (r.findings || []).forEach(f => row.append(findingLine(f)));
     row.append(el('div', 'dim', 'A script the analyst wrote, run here; its confidence is capped at low.'));
     host.append(row);
   });
@@ -871,6 +893,90 @@ function renderBioInsights(bio) {
 /* Wild type against the engineered line the run asked about, as the agents ran
    it on the reactor: the assumed effect stated first, then the curves. */
 let genoSeen = '';
+/* What the run could not settle, as the next experiment at the bench: the
+   unknowns, the arms against one control, what to measure, and what the next
+   run does with each outcome — fixed before any result exists. */
+let planSeen = '';
+function renderRoundPlan(p) {
+  const host = $('#roundInsights'); if (!host) return;
+  const key = JSON.stringify(p);
+  if (key === planSeen) return;
+  planSeen = key;
+  host.textContent = '';
+  host.append(el('p', null, p.purpose || ''));
+  (p.unknowns || []).forEach(u => {
+    const row = el('div', 'm');
+    row.append(el('span', 'tag', u.id), ' ', el('b', null, u.question));
+    row.append(el('div', 'dim', 'Unresolved because: ' + u.why_unresolved));
+    if ((u.levers || []).length) row.append(el('div', 'dim', 'Levers: ' + u.levers.join(', ')));
+    host.append(row);
+  });
+  const levers = [...new Set((p.arms || []).flatMap(a => Object.keys(a.setpoints || {})))];
+  const t = el('table', 'rp-arms');
+  const hr = el('tr'); ['Arm', ...levers, 'Basis'].forEach(h => hr.append(el('th', null, h)));
+  t.append(hr);
+  (p.arms || []).forEach(a => {
+    const tr = el('tr');
+    tr.append(el('td', null, `${a.arm_id} ${a.label}${a.control ? ' (control)' : ''}`));
+    levers.forEach(l => tr.append(el('td', null, a.setpoints && l in a.setpoints
+      ? String(a.setpoints[l]) + ' [D]' : (a.control ? 'current' : '—'))));
+    tr.append(el('td', 'dim', a.basis || ''));
+    t.append(tr);
+  });
+  host.append(t);
+  host.append(el('div', 'dim', `${p.replicates} replicate(s) per arm. Measure: `
+    + (p.readouts || []).map(r => `${r.name} (${r.unit}, ${r.when})`).join('; ')));
+  const rules = el('div', 'm');
+  rules.append(el('b', null, 'What the next run does with each outcome'));
+  (p.decision_rules || []).forEach(r => rules.append(
+    el('div', null, `• ${r.unknown}: if ${r.if} → ${r.then}`)));
+  host.append(rules);
+  (p.limitations || []).forEach(l => host.append(el('div', 'dim', 'Limitation: ' + l)));
+  host.append(el('p', 'dim', (p.status || '') + ' Rules fixed before any result existed'
+    + (p.commitment_sha256 ? ` (sha256 ${p.commitment_sha256.slice(0, 12)}…)` : '') + '. '
+    + 'When you have results, use "Follow up with results" on this run.'));
+}
+
+/* Terms the run proposed for levers the base reactor has no equation for: the
+   project's own simulator, one term at a time. Each says what it computes and
+   what it cites; it joins the project only when a person adds it. */
+let termsSeen = '';
+function renderProposedTerms(t, runId) {
+  const host = $('#termsInsights'); if (!host) return;
+  const key = JSON.stringify(t) + runId;
+  if (key === termsSeen) return;
+  termsSeen = key;
+  host.textContent = '';
+  host.append(el('p', 'dim', t.status || ''));
+  (t.terms || []).forEach(term => {
+    const d = term.description || {};
+    const row = el('div', 'm');
+    row.append(el('span', 'tag warn', d.badge || 'DE NOVO'), ' ',
+      el('b', null, `${term.label}${term.unit ? ' (' + term.unit + ')' : ''}`));
+    row.append(el('div', null, d.summary || ''));
+    if (term.stage) row.append(el('div', 'dim', `acts in: ${term.stage}`));
+    if (d.basis) row.append(el('div', 'dim', 'Basis: ' + d.basis));
+    if ((d.references || []).length) row.append(el('div', 'dim', 'Cites: ' + d.references.join(', ')));
+    const add = el('button', 'btn more', 'Add to my project');
+    add.title = 'Adds this term to your project as proposed (DE NOVO, uncalibrated). Every '
+      + 'later run and the Simulator then play it in its stage.';
+    const msg = el('span', 'dim');
+    add.addEventListener('click', async () => {
+      add.disabled = true; add.textContent = 'adding…';
+      try {
+        await post(`/api/projects/${encodeURIComponent(t.project_id)}/terms/adopt`,
+          { run_id: runId, parameter_id: term.parameter_id });
+        add.textContent = 'Added to your project';
+        msg.textContent = ' — accepted by you, still uncalibrated.';
+      } catch (e) { add.disabled = false; add.textContent = 'Add to my project'; msg.textContent = ' ' + (e.message || e); }
+    });
+    const act = el('div', 'rv-actions'); act.append(add, msg);
+    row.append(act);
+    host.append(row);
+  });
+  if (t.note) host.append(el('p', 'dim', t.note));
+}
+
 function renderGenoInsight(g) {
   const host = $('#genoInsights'); if (!host) return;
   const key = g ? JSON.stringify([g.verdict, g.assumption]) : '';
@@ -881,7 +987,7 @@ function renderGenoInsight(g) {
   const factor = gt.kind === 'factor';
   const label = factor ? 'with ' + (gt.label || 'the factor') : (gt.label || 'edited line');
   const control = g.control_label || (factor ? 'without it' : 'wild type');
-  if (g.stand_in) host.append(el('p', 'warnc', 'STAND-IN MODEL. ' + (g.stand_in_note || '')));
+  if (g.stand_in) host.append(el('p', 'warnc', g.stand_in_note || 'BUILT ON THE BASE REACTOR.'));
   if (g.assumption) host.append(el('p', 'caveat', 'Assumed: ' + g.assumption));
   if (g.verdict) host.append(el('p', 'm', g.verdict));
   const curves = el('div'); host.append(curves);
@@ -1051,10 +1157,27 @@ function renderInsights(snap) {
   const panel = $('#insightsPanel'); if (!panel) return;
   const ins = snap.insights, papers = snap.papers_found || [], bio = snap.bioinformatics;
   const geno = snap.genotype_simulation;
-  if (!ins && !papers.length && !bio && !geno && !snap.reference_draft) { panel.hidden = true; return; }
+  const terms = snap.proposed_terms;
+  const plan = snap.round_plan;
+  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !snap.reference_draft) {
+    panel.hidden = true; return;
+  }
   panel.hidden = false;
   wireSection('litSec', false); wireSection('papersSec', false);
-  wireSection('bioSec', false); wireSection('genoSec', true);
+  wireSection('bioSec', false); wireSection('genoSec', true); wireSection('termsSec', true);
+  wireSection('roundSec', true);
+  $('#roundSec').hidden = !plan;
+  if (plan) {
+    renderRoundPlan(plan);
+    $('#roundTitle').textContent = `Round ${plan.round || 1} at the bench`;
+    $('#roundSum').textContent = `${(plan.unknowns || []).length} unknown(s) · `
+      + `${(plan.arms || []).length} arms × ${plan.replicates} · PROPOSED`;
+  }
+  $('#termsSec').hidden = !(terms && (terms.terms || []).length);
+  if (terms && (terms.terms || []).length) {
+    renderProposedTerms(terms, snap.run_id);
+    $('#termsSum').textContent = `${terms.terms.length} proposed · DE NOVO`;
+  }
 
   $('#bioSec').hidden = !bio;
   if (bio) {

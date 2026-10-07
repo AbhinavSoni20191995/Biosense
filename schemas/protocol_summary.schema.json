@@ -339,6 +339,56 @@
             "items": {
               "type": "string"
             }
+          },
+          "lever": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "description": "What the hypothesis changes, as the hypothesis states it: the lever, its stage, direction and candidate value.",
+            "properties": {
+              "parameter_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "direction": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "candidate_value": {
+                "type": [
+                  "number",
+                  "string",
+                  "null"
+                ]
+              },
+              "unit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "registered": {
+                "type": "boolean"
+              }
+            }
           }
         }
       }
@@ -558,6 +608,30 @@
           }
         }
       }
+    },
+    "round_plan": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "The run's round plan (round_plan.json): what it could not settle, as arms against one control, readouts and decision rules fixed before any result. Shown as the next experiment."
+    },
+    "simulation_ran": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "What the run actually played through the reactor: the assumption, each effect with its stage and origin, the verdict, and what was not represented. Null when nothing was played."
+    },
+    "proposed_terms": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object"
+      },
+      "description": "Response terms this run proposed for levers the base reactor lacks (DE NOVO, uncalibrated), each with its description."
     }
   }
 }

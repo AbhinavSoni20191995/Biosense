@@ -314,9 +314,12 @@ def restore(runs_dir, run_id, *, after=-1):
     # record's own runtime, because the stored flag was written while the run
     # was live and so is always false. A restored run is never itself live, so
     # it can never be paused or pausable.
-    snap['continuable'] = (snap.get('is_real')
-                           and snap.get('status') in ('stopped', 'interrupted', 'error')
-                           and (Path(d) / 'discovery_request.json').is_file())
+    has_request = (Path(d) / 'discovery_request.json').is_file()
+    snap['continuable'] = bool(snap.get('is_real')
+                               and snap.get('status') in ('stopped', 'interrupted', 'error')
+                               and has_request)
+    # Any ended real run can come back with results as its next round.
+    snap['followable'] = bool(snap.get('is_real') and has_request)
     snap['pausable'] = False
     _settle_counts(snap)
     snap.pop('written_at', None)

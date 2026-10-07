@@ -62,9 +62,10 @@ class TimelineTests(unittest.TestCase):
         md = PS.markdown(doc)
         self.assertIn('## Production timeline', md)
         self.assertIn('| Stage | Days | Factors | Setpoints |', md)
-        mes = next(l for l in md.splitlines() if l.startswith('| Mesoderm'))
+        timeline = md.split('## Production timeline')[1].splitlines()
+        mes = next(l for l in timeline if l.startswith('| Mesoderm'))
         self.assertIn('BMP4', mes.split('|')[3], 'a concentration is a factor')
-        exp = next(l for l in md.splitlines() if l.startswith('| Expansion'))
+        exp = next(l for l in timeline if l.startswith('| Expansion'))
         self.assertIn('Seed density', exp.split('|')[4], 'cells/mL is a setpoint, not a factor')
         self.assertIn('IL-34', md.split('## Production timeline')[1].split('## ')[0])
 
@@ -97,10 +98,21 @@ class FactorSimulationTests(unittest.TestCase):
         self.assertIn('assumed change', myeloid['note'])
 
     def test_an_unknown_stage_or_kind_is_refused(self):
-        with self.assertRaisesRegex(K.ContractError, "reactor's stages"):
+        with self.assertRaisesRegex(K.ContractError, 'not a stage of the base reactor'):
             self.run_factor(stage='activation')
         with self.assertRaisesRegex(K.ContractError, 'kind'):
             self.run_factor(kind='drug')
+
+    def test_a_project_stage_is_mapped_onto_the_base_reactor_and_says_so(self):
+        """A macrophage project's maturation stage is played in the base reactor's
+        myeloid harvest, where the product is made — and the mapping is shown."""
+        doc = self.run_factor(stage='maturation')
+        self.assertEqual('myeloid', doc['genotype']['stage'])
+        self.assertEqual('maturation', doc['genotype']['stage_mapped_from'])
+        rows = SM.parse_effects([{'label': 'GM-CSF', 'stage': 'maturation',
+                                  'diff_ratio': 1.3}])
+        self.assertEqual(('myeloid', 'maturation'), (rows[0]['stage'],
+                                                     rows[0]['stage_mapped_from']))
 
     def test_the_cli_plays_a_factor_and_labels_it(self):
         import contextlib

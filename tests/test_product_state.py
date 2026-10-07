@@ -483,6 +483,63 @@ class ApiTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b'{}')
 
+    def _ended_real_run(self, rid, status='done'):
+        from biosense.production import discovery as DISC
+        d = self.tmp / 'runs' / f'ai-20260101-{rid[:6]}'
+        d.mkdir()
+        req = DISC.build(project_id='ipsc_macrophage', runtime_mode='local_real_ai',
+                         objective='increase viable macrophage yield from iPSC')
+        (d / 'discovery_request.json').write_text(json.dumps(req))
+        (d / 'round_plan.json').write_text(json.dumps({'kind': 'round_plan', 'round': 1}))
+        RS.write_state(d, {'run_id': rid, 'status': status, 'is_real': True,
+                           'runtime_mode': 'local_real_ai', 'owner': None,
+                           'project_id': 'ipsc_macrophage', 'objective': req['objective'],
+                           'run_dir': d.name, 'started_at': time.time() - 60,
+                           'finished_at': time.time()})
+        return d
+
+    def test_a_finished_run_comes_back_with_results_as_the_next_round(self):
+        """The person ran the round plan; the results start round 2 from this
+        run's files, and nothing is started without results to read."""
+        from unittest import mock
+        rid = 'fedcba9876543210'
+        d = self._ended_real_run(rid)
+        code, snap = self._req('GET', f'/api/discovery/{rid}')
+        self.assertEqual(200, code, snap)
+        self.assertTrue(snap['followable'])
+        self.assertFalse(snap['continuable'], 'a finished run is followed up, not continued')
+        code, body = self._req('POST', f'/api/discovery/{rid}/follow-up', {})
+        self.assertEqual(400, code, body)
+        self.assertIn('brings results', body['error'])
+        seen = {}
+
+        class Started:
+            def snapshot(self):
+                return {'run_id': 'abcabcabcabcabca'}
+
+        def start(req, **kw):
+            seen.update(req=req, seed=kw.get('seed_from'))
+            return Started()
+        with mock.patch.object(self.APP.Handler.discovery, 'start', side_effect=start):
+            code, body = self._req('POST', f'/api/discovery/{rid}/follow-up', {
+                'results': 'A2 GM-CSF 50 ng/mL: CD206+ 52% vs 31% control (n=3).'})
+        self.assertEqual(202, code, body)
+        cont = seen['req']['continued_from']
+        self.assertEqual(('follow_up', 2, rid), (cont['kind'], cont['round'], cont['run_id']))
+        self.assertIn('CD206+ 52%', cont['results'])
+        self.assertEqual(d, Path(seen['seed']))
+        K.require_valid('discovery_request', seen['req'])
+
+    def test_a_synthetic_run_is_rerun_not_followed_up(self):
+        rid = '0123456789abcdef'
+        d = self._ended_real_run(rid)
+        req = json.loads((d / 'discovery_request.json').read_text())
+        req['runtime_mode'] = 'synthetic_demo'
+        (d / 'discovery_request.json').write_text(json.dumps(req))
+        code, body = self._req('POST', f'/api/discovery/{rid}/follow-up', {'results': 'x' * 20})
+        self.assertEqual(409, code, body)
+        self.assertIn('real-AI', body['error'])
+
     def test_an_operator_adds_a_private_table_that_is_never_listed(self):
         table = ('sample,condition,cd14_pct,viability_pct\n'
                  's1,M-CSF,62,91\ns2,M-CSF,60,90\ns3,M-CSF,64,92\n'

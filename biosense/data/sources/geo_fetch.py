@@ -41,6 +41,7 @@ import gzip
 import io
 import math
 import re
+import shlex
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -119,6 +120,10 @@ def parse_series_matrix(text):
             fields[key] = vals
         elif key in ('!Series_title', '!Series_summary', '!Series_overall_design'):
             meta[key[8:].lower()] = ' '.join(vals)[:1500]
+        elif key == '!Series_pubmed_id':
+            # One line per paper, or several values on one line.
+            ids = meta.setdefault('pubmed_ids', [])
+            ids.extend(v for v in vals if v.isdigit() and v not in ids)
     gsms = fields.get('!Sample_geo_accession') or []
     if not gsms:
         raise K.ContractError('the series matrix lists no samples')
@@ -174,9 +179,14 @@ def samples(acc, *, i_have_network_permission=False, timeout=60):
             'organisms': sorted({r['organism'] for r in rows if r['organism']}),
             'library_strategies': sorted({r['library_strategy'] for r in rows
                                           if r['library_strategy']}),
+            'pubmed_ids': meta.get('pubmed_ids', []),
+            'papers': [f'https://pubmed.ncbi.nlm.nih.gov/{p}/' for p in meta.get('pubmed_ids', [])],
             'samples': rows, 'groupable_fields': groups,
             'note': ('Choose condition_key from groupable_fields and name the control and '
-                     'treatment values exactly as written. Nothing here is inferred.')}
+                     'treatment values exactly as written. Nothing here is inferred. First read '
+                     'series.summary, series.overall_design and the linked paper (pubmed_ids) '
+                     'to learn how the depositors named samples and conditions — their '
+                     'supplementary table may use other names than the GEO titles.')}
 
 
 # ── step 2: the counts, normalised, as a long table ─────────────────────
@@ -226,6 +236,126 @@ def parse_annotation(text):
     return out
 
 
+def parse_annotation_ensembl(text):
+    """Ensembl gene id (unversioned) -> Symbol from NCBI's annotation table, or None.
+
+    None when the table has no Ensembl column: the caller then says so rather
+    than guessing. An Ensembl id NCBI gives two different symbols is left out.
+    """
+    reader = csv.DictReader(io.StringIO(text), delimiter='\t')
+    col = next((f for f in reader.fieldnames or []
+                if _norm(f) in ('ensemblgeneid', 'ensemblid', 'ensemblgene', 'ensembl')), None)
+    if col is None:
+        return None
+    out, clash = {}, set()
+    for r in reader:
+        sym = (r.get('Symbol') or '').strip()
+        for e in re.split(r'[;,| ]+', (r.get(col) or '').strip()):
+            if not sym or not ENSEMBL_RE.match(e):
+                continue
+            e = _strip_version(e).upper()
+            if out.get(e, sym) != sym:
+                clash.add(e)
+            out[e] = sym
+    for e in clash:
+        out.pop(e)
+    return out
+
+
+# ── a depositor's feature ids -> gene symbols ───────────────────────────
+ENSEMBL_RE = re.compile(r'^ENS[A-Z]{0,6}[GTPRE]\d{6,}(?:\.\d+)?(?:_PAR_Y)?$', re.I)
+REFSEQ_RE = re.compile(r'^[NX][MRP]_\d+(?:\.\d+)?$')
+NUMERIC_RE = re.compile(r'^[-+]?\d+(?:[.,]\d+)?$')
+BIOTYPES = frozenset((
+    'protein_coding', 'protein-coding', 'lncrna', 'lincrna', 'mirna', 'snrna', 'snorna',
+    'scarna', 'misc_rna', 'rrna', 'srna', 'scrna', 'vault_rna', 'ribozyme', 'mt_trna',
+    'mt_rrna', 'trna', 'ncrna', 'antisense', 'sense_intronic', 'sense_overlapping',
+    'processed_transcript', 'bidirectional_promoter_lncrna', '3prime_overlapping_ncrna',
+    'macro_lncrna', 'non_coding', 'known_ncrna', 'retained_intron', 'nonsense_mediated_decay',
+    'non_stop_decay', 'artifact', 'other', 'unknown'))
+
+
+def _strip_version(ens):
+    return re.sub(r'\.\d+(?=(_PAR_Y)?$)', '', ens)
+
+
+def _is_biotype(p):
+    low = p.lower()
+    return (low in BIOTYPES or 'pseudogene' in low
+            or bool(re.match(r'^(ig|tr)_[a-z]+_gene$', low)))
+
+
+def feature_symbol(fid):
+    """The gene symbol in a depositor's feature id, or the id itself. Pure.
+
+    `ENSG00000125730.16|C3|protein_coding` -> `C3`: a composite id is split on
+    '|' and the first component that is not an Ensembl, RefSeq or numeric id
+    and not a biotype is taken. A bare Ensembl id loses only its version
+    (`ENSG00000125730.16` -> `ENSG00000125730`); mapping it to a symbol needs
+    an annotation table (parse_annotation_ensembl). Anything else is returned
+    as written — nothing is looked up or guessed here.
+    """
+    s = (fid or '').strip().strip('"').strip()
+    parts = [p.strip() for p in s.split('|')]
+    if len(parts) > 1:
+        sym = next((p for p in parts if p and not ENSEMBL_RE.match(p) and not REFSEQ_RE.match(p)
+                    and not NUMERIC_RE.match(p) and not _is_biotype(p)), None)
+        if sym:
+            return sym
+    ens = next((p for p in parts if ENSEMBL_RE.match(p)), None)
+    return _strip_version(ens) if ens else s
+
+
+def supplementary_symbols(gene_ids, ensembl_map=None, ensembl_note=None):
+    """Feature id -> symbol for a depositor's table, and a sentence saying how. Pure.
+
+    Composite ids give their symbol component; bare Ensembl ids are mapped with
+    `ensembl_map` (unversioned id -> symbol, from NCBI's annotation) where it
+    has them, else kept unversioned. A symbol already taken by an earlier row
+    is not reused: the later row keeps its Ensembl (or own) id, so no gene
+    appears twice under one name.
+    """
+    out, used, dups = {}, set(), []
+    composite = versions = ens = mapped = 0
+    for gid in gene_ids:
+        sym = feature_symbol(gid)
+        if '|' in gid and not ENSEMBL_RE.match(sym):
+            composite += 1
+        if ENSEMBL_RE.match(sym):
+            ens += 1
+            versions += sym != gid.strip().strip('"')
+            hit = (ensembl_map or {}).get(sym.upper())
+            if hit:
+                sym, mapped = hit, mapped + 1
+        if sym.upper() in used and sym != gid:
+            dups.append(gid)
+            sym = next((feature_symbol(p) for p in gid.split('|') if ENSEMBL_RE.match(p.strip())),
+                       gid)
+        used.add(sym.upper())
+        if sym != gid:
+            out[gid] = sym
+    how = []
+    if composite:
+        ex = next(g for g in gene_ids if '|' in g)
+        how.append(f'{composite} composite ids (e.g. {ex!r} -> {feature_symbol(ex)!r}) reduced '
+                   f'to their symbol component')
+    if ens:
+        if ensembl_map is not None:
+            how.append(f'{mapped} of {ens} bare Ensembl ids mapped to symbols with '
+                       f'{ensembl_note or "an annotation table"}; '
+                       f'{ens - mapped} unmapped keep their Ensembl id')
+        else:
+            how.append(f'{ens} bare Ensembl ids kept as Ensembl ids'
+                       + (f' ({ensembl_note})' if ensembl_note else '')
+                       + '; request such genes by Ensembl id')
+        if versions:
+            how.append(f'{versions} Ensembl version suffixes stripped')
+    if dups:
+        how.append(f'{len(dups)} features share a symbol with an earlier row and keep their own '
+                   f'id (e.g. {dups[0]!r})')
+    return out, ('; '.join(how) if how else 'symbols as written in the feature column')
+
+
 # ── any species: the depositors' own processed table ────────────────────
 TABLE_RE = re.compile(r'href="([^"/?]+\.(?:txt|tsv|csv)(?:\.gz)?)"', re.I)
 PREFER = ('count', 'expression', 'matrix', 'tpm', 'fpkm', 'rpkm', 'cpm', 'norm', 'gene')
@@ -252,46 +382,374 @@ def _norm(s):
     return re.sub(r'[^a-z0-9]', '', (s or '').lower())
 
 
-def parse_supplementary_table(text, sample_rows, column_map=None):
+DELIMITERS = {'\t': 'tab', ',': 'comma', ';': 'semicolon'}
+
+
+def sniff_delimiter(lines):
+    """Tab, comma or semicolon: the one that splits the header and the first data
+    lines into the same number of fields (the header may have one fewer: R row
+    names), and into the most. Pure.
+
+    A semicolon table written with decimal commas splits inconsistently on
+    commas, and its header not at all, so it is not mistaken for a comma table.
+    """
+    sample = lines[:8]
+    best, best_key = None, None
+    for d in DELIMITERS:
+        widths = [len(r) for r in csv.reader(sample, delimiter=d)]
+        head, data = widths[0], widths[1:]
+        if head < 2:
+            continue
+        consistent = bool(data) and len(set(data)) == 1 and head in (data[0], data[0] - 1)
+        key = (consistent, min([head] + data))
+        if best_key is None or key > best_key:
+            best, best_key = d, key
+    if best is None:
+        raise K.ContractError('the table splits into one column on tab, comma and semicolon')
+    return best
+
+
+def _number(x, decimal_comma=False):
+    """float(x); with a semicolon delimiter, '1,23' is read as 1.23 (decimal comma)."""
+    x = x.strip().strip('"')
+    if decimal_comma and ',' in x and '.' not in x:
+        x = x.replace(',', '.')
+    return float(x)
+
+
+def _numeric_columns(rows, width, decimal_comma, probe=50):
+    """Indices of the columns whose values are numbers in (nearly) every probed row."""
+    out = set()
+    probe_rows = [r for r in rows[:probe] if len(r) == width]
+    for j in range(width):
+        vals = [r[j] for r in probe_rows if r[j].strip()]
+        ok = 0
+        for v in vals:
+            try:
+                _number(v, decimal_comma)
+                ok += 1
+            except ValueError:
+                pass
+        if vals and ok >= 0.8 * len(vals):
+            out.add(j)
+    return out
+
+
+# ── which table column is which sample: suggested, never silently guessed ──
+NULL_WORDS = frozenset('untreated control ctrl none no vehicle veh mock nt baseline unstimulated '
+                       'naive medium basal'.split())
+UNIT_WORDS = frozenset('ng ml pg ug h hr hrs d day days min um nm mm'.split())
+STOP_WORDS = frozenset('with and of in for the on at by from to plus a an vs'.split())
+DATA_WORDS = frozenset('count counts raw read reads tpm fpkm rpkm cpm norm normalized normalised '
+                       'expr expression sample samples rnaseq rna seq value values'.split())
+TIME_WORDS = UNIT_WORDS | frozenset('hour hours week weeks wk passage p dose time timepoint t'
+                                    .split())
+# Characteristic keys that name a replicate, not a condition (compared with _norm).
+REPLICATE_KEYS = frozenset((
+    'rep', 'replicate', 'replicatenumber', 'biologicalreplicate', 'technicalreplicate', 'biorep',
+    'donor', 'donorid', 'batch', 'sample', 'sampleid', 'samplenumber', 'individual', 'subject',
+    'subjectid', 'patient', 'patientid', 'lane', 'run', 'animal', 'animalid', 'mouse', 'mouseid',
+    'id'))
+_REP_MARKED = re.compile(r'^(?P<rest>.*?)'
+                         r'(?:(?:^|[\s_\-,;:/|()#]+)(?:n|r|rep|repl|replicate|biorep|br)'
+                         r'|(?:rep|replicate))[\s_\-.#]*(?P<n>\d{1,2})[\s)\]]*$', re.I)
+_REP_PLAIN = re.compile(r'^(?P<rest>.*?)[\s_,;:/|()#]+(?P<n>\d{1,2})[\s)\]]*$')
+_CHUNK_SPLIT = re.compile(r'[\s_,;/|()\[\]{}:+=#&]+')
+
+
+def split_replicate(text):
+    """(text without a trailing replicate number, the number or None). Pure.
+
+    `MoCul_n1`, `x_rep2`, `x-r3`, `..., replicate 2` and `veh_1` carry one; a
+    number glued to letters (`LN229`), after a hyphen without a marker (`IL-4`)
+    or after a time or unit word (`day 3`) does not.
+    """
+    text = (text or '').strip()
+    m = _REP_MARKED.match(text)
+    if m:
+        return m.group('rest').strip(' _-,;:/|(#'), int(m.group('n'))
+    m = _REP_PLAIN.match(text)
+    if m and m.group('rest').strip():
+        words = _CHUNK_SPLIT.split(m.group('rest').strip())
+        if words and words[-1].lower() not in TIME_WORDS:
+            return m.group('rest').strip(' _-,;:/|(#'), int(m.group('n'))
+    return text, None
+
+
+def _camel(s):
+    return [x.lower() for x in re.sub(r'([a-z])([A-Z])', r'\1 \2', s).split()]
+
+
+def _units(text):
+    """[(token, forms)]: lowercase tokens of a header or a sample field. Pure.
+
+    Split on whitespace, underscore, comma, semicolon, slash, parentheses and
+    pipe; a hyphenated piece is one token (GM-CSF -> gmcsf, IL-4 -> il4) whose
+    pieces are kept as alternative forms; camelCase splits only at a lower ->
+    upper step (MoCul -> mo, cul; GMCSF stays).
+    """
+    out = []
+    for chunk in _CHUNK_SPLIT.split(text or ''):
+        chunk = chunk.strip('.-')
+        if not chunk:
+            continue
+        pieces = [p for p in chunk.split('-') if p]
+        if len(pieces) == 1:
+            out.extend((t, {t}) for t in _camel(pieces[0]))
+        else:
+            canon = ''.join(pieces).lower()
+            forms = {canon}
+            for p in pieces:
+                forms.add(p.lower())
+                forms.update(_camel(p))
+            out.append((canon, forms))
+    return out
+
+
+def _ignorable(tok):
+    return (bool(NUMERIC_RE.match(tok)) or tok in UNIT_WORDS or tok in STOP_WORDS
+            or tok in DATA_WORDS or bool(re.match(r'^(gs[em]\d+|(n|r|rep|replicate)\d+)$', tok)))
+
+
+def _sample_profile(s):
+    title, rep = split_replicate(s.get('title') or '')
+    chars = s.get('characteristics') or {}
+    if rep is None:
+        for k, v in chars.items():
+            if _norm(k) in ('rep', 'replicate', 'replicatenumber', 'biologicalreplicate'):
+                m = re.search(r'(\d{1,2})\s*$', v or '')
+                rep = int(m.group(1)) if m else None
+    fields = [(title, True), (s.get('source') or '', True)] + [
+        (v or '', _norm(k) not in REPLICATE_KEYS) for k, v in chars.items()]
+    units = [_units(t) for t, _ in fields]
+    targets = []                          # (string, kind, unit positions); kind 0 = one token
+    for fi, us in enumerate(units):
+        for ui, (canon, forms) in enumerate(us):
+            for f in forms:
+                targets.append((f, 0, ((fi, ui),)))
+        for n in (2, 3):                  # 'gm' 'csf' written apart still give 'gmcsf'
+            for ui in range(len(us) - n + 1):
+                targets.append((''.join(c for c, _ in us[ui:ui + n]), 1,
+                                tuple((fi, ui + k) for k in range(n))))
+    cond = {c for (_, is_cond), us in zip(fields, units) if is_cond for c, _ in us
+            if not _ignorable(c) and c not in NULL_WORDS}
+    signature = (_norm(title), _norm(s.get('source')),
+                 tuple(sorted((_norm(k), _norm(v)) for k, v in chars.items()
+                              if _norm(k) not in REPLICATE_KEYS)))
+    return {'gsm': s['gsm'], 'title': s.get('title') or '', 'rep': rep, 'units': units,
+            'targets': targets, 'cond': cond, 'signature': signature}
+
+
+def _match_token(h, targets):
+    """Unit positions a header token matches: equal first, then as an abbreviation
+    (a prefix, len >= 2, never of a null or stop word: 'co' is not 'control')."""
+    tests = (lambda x: x == h,
+             lambda x: len(h) >= 2 and x.startswith(h) and x not in NULL_WORDS
+             and x not in STOP_WORDS)
+    for test in tests:
+        for kind in (0, 1):
+            hit = [ids for x, k, ids in targets if k == kind and test(x)]
+            if hit:
+                return {i for ids in hit for i in ids}
+    return set()
+
+
+def _suggest_one(header, profiles):
+    rest, rep = split_replicate(header)
+    toks = [c for c, _ in _units(rest) if not _ignorable(c)]
+    if not toks:
+        return 'none', [], 'the header has no name tokens to compare'
+    scored = []
+    for p in profiles:
+        if rep is not None and p['rep'] is not None and rep != p['rep']:
+            continue
+        hit, matched = set(), []
+        for t in toks:
+            pos = _match_token(t, p['targets'])
+            if pos:
+                matched.append(t)
+                hit |= pos
+        if matched:
+            scored.append((p, matched, {p['units'][fi][ui][0] for fi, ui in hit}))
+    if not scored:
+        return 'none', [], 'no replicate-compatible sample shares a name token with the header'
+    top = max(len(m) for _, m, _ in scored)
+    best = [x for x in scored if len(x[1]) == top]
+    gsms = [p['gsm'] for p, _, _ in best]
+    best = [x for x in best if all(t in x[1] or t in NULL_WORDS for t in toks)]
+    if not best:
+        missing = sorted({t for _, m, _ in scored if len(m) == top for t in toks
+                          if t not in m and t not in NULL_WORDS})
+        return 'none', gsms, (f'header token(s) {", ".join(missing)} match no candidate sample: '
+                              f'a condition the sample metadata may name differently')
+    why = f'header tokens {", ".join(toks)} matched'
+    if len(best) > 1:
+        # Prefer the candidates with the fewest condition tokens the header does
+        # not mention: no treatment token in the header -> the untreated sample.
+        common = set.intersection(*(p['cond'] for p, _, _ in best))
+        extra = {p['gsm']: sorted((p['cond'] - common) - hits) for p, _, hits in best}
+        low = min(len(v) for v in extra.values())
+        dropped = [g for g, v in extra.items() if len(v) > low]
+        best = [x for x in best if len(extra[x[0]['gsm']]) == low]
+        if dropped:
+            why += (f'; preferred over {", ".join(dropped)}, whose condition token(s) '
+                    f'{", ".join(sorted({t for g in dropped for t in extra[g]}))} the header '
+                    f'does not mention')
+    score = round(top / len(toks), 2)
+    if len(best) == 1:
+        p = best[0][0]
+        if rep is not None and p['rep'] == rep:
+            why += f'; replicate {rep} agrees'
+        return 'one', p['gsm'], f'name similarity to {p["title"]!r}: {why}', score
+    if len({p['signature'] for p, _, _ in best}) == 1:
+        return 'equiv', [p['gsm'] for p, _, _ in best], why, score, rep
+    return 'none', [p['gsm'] for p, _, _ in best], (
+        f'{why}, equally well by samples of different conditions')
+
+
+def suggest_column_map(headers, sample_rows):
+    """Proposed HEADER -> GSM for table columns whose names are neither GSM ids nor
+    titles, from name similarity. Pure; conservative: an ambiguous header is
+    left unresolved with its candidates, never guessed.
+
+    A trailing replicate number (`_n1`, `_rep2`, `-r3`, ` replicate 2`, `_1`)
+    must agree with the sample's when both have one. Header tokens match a
+    sample's title, source and characteristic values, equal or as an
+    abbreviation (mo -> monocyte, cul -> culture). The samples matching the most
+    header tokens are kept; among them, those with the fewest condition tokens
+    the header does not mention (numbers, units and null words like
+    'untreated' aside). A header token no candidate has blocks the suggestion.
+    Candidates still tied that are one condition (same title without replicate,
+    source and characteristics apart from replicate/donor/batch keys) are
+    assigned one-to-one in replicate, then column, order — which sample of an
+    identical condition a column is does not change a group comparison. Each
+    GSM is used at most once.
+
+    Returns {'suggested': {header: {gsm, basis, score}},
+             'unresolved': {header: {candidates, reason}}}.
+    """
+    profiles = [_sample_profile(s) for s in sample_rows]
+    order = {p['gsm']: i for i, p in enumerate(profiles)}
+    picks = {h: _suggest_one(h, profiles) for h in headers}
+    suggested, unresolved = {}, {}
+    ones = {}
+    for h, r in picks.items():
+        if r[0] == 'one':
+            ones.setdefault(r[1], []).append(h)
+    for h, r in picks.items():
+        if r[0] == 'none':
+            unresolved[h] = {'candidates': r[1], 'reason': r[2]}
+        elif r[0] == 'one' and len(ones[r[1]]) > 1:
+            unresolved[h] = {'candidates': [r[1]], 'reason': (
+                f'competes with {", ".join(x for x in ones[r[1]] if x != h)} for {r[1]}')}
+        elif r[0] == 'one':
+            suggested[h] = {'gsm': r[1], 'basis': r[2], 'score': r[3]}
+    taken = {v['gsm'] for v in suggested.values()}
+    groups = {}
+    for i, (h, r) in enumerate(picks.items()):
+        if r[0] == 'equiv':
+            groups.setdefault(tuple(r[1]), []).append((r[4] if r[4] is not None else 10 ** 6, i, h))
+    for gsms, hs in groups.items():
+        avail = sorted((g for g in gsms if g not in taken), key=order.get)
+        hs.sort()
+        if len(hs) > len(avail):
+            for _, _, h in hs:
+                unresolved[h] = {'candidates': list(gsms), 'reason': (
+                    f'{len(hs)} headers for {len(avail)} free samples of one condition')}
+            continue
+        for (_, _, h), g in zip(hs, avail):
+            r = picks[h]
+            suggested[h] = {'gsm': g, 'score': r[3], 'basis': (
+                f'replicate order within an identical condition ({", ".join(gsms)}): {r[2]}')}
+            taken.add(g)
+    return {'suggested': {h: suggested[h] for h in headers if h in suggested},
+            'unresolved': {h: unresolved[h] for h in headers if h in unresolved}}
+
+
+def column_map_args(suggested):
+    """A ready-to-paste `--column-map HEADER=GSM ...` for suggested pairs."""
+    return '--column-map ' + ' '.join(shlex.quote(f'{h}={v["gsm"]}')
+                                      for h, v in suggested.items())
+
+
+def parse_supplementary_table(text, sample_rows, column_map=None, *, infer_columns=False,
+                              column_map_basis=None):
     """A depositor's gene x sample table -> (gene ids, gsms, matrix, how it was read).
 
-    A column is a sample when its header is the GSM accession, contains it, or
-    is the sample's title (ignoring case and punctuation), or when the caller's
-    column_map says so. Nothing else is guessed: unmatched columns are listed
-    so the agent can supply the map.
+    Tab, comma or semicolon delimited (decimal commas read in a semicolon
+    table); an R-style header one field short of the data rows means the first
+    data field is the row name. A column is a sample when its header is the
+    GSM accession, contains it, or is the sample's title (ignoring case and
+    punctuation), or when the caller's column_map says so. Only with
+    `infer_columns` are confident name-similarity suggestions
+    (suggest_column_map) applied to the numeric columns left over, each
+    recorded with its basis; otherwise they are only offered.
     """
     lines = [l for l in text.splitlines() if l.strip() and not l.startswith('#')]
     if len(lines) < 3:
         raise K.ContractError('the table has fewer than two data rows')
-    delim = '\t' if lines[0].count('\t') >= lines[0].count(',') else ','
+    delim = sniff_delimiter(lines)
     rows = list(csv.reader(lines, delimiter=delim))
     head = [h.strip().strip('"') for h in rows[0]]
+    widths = [len(r) for r in rows[1:21]]
+    row_names = sum(w == len(head) + 1 for w in widths) > len(widths) / 2
+    if row_names:
+        head = [''] + head
+    dc = delim == ';'
+    numeric = _numeric_columns(rows[1:], len(head), dc)
     by_title = {_norm(s['title']): s['gsm'] for s in sample_rows if s.get('title')}
     gsm_ids = {s['gsm'] for s in sample_rows}
     cmap = dict(column_map or {})
-    cols = {}
+    cols, mapped = {}, {}
     for j, h in enumerate(head):
         g = cmap.get(h)
+        by_map = g is not None
         if g is None:
             g = next((x for x in gsm_ids if x == h or re.search(rf'\b{x}\b', h)), None)
         if g is None:
             g = by_title.get(_norm(h))
         if g in gsm_ids and g not in cols.values():
             cols[j] = g
-    if not cols:
-        raise K.ContractError(
-            'no column of this table could be matched to a sample (by GSM, title or '
-            f'column_map). Columns: {", ".join(head[:30])}. Sample titles: '
-            + ', '.join(f'{s["gsm"]}={s["title"]}' for s in sample_rows[:30]))
+            if by_map:
+                mapped[h] = g
     low = [_norm(h) for h in head]
     feat = next((low.index(_norm(n)) for n in FEATURE_NAMES if _norm(n) in low
                  and low.index(_norm(n)) not in cols), 0)
+    rest = [(j, h) for j, h in enumerate(head)
+            if j not in cols and j != feat and j in numeric and h]
+    free = [s for s in sample_rows if s['gsm'] not in cols.values()]
+    sug = (suggest_column_map([h for _, h in rest], free) if rest and free
+           else {'suggested': {}, 'unresolved': {}})
+    inferred = {}
+    if infer_columns:
+        for j, h in rest:
+            s = sug['suggested'].get(h)
+            if s and s['gsm'] not in cols.values():
+                cols[j] = s['gsm']
+                inferred[h] = s
+    if not cols:
+        offer = ''
+        if sug['suggested']:
+            offer += ('Suggested from header/sample-name similarity, NOT applied — check each '
+                      'pair against the series\' overall design and its paper (geo-samples '
+                      'pubmed_ids) first, then pass it with --column-map-basis saying why (or '
+                      're-run with --infer-columns): '
+                      f'{column_map_args(sug["suggested"])}. ')
+        if sug['unresolved']:
+            offer += 'Unresolved headers: ' + '; '.join(
+                f'{h} ({", ".join(v["candidates"]) or "no candidate"}: {v["reason"]})'
+                for h, v in list(sug['unresolved'].items())[:20]) + '. '
+        raise K.ContractError(
+            'no column of this table could be matched to a sample (by GSM, title or '
+            f'column_map). {offer}Columns: {", ".join(head[:30])}. Sample titles: '
+            + ', '.join(f'{s["gsm"]}={s["title"]}' for s in sample_rows[:30]))
+    cols = dict(sorted(cols.items()))
     gene_ids, matrix = [], []
     for r in rows[1:]:
         if len(r) < len(head):
             continue
         try:
-            vals = [float(r[j]) for j in cols]
+            vals = [_number(r[j], dc) for j in cols]
         except ValueError:
             continue                     # a summary or annotation row
         gid = r[feat].strip().strip('"')
@@ -306,10 +764,31 @@ def parse_supplementary_table(text, sample_rows, column_map=None):
     transform = ('counts' if integer and top > 1000 else
                  'log' if top <= 50 and min(flat) < 0 or top <= 25 else 'linear')
     gsms = list(cols.values())
-    return gene_ids, gsms, matrix, {
-        'feature_column': head[feat], 'transform': transform,
-        'matched_columns': {head[j]: g for j, g in cols.items()},
-        'unmatched_columns': [h for j, h in enumerate(head) if j not in cols and j != feat][:40]}
+    how = {'delimiter': DELIMITERS[delim],
+           'feature_column': head[feat] or ('(row names)' if row_names
+                                             else '(unnamed first column)'),
+           'transform': transform,
+           'matched_columns': {head[j]: g for j, g in cols.items()},
+           'unmatched_columns': [h for j, h in enumerate(head) if j not in cols and j != feat][:40]}
+    if row_names:
+        how['row_names'] = ('the header has one field fewer than the data rows (R row names): '
+                            'the first data field is the feature id')
+    if dc and any(',' in r[j] for r in rows[1:200] if len(r) >= len(head) for j in cols):
+        how['decimal_comma'] = True
+    if mapped:
+        how['mapped_columns'] = mapped
+    unused = sorted(h for h in cmap if h not in mapped)
+    if unused:
+        how['column_map_unused'] = unused
+    if inferred:
+        how['inferred_columns'] = inferred
+        if sug['unresolved']:
+            how['unresolved_columns'] = sug['unresolved']
+    elif sug['suggested']:
+        how['suggested_column_map'] = column_map_args(sug['suggested'])
+    if mapped or inferred:
+        how['column_map_basis'] = column_map_basis or 'none given'
+    return gene_ids, gsms, matrix, how
 
 
 def species_weight(organism, route):
@@ -427,8 +906,15 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
 def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
           max_genes=DEFAULT_MAX_GENES, dataset_id=None, title=None, cell_type=None,
           registered_by='bioinformatics_agent', i_have_network_permission=False, timeout=90,
-          out_root=None, register=True, overwrite=True, supplementary=None, column_map=None):
-    """Fetch, normalise, write and register one comparison from a GEO series."""
+          out_root=None, register=True, overwrite=True, supplementary=None, column_map=None,
+          infer_columns=False, column_map_basis=None):
+    """Fetch, normalise, write and register one comparison from a GEO series.
+
+    On the supplementary route, `column_map` (HEADER -> GSM) and the opt-in
+    `infer_columns` (apply confident name-similarity suggestions) assign
+    columns whose headers are neither GSM ids nor titles; either is recorded
+    in how_read with `column_map_basis` and stated as a dataset limitation.
+    """
     from .. import ingest as ING
     _need(i_have_network_permission)
     acc = check_accession(acc)
@@ -472,19 +958,25 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
                 f'{why_not_ncbi}, and {acc} has no table-like supplementary file at '
                 f'{series_url(acc)}/suppl/ (only archives or raw data). A person can register a '
                 f'processed table from there.')
-        errors = []
+        errors, ens_cache = [], {}
         for name in files:
             url = f'{series_url(acc)}/suppl/{name}'
             try:
                 gene_ids, gsms, matrix, read = parse_supplementary_table(
-                    _text(_get(url, timeout)), info['samples'], column_map=column_map)
-                rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, {},
+                    _text(_get(url, timeout)), info['samples'], column_map=column_map,
+                    infer_columns=infer_columns, column_map_basis=column_map_basis)
+                symbols, read['symbols'], annot = _table_symbols(gene_ids, organism, acc,
+                                                                 timeout, ens_cache)
+                rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, symbols,
                                                transform=read['transform'], **common)
             except (K.ContractError, urllib.error.HTTPError) as e:
-                errors.append(f'{name}: {str(e)[:400]}')
+                # Long enough to keep a suggested --column-map whole.
+                errors.append(f'{name}: {str(e)[:4000]}')
                 continue
             route = 'depositor_supplementary'
             sources.update(table=url)
+            if annot:
+                sources.update(annotation=annot)
             break
         if route is None:
             raise K.ContractError(f'{why_not_ncbi}. No supplementary table could be used: '
@@ -533,7 +1025,8 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             registered_by=registered_by,
             notes=(f'route: {route}; sources: {sources}; confidence ceiling for this species '
                    f'and route: {weight["confidence_ceiling"]}'),
-            extra_limitations=[weight['note']] if weight['note'] else [],
+            extra_limitations=([weight['note']] if weight['note'] else [])
+            + column_limitations(read),
             overwrite=overwrite)
     return {'dataset_id': did, 'accession': acc, 'table': str(table),
             'samples_table': str(sample_tsv), 'organism': organism, 'route': route,
@@ -550,6 +1043,51 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             'note': ('A public dataset from another lab\'s experiment: evidence about that '
                      'experiment\'s cells and conditions, to be weighed for this process, not '
                      'a measurement of it.')}
+
+
+def _table_symbols(gene_ids, organism, acc, timeout, cache):
+    """Symbols for a depositor's table: the pure normaliser, plus NCBI's annotation
+    for bare human/mouse Ensembl ids. -> (map, how, annotation url used or None)."""
+    if not any(ENSEMBL_RE.match(feature_symbol(g)) for g in gene_ids):
+        m, how = supplementary_symbols(gene_ids)
+        return m, how, None
+    if 'r' not in cache:
+        if organism not in GENOMES:
+            cache['r'] = (None, None, f'NCBI publishes its gene annotation for human and mouse '
+                                      f'only; this series is {organism}')
+        else:
+            url = counts_urls(acc, organism)[1]
+            try:
+                emap = parse_annotation_ensembl(_text(_get(url, timeout)))
+                cache['r'] = ((emap, url, f"NCBI's annotation table ({url}, EnsemblGeneID "
+                                          f"column)") if emap is not None else
+                              (None, None, f"NCBI's annotation table ({url}) has no Ensembl "
+                                           f"column"))
+            except (OSError, EOFError, ValueError, K.ContractError) as e:
+                cache['r'] = (None, None, f"NCBI's annotation table could not be read: "
+                                          f"{str(e)[:200]}")
+    emap, url, note = cache['r']
+    m, how = supplementary_symbols(gene_ids, emap, note)
+    return m, how, url
+
+
+def column_limitations(read):
+    """Dataset limitations stating which sample columns were assigned other than by
+    the depositors' own GSM ids or titles, and on what basis."""
+    out = []
+    basis = read.get('column_map_basis') or 'none given'
+    if read.get('mapped_columns'):
+        out.append('Sample columns assigned by a column map the caller supplied, not by the '
+                   'depositors\' GSM ids or titles: '
+                   + ', '.join(f'{h} -> {g}' for h, g in read['mapped_columns'].items())
+                   + f'. Basis given: {basis}.')
+    if read.get('inferred_columns'):
+        out.append('Sample columns inferred by BioSense from header/sample-name similarity '
+                   '(--infer-columns), not stated by the depositors: '
+                   + '; '.join(f'{h} -> {v["gsm"]} ({v["basis"]})'
+                               for h, v in read['inferred_columns'].items())
+                   + f'. Basis given: {basis}. A wrong assignment mislabels conditions.')
+    return out
 
 
 def _slug(s):

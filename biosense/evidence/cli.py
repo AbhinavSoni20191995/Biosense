@@ -351,8 +351,89 @@ def _genotype(text):
     return out
 
 
+TERM_TEMPLATE = {
+    'terms': [{
+        'parameter_id': 'gmcsf_maturation_ng_ml',
+        'label': 'GM-CSF (maturation)', 'unit': 'ng/mL', 'stage': 'maturation',
+        'minimum': 0, 'maximum': 100,
+        'meaning': 'GM-CSF given while monocytes mature into macrophages',
+        'response_model': {
+            'shape': 'saturating', 'target': 'transition_efficiency', 'stage': 'maturation',
+            'half_max': 10, 'max_effect': 0.4,
+            'basis': 'Two cited protocols report maturation efficiency rising with GM-CSF up '
+                     'to about 50 ng/mL with little gain beyond; half-max read as ~10 ng/mL.',
+            'references': ['PMID:00000000', 'PMC0000000']}}],
+    'note': ('One entry per lever the base reactor has no term for. shape: bell (optimum, '
+             'tolerance) | saturating (half_max) | threshold (threshold) | linear (slope). '
+             'target: growth | death | viability | transition_efficiency | harvest. '
+             'max_effect is the largest relative change the term may make (bounded). Every term '
+             'cites the claims its constants come from; a lever with none is a gap, not a term. '
+             'A lever the project lacks also needs label, unit, stage, minimum and maximum.'),
+}
+
+
+def proposed_terms(project_id, draft, *, projects_dir=None, run_id=None):
+    """Validate the terms a run proposes and describe each, without touching the project."""
+    from ..production import project_builder as PB
+    from ..production import response_model as RM
+    project = PJ.load(project_id, projects_dir)
+    terms = draft.get('terms') if isinstance(draft, dict) else draft
+    if not terms:
+        raise K.ContractError('the draft proposes no terms; see `template term`')
+    with_terms, pids = PB.with_proposed_terms(project, terms, run_id=run_id)
+    out = []
+    for pid in pids:
+        q = with_terms.parameter(pid)
+        out.append({'parameter_id': pid, 'label': q.label, 'unit': q.unit,
+                    'stage': q.stage, 'minimum': q.minimum, 'maximum': q.maximum,
+                    'response_model': q.response_model,
+                    'description': RM.describe(q.response_model)})
+    return {'kind': 'proposed_terms', 'project_id': project.project_id, 'run_id': run_id,
+            'created_at': K.now_iso(), 'terms': out,
+            # kept so a person can add a term to the project exactly as proposed
+            'drafts': list(terms),
+            'status': ('PROPOSED on this run only. A person adds a term to the project; until '
+                       'then nothing outside this run uses it.'),
+            'note': ('Each term is a shape and constants an agent read from cited claims, '
+                     'evaluated by deterministic code and bounded. DE NOVO · UNCALIBRATED: '
+                     'nothing was fitted to data.')}
+
+
+def cmd_term(a):
+    doc = proposed_terms(a.project, K.read_json(Path(a.draft)), projects_dir=a.projects_dir,
+                         run_id=a.run_id)
+    out = _write(doc, a.out)
+    print(json.dumps({'written': str(out),
+                      'terms': [f'{t["label"]}: {t["description"]["summary"]} '
+                                f'[{t["description"]["badge"]}]' for t in doc['terms']],
+                      'next': f'simulate --project {a.project} --terms {out} --set <lever>=<value> '
+                              f'...'}, indent=2))
+    return 0
+
+
+def cmd_round_plan(a):
+    from . import round_plan as RP
+    project = PJ.load(a.project, a.projects_dir)
+    extra = ()
+    if a.terms:
+        # Levers this run proposed terms for may be tested before the project has them.
+        from ..production import project_builder as PB
+        tdoc = K.read_json(Path(a.terms))
+        project, extra = PB.with_proposed_terms(project, tdoc.get('drafts') or [],
+                                                run_id=tdoc.get('run_id'))
+    doc = RP.build(K.read_json(Path(a.draft)), project, run_id=a.run_id,
+                   created_by=a.created_by, extra_levers=extra)
+    out = _write(doc, a.out)
+    print(json.dumps({'written': str(out), 'round': doc['round'],
+                      'unknowns': [u['id'] for u in doc['unknowns']],
+                      'arms': [a['arm_id'] for a in doc['arms']],
+                      'commitment_sha256': doc['commitment_sha256'],
+                      'status': doc['status']}, indent=2))
+    return 0
+
+
 def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, seed=7,
-                        effects=None):
+                        effects=None, project=None):
     """Wild type against an engineered line on the reactor, with this project's values.
 
     On the project's own reactor model its mapped setpoints are used; a project
@@ -362,8 +443,8 @@ def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, se
     the gene.
     """
     from ..production import sim_mode as SM
-    project = PJ.load(project_id, projects_dir)
-    values = {PR.resolve(k): v for k, v in settings.items()}
+    project = project or PJ.load(project_id, projects_dir)
+    values = {PR.resolve(k, required=False) or k: v for k, v in settings.items()}
     knobs, used, unused = {}, [], []
     for pid in sorted(project.parameter_ids):
         pp = project.parameter(pid)
@@ -380,27 +461,58 @@ def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, se
     g = doc['genotype']
     what = 'the factor' if g.get('kind') == 'factor' else 'the edit'
     if g.get('effects'):
+        from ..production import response_model as RM
+        # Described from the effects as given, which still carry where each
+        # term came from; the reactor's parsed copy keeps only the ratios.
+        rows = effects or g['effects']
         doc.update(project_id=project.project_id, stand_in=stand_in, used=used,
                    not_represented=unused,
                    assumption=('The new parameters act through the responses stated for them '
-                               'on the project (' + '; '.join(
+                               'on the project' + (' or proposed by this run' if any(
+                                   e.get('origin') == 'ai_proposed' for e in rows) else '')
+                               + ' (' + '; '.join(
                                    f'{e["label"]}: growth ×{e["growth_ratio"]:.3g}, '
                                    f'differentiation ×{e["diff_ratio"]:.3g}'
-                                   + (f' in {e["stage"]}' if e['stage'] else '')
-                                   for e in g['effects']) + '); uncalibrated.'))
+                                   + (f' in {e["stage_mapped_from"]} (played in the base '
+                                      f'reactor\'s {e["stage"]} stage)'
+                                      if e.get('stage_mapped_from')
+                                      else f' in {e["stage"]}' if e.get('stage') else '')
+                                   + (f' [{RM.BADGE[e["origin"]]}]'
+                                      if e.get('origin') in RM.BADGE else '')
+                                   for e in rows) + '); uncalibrated.'))
+        if stand_in:
+            doc['stand_in_note'] = _base_reactor_note(project)
         return doc
     doc.update(project_id=project.project_id, stand_in=stand_in, used=used,
                not_represented=unused,
                assumption=(f'{g["label"]} assumed to change growth ×{g["growth_ratio"]:g} and '
                            f'differentiation ×{g["diff_ratio"]:g}'
-                           + (f' during {g["stage"]}' if g.get('stage') else '')
+                           + (f' during {g["stage_mapped_from"]} (played in the base '
+                              f'reactor\'s {g["stage"]} stage)' if g.get('stage_mapped_from')
+                              else f' during {g["stage"]}' if g.get('stage') else '')
                            + f'; the ratios are a labelled guess, not a measured effect of '
                              f'{what}.'))
     if stand_in:
-        doc['stand_in_note'] = (f'{project.name} has no reactor model of its own: its physical '
-                                f'setpoints ran on the iPSC → monocyte reactor as a stand-in. The '
-                                f'physics carry over; this cell type\'s biology does not.')
+        doc['stand_in_note'] = _base_reactor_note(project)
     return doc
+
+
+def _base_reactor_note(project):
+    """How a project without a calibrated model of its own is simulated.
+
+    Not a failure to apologise for: it is how a new project gets a simulator.
+    The base reactor supplies the calibrated physics and stages; the project
+    adds its own terms on top — the effects stated for its new factors and
+    parameters — each uncalibrated and labelled. What a reader must keep in
+    mind is which part is which.
+    """
+    return (f'BUILT ON THE BASE REACTOR. {project.name} is simulated as the calibrated iPSC → '
+            f'monocyte reactor plus this project\'s own terms. Inherited and calibrated: the '
+            f'physics (agitation, oxygen, feeding, waste, aggregates) and the stages. Added by '
+            f'this project and uncalibrated: the effects stated for its new factors and '
+            f'parameters, played in the stage they act in. Read the comparison as the direction '
+            f'those terms imply on top of the base reactor, not as a measurement of '
+            f'{project.name}.')
 
 
 def _setting(text):
@@ -414,6 +526,13 @@ def _setting(text):
 
 
 def cmd_simulate(a):
+    if a.terms:
+        # Built first: loading the project with the run's terms defines any lever
+        # it introduces, so `--set <new lever>=…` resolves below.
+        from ..production import project_builder as PB
+        tdoc = K.read_json(Path(a.terms))
+        PB.with_proposed_terms(PJ.load(a.project, a.projects_dir), tdoc.get('drafts') or [],
+                               run_id=tdoc.get('run_id'))
     doc = simulate(a.project, dict(a.set or []), projects_dir=a.projects_dir, seed=a.seed)
     if a.genotype and a.factor:
         raise K.ContractError('give --genotype or --factor, not both: each is one assumed effect '
@@ -422,9 +541,16 @@ def cmd_simulate(a):
         doc['genotype_simulation'] = genotype_simulation(
             a.project, dict(a.set or []), a.genotype or a.factor, projects_dir=a.projects_dir,
             seed=a.seed)
-    elif a.modelled_parameters:
+    elif a.modelled_parameters or a.terms:
         from ..production import sim_mode as SM
         project = PJ.load(a.project, a.projects_dir)
+        if a.terms:
+            # The run's proposed terms, on a copy of the project: the base
+            # reactor plus this project's terms, played without saving anything.
+            from ..production import project_builder as PB
+            tdoc = K.read_json(Path(a.terms))
+            project, _ = PB.with_proposed_terms(project, tdoc.get('drafts') or [],
+                                                run_id=tdoc.get('run_id'))
         values = {PR.resolve(k, required=False) or k: v for k, v in (a.set or [])}
         eff = SM.effects_from_project(project, values)
         if not eff['effects']:
@@ -433,8 +559,10 @@ def cmd_simulate(a):
                                               for n in eff['not_applied']) or 'none set')
         doc['genotype_simulation'] = genotype_simulation(
             a.project, dict(a.set or []), None, projects_dir=a.projects_dir, seed=a.seed,
-            effects=eff['effects'])
+            effects=eff['effects'], project=project)
         doc['genotype_simulation']['not_applied'] = eff['not_applied']
+        if a.terms:
+            doc['genotype_simulation']['proposed_terms'] = str(a.terms)
     out = _write(doc, a.out)
     print(json.dumps({'written': str(out), 'prediction': doc['prediction'],
                       'applied': [r.get('parameter_id') for r in doc['applied']],
@@ -517,7 +645,10 @@ def cmd_check(a):
 
 
 def cmd_template(a):
-    print(json.dumps(DESIGN_TEMPLATE if a.what == 'design-choices' else TEMPLATE, indent=2))
+    from . import round_plan as RP
+    shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
+             'round-plan': RP.TEMPLATE}.get(a.what, TEMPLATE)
+    print(json.dumps(shape, indent=2))
     return 0
 
 
@@ -553,9 +684,25 @@ def main(argv=None):
     p.add_argument('--factor', type=_factor, metavar='LABEL:stage=S,growth=R,diff=R',
                    help='also run without and with an added factor (one the project has no '
                         'term for) whose assumed effect acts only in stage S')
+    p.add_argument('--terms', metavar='PROPOSED_TERMS_JSON',
+                   help='also run without and with the levers this run proposed terms for '
+                        '(the file `term` wrote), each labelled DE NOVO')
     p.add_argument('--seed', type=int, default=7)
     p.add_argument('--out', required=True)
     p.set_defaults(fn=cmd_simulate)
+    p = sub.add_parser('term', help='propose a response term for a lever the base reactor has '
+                                    'no equation for (validated, never saved to the project)')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--run-id')
+    p.add_argument('--out', required=True)
+    p.set_defaults(fn=cmd_term)
+    p = sub.add_parser('round-plan', help='the next round at the bench: what this run could not '
+                                          'settle, as arms, readouts and decision rules')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--terms')
+    p.add_argument('--run-id'); p.add_argument('--created-by')
+    p.add_argument('--out', required=True)
+    p.set_defaults(fn=cmd_round_plan)
     p = sub.add_parser('design-choices',
                        help='reasoned starting values for setpoints no source sets here')
     p.add_argument('--project', required=True); p.add_argument('--projects-dir')
@@ -566,7 +713,7 @@ def main(argv=None):
     p.add_argument('file'); p.add_argument('--kind', choices=sorted(KINDS_BY_NAME))
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser('template', help='print an example draft')
-    p.add_argument('what', choices=['hypothesis', 'design-choices'])
+    p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

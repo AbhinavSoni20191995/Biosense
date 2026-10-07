@@ -127,7 +127,8 @@
         "longitudinal_population",
         "pseudobulk_comparison",
         "cell_composition_comparison",
-        "peak_overlap_comparison"
+        "peak_overlap_comparison",
+        "gene_set_score"
       ],
       "description": "Phase 2 set. Single-cell pseudobulk needs the optional singlecell environment; chromatin reads processed peak files. A tool that cannot run is not registered, so an unavailable analysis is refused at planning rather than at execution."
     },

@@ -151,7 +151,7 @@ class DesignChoiceTests(unittest.TestCase):
         self.assertTrue(any('reasoned starting values, not measurements' in x
                             for x in after['limitations']))
         md = PS.markdown(after)
-        self.assertIn('## Reasoned starting values', md)
+        self.assertIn('## S2. Reasoned starting values', md, 'in the supplement')
         self.assertIn('### ', md, 'limitations are grouped under headings')
         K.require_valid('protocol_summary', after)
 

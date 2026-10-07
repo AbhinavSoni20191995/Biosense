@@ -376,6 +376,21 @@
                   "string",
                   "null"
                 ]
+              },
+              "accepted_by": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 200,
+                "description": "For an ai_proposed term: the person who added it to this project from the run that proposed it. Accepting is not declaring: the shape and constants stay the agent's, cited, and uncalibrated."
+              },
+              "accepted_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 64
               }
             }
           }

@@ -47,6 +47,8 @@ Endpoints
     POST /api/discovery/<id>/pause    hold a live run now; the clock stops with it
     POST /api/discovery/<id>/continue resume a paused run with the time it had left, or
                                   start a fresh run seeded with an ended run's artifacts
+    POST /api/discovery/<id>/follow-up   the next round: an ended run's artifacts, plus the
+                                  results a person measured, read against its round plan
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
     POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
@@ -232,6 +234,8 @@ class Run:
         self.papers_found = []
         self.bioinformatics = None
         self.genotype_sim = None
+        self.proposed_terms = None
+        self.round_plan = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -345,6 +349,8 @@ class DiscoveryRun:
         self.papers_found = []
         self.bioinformatics = None
         self.genotype_sim = None
+        self.proposed_terms = None
+        self.round_plan = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -390,6 +396,8 @@ class DiscoveryRun:
         """The literature agent's insights.md and discover.json, as they grow."""
         self._read_analyses()
         self._read_genotype_sim()
+        self._read_proposed_terms()
+        self._read_round_plan()
         self._read_stage_shards()
         self._read_reference_draft()
         papers = ('literature/merged/discover.json'
@@ -595,6 +603,40 @@ class DiscoveryRun:
                     'genotype', 'curves', 'deltas', 'verdict', 'note', 'assumption',
                     'stand_in', 'stand_in_note', 'used', 'not_represented', 'control_label')}
                 return
+
+    def _read_round_plan(self):
+        """The round plan the run wrote: what it could not settle, as an experiment."""
+        f = self.out_dir / 'round_plan.json'
+        try:
+            doc = K.read_json(f) if f.is_file() else None
+        except (OSError, ValueError):
+            doc = None
+        self.round_plan = ({k: doc.get(k) for k in (
+            'round', 'purpose', 'unknowns', 'arms', 'readouts', 'replicates',
+            'decision_rules', 'limitations', 'status', 'commitment_sha256', 'created_at')}
+            if isinstance(doc, dict) and doc.get('kind') == 'round_plan' else None)
+
+    def _read_proposed_terms(self):
+        """The response terms this run proposed for levers the base reactor lacks.
+
+        Shown with what each says and what it cites, so a person can add one to
+        their project. Read from the file the CLI validated; a term that failed
+        validation never reaches that file.
+        """
+        f = self.out_dir / 'proposed_terms.json'
+        try:
+            doc = K.read_json(f) if f.is_file() else None
+        except (OSError, ValueError):
+            doc = None
+        if not isinstance(doc, dict) or doc.get('kind') != 'proposed_terms':
+            self.proposed_terms = None
+            return
+        self.proposed_terms = {
+            'project_id': doc.get('project_id'), 'status': doc.get('status'),
+            'note': doc.get('note'),
+            'terms': [{k: t.get(k) for k in ('parameter_id', 'label', 'unit', 'stage',
+                                             'minimum', 'maximum', 'description')}
+                      for t in (doc.get('terms') or [])[:20] if isinstance(t, dict)]}
 
     def _read_papers(self, path, mtime):
         self._read_papers_from(K.read_json(path).get('papers') or [])
@@ -871,6 +913,7 @@ class DiscoveryRun:
                 'papers_found': list(self.papers_found),
                 'bioinformatics': self.bioinformatics,
                 'genotype_simulation': self.genotype_sim,
+                'proposed_terms': self.proposed_terms,
                 'literature_stages': list(self.literature_stages),
                 'reference_draft': self.reference_draft,
                 'stage_counts': ST.stage_counts(self.stages_reached,
@@ -896,6 +939,12 @@ class DiscoveryRun:
                 'continuable': (self.finished_at is not None
                                 and self.status in ('stopped', 'interrupted', 'error')
                                 and self.runtime_mode in RT.REAL_MODES),
+                # Any ended real run can be followed up with results, finished or not:
+                # the round plan is what was run, and the results are what came back.
+                'followable': (self.finished_at is not None
+                               and self.runtime_mode in RT.REAL_MODES),
+                'round_plan': self.round_plan,
+                'continued_from': self.request.get('continued_from'),
                 'extensions_left': self.extensions_left,
                 'extension_s': EXTENSION_S,
                 'wrap_up_sent': self.wrap_up_sent,
@@ -1558,6 +1607,10 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/continue', path)
             if m:
                 return self._continue_discovery(m.group(1))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/follow-up', path)
+            if m:
+                return self._continue_ended(m.group(1), self._identity(),
+                                            follow_up=self._body(MAX_BODY_DISCOVERY))
             m = re.fullmatch(r'/api/discovery/([^/]+)/extend', path)
             if m:
                 return self._extend_discovery(m.group(1))
@@ -1576,6 +1629,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/projects/([^/]+)/parameters/([^/]+)/model', path)
             if m:
                 return self._model_parameter(m.group(1), m.group(2), self._body())
+            m = re.fullmatch(r'/api/projects/([^/]+)/terms/adopt', path)
+            if m:
+                return self._adopt_term(m.group(1), self._body())
             if path == '/api/sim/project-effects':
                 return self._project_effects(self._body())
             if path == '/api/benchmarks/run':
@@ -1997,6 +2053,48 @@ class Handler(BaseHTTPRequestHandler):
                                         'response, not a fitted one. The Simulator plays it as '
                                         'an assumed effect in its stage.'})
 
+    def _adopt_term(self, project_id, body):
+        """Add a term a run proposed to the caller's own project, as proposed.
+
+        The term is read from the run's own validated file — never from the
+        request body — so what is added is exactly what the run proposed and
+        cited. Only the run's owner may, and only into their own project.
+        """
+        identity = self._identity()
+        rid, pid = str(body.get('run_id') or ''), str(body.get('parameter_id') or '')
+        run = self.discovery.get(rid, owner=identity.owner)
+        if run is not None:
+            run_dir = run.out_dir
+        else:
+            d = RS.find(self.discovery.runs_dir, rid) if DISCOVERY_ID.match(rid) else None
+            state = RS._read_state(RS.state_path(d)) if d else None
+            if not state or (state.get('owner') is not None
+                             and state.get('owner') != identity.owner):
+                return self._send(404, {'error': 'no such discovery run'})
+            run_dir = d
+        try:
+            doc = K.read_json(Path(run_dir) / 'proposed_terms.json')
+        except (OSError, ValueError):
+            return self._send(404, {'error': 'that run proposed no terms'})
+        if doc.get('project_id') != project_id:
+            return self._send(409, {'error': f'that run proposed terms for '
+                                             f'{doc.get("project_id")}, not {project_id}'})
+        draft = next((t for t, row in zip(doc.get('drafts') or [], doc.get('terms') or [])
+                      if row.get('parameter_id') == pid), None)
+        if draft is None:
+            return self._send(404, {'error': f'that run proposed no term for {pid}'})
+        who = str(getattr(identity, 'display', None) or identity.owner or 'local user')[:80]
+        pdoc, pid = PB.adopt_term(identity, PB.check_project_id(project_id), draft,
+                                  accepted_by=who, from_run=rid)
+        from . import response_model as RM
+        q = next(p for p in pdoc['parameters'] if p['parameter_id'] == pid)
+        return self._send(200, {'project_id': project_id, 'parameter_id': pid,
+                                'version': pdoc['version'],
+                                'description': RM.describe(q['response_model']),
+                                'note': 'Added to your project as DE NOVO: proposed by the run '
+                                        'from cited claims, accepted by you, uncalibrated. Every '
+                                        'later run and the Simulator play it in its stage.'})
+
     def _project_effects(self, body):
         """The assumed effects a project's modelled new parameters imply at given values."""
         identity = self._identity()
@@ -2075,7 +2173,7 @@ class Handler(BaseHTTPRequestHandler):
                                              'nothing to continue'})
         return self._continue_ended(rid, identity)
 
-    def _continue_ended(self, rid, identity):
+    def _continue_ended(self, rid, identity, follow_up=None):
         """A fresh run that picks up where an ended one left off.
 
         The old run's artifacts are copied into the new run's directory and the
@@ -2083,10 +2181,17 @@ class Handler(BaseHTTPRequestHandler):
         every accounted way it is a new run — it spends budget, holds the
         one-at-a-time gate and needs the runtime — because what restarts is
         the agents, and the agents are the cost.
+
+        With *follow_up* ({results, dataset_ids}) it is the next round instead:
+        the earlier run finished, a person ran its round plan, and this run
+        reads their results against the predictions and rules that run fixed.
         """
         owner = identity.owner
         old = self.discovery.get(rid, owner=owner)
         if old is not None:
+            if old.finished_at is None:
+                return self._send(409, {'error': 'that run is still going; a follow-up starts '
+                                                 'from a run that has ended'})
             old_dir, old_status, old_owner = old.out_dir, old.status, old.owner
         else:
             d = RS.find(self.discovery.runs_dir, rid)
@@ -2113,12 +2218,41 @@ class Handler(BaseHTTPRequestHandler):
             self._require_operator('building the cell production library')
         # The continuation is the same validated request with a new identity
         # and the continuation named, so the brief can say what this run is.
+        cont = {'run_id': rid, 'run_dir': Path(old_dir).name, 'status': old_status}
+        datasets = list(prior.get('dataset_ids') or [])
+        if follow_up is not None:
+            results = str(follow_up.get('results') or '').strip()
+            added = [str(d).strip() for d in follow_up.get('dataset_ids') or [] if str(d).strip()]
+            if not results and not added:
+                return self._send(400, {'error': 'a follow-up brings results: describe what was '
+                                                 'measured, attach a results dataset, or both'})
+            if len(results) > 4000:
+                return self._send(400, {'error': 'results are limited to 4000 characters; attach '
+                                                 'the full table as a dataset instead'})
+            before = (prior.get('continued_from') or {})
+            cont.update(kind='follow_up', results=results or None,
+                        round=(int(before.get('round') or 1) + 1
+                               if before.get('kind') == 'follow_up' else 2),
+                        reported_by=(str(getattr(identity, 'display', None) or owner)[:200]
+                                     if identity.authenticated else None))
+            datasets += [d for d in added if d not in datasets]
+            if len(datasets) > DISC.MAX_DATASETS:
+                return self._send(400, {'error': f'{len(datasets)} datasets; the limit is '
+                                                 f'{DISC.MAX_DATASETS}'})
+        elif (prior.get('continued_from') or {}).get('kind') == 'follow_up':
+            # An interrupted round keeps its round number and the results it was
+            # given; the earlier rounds' files came with the directory.
+            before = prior['continued_from']
+            cont.update(kind='follow_up', round=before.get('round'),
+                        results=before.get('results'), reported_by=before.get('reported_by'))
+        else:
+            cont['kind'] = 'continue'
         req = dict(prior,
                    request_id=f'disc-{uuid.uuid4().hex[:12]}',
                    created_at=K.now_iso(),
                    requested_by=owner if identity.authenticated else None,
-                   continued_from={'run_id': rid, 'run_dir': Path(old_dir).name,
-                                   'status': old_status})
+                   dataset_ids=datasets,
+                   continued_from={k: v for k, v in cont.items() if v is not None})
         try:
             K.require_valid('discovery_request', req)
         except K.ContractError as e:

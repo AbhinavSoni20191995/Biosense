@@ -541,9 +541,33 @@ def add_parameter(identity, project_id, spec, *, registered_by=None, from_run=No
     Returns (doc, parameter_id, how) where how is 'canonical' or 'local'.
     """
     project = load_for(identity, project_id)
-    doc = dict(project.doc)
-    doc['parameters'] = [dict(p) for p in doc['parameters']]
-    doc['local_parameters'] = [dict(p) for p in doc.get('local_parameters') or []]
+    doc = _editable(project.doc)
+    pid, how, row = _add_row(doc, spec, registered_by=registered_by, from_run=from_run)
+    rm = spec.get('response_model')
+    if rm:
+        row.update(_declared(rm, pid, registered_by))
+    doc['parameters'].append(row)
+    _bump(doc)
+    PJ.Project(doc)                     # validated before anything is written
+    save(identity, doc, overwrite=True)
+    return doc, pid, how
+
+
+def _editable(doc):
+    """A copy of a profile whose parameter lists can be changed without touching the original."""
+    out = dict(doc)
+    out['parameters'] = [dict(p) for p in doc['parameters']]
+    out['local_parameters'] = [dict(p) for p in doc.get('local_parameters') or []]
+    return out
+
+
+def _add_row(doc, spec, *, registered_by=None, from_run=None):
+    """The parameter row a new lever would have, and its local definition, on *doc*.
+
+    Pure apart from *doc*: adds the local definition where the lever is not a
+    canonical parameter, and returns (parameter_id, how, row) for the caller to
+    append, decorate and validate. Nothing is saved here.
+    """
     label = str(spec.get('label') or '').strip()
     unit = str(spec.get('unit') or '').strip()
     raw_id = str(spec.get('parameter_id') or '').strip()
@@ -593,9 +617,8 @@ def add_parameter(identity, project_id, spec, *, registered_by=None, from_run=No
                 'registered_at': K.now_iso(), 'from_run': from_run,
                 'from_hypothesis': spec.get('hypothesis_id')})
     if any(p['parameter_id'] == pid for p in doc['parameters']):
-        raise K.ContractError(f'{project.project_id} already has {pid}')
+        raise K.ContractError(f'{doc["project_id"]} already has {pid}')
     status = (doc.get('simulator') or {}).get('status')
-    rm = spec.get('response_model')
     origin = (f'registered by {registered_by or "a person"}'
               + (f' from run {from_run}' if from_run else '')
               + (f' (hypothesis {spec["hypothesis_id"]})' if spec.get('hypothesis_id') else ''))
@@ -608,13 +631,75 @@ def add_parameter(identity, project_id, spec, *, registered_by=None, from_run=No
                                   or f'the range given when the lever was {origin}'},
         'notes': (f'Candidate lever {origin}. The reactor model has no term for it: it is a '
                   f'design variable, and any simulated effect is an assumption.')}
-    if rm:
-        row.update(_declared(rm, pid, registered_by))
-    doc['parameters'].append(row)
+    return pid, how, row
+
+
+# ── terms a run proposes ───────────────────────────────────────────────
+# A project built on the base reactor gets a simulator for its own biology one
+# term at a time. A run may PROPOSE a term for a lever the reactor has no
+# equation for — a shape and constants read from cited claims — and play it,
+# labelled DE NOVO. It goes onto the project only when a person adds it, and
+# even then it stays what it is: proposed by an agent, uncalibrated.
+def _proposed(rm, pid, proposed_by):
+    if not isinstance(rm, dict):
+        raise K.ContractError(f'{pid}: response_model is an object: shape, target, constants, '
+                              f'max_effect, basis and references')
+    if not [r for r in rm.get('references') or [] if str(r).strip()]:
+        raise K.ContractError(
+            f'{pid}: a term an agent proposes rests on cited claims, and this one cites none. '
+            f'Record the lever as a gap instead; a person may still declare a response for it '
+            f'from their own experience.')
+    rm = dict(rm, proposed_by=proposed_by or rm.get('proposed_by') or 'discovery agent')
+    return {'simulator_coverage': 'de_novo_ai',
+            'response_model': _response_model(rm, pid, 'de_novo_ai')}
+
+
+def _apply_term(doc, term, *, proposed_by, from_run=None):
+    """Put one proposed term onto *doc* (a copy); returns the parameter id."""
+    raw = str(term.get('parameter_id') or '').strip()
+    pid = PR.resolve(raw, required=False) or raw if raw else None
+    row = next((p for p in doc['parameters'] if pid and p['parameter_id'] == pid), None)
+    if row is None:
+        pid, _, row = _add_row(doc, term, registered_by=proposed_by, from_run=from_run)
+        doc['parameters'].append(row)
+    elif row.get('simulator_coverage') == 'modelled':
+        raise K.ContractError(f'{pid} already has a calibrated term in the reactor; a proposed '
+                              f'one beside it would be a second, unfitted definition')
+    row.update(_proposed(term.get('response_model'), pid, proposed_by))
+    row.pop('simulator_mapping', None)
+    return pid
+
+
+def with_proposed_terms(project, terms, *, run_id=None):
+    """The project with a run's proposed terms applied — in memory, never saved.
+
+    Returns (project, parameter ids). Each term is validated exactly as a term
+    on a saved project would be, so a term that could not be adopted cannot be
+    simulated either.
+    """
+    doc = _editable(project.doc)
+    by = f'discovery run {run_id}' if run_id else 'discovery agent'
+    pids = [_apply_term(doc, t, proposed_by=by, from_run=run_id) for t in terms or []]
+    return PJ.Project(doc), pids
+
+
+def adopt_term(identity, project_id, term, *, accepted_by, from_run=None):
+    """Add a term a run proposed to the caller's own project.
+
+    Accepting is not declaring: the term keeps its origin (an agent proposed it
+    from cited claims) and stays uncalibrated; the person who added it is
+    recorded beside who proposed it.
+    """
+    project = load_for(identity, project_id)
+    doc = _editable(project.doc)
+    by = f'discovery run {from_run}' if from_run else 'discovery agent'
+    pid = _apply_term(doc, term, proposed_by=by, from_run=from_run)
+    row = next(p for p in doc['parameters'] if p['parameter_id'] == pid)
+    row['response_model'].update(accepted_by=accepted_by, accepted_at=K.now_iso())
     _bump(doc)
-    PJ.Project(doc)                     # validated before anything is written
+    PJ.Project(doc)
     save(identity, doc, overwrite=True)
-    return doc, pid, how
+    return doc, pid
 
 
 def _bump(doc):

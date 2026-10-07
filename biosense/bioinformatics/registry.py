@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from .. import contracts as K
 from .toolkit.bulk import basic_de
+from .toolkit.bulk import gene_set_score
 from .toolkit.chromatin import peak_overlap
 from .toolkit.cytometry import population_stats
 
@@ -90,6 +91,22 @@ register(ToolSpec(
     notes='A screening comparison, not DESeq2/edgeR. Raw counts are refused: they need dispersion '
           'modelling, which belongs in the external-tool adapter.'))
 
+
+register(ToolSpec(
+    name=gene_set_score.NAME, label='Gene-set score between two conditions',
+    version=gene_set_score.VERSION,
+    modalities=gene_set_score.MODALITIES,
+    analysis_types=gene_set_score.ANALYSIS_TYPES,
+    required_inputs=('a long-format table with a feature column, a sample column and a '
+                     'normalised expression column',),
+    required_metadata=gene_set_score.REQUIRED_METADATA,
+    parameters={'readouts': 'the gene set, by symbol (2 to 200 genes); named by the planner',
+                'value_column': 'auto-detected from a known set, or named in the plan'},
+    outputs=('the set score difference with CI, p', 'each member gene with BH-q across the set',
+             'which genes were missing'),
+    runner=gene_set_score.run,
+    notes='For a question about a module (identity genes, a pathway the evidence names), which a '
+          'genome-wide top-genes list does not answer. Not a background-controlled enrichment.'))
 
 register(ToolSpec(
     name=peak_overlap.NAME, label='Chromatin peak overlap and peak-to-gene association',

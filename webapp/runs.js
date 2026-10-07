@@ -131,7 +131,7 @@ function openRun(runId) {
       $('#detailTitle').textContent = snap.objective || 'Run';
       $('#detailHint').textContent = `${snap.project_id || ''} · ${snap.run_id}`;
       RV.header(head, snap, { onStop: stop, onExtend: extend,
-                              onPause: pause, onContinue: cont });
+                              onPause: pause, onContinue: cont, onFollowUp: followUp });
       RV.stages(stages, snap);
       RV.agents(agents, snap);
       RV.timeline(tl, snap);
@@ -158,6 +158,13 @@ async function stop(runId) {
 async function pause(runId) {
   try { await BS.json(`/api/discovery/${runId}/pause`, { method: 'POST' }); }
   catch (e) { alert(e.message || 'that run cannot pause'); }
+}
+
+/* The next round, from this run's files and the results a person brings back. */
+async function followUp(runId, body) {
+  const d = await BS.json(`/api/discovery/${runId}/follow-up`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (d && d.run_id) { await load(); openRun(d.run_id); }
 }
 
 /* A paused run resumes in place. An ended one continues as a fresh run seeded

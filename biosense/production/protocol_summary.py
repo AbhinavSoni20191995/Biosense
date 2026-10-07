@@ -115,8 +115,16 @@ def _ledger(hypotheses, adopted_ids, known=None):
         else:
             reason = ('Not adopted: another hypothesis moves the same parameter and carries '
                       'stronger evidence.')
+        par = h.get('parameter') or {}
+        pid = PR.resolve(par.get('parameter_id'), required=False) or par.get('parameter_id')
         rows.append({
             'hypothesis_id': hid, 'statement': h.get('statement') or '',
+            'lever': {'parameter_id': par.get('parameter_id'),
+                      'label': (par.get('proposed_label') or par.get('label')
+                                or (parameter_label(pid) if pid else None)),
+                      'stage': par.get('stage'), 'direction': par.get('direction'),
+                      'candidate_value': par.get('candidate_value'), 'unit': par.get('unit'),
+                      'registered': known is None or (pid or '') in known},
             'status': status, 'adopted': adopted, 'reason': reason,
             'confidence': h.get('confidence'),
             'parameter_id': (h.get('parameter') or {}).get('parameter_id'),
@@ -158,7 +166,8 @@ def _pick(hypotheses):
 def build(*, project, objective, hypotheses, runtime_mode, control=None, simulator=None,
           research_context=None, uncertainty=None, next_experiment=None, limitations=(),
           privacy=None, provenance=None, run_id=None, request_id=None, title=None,
-          evidence_status=None, design_choices=None):
+          evidence_status=None, design_choices=None, round_plan=None, simulation_ran=None,
+          proposed_terms=None):
     """Assemble a ProtocolSummary. Validated before it is returned.
 
     *project* is a loaded `Project`; *hypotheses* are QuantifiedHypothesis
@@ -293,6 +302,9 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
         'readouts': list(project.readouts),
         'simulator': simulator,
         'next_experiment': next_experiment or ((lead or {}).get('next_experiment')),
+        'round_plan': round_plan,
+        'simulation_ran': simulation_ran,
+        'proposed_terms': proposed_terms or None,
         'gaps': gaps,
         'design_choices': choice_rows,
         'blocks_wet_lab': bool(gaps),
@@ -396,7 +408,8 @@ def from_benchmark(result, *, project=None, runtime_mode='synthetic_demo', run_i
 
 def from_bundle(bundle, *, project, objective, runtime_mode, run_id=None, request_id=None,
                 research_context=None, simulator=None, privacy=None, design_choices=None,
-                extra_limitations=()):
+                extra_limitations=(), round_plan=None, simulation_ran=None,
+                proposed_terms=None):
     """A ProtocolSummary from an ingested run directory."""
     hyps = []
     for card in bundle.get('hypotheses') or []:
@@ -418,7 +431,8 @@ def from_bundle(bundle, *, project, objective, runtime_mode, run_id=None, reques
         run_id=run_id, request_id=request_id, privacy=privacy,
         limitations=sorted({x for c in (bundle.get('hypotheses') or [])
                             for x in (c.get('limitations') or [])} | set(extra_limitations or ())),
-        design_choices=design_choices)
+        design_choices=design_choices, round_plan=round_plan, simulation_ran=simulation_ran,
+        proposed_terms=proposed_terms)
 
 
 # ── rendering ───────────────────────────────────────────────────────────
@@ -434,7 +448,13 @@ TAG = {'reported': 'R', 'adapted': 'A', 'design_choice': 'D', 'gap': 'GAP'}
 
 
 def markdown(doc):
-    """The summary as Markdown, for the export action and the terminal."""
+    """The summary as Markdown, for the export action and the terminal.
+
+    Decision first — what the run recommends, what would be compared stage by
+    stage and what the simulator played — then the protocol and the next round,
+    and everything that justifies it in a supplement (`protocol_report`).
+    """
+    from . import protocol_report as PRP
     L = [f'# {doc["title"]}', '',
          f'**{RT.LABELS[doc["runtime_mode"]]}** · **PROPOSED — NOT APPROVED**', '',
          f'> {doc["approval"]["how"]}', '',
@@ -444,67 +464,18 @@ def markdown(doc):
     if doc['blocks_wet_lab']:
         L += ['> **This protocol has gaps and cannot be run.** Each one needs evidence or a '
               'named design choice.', '']
-
-    L += ['## Protocol', '',
-          'Provenance: **R** reported · **A** adapted from cited claims · '
-          '**D** design choice · **GAP** no evidence.', '']
-    for st in doc['stages']:
-        L += [f'### {st["label"]}' + (f' — {st["goal"]}' if st.get('goal') else ''), '',
-              '| Parameter | Current | Recommended | | Provenance | Simulator |',
-              '|---|---|---|---|---|---|']
-        for p in st['parameters']:
-            mark = '**→**' if p['changed'] else ''
-            cov = {'modelled': 'modelled', 'not_modelled': 'NOT MODELLED',
-                   'no_simulator': 'no model', 'de_novo_ai': 'DE NOVO',
-                   'expert_declared': 'EXPERT-DECLARED'}.get(p['simulator_coverage'],
-                                                             p['simulator_coverage'])
-            L.append(f'| {p["label"]} ({p.get("unit") or ""}) | {_fmt(p["control_value"])} '
-                     f'| {_fmt(p["recommended_value"])} | {mark} | {TAG[p["provenance"]]} '
-                     f'| {cov} |')
-        L.append('')
-    L += _timeline_markdown(doc)
-
-    if doc['expected_effects']:
-        L += ['## Expected effect', '']
-        for e in doc['expected_effects']:
-            L.append(f'- {_effect_line(e)}')
-        L.append('')
-    for t in doc.get('trade_offs') or []:
-        L += [f'**Trade-off.** {t.get("summary", "")}', '']
-
-    L += ['## Hypotheses this run formed', '',
-          'Every one, including the ones that did not make it. A discarded hypothesis is part '
-          'of the result.', '',
-          '| Hypothesis | Status | In the protocol | Why |', '|---|---|---|---|']
-    for row in doc['hypothesis_ledger']:
-        L.append(f'| {row["statement"]} | {row["status"]} | '
-                 f'{"yes" if row["adopted"] else "no"} | {row["reason"]} |')
-    L.append('')
-
+    L += PRP.glance(doc)
+    L += PRP.hypotheses_glance(doc)
+    L += PRP.comparison(doc, _is_factor)
+    L += PRP.protocol(doc, _timeline_markdown(doc), _effect_line)
+    L += PRP.next_round(doc)
     if doc.get('gaps'):
         L += ['## Gaps — these block the wet lab', '']
         L += [f'- `{g["parameter_id"]}`: {g["why"]}' for g in doc['gaps']] + ['']
-    nx = doc.get('next_experiment') or {}
-    if nx.get('summary'):
-        L += ['## Recommended next experiment', '', nx['summary'], '']
-    if doc.get('design_choices'):
-        L += ['## Reasoned starting values', '',
-              'Not measurements and not citations: numbers proposed from adjacent practice so '
-              'the process can be run at all. A person approves each one.', '',
-              '| Parameter | Value | Confidence | Derived from | What would settle it |',
-              '|---|---|---|---|---|']
-        for c in doc['design_choices']:
-            L.append(f'| {c["label"] or c["parameter_id"]} | {c["value"]}'
-                     f'{" " + c["unit"] if c.get("unit") else ""} | {c["confidence"]} | '
-                     f'{"; ".join(c["derived_from"])} | {c.get("would_settle_it") or "—"} |')
-        L.append('')
-    groups = doc.get('limitation_groups')
-    if groups:
-        L += ['## Limitations', '']
-        for g in groups:
-            L += [f'### {g["label"]}', ''] + [f'- {x}' for x in g['items']] + ['']
-    elif doc.get('limitations'):
-        L += ['## Limitations', ''] + [f'- {x}' for x in doc['limitations']] + ['']
+    L += ['---', '', '# Supplementary', '',
+          'Everything behind the recommendation: every hypothesis in full, including the ones '
+          'not adopted and why, the reasoned starting values, and the limitations.', '']
+    L += PRP.supplement(doc)
     return '\n'.join(L)
 
 
@@ -531,7 +502,7 @@ def _timeline_markdown(doc):
                            f'{" " + p["unit"] if p.get("unit") else ""} '
                            f'[{TAG[p["provenance"]]}, {_confidence_of(p, ledger)}]'
                            for p in rows) or '—'
-    L = ['## Production timeline', '',
+    L = ['### Production timeline', '',
          f'Stage lengths are the project defaults; the whole process runs '
          f'{_fmt(tl["total_days"])} days. Each value shows [provenance, confidence]; '
          f'"in use" is the value the process already runs at.', '',
