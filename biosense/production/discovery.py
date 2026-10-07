@@ -93,7 +93,7 @@ MAX_STAGE_SHARDS = 4
 def build(*, project_id, objective, runtime_mode, research_context=None, dataset_ids=(),
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
-          projects_dir=None, effort=None, literature_mode=None):
+          projects_dir=None, effort=None, literature_mode=None, purpose=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -123,6 +123,9 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
     effort = (effort or DEFAULT_EFFORT).strip().lower()
     if effort not in EFFORT:
         raise K.ContractError(f'effort must be one of {sorted(EFFORT)}; got {effort!r}')
+    purpose = (purpose or 'discovery').strip().lower()
+    if purpose not in ('discovery', 'process_reference'):
+        raise K.ContractError(f'purpose must be discovery or process_reference; got {purpose!r}')
     literature_mode = (literature_mode or DEFAULT_LITERATURE_MODE).strip().lower()
     if literature_mode not in LITERATURE_MODES:
         raise K.ContractError(f'literature_mode must be one of {LITERATURE_MODES}; '
@@ -149,6 +152,7 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'runtime_mode': mode,
         'effort': effort,
         'literature_mode': literature_mode,
+        'purpose': purpose,
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
         'notes': _clean(notes, field='notes', limit=2000),
     }
@@ -381,6 +385,32 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None,
     project = PJ.load(req['project_id'], projects_dir)
     budget = EFFORT[req.get('effort') or DEFAULT_EFFORT]
     lit_dispatch, lit_after = _literature_plan(req, project, loop_dir, budget)
+    purpose_section = ''
+    if req.get('purpose') == 'process_reference':
+        purpose_section = f"""## This run builds the process reference
+
+The person asked for **established suspension-culture setpoints**, not a
+hypothesis about one process. Physical setpoints of stirred or suspension
+culture of human iPSC and their derivatives — seeding density, agitation (with
+its vessel), dissolved oxygen, feed exchange fraction and interval, and
+temperature where a source deviates from 37 degC — are largely shared whatever
+the target cell is.
+
+1. Send `literature` a `PROCESS REFERENCE:` task (title `literature-reference`):
+   find primary sources that state these setpoints for hiPSC or hiPSC-derived
+   cells in suspension, stirred or bioreactor culture; read the full texts; and
+   for every value write an entry quoting the sentence that states it.
+2. Write the entries to `{loop_dir}/process_reference.draft.json` in the shape
+   `{python} -m biosense.evidence.process_reference template` prints. One entry
+   per source and setting — never an average of several. Agitation names its
+   vessel and volume; a value with no vessel is still worth an entry, at low
+   confidence. Unit conversions are stated in `notes`.
+3. A hypothesis is not required in this run. Report what was found, what was
+   searched and not found, and where sources disagree. An admin reviews the
+   draft on the run page and promotes it; nothing is used before that except
+   as an unreviewed, low-confidence starting value.
+
+"""
     # A specialist's shell can start in a per-session scratch directory, where
     # every relative path in this brief is missing: one run lost its
     # bioinformatics agent to ".venv/bin/python: No such file or directory".
@@ -432,7 +462,7 @@ with this path, at the top of every task you send a specialist.
 A person started this from the BioSense web application. They are not watching a
 terminal, so everything they need has to end up in the files named below.
 
-## Nobody will answer in this session
+{purpose_section}## Nobody will answer in this session
 
 This is a **one-shot discovery run**, not the interactive production loop. There
 is no conversation: nothing you ask here reaches a person, and a turn that ends
@@ -608,6 +638,14 @@ invent one for them, and do not drop them.
    and say in the hypothesis which ratios you assumed and why. The person sees
    wild type and the edited line as growth curves side by side; they show your
    assumption played through the reactor, never a prediction of the gene.
+
+   **When the lead lever is a factor the project has no parameter for** (a new
+   cytokine, small molecule or supplement), write the hypothesis anyway — it is
+   shown as a candidate the person can register into their project — and play
+   its assumed effect through the reactor in the stage it is given:
+   `--factor "<FACTOR>:stage=<stage>,growth=<ratio>,diff=<ratio>"` in place of
+   `--genotype`. The same rules hold: the ratios are your labelled best guess
+   from the evidence direction, said in the hypothesis, never a prediction.
 6. **Give every setpoint the process needs a number, or say why it must not have
    one.** A protocol with a blank cannot be run, and the literature will not
    report the value for this exact vessel, density and line. Each parameter the
@@ -624,6 +662,14 @@ invent one for them, and do not drop them.
          --draft {loop_dir}/choices.draft.json --out {loop_dir}/design_choices.json`
      builds it. They appear as **D** in the protocol, never as reported values,
      and a person approves them.
+     Before proposing a physical setpoint, read the process reference:
+     `{python} -m biosense.evidence.process_reference show`. An entry there
+     is the starting value to cite (`derived_from: ["process_reference:<id>"]`);
+     a setpoint you leave out is filled from it automatically and labelled.
+     When the literature states a physical setpoint with its source, also add it
+     to `{loop_dir}/process_reference.draft.json` (shape from
+     `{python} -m biosense.evidence.process_reference template`), so an admin can
+     promote it for every later run.
    - a **gap**, reserved for a value that genuinely must not be guessed — one
      where a wrong number is unsafe or would invalidate the experiment. Say which.
 

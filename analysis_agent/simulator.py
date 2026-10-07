@@ -77,6 +77,9 @@ class LineState:
         "bmp4": 25.0, "vegf": 50.0, "mcsf": 50.0, "il3": 25.0})
     genotype_mu_ratio: float = 1.0      # growth effect of the engineered edit
     genotype_diff_ratio: float = 1.0    # differentiation effect of the edit
+    # Stages the assumed effect acts in; None = the whole process (an edit).
+    # An added factor acts only in the stage it is given in.
+    genotype_stages: Optional[tuple] = None
 
     # --- culture-adaptation variant (modelled on 20q11.21 gain / BCL2L1) ---
     variant_fraction: float = 0.0    # fraction of cells carrying the gain
@@ -317,7 +320,9 @@ class Bioreactor:
                 nec = necrotic_fraction(d_um, do)
 
                 # ---- L3: growth -------------------------------------------
-                mu_max = self._mix(L.mu_max, L.variant_mu_ratio) * L.genotype_mu_ratio
+                in_window = L.genotype_stages is None or stage in L.genotype_stages
+                mu_max = (self._mix(L.mu_max, L.variant_mu_ratio)
+                          * (L.genotype_mu_ratio if in_window else 1.0))
                 rocki = 1.0 if day * 24 < sp.rocki_hours else 0.85 if day < 0.5 else 1.0
                 mu = (mu_max
                       * (glc / (KS_GLC + glc))
@@ -373,7 +378,8 @@ class Bioreactor:
                        * cyto * viab)
                 # the variant's signature: differentiation is impaired,
                 # growth and survival are NOT
-                eff *= self._mix(1.0, L.variant_diff_ratio) * L.genotype_diff_ratio
+                eff *= (self._mix(1.0, L.variant_diff_ratio)
+                        * (L.genotype_diff_ratio if in_window else 1.0))
                 eff_acc += eff
                 eff_n += 1
 

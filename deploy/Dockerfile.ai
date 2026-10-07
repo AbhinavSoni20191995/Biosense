@@ -70,6 +70,7 @@ COPY biosense/ ./biosense/
 COPY standins/ ./standins/
 COPY schemas/ ./schemas/
 COPY qc_profiles/ ./qc_profiles/
+COPY process_reference/ ./process_reference/
 COPY bioinfo_knowledge/ ./bioinfo_knowledge/
 COPY analysis_agent/ ./analysis_agent/
 COPY examples/ ./examples/

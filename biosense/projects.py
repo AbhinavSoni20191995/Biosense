@@ -113,6 +113,8 @@ class Project:
         self.simulator = doc['simulator']
         self._params = {}
         stage_ids = {s['stage_id'] for s in doc['stages']} | {'all'}
+        for d in doc.get('local_parameters') or []:
+            PR.define_local(d)
         for p in doc['parameters']:
             pid = PR.resolve(p['parameter_id'])
             if pid != p['parameter_id']:

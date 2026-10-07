@@ -44,7 +44,7 @@
 .proj{border:1px solid var(--line);border-radius:var(--r-s);padding:14px 16px;margin-top:12px}
 .proj h3{margin:0 0 2px;font-size:14px}
 
-/* TECHNICAL view only: ids, mappings, bound origins */
+/* ids, mappings, bound origins: kept in the markup, not shown */
 body[data-view="simple"] .tech{display:none}
 .tech{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
 .dim{color:var(--ink-3)}
@@ -69,7 +69,6 @@ body[data-view="simple"] .tech{display:none}
   </nav>
   <span id="runbeacon" hidden></span>
   <div class="spacer"></div>
-  <button class="btn" id="viewBtn" aria-pressed="false">Technical view</button>
   <button class="btn" id="theme" title="Switch light / dark">Theme</button>
 </header>
 
@@ -153,16 +152,6 @@ const el = (t, c, x) => { const n = document.createElement(t); if (c) n.classNam
   if (x != null) n.textContent = x; return n; };
 const tag = (text, cls) => el('span', 'tag' + (cls ? ' ' + cls : ''), text);
 const num = n => (n == null ? '—' : (+n).toLocaleString());
-
-/* SIMPLE hides ids, simulator mappings and bound origins. It is a different
-   amount of detail about the same facts, never a different set of facts. */
-const view = $('#viewBtn');
-view.addEventListener('click', () => {
-  const tech = document.body.dataset.view !== 'technical';
-  document.body.dataset.view = tech ? 'technical' : 'simple';
-  view.textContent = tech ? 'Simple view' : 'Technical view';
-  view.setAttribute('aria-pressed', String(tech));
-});
 
 async function get(p) { const r = await fetch(p); if (!r.ok) throw new Error(p); return r.json(); }
 

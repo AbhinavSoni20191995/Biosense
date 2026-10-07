@@ -45,7 +45,10 @@ Endpoints
     POST /api/discovery/<id>/cancel   stop a run in flight, and its Omnigent session
     POST /api/discovery/<id>/extend   more time for a live run, within the deployment's bounds
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
+    POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
+    POST /api/projects/<id>/parameters   register a lever a hypothesis named into your own copy
+                                  of the project; with run_id, rebuild that run's protocol
     GET  /api/datasets            registered PUBLIC datasets only; private ones are
                                   never listed here and never served
     GET  /api/analysis-tools      the tool registry: what can run, over what, and
@@ -223,6 +226,7 @@ class Run:
         self.bioinformatics = None
         self.genotype_sim = None
         self.literature_stages = []
+        self.reference_draft = None
         self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -333,6 +337,7 @@ class DiscoveryRun:
         self.bioinformatics = None
         self.genotype_sim = None
         self.literature_stages = []
+        self.reference_draft = None
         self._live_mtimes = {}
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -377,6 +382,7 @@ class DiscoveryRun:
         self._read_analyses()
         self._read_genotype_sim()
         self._read_stage_shards()
+        self._read_reference_draft()
         papers = ('literature/merged/discover.json'
                   if (self.out_dir / 'literature' / 'merged' / 'discover.json').is_file()
                   else 'literature/discover.json')
@@ -456,6 +462,39 @@ class DiscoveryRun:
         bio.update(plans=plans, results=results)
         self.bioinformatics = bio if (plans or results or bio.get('notes')) else None
 
+    def _read_reference_draft(self):
+        """Process-reference entries this run collected, for an admin to review."""
+        from ..evidence import process_reference as PREF
+        f = self.out_dir / PREF.DRAFT_NAME
+        try:
+            mtime = f.stat().st_mtime
+        except OSError:
+            return
+        if self._live_mtimes.get('reference_draft') == mtime:
+            return
+        self._live_mtimes['reference_draft'] = mtime
+        try:
+            doc = K.read_json(f)
+        except (OSError, ValueError) as e:
+            self.reference_draft = {'entries': [], 'errors': [f'unreadable: {type(e).__name__}']}
+            return
+        rows, errors = [], []
+        for e in (doc or {}).get('entries') or []:
+            if not isinstance(e, dict):
+                continue
+            rows.append({'entry_id': e.get('entry_id'), 'parameter_id': e.get('parameter_id'),
+                         'typical': e.get('typical'), 'range': e.get('range'),
+                         'unit': e.get('unit'), 'basis': e.get('basis'),
+                         'confidence': e.get('confidence'),
+                         'vessel': (e.get('context') or {}).get('vessel'),
+                         'sources': [{'ref': x.get('ref'), 'quote': (x.get('quote') or '')[:400]}
+                                     for x in (e.get('sources') or []) if isinstance(x, dict)][:4]})
+            try:
+                PREF.check_entry(dict(e, status='reviewed'))
+            except (K.ContractError, KeyError, TypeError) as err:
+                errors.append(str(err)[:200])
+        self.reference_draft = {'entries': rows, 'errors': errors[:10]}
+
     def _read_stage_shards(self):
         """A by-stage search: each stage agent's notes and paper count, live."""
         lit = self.out_dir / 'literature'
@@ -527,7 +566,7 @@ class DiscoveryRun:
             if isinstance(g, dict) and isinstance(g.get('curves'), dict):
                 self.genotype_sim = {k: g.get(k) for k in (
                     'genotype', 'curves', 'deltas', 'verdict', 'note', 'assumption',
-                    'stand_in', 'stand_in_note', 'used', 'not_represented')}
+                    'stand_in', 'stand_in_note', 'used', 'not_represented', 'control_label')}
                 return
 
     def _read_papers(self, path, mtime):
@@ -744,6 +783,7 @@ class DiscoveryRun:
                 'bioinformatics': self.bioinformatics,
                 'genotype_simulation': self.genotype_sim,
                 'literature_stages': list(self.literature_stages),
+                'reference_draft': self.reference_draft,
                 'stage_counts': ST.stage_counts(self.stages_reached,
                                                 terminal=self._terminal()),
                 'deadline_in_s': (round(self.deadline - time.time(), 1)
@@ -1014,6 +1054,52 @@ class DiscoveryRegistry:
             if rid in self.order:
                 self.order.remove(rid)
         return 'deleted'
+
+    def rebuild_protocol(self, rid, *, owner=None, projects_dir=None):
+        """Assemble a finished run's result again, against the project as it is now.
+
+        For a lever registered after the run: the hypothesis that named it can
+        now be adopted. Nothing the agents wrote is changed; only the protocol
+        and bundle are read again. Returns 'rebuilt', 'live', None (no such run
+        of this owner's) or the reason it failed.
+        """
+        if not DISCOVERY_ID.match(rid or ''):
+            return None
+        with self.lock:
+            run = self.runs.get(rid)
+        if run is not None:
+            if run.finished_at is None:
+                return 'live'
+            if run.owner is not None and run.owner != owner:
+                return None
+            out_dir, request, mode = run.out_dir, run.request, run.runtime_mode
+            state = None
+        else:
+            d = RS.find(self.runs_dir, rid)
+            if d is None:
+                return None
+            state = RS._read_state(RS.state_path(d)) or {}
+            if state.get('owner') is not None and state.get('owner') != owner:
+                return None
+            if state.get('status') in RS.LIVE_STATUSES and not state.get('salvaged'):
+                return 'live'
+            out_dir, mode = d, state.get('runtime_mode')
+            try:
+                request = K.read_json(Path(d) / 'discovery_request.json')
+            except (OSError, ValueError):
+                return 'the run directory holds no request to rebuild from'
+        try:
+            final = DRUN.finish(request, out_dir, runtime_mode=mode, projects_dir=projects_dir,
+                                session=None)
+        except Exception as e:  # noqa: BLE001 - a failed rebuild keeps the old result
+            return f'not rebuilt: {type(e).__name__}: {str(e)[:200]}'
+        if run is not None:
+            with run.cv:
+                run.result = final
+            run.persist()
+        else:
+            RS.write_state(out_dir, dict(state, result=final))
+        return 'rebuilt'
 
     def restore(self, rid, *, after=-1, owner=None):
         """A run this process no longer holds, read back from its own directory.
@@ -1326,12 +1412,18 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/extend', path)
             if m:
                 return self._extend_discovery(m.group(1))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/promote-reference', path)
+            if m:
+                return self._promote_reference(m.group(1), self._body())
             m = re.fullmatch(r'/api/discovery/([^/]+)/delete', path)
             if m:
                 return self._delete_discovery(m.group(1))
             m = re.fullmatch(r'/api/projects/([^/]+)/delete', path)
             if m:
                 return self._delete_project(m.group(1), self._body())
+            m = re.fullmatch(r'/api/projects/([^/]+)/parameters', path)
+            if m:
+                return self._add_parameter(m.group(1), self._body())
             if path == '/api/benchmarks/run':
                 return self._run_benchmark(self._body(MAX_BODY_DISCOVERY))
             if path == '/api/projects':
@@ -1610,7 +1702,7 @@ class Handler(BaseHTTPRequestHandler):
             uncertainty=body.get('uncertainty'), control=body.get('control'),
             candidate_values=body.get('candidate_values'),
             title=body.get('title'), notes=body.get('notes'), effort=body.get('effort'),
-            literature_mode=body.get('literature_mode'),
+            literature_mode=body.get('literature_mode'), purpose=body.get('purpose'),
             requested_by=identity.owner if identity.authenticated else None,
             projects_dir=self._projects_dir(identity))
 
@@ -1643,6 +1735,29 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001 - not an operator is an answer, not a fault
             return False
 
+    def _promote_reference(self, rid, body):
+        """An admin promotes a run's process-reference draft, as its named reviewer."""
+        identity = self._require_operator('promoting process-reference entries')
+        from ..evidence import process_reference as PREF
+        if not DISCOVERY_ID.match(rid or ''):
+            return self._send(404, {'error': 'no such run'})
+        run = self.discovery.get(rid, owner=identity.owner)
+        d = run.out_dir if run is not None else RS.find(self.discovery.runs_dir, rid)
+        if d is None:
+            return self._send(404, {'error': 'no such run'})
+        draft = Path(d) / PREF.DRAFT_NAME
+        if not draft.is_file():
+            return self._send(404, {'error': 'this run wrote no process-reference draft'})
+        try:
+            ids = PREF.promote(K.read_json(draft), reviewed_by=str(body.get('reviewed_by') or ''),
+                               from_run=rid)
+        except (K.ContractError, OSError, ValueError, KeyError, TypeError) as e:
+            return self._send(400, {'error': f'not promoted: {e}'})
+        return self._send(200, {'promoted': ids,
+                                'note': 'Added to this server\'s process reference under your '
+                                        'name. Every later run uses these as starting values, '
+                                        'labelled with their source.'})
+
     def _delete_discovery(self, rid):
         """Move a finished run of the caller's to the trash."""
         identity = self._identity()
@@ -1655,6 +1770,37 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {'run_id': rid, 'deleted': True,
                                 'note': 'Moved to the server\'s trash: no longer listed or '
                                         'served, and recoverable by whoever runs the server.'})
+
+    def _add_parameter(self, project_id, body):
+        """Register a lever a hypothesis named into the caller's own project.
+
+        With a run id, that run's protocol is rebuilt against the project as it
+        now is, so the hypothesis that named the lever can be adopted.
+        """
+        identity = self._identity()
+        pid = PB.check_project_id(project_id)
+        who = (getattr(identity, 'display', None) or identity.owner or 'local user')
+        rid = (body.get('run_id') or '').strip() or None
+        doc, param, how = PB.add_parameter(identity, pid, body, registered_by=str(who)[:80],
+                                           from_run=rid)
+        out = {'project_id': pid, 'parameter_id': param, 'how': how,
+               'version': doc['version'],
+               'note': (f'{param} is now a parameter of your project {pid} '
+                        + ('(a canonical parameter it did not have)' if how == 'canonical'
+                           else '(defined for this project; the canonical registry does not '
+                                'have it)')
+                        + '. The reactor has no term for it, so any simulated effect is an '
+                          'assumption you set.')}
+        if rid:
+            rebuilt = self.discovery.rebuild_protocol(
+                rid, owner=identity.owner, projects_dir=str(WS.projects_dir(identity)))
+            out['protocol_rebuilt'] = rebuilt == 'rebuilt'
+            if rebuilt != 'rebuilt':
+                out['rebuild_note'] = {'live': 'the run is still going; its protocol is built '
+                                               'when it finishes',
+                                       None: 'no such finished run of yours'}.get(
+                                           rebuilt, str(rebuilt))
+        return self._send(200, out)
 
     def _delete_project(self, project_id, body):
         """Move a workspace's own project — and, if asked, its runs — to the trash."""

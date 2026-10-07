@@ -180,3 +180,56 @@ class DesignChoiceTests(unittest.TestCase):
         self.assertIn('design choice', brief)
         self.assertIn('evidence.cli design-choices', brief)
         self.assertIn('not caution', brief)
+
+
+class FixTests(unittest.TestCase):
+    """Two failures from one real run, kept from coming back."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_design_choices_in_a_run_directory_reach_the_protocol(self):
+        """Every proposed starting value had silently become a GAP: the runner
+        looked the file up in an index the display bundle does not have."""
+        from biosense.production import discovery as DISC
+        from biosense.production import discovery_runner as DR
+        from unittest import mock
+        req = DISC.build(project_id='ipsc_macrophage',
+                         objective='Increase viable macrophage production while keeping identity.',
+                         runtime_mode='synthetic_demo')
+        draft = dict(EVCLI.TEMPLATE, effects=EVCLI.TEMPLATE['effects'][:1])
+        K.write_json_atomic(self.tmp / 'quantified_hypothesis.json',
+                            EVCLI.build_hypothesis(draft, project_id='ipsc_macrophage'))
+        K.write_json_atomic(self.tmp / 'discovery_request.json', req)
+        # Hand-written, in the shape an agent writes: not the full contract.
+        (self.tmp / 'design_choices.json').write_text(json.dumps({'choices': [
+            {'parameter_id': 'agitation_rpm', 'value': 55, 'confidence': 'moderate',
+             'rationale': 'iPSC aggregate spinner practice', 'derived_from': ['PMID:0']}]}))
+        real = PS._current_value
+        with mock.patch.object(PS, '_current_value',
+                               lambda pr, p, q, c: None if p == 'agitation_rpm' else real(pr, p, q, c)):
+            final = DR.finish(req, self.tmp, runtime_mode='synthetic_demo')
+        row = next(p for s in final['protocol']['stages'] for p in s['parameters']
+                   if p['parameter_id'] == 'agitation_rpm')
+        self.assertEqual(('design_choice', 55.0), (row['provenance'], row['recommended_value']))
+        self.assertNotIn('agitation_rpm', [g['parameter_id'] for g in final['protocol']['gaps']])
+
+    def test_a_design_choices_file_that_cannot_be_used_says_why(self):
+        from biosense.production import discovery_runner as DR
+        (self.tmp / 'design_choices.json').write_text(json.dumps({'choices': [
+            {'parameter_id': 'agitation_rpm', 'value': 55, 'confidence': 'certain',
+             'rationale': 'x', 'derived_from': ['y']}]}))
+        choices, why = DR.read_design_choices(self.tmp, PJ.load('ipsc_macrophage'))
+        self.assertEqual({}, choices)
+        self.assertIn('design_choices.json was not used', why[0])
+        self.assertIn('confidence', why[0])
+
+    def test_direction_only_is_a_shape_and_is_accepted_as_one(self):
+        eff = {'metric': 'identity_purity', 'unit': '%', 'direction': 'increase',
+               'estimate_type': 'direction_only', 'reason': 'no magnitude in any source'}
+        e = EVCLI._effect(eff, self.tmp)
+        self.assertEqual(('derived', False), (e['estimate_type'], e['magnitude_estimated']))
+        self.assertEqual('judgement', EVCLI._effect(dict(eff, estimate_type='best guess'), self.tmp)['estimate_type'])
+        with self.assertRaisesRegex(K.ContractError, 'leave it out'):
+            EVCLI._effect(dict(eff, estimate_type='vibes'), self.tmp)

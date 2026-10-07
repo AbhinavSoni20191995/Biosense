@@ -221,6 +221,38 @@ def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
     return {'omnigent': summary, 'out_dir': str(out)}
 
 
+def read_design_choices(out_dir, project):
+    """{parameter_id: choice} from the run directory, and why any file was not used.
+
+    Read from the files themselves. The display bundle this module ingests has
+    no per-kind index, and an earlier version looked the choices up there and
+    found none on every run — so every proposed starting value silently became
+    a GAP. A file that fails its contract is rebuilt through the checked
+    builder (which takes the shapes agents write); one that still fails is
+    named with its reason, never dropped without a word.
+    """
+    from ..evidence import design as DC
+    choices, why_not = {}, []
+    for f in sorted(Path(out_dir).glob('design_choices*.json')):
+        if f.name.endswith('.draft.json'):
+            continue
+        try:
+            doc = K.read_json(f)
+        except (OSError, ValueError) as e:
+            why_not.append(f'{f.name} could not be read ({type(e).__name__}); its starting '
+                           f'values were not used.')
+            continue
+        if K.schema_errors('design_choices', doc):
+            try:
+                doc = DC.build({'choices': (doc or {}).get('choices')}, project=project)
+            except K.ContractError as e:
+                why_not.append(f'{f.name} was not used: {str(e)[:300]}')
+                continue
+        for pid, c in DC.by_parameter(doc).items():
+            choices.setdefault(pid, c)
+    return choices, why_not
+
+
 def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
            session=None):
     """Read what the run produced and assemble the payload the interface renders.
@@ -244,15 +276,13 @@ def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
     elif bundle['hypotheses']:
         # Reasoned starting values, when the run proposed any: a setpoint with a
         # stated basis is a design choice a person approves, not a gap.
-        from ..evidence import design as DC
-        entries = (bundle.get('by_kind') or {}).get('design_choices') or []
-        choices = DC.by_parameter(entries[0]['doc']) if entries else {}
+        choices, why_not = read_design_choices(out_dir, project)
         protocol = PS.from_bundle(
             bundle, project=project, objective=request['objective'],
             runtime_mode=runtime_mode, run_id=Path(out_dir).name,
             request_id=request['request_id'],
             research_context=request.get('research_context'), privacy=priv,
-            design_choices=choices)
+            design_choices=choices, extra_limitations=why_not)
     if protocol is not None:
         K.write_json_atomic(Path(out_dir) / 'protocol_summary.json', protocol)
         (Path(out_dir) / 'protocol_summary.md').write_text(

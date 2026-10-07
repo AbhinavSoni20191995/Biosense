@@ -205,6 +205,13 @@
         "by_stage"
       ],
       "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards \u2014 faster on the literature phase, more of the model allowance, and the orchestrator must reconcile the stages."
+    },
+    "purpose": {
+      "enum": [
+        "discovery",
+        "process_reference"
+      ],
+      "description": "discovery: a question about the process (the default). process_reference: collect cited, cell-type-independent suspension-culture setpoints into a draft an admin reviews and promotes into the server's process reference."
     }
   }
 }

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/process-reference-v2.0",
+  "title": "ProcessReference 2.0: established suspension-culture setpoints, whatever the target cell",
+  "description": "Physical setpoints of stirred or suspension culture of human iPSC and their derivatives (temperature, dissolved oxygen, seeding density, feed exchange, agitation) are largely shared across target cell types, and a protocol should not leave them blank because no paper about this exact cell states them. Each entry is either `cited` -- with at least one source and the quoted passage it rests on -- or `convention`, a value so standard in mammalian culture that a citation would add nothing (37 degC). An entry fills a protocol gap only as a design_choice a person approves, never as a reported value. Agitation in rpm is vessel-specific: an entry that names no vessel applies anywhere only at low confidence.",
+  "type": "object",
+  "required": ["schema_version", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string"},
+    "updated_at": {"type": ["string", "null"]},
+    "note": {"type": ["string", "null"]},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entry_id", "parameter_id", "unit", "basis", "confidence", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "entry_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,63}$"},
+          "parameter_id": {"type": "string"},
+          "unit": {"type": "string"},
+          "typical": {"type": ["number", "null"],
+            "description": "The value a source uses, or the convention. Never an average of different sources."},
+          "range": {"type": ["object", "null"], "required": ["lower", "upper"], "additionalProperties": false,
+            "properties": {"lower": {"type": "number"}, "upper": {"type": "number"}}},
+          "context": {"type": ["object", "null"], "additionalProperties": false,
+            "properties": {
+              "cells": {"type": ["string", "null"]},
+              "format": {"type": ["string", "null"]},
+              "vessel": {"type": ["string", "null"], "description": "e.g. 'spinner flask 125 mL'; required for an agitation entry to apply above low confidence"},
+              "stage": {"type": ["string", "null"]}}},
+          "basis": {"enum": ["cited", "convention"]},
+          "sources": {"type": "array", "items": {"type": "object", "required": ["ref", "quote"],
+            "additionalProperties": false,
+            "properties": {"ref": {"type": "string"}, "quote": {"type": "string", "minLength": 3},
+                           "locator": {"type": ["string", "null"]}}}},
+          "confidence": {"enum": ["low", "moderate", "high"]},
+          "status": {"enum": ["unreviewed", "reviewed"]},
+          "reviewed_by": {"type": ["string", "null"]},
+          "reviewed_at": {"type": ["string", "null"]},
+          "from_run": {"type": ["string", "null"]},
+          "notes": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

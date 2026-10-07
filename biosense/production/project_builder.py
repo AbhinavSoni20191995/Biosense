@@ -515,3 +515,101 @@ def quick_build(*, project_id, name, species=None, starting_cell=None, target_ce
                               'shared bioreactor parameters are defaults, not a description of '
                               'a validated process. Nothing about this project\'s biology was '
                               'inferred.'])
+
+
+# ── a candidate lever, registered into a person's own project ───────────
+def _slug_id(label, unit):
+    base = re.sub(r'[^a-z0-9]+', '', (label or '').lower())
+    tail = re.sub(r'[^a-z0-9]+', '_', (unit or '').lower()).strip('_')
+    pid = f'{base}_{tail}' if tail else base
+    if pid and not pid[0].isalpha():
+        pid = 'p' + pid
+    return pid[:48]
+
+
+def add_parameter(identity, project_id, spec, *, registered_by=None, from_run=None):
+    """Add a lever a hypothesis named to this workspace's copy of a project.
+
+    A template is copied into the workspace under the same id first (which is
+    what `load_for` then opens), so the shipped template is never edited. A
+    name that is already a canonical parameter is added as that parameter; a
+    new one is defined for this project only, with no global bounds, and says
+    who registered it and from which run. Nothing sets a value: the range a
+    person gives bounds what a hypothesis may propose, and the protocol takes
+    the value from the hypothesis or leaves a gap.
+
+    Returns (doc, parameter_id, how) where how is 'canonical' or 'local'.
+    """
+    project = load_for(identity, project_id)
+    doc = dict(project.doc)
+    doc['parameters'] = [dict(p) for p in doc['parameters']]
+    doc['local_parameters'] = [dict(p) for p in doc.get('local_parameters') or []]
+    label = str(spec.get('label') or '').strip()
+    unit = str(spec.get('unit') or '').strip()
+    raw_id = str(spec.get('parameter_id') or '').strip()
+    if not label:
+        raise K.ContractError('name the lever (a label such as "IL-34")')
+    stage = str(spec.get('stage') or 'all').strip()
+    stage_ids = {s['stage_id'] for s in doc['stages']}
+    if stage != 'all' and stage not in stage_ids:
+        raise K.ContractError(f'stage must be one of {", ".join(sorted(stage_ids))} or "all"; '
+                              f'got {stage!r}')
+    try:
+        lo, hi = float(spec.get('minimum')), float(spec.get('maximum'))
+    except (TypeError, ValueError):
+        raise K.ContractError('give the range a hypothesis may propose within: a minimum and '
+                              'a maximum, as numbers') from None
+    if not lo < hi:
+        raise K.ContractError('the minimum must be below the maximum')
+
+    canonical = None
+    for name in (raw_id, label):
+        found = PR.resolve(name, required=False) if name else None
+        if found and not PR.is_local(found):
+            canonical = found
+            break
+    if canonical:
+        pid, how = canonical, 'canonical'
+        c = PR.BY_ID[pid]
+        if c.global_min is not None and lo < c.global_min or (
+                c.global_max is not None and hi > c.global_max):
+            raise K.ContractError(f'{c.label} is a canonical parameter allowed '
+                                  f'[{c.global_min}, {c.global_max}] {c.unit}; the range must '
+                                  f'sit inside it')
+    else:
+        how = 'local'
+        pid = raw_id if PR.ID_RE.match(raw_id or '') else _slug_id(label, unit)
+        if not PR.ID_RE.match(pid or ''):
+            raise K.ContractError(f'could not make a parameter id from {label!r}; give one '
+                                  f'(lower-case letters, digits, underscores)')
+        if not unit:
+            raise K.ContractError(f'{label} is not a canonical parameter, so it needs a unit')
+        aliases = [a for a in {raw_id} if a and a != pid and a.lower() != label.lower()]
+        if not any(d['parameter_id'] == pid for d in doc['local_parameters']):
+            doc['local_parameters'].append({
+                'parameter_id': pid, 'label': label, 'unit': unit,
+                'meaning': (spec.get('meaning') or '').strip()[:400] or None,
+                'aliases': aliases, 'registered_by': registered_by,
+                'registered_at': K.now_iso(), 'from_run': from_run,
+                'from_hypothesis': spec.get('hypothesis_id')})
+    if any(p['parameter_id'] == pid for p in doc['parameters']):
+        raise K.ContractError(f'{project.project_id} already has {pid}')
+    status = (doc.get('simulator') or {}).get('status')
+    origin = (f'registered by {registered_by or "a person"}'
+              + (f' from run {from_run}' if from_run else '')
+              + (f' (hypothesis {spec["hypothesis_id"]})' if spec.get('hypothesis_id') else ''))
+    doc['parameters'].append({
+        'parameter_id': pid, 'stage': stage,
+        'simulator_coverage': 'no_simulator' if status == 'none' else 'not_modelled',
+        'display_name': label, 'minimum': lo, 'maximum': hi,
+        'bound_origin': {'source': 'design_choice',
+                         'basis': (spec.get('bound_basis') or '').strip()[:300]
+                                  or f'the range given when the lever was {origin}'},
+        'notes': (f'Candidate lever {origin}. The reactor model has no term for it: it is a '
+                  f'design variable, and any simulated effect is an assumption.')})
+    major, minor, patch = (list(map(int, str(doc.get('version') or '0.1.0').split('.')[:3]))
+                           + [0, 0, 0])[:3]
+    doc['version'] = f'{major}.{minor}.{patch + 1}'
+    PJ.Project(doc)                     # validated before anything is written
+    save(identity, doc, overwrite=True)
+    return doc, pid, how

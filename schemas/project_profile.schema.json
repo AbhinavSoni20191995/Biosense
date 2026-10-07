@@ -538,6 +538,71 @@
         "string",
         "null"
       ]
+    },
+    "local_parameters": {
+      "type": "array",
+      "description": "Parameters this project defines for itself because the canonical registry does not have them (a lever a hypothesis named, registered by a person). Each carries no global bounds: only the project's own range applies. Refused if the id or label already names a canonical parameter.",
+      "items": {
+        "type": "object",
+        "required": [
+          "parameter_id",
+          "label",
+          "unit"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "parameter_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,47}$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "meaning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "registered_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registered_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_run": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_hypothesis": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
     }
   }
 }

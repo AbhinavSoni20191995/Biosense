@@ -127,14 +127,32 @@ CHALLENGE_LABEL = {c['id']: c['label'] for c in CHALLENGES}
 GENOTYPE_RANGE = (0.3, 2.0)
 
 
+ASSUMED_KINDS = ('edit', 'factor')
+
+
 def parse_genotype(raw):
-    """{label, growth_ratio, diff_ratio} -> a clamped genotype, or None for wild type."""
+    """{label, growth_ratio, diff_ratio[, kind, stage]} -> a clamped assumption, or None.
+
+    `kind` is `edit` (an engineered line: acts through the whole process) or
+    `factor` (something added to the medium: acts only in the stage named).
+    Either way the effect is the same two ratios a person sets — the reactor has
+    no term for the gene or the factor itself.
+    """
     if raw in (None, {}, ''):
         return None
     if not isinstance(raw, dict):
         raise K.ContractError('genotype is {"label", "growth_ratio", "diff_ratio"}')
-    label = str(raw.get('label') or 'edited line').strip()[:40] or 'edited line'
-    out = {'label': label}
+    kind = str(raw.get('kind') or 'edit').strip().lower()
+    if kind not in ASSUMED_KINDS:
+        raise K.ContractError(f'kind must be one of {ASSUMED_KINDS}; got {kind!r}')
+    default = 'added factor' if kind == 'factor' else 'edited line'
+    label = str(raw.get('label') or default).strip()[:40] or default
+    stage = raw.get('stage')
+    stage = None if stage in (None, '', 'all') else str(stage).strip()
+    if stage is not None and stage not in STAGE_BY_ID:
+        raise K.ContractError(f'the reactor\'s stages are {", ".join(STAGE_BY_ID)} (or "all"); '
+                              f'got {stage!r}')
+    out = {'label': label, 'kind': kind, 'stage': stage}
     for key in ('growth_ratio', 'diff_ratio'):
         try:
             v = float(raw.get(key, 1.0))
@@ -242,6 +260,8 @@ def _reactor(meta):
     if g:
         line.genotype_mu_ratio = g['growth_ratio']
         line.genotype_diff_ratio = g['diff_ratio']
+        if g.get('stage'):
+            line.genotype_stages = (g['stage'],)
     ch = meta['challenge']
     if ch == 'variant':
         introduce_variant(line, 0.02)
@@ -484,8 +504,12 @@ def genotype_compare(payload):
     if not g:
         raise K.ContractError('name the engineered line: {"genotype": {"label", '
                               '"growth_ratio", "diff_ratio"}}')
+    factor = g['kind'] == 'factor'
+    control = 'without it' if factor else 'wild type'
+    window = (f' during {g["stage"]}' if g.get('stage') else
+              (' throughout' if factor else ''))
     base = {k: v for k, v in payload.items() if k != 'genotype'}
-    wt = dict(base, label='wild type')
+    wt = dict(base, label=control)
     ed = dict(base, label=g['label'], genotype=g)
     cmp = compare({'conditions': [wt, ed]})
     a, b = cmp['a'], cmp['b']
@@ -494,23 +518,28 @@ def genotype_compare(payload):
               'edited': {c: [f.get(c) for f in b['frames']] for c in CURVE_CHANNELS}}
     h = cmp['deltas'].get('harvest_per_input_ipsc') or {}
     pk = cmp['deltas'].get('peak_vcd_e6_per_ml') or {}
-    verdict = (f'Under the assumed effect (growth ×{g["growth_ratio"]:g}, differentiation '
-               f'×{g["diff_ratio"]:g}), {g["label"]} '
-               f'{"out-yields" if (h.get("delta") or 0) > 0 else "under-yields"} wild type by '
+    who = f'with {g["label"]}' if factor else g['label']
+    verdict = (f'Under the assumed effect{window} (growth ×{g["growth_ratio"]:g}, '
+               f'differentiation ×{g["diff_ratio"]:g}), the run {who} '
+               f'{"out-yields" if (h.get("delta") or 0) > 0 else "under-yields"} {control} by '
                f'{abs(h.get("delta") or 0):.3f} cells per input iPSC'
-               + (f'; peak density {pk["b"]:.2f} ({g["label"]}) against {pk["a"]:.2f} (wild '
-                  f'type) 1e6/mL' if pk else '')
+               + (f'; peak density {pk["b"]:.2f} ({who}) against {pk["a"]:.2f} ({control}) '
+                  f'1e6/mL' if pk else '')
                + '. One replicate each: the direction of an assumption, not a prediction '
-                 'about the gene.')
+                 + ('about the factor.' if factor else 'about the gene.'))
+    note = ((f'{g["label"]} is modelled as an assumed change in growth rate and '
+             f'differentiation efficiency{window}, nothing else: the reactor has no term for '
+             f'it. The numbers are a sandbox reading from an uncalibrated model, never '
+             f'evidence about the factor.') if factor else
+            'The edit is modelled as an assumed change in growth rate and differentiation '
+            'efficiency, nothing else. The numbers are a sandbox reading from an uncalibrated '
+            'model, never evidence about the gene.')
     return dict(evidence_status='synthetic_demonstration', process='ipsc_to_monocyte',
                 genotype=g, setpoints=a['setpoints'], stage_days=a['stage_days'],
                 seed=a['seed'], curves=curves, deltas=cmp['deltas'],
                 outcome={'wild_type': a['outcome'], 'edited': b['outcome']},
                 signature={'wild_type': a['signature'], 'edited': b['signature']},
-                verdict=verdict,
-                note='The edit is modelled as an assumed change in growth rate and '
-                     'differentiation efficiency, nothing else. The numbers are a sandbox '
-                     'reading from an uncalibrated model, never evidence about the gene.')
+                verdict=verdict, control_label=control, note=note)
 
 
 def seed_brief(result):

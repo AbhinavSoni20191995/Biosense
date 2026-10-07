@@ -97,6 +97,27 @@ TEMPLATE = {
 EFFECT_KEYS = ('metric', 'unit')
 
 
+# What an agent writes for a direction-only effect's type. "direction_only" is
+# the SHAPE of such an effect, not a type, and a run lost its hypothesis to the
+# schema refusing it; the shape is already what this path builds, so the word
+# means "derived" (computed from the evidence), and a guess means judgement.
+_DIRECTION_TYPES = {None: 'derived', '': 'derived', 'direction_only': 'derived',
+                    'direction': 'derived', 'directional': 'derived', 'qualitative': 'derived',
+                    'literature': 'derived', 'reported': 'derived',
+                    'best_guess': 'judgement', 'guess': 'judgement', 'judgment': 'judgement',
+                    'expert_judgement': 'judgement'}
+
+
+def _direction_type(word):
+    w = (word or '').strip().lower().replace(' ', '_').replace('-', '_')
+    if w in E.TYPES:
+        return w
+    if w in _DIRECTION_TYPES:
+        return _DIRECTION_TYPES[w]
+    raise K.ContractError(f'estimate_type {word!r} is not one of {E.TYPES}; for an effect with a '
+                          f'direction and no size, leave it out (it is then "derived")')
+
+
 def _effect(spec, base_dir):
     """One effect from its draft form. Three shapes, each refused if incomplete."""
     if not isinstance(spec, dict):
@@ -159,7 +180,7 @@ def _effect(spec, base_dir):
                           evidence_refs=spec.get('evidence_refs') or (),
                           limitations=spec.get('limitations') or ())
     return E.direction_only(spec['metric'], spec['unit'], spec.get('direction', 'unknown'),
-                            spec.get('estimate_type') or 'derived',
+                            _direction_type(spec.get('estimate_type')),
                             reason=spec.get('reason') or '',
                             label=spec.get('label'),
                             higher_is_better=spec.get('higher_is_better'),
@@ -299,6 +320,11 @@ def simulate(project_id, settings, *, projects_dir=None, seed=7):
                     'simulation is evidence about the model, not about the cells.'}
 
 
+def _factor(text):
+    """'IL-34:stage=myeloid,growth=1.1,diff=1.2' -> an added factor's assumed effect."""
+    return dict(_genotype(text), kind='factor')
+
+
 def _genotype(text):
     """'BACH2_KO:growth=0.8,diff=1.2' -> {label, growth_ratio, diff_ratio}."""
     if ':' not in text:
@@ -311,10 +337,13 @@ def _genotype(text):
         if '=' not in part:
             raise argparse.ArgumentTypeError(f'expected key=value in {text!r}')
         k, v = (x.strip() for x in part.split('=', 1))
+        if k == 'stage':
+            out['stage'] = v
+            continue
         key = {'growth': 'growth_ratio', 'diff': 'diff_ratio',
                'differentiation': 'diff_ratio'}.get(k)
         if not key:
-            raise argparse.ArgumentTypeError(f'unknown genotype effect {k!r}: growth or diff')
+            raise argparse.ArgumentTypeError(f'unknown effect {k!r}: growth, diff or stage')
         try:
             out[key] = float(v)
         except ValueError:
@@ -346,12 +375,15 @@ def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, se
             unused.append(pid)
     stand_in = (project.simulator or {}).get('model_id') != SM.config()['model_id']
     doc = SM.genotype_compare({'setpoints': knobs, 'seed': seed, 'genotype': genotype})
+    g = doc['genotype']
+    what = 'the factor' if g.get('kind') == 'factor' else 'the edit'
     doc.update(project_id=project.project_id, stand_in=stand_in, used=used,
                not_represented=unused,
-               assumption=(f'{doc["genotype"]["label"]} assumed to change growth '
-                           f'×{doc["genotype"]["growth_ratio"]:g} and differentiation '
-                           f'×{doc["genotype"]["diff_ratio"]:g}; the ratios are a labelled guess, '
-                           f'not a measured effect of the edit.'))
+               assumption=(f'{g["label"]} assumed to change growth ×{g["growth_ratio"]:g} and '
+                           f'differentiation ×{g["diff_ratio"]:g}'
+                           + (f' during {g["stage"]}' if g.get('stage') else '')
+                           + f'; the ratios are a labelled guess, not a measured effect of '
+                             f'{what}.'))
     if stand_in:
         doc['stand_in_note'] = (f'{project.name} has no reactor model of its own: its physical '
                                 f'setpoints ran on the iPSC → monocyte reactor as a stand-in. The '
@@ -371,9 +403,13 @@ def _setting(text):
 
 def cmd_simulate(a):
     doc = simulate(a.project, dict(a.set or []), projects_dir=a.projects_dir, seed=a.seed)
-    if a.genotype:
+    if a.genotype and a.factor:
+        raise K.ContractError('give --genotype or --factor, not both: each is one assumed effect '
+                              'against its own control')
+    if a.genotype or a.factor:
         doc['genotype_simulation'] = genotype_simulation(
-            a.project, dict(a.set or []), a.genotype, projects_dir=a.projects_dir, seed=a.seed)
+            a.project, dict(a.set or []), a.genotype or a.factor, projects_dir=a.projects_dir,
+            seed=a.seed)
     out = _write(doc, a.out)
     print(json.dumps({'written': str(out), 'prediction': doc['prediction'],
                       'applied': [r.get('parameter_id') for r in doc['applied']],
@@ -486,6 +522,9 @@ def main(argv=None):
     p.add_argument('--set', action='append', type=_setting, metavar='PARAMETER=VALUE')
     p.add_argument('--genotype', type=_genotype, metavar='LABEL:growth=R,diff=R',
                    help='also run wild type against an edited line with this assumed effect')
+    p.add_argument('--factor', type=_factor, metavar='LABEL:stage=S,growth=R,diff=R',
+                   help='also run without and with an added factor (one the project has no '
+                        'term for) whose assumed effect acts only in stage S')
     p.add_argument('--seed', type=int, default=7)
     p.add_argument('--out', required=True)
     p.set_defaults(fn=cmd_simulate)

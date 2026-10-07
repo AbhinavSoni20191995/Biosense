@@ -29,6 +29,7 @@ from .. import contracts as K
 from .. import parameters as PR
 from .. import projects as PJ
 from ..evidence import limitations as LIM
+from ..evidence import process_reference as PREF
 from . import response_model as RM
 from . import runtime as RT
 
@@ -87,7 +88,7 @@ def _estimate_type_for(hyp):
     return None
 
 
-def _ledger(hypotheses, adopted_ids):
+def _ledger(hypotheses, adopted_ids, known=None):
     rows = []
     for h in hypotheses:
         hid = h.get('hypothesis_id')
@@ -103,6 +104,11 @@ def _ledger(hypotheses, adopted_ids):
                       + (h.get('superseded_reason') or '')).strip()
         elif status == 'rejected':
             reason = ('Not adopted: rejected. ' + (h.get('superseded_reason') or '')).strip()
+        elif known is not None and (PR.resolve((h.get('parameter') or {}).get('parameter_id'),
+                                               required=False) or '') not in known:
+            reason = ('Not adopted: its lever is not a parameter of this project yet. '
+                      'Register it as a candidate parameter (with a unit, bounds and a stage) '
+                      'and the protocol can carry it.')
         elif (h.get('parameter') or {}).get('candidate_value') is None:
             reason = ('Not adopted: it names a direction but no value to set, so there is '
                       'nothing to put in a protocol yet.')
@@ -139,6 +145,9 @@ def _pick(hypotheses):
         pid, value = p.get('parameter_id'), p.get('candidate_value')
         if not pid or value is None:
             continue
+        # A lever registered after the hypothesis was written is found by the
+        # name the hypothesis used for it.
+        pid = PR.resolve(pid, required=False) or pid
         key = (strength.get(h.get('status') or 'proposed', 9),
                conf.get(h.get('confidence'), 9))
         if pid not in by_param or key < by_param[pid][0]:
@@ -158,7 +167,10 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
     if not isinstance(project, PJ.Project):
         raise K.ContractError('a protocol summary is built against a loaded Project')
     mode = RT.normalise_mode(runtime_mode)
-    chosen = _pick(hypotheses or [])
+    # Only a lever the project has can be in its protocol; one it does not have
+    # stays in the ledger as not adopted, and on the timeline as a candidate.
+    chosen = {pid: h for pid, h in _pick(hypotheses or []).items()
+              if pid in set(project.parameter_ids)}
     adopted_ids = {h['hypothesis_id'] for h in chosen.values()}
     control = dict(control or {})
 
@@ -191,6 +203,11 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
                 prov = 'design_choice' if current is not None else 'gap'
                 est, reason, sources, href = None, None, [], None
             dc = (design_choices or {}).get(pid)
+            if not dc and not h and current is None:
+                # Nothing in the run set it: the process reference may. A
+                # physical setpoint shared across suspension cultures is filled
+                # from it, labelled with its basis, rather than left a GAP.
+                dc = PREF.as_design_choice(pid, project)
             if dc and not h and current is None:
                 prov, recommended = 'design_choice', dc['value']
                 reason = dc['rationale']
@@ -211,6 +228,7 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
                                     if q.minimum is not None or q.maximum is not None else None),
                 'provenance': prov, 'estimate_type': est,
                 'design_choice': ({'confidence': dc['confidence'],
+                                   'reference_entry': dc.get('reference_entry'),
                                    'derived_from': dc['derived_from'],
                                    'would_settle_it': dc.get('would_settle_it'),
                                    'risk_if_wrong': dc.get('risk_if_wrong'),
@@ -236,6 +254,11 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
     if gaps:
         limits.append('This protocol has gaps. It cannot be run until each one has evidence '
                       'or a named design choice.')
+    from_ref = sorted(c['parameter_id'] for c in choice_rows if c.get('reference_entry'))
+    if from_ref:
+        limits.append(f'{", ".join(from_ref)} filled from the process reference: established '
+                      f'suspension-culture setpoints, not values measured for this cell type. '
+                      f'Each row names its entry and basis.')
     if choice_rows:
         low = [c['parameter_id'] for c in choice_rows if c['confidence'] == 'low']
         limits.append(
@@ -263,7 +286,8 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
         'research_context': research_context,
         'uncertainty': uncertainty,
         'stages': stages,
-        'hypothesis_ledger': _ledger(hypotheses or [], adopted_ids),
+        'hypothesis_ledger': _ledger(hypotheses or [], adopted_ids, set(project.parameter_ids)),
+        'timeline': timeline(project, hypotheses or []),
         'expected_effects': (lead.get('expected_effects') or []) if lead else [],
         'trade_offs': (lead.get('trade_offs') or []) if lead else [],
         'readouts': list(project.readouts),
@@ -279,6 +303,43 @@ def build(*, project, objective, hypotheses, runtime_mode, control=None, simulat
     }
     K.require_valid('protocol_summary', doc)
     return doc
+
+
+def timeline(project, hypotheses=()):
+    """The process laid out in days, for drawing the protocol as a production chain.
+
+    Stage lengths are the project's own defaults, never a recommendation: no
+    hypothesis or design choice here changes how long a stage runs unless it
+    is a parameter. `candidates` are levers a hypothesis named that the project
+    does not have, drawn as dashed rows so they are seen and not mistaken for
+    protocol values.
+    """
+    stages, day = [], 0.0
+    for s in project.stages:
+        d = s.get('default_days')
+        stages.append({'stage_id': s['stage_id'], 'label': s.get('label') or s['stage_id'],
+                       'goal': s.get('wants'), 'days': d, 'day_start': day,
+                       'min_days': s.get('min_days'), 'max_days': s.get('max_days')})
+        day += d or 0.0
+    known = set(project.parameter_ids)
+    seen, candidates = set(), []
+    for h in hypotheses:
+        p = h.get('parameter') or {}
+        pid = p.get('parameter_id')
+        if not pid or pid in seen or (PR.resolve(pid, required=False) or pid) in known:
+            continue
+        seen.add(pid)
+        stage = p.get('stage') if p.get('stage') in {s['stage_id'] for s in stages} else None
+        candidates.append({'parameter_id': pid,
+                           'label': p.get('proposed_label') or p.get('label') or pid,
+                           'unit': p.get('unit'), 'stage_id': stage,
+                           'direction': p.get('direction'),
+                           'candidate_value': p.get('candidate_value'),
+                           'hypothesis_id': h.get('hypothesis_id'),
+                           'confidence': h.get('confidence'),
+                           'statement': h.get('statement')})
+    return {'basis': 'stage lengths are the project defaults (default_days)',
+            'total_days': day, 'stages': stages, 'candidates': candidates}
 
 
 def _current_value(project, pid, q, control):
@@ -334,7 +395,8 @@ def from_benchmark(result, *, project=None, runtime_mode='synthetic_demo', run_i
 
 
 def from_bundle(bundle, *, project, objective, runtime_mode, run_id=None, request_id=None,
-                research_context=None, simulator=None, privacy=None, design_choices=None):
+                research_context=None, simulator=None, privacy=None, design_choices=None,
+                extra_limitations=()):
     """A ProtocolSummary from an ingested run directory."""
     hyps = []
     for card in bundle.get('hypotheses') or []:
@@ -355,7 +417,7 @@ def from_bundle(bundle, *, project, objective, runtime_mode, run_id=None, reques
         simulator=simulator, research_context=research_context or bundle.get('research_context'),
         run_id=run_id, request_id=request_id, privacy=privacy,
         limitations=sorted({x for c in (bundle.get('hypotheses') or [])
-                            for x in (c.get('limitations') or [])}),
+                            for x in (c.get('limitations') or [])} | set(extra_limitations or ())),
         design_choices=design_choices)
 
 
@@ -400,6 +462,7 @@ def markdown(doc):
                      f'| {_fmt(p["recommended_value"])} | {mark} | {TAG[p["provenance"]]} '
                      f'| {cov} |')
         L.append('')
+    L += _timeline_markdown(doc)
 
     if doc['expected_effects']:
         L += ['## Expected effect', '']
@@ -443,6 +506,69 @@ def markdown(doc):
     elif doc.get('limitations'):
         L += ['## Limitations', ''] + [f'- {x}' for x in doc['limitations']] + ['']
     return '\n'.join(L)
+
+
+def _confidence_of(p, ledger):
+    if p['provenance'] == 'gap':
+        return 'none'
+    if p.get('design_choice'):
+        return p['design_choice']['confidence']
+    if p.get('hypothesis_ref'):
+        return ledger.get(p['hypothesis_ref']) or '—'
+    return 'in use'
+
+
+def _timeline_markdown(doc):
+    """The production chain, one row per stage: its days, factors and setpoints."""
+    tl = doc.get('timeline') or {}
+    if not tl.get('stages'):
+        return []
+    ledger = {r['hypothesis_id']: r.get('confidence') for r in doc['hypothesis_ledger']}
+    by_stage = {st['stage_id']: st['parameters'] for st in doc['stages']}
+
+    def cell(rows):
+        return '<br>'.join(f'{p["label"]} {_fmt(p["recommended_value"])}'
+                           f'{" " + p["unit"] if p.get("unit") else ""} '
+                           f'[{TAG[p["provenance"]]}, {_confidence_of(p, ledger)}]'
+                           for p in rows) or '—'
+    L = ['## Production timeline', '',
+         f'Stage lengths are the project defaults; the whole process runs '
+         f'{_fmt(tl["total_days"])} days. Each value shows [provenance, confidence]; '
+         f'"in use" is the value the process already runs at.', '',
+         '| Stage | Days | Factors | Setpoints |', '|---|---|---|---|']
+    for s in tl['stages']:
+        rows = by_stage.get(s['stage_id'], [])
+        factors = [p for p in rows if _is_factor(p)]
+        others = [p for p in rows if not _is_factor(p)]
+        span = (f'd{_fmt(s["day_start"])}–{_fmt(s["day_start"] + (s["days"] or 0))}'
+                if s.get('days') is not None else '—')
+        L.append(f'| {s["label"]} | {span} | {cell(factors)} | {cell(others)} |')
+    whole = by_stage.get('all', [])
+    if whole:
+        L.append(f'| Whole process | all | — | {cell(whole)} |')
+    L.append('')
+    if tl.get('candidates'):
+        L += ['Levers a hypothesis named that this project does not have yet (not in the '
+              'protocol until registered):', '']
+        L += [f'- {c["label"]}' + (f' ({c["unit"]})' if c.get('unit') else '')
+              + (f', proposed {_fmt(c["candidate_value"])}' if c.get('candidate_value') is not None
+                 else f', {c.get("direction") or "direction only"}')
+              + (f' — {c["hypothesis_id"]}' if c.get('hypothesis_id') else '')
+              for c in tl['candidates']] + ['']
+    return L
+
+
+MOLAR = ('pM', 'nM', 'uM', 'µM', 'mM')
+
+
+def _is_factor(p):
+    """A concentration: a factor the cells are exposed to over a window, not a setpoint.
+
+    A cell density is per mL too, and is a setpoint; molar units are case-
+    sensitive because µm is a size.
+    """
+    u = (p.get('unit') or '').strip()
+    return u in MOLAR or (u.lower().endswith(('/ml', '/l')) and 'cell' not in u.lower())
 
 
 def _effect_line(e):

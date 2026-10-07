@@ -94,6 +94,18 @@ instructions: |
     the minutes the task states even if the record is incomplete: a partial
     answer on time is worth more than a complete one after the orchestrator
     has finished without it.
+  - PROCESS REFERENCE: collect established suspension-culture setpoints of
+    hiPSC and hiPSC-derived cells (seeding density, agitation with its vessel and
+    volume, dissolved oxygen, feed exchange fraction and interval, temperature
+    when it deviates from 37 degC), whatever the target cell. Use `discover`
+    with queries such as "hiPSC suspension bioreactor agitation", "stirred-tank
+    iPSC expansion dissolved oxygen", "vertical-wheel bioreactor iPSC seeding
+    density"; read the full texts with --find on "rpm", "dissolved oxygen", "% air
+    saturation", "cells/mL", "medium exchange". Write one entry per source and
+    setting to the draft file the task names, each quoting the sentence that
+    states the value (`sources: [{ref, quote, locator}]`). Never average sources;
+    state any unit conversion in `notes`. Reply with the entries, what was not
+    found, and where sources disagree.
   - PROTOCOL DESIGN: request path (ProductionRequest 2.0) + output dir. Research
     within the request's search_budget; save searches, sources, extraction and
     compiled handoff; write protocol.json (ProductionProtocol 2.0, iteration 0)

@@ -47,8 +47,7 @@ textarea:focus{outline:none;border-color:var(--brand);
 .k{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.09em;
   text-transform:uppercase;padding:2px 7px;border-radius:6px;display:inline-block;
   margin-right:7px;white-space:nowrap;border:1px solid var(--line);color:var(--ink-3)}
-/* Simple and Technical are the same facts at two depths, never two sets of
-   facts: Technical adds ids and provenance and hides nothing. */
+/* Raw ids and tool lines stay out of the page view; the downloads keep them. */
 body[data-view="simple"] .tech{display:none}
 .tech{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:3px}
 .hyp{border:1px solid var(--line);border-radius:var(--r-s);padding:14px 16px;margin-bottom:12px}
@@ -117,7 +116,6 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   <div class="spacer"></div>
   <span id="runbeacon" hidden></span>
   <span id="identity" class="row" style="margin:0;gap:8px"></span>
-  <button class="btn" id="viewBtn" aria-pressed="false">Technical view</button>
   <button class="btn" id="theme" title="Switch light / dark">Theme</button>
 </header>
 
@@ -302,6 +300,11 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
           </select>
           <!-- One literature agent is the default. By stage runs one per process stage
                in parallel and merges them: faster literature, more model calls. -->
+          <label class="lab" for="purpose" style="margin-top:14px">What this run is for</label>
+          <select id="purpose" class="select">
+            <option value="discovery" selected>A question about this process (default)</option>
+            <option value="process_reference">Build the process reference — cited bioreactor setpoints, any cell type</option>
+          </select>
           <label class="lab" for="litMode" style="margin-top:14px">Literature search</label>
           <select id="litMode" class="select">
             <option value="single" selected>One agent across every lever (default)</option>
@@ -340,6 +343,10 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
           <summary>Papers found <span class="dim" id="papersSum"></span></summary>
           <div id="papersFound"></div>
         </details>
+      </details>
+      <details class="ins-sec" id="refSec" data-key="ref" hidden>
+        <summary><span class="ins-t">Process reference draft</span> <span class="dim" id="refSum"></span></summary>
+        <div id="refDraft"></div>
       </details>
       <details class="ins-sec" id="bioSec" data-key="bio" hidden>
         <summary><span class="ins-t">Bioinformatics</span> <span class="dim" id="bioSum"></span></summary>

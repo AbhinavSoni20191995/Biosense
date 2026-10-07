@@ -1,0 +1,23 @@
+{
+  "schema_version": "2.0",
+  "updated_at": null,
+  "note": "The committed reference holds conventions only. Cited entries are collected by a 'Build the process reference' run (the literature agent quotes each source) and promoted by a named reviewer; they are kept in the server's private data root, not in the repository.",
+  "entries": [
+    {
+      "entry_id": "temperature.mammalian-convention",
+      "parameter_id": "temperature_c",
+      "unit": "degC",
+      "typical": 37.0,
+      "range": null,
+      "context": {"cells": "human cells, including iPSC and their derivatives", "format": "any", "vessel": null, "stage": null},
+      "basis": "convention",
+      "sources": [],
+      "confidence": "high",
+      "status": "reviewed",
+      "reviewed_by": "repository convention",
+      "reviewed_at": null,
+      "from_run": null,
+      "notes": "Standard human cell culture temperature. A deliberate deviation (for example a hypothermic hold) is a hypothesis, not this default."
+    }
+  ]
+}

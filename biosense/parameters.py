@@ -180,6 +180,74 @@ for _p_ in PARAMETERS:
         _ALIAS[key] = _p_.parameter_id
 
 
+# ── project-local parameters ─────────────────────────────────────────────
+# A lever a hypothesis named that the registry above does not have — IL-34 for
+# a macrophage process, say. Refusing it until somebody edits this file would
+# keep the science out of the protocol; adding it here silently would claim
+# something about every project. So a project may define one for itself: the
+# definition travels in that project's profile, is registered when the profile
+# loads, and carries no global bounds — only the project's own range applies.
+LOCAL = {}
+
+
+def define_local(spec):
+    """Register a project's own parameter definition. Returns the Parameter.
+
+    Refused when the id or label already names a canonical parameter (use that
+    one), or when another project defined the same id with a different unit —
+    two meanings under one id is the bug this module exists to prevent.
+    """
+    pid = str(spec.get('parameter_id') or '').strip()
+    if pid in BY_ID and pid not in LOCAL:
+        raise K.ContractError(f'{pid} is already a canonical parameter; use it rather than '
+                              f'defining it again')
+    label = str(spec.get('label') or '').strip()
+    owner = _ALIAS.get(label.lower())
+    if label and owner and owner != pid:
+        raise K.ContractError(f'{label!r} already names {owner}; use that parameter, or give '
+                              f'this one a different label')
+    p = Parameter(parameter_id=pid, label=label or pid, unit=str(spec.get('unit') or '').strip(),
+                  meaning=str(spec.get('meaning') or '').strip() or 'Defined by a project.',
+                  aliases=tuple(spec.get('aliases') or ()), stages=('all',),
+                  notes='project-local: defined by a project profile, not the canonical '
+                        'registry')
+    if not p.unit:
+        raise K.ContractError(f'{pid}: a parameter needs a unit')
+    have = LOCAL.get(pid)
+    if have is not None:
+        if have.unit != p.unit:
+            raise K.ContractError(
+                f'{pid} is already defined by another project with unit {have.unit!r}; use '
+                f'that unit, or another id')
+        return have
+    for a in p.aliases:
+        other = _ALIAS.get(a.lower())
+        if other and other != pid:
+            raise K.ContractError(f'alias {a!r} already names {other}')
+    LOCAL[pid] = p
+    BY_ID[pid] = p
+    _ALIAS[pid.lower()] = pid
+    if label:
+        _ALIAS[label.lower()] = pid
+    for a in p.aliases:
+        _ALIAS[a.lower()] = pid
+    return p
+
+
+def is_local(pid):
+    return pid in LOCAL
+
+
+def forget_local(pid):
+    """Remove a project-local definition from this process (tests, and a deleted project)."""
+    p = LOCAL.pop(pid, None)
+    if p is None:
+        return
+    BY_ID.pop(pid, None)
+    for k in [k for k, v in _ALIAS.items() if v == pid]:
+        del _ALIAS[k]
+
+
 def _normalise(name):
     return re.sub(r'\s+', ' ', str(name or '').strip()).lower()
 

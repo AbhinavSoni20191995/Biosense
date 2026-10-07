@@ -259,3 +259,30 @@ Live: `omnigent run discovery_loop`, then for example:
 - Live Omnigent orchestration of this loop has not been run yet.
 - A loop that reaches `protocol_succeeded` has not produced a validated or
   released process.
+
+## Shared setpoints, new levers, and the protocol as a timeline
+
+- **Process reference.** Physical setpoints shared by suspension culture of
+  iPSC and their derivatives (temperature, DO, seeding, feed, agitation with
+  its vessel) fill a protocol's gaps as *design choices* naming their entry and
+  basis — never as reported values. The repository ships conventions only
+  (`process_reference/`); cited entries come from a run with purpose
+  "Build the process reference" and are promoted by a named admin reviewer into
+  the server's private data root. An unreviewed entry, or agitation with no or
+  another vessel, fills at low confidence and says why.
+- **Candidate levers.** A hypothesis may name a lever the project does not
+  have (IL-34 for a macrophage process). It is shown as a dashed row on the
+  timeline, never adopted; "Register in my project" adds it to the person's own
+  copy of the project (unit, range, stage; no value) and rebuilds that run's
+  protocol, which can then carry the hypothesis' value.
+- **Assumed effects.** The reactor has no term for a new factor, so it is
+  simulated like an edited line: a growth and a differentiation ratio a person
+  or the orchestrator sets, applied only in the stage the factor is given
+  (`evidence.cli simulate --factor "IL-34:stage=myeloid,growth=1,diff=1.2"`, or
+  the Simulator card). Every result says it is an assumption played through an
+  uncalibrated model.
+- **Timeline.** The protocol is drawn as the production chain: stages sized by
+  their project days, factors as bars over their stage, setpoints per stage and
+  for the whole process, each with its provenance letter and a three-step
+  confidence bar; a click shows its basis. The Markdown export carries the same
+  per-stage table.

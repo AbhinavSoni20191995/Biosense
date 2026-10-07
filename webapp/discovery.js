@@ -639,6 +639,7 @@ function buildRequest() {
     runtime_mode: chosenRuntime(),
     effort: ($('#effort') && $('#effort').value) || 'standard',
     literature_mode: ($('#litMode') && $('#litMode').value) || 'single',
+    purpose: ($('#purpose') && $('#purpose').value) || 'discovery',
     dataset_ids: $$('#datasetPicks input:checked').map(i => i.value),
   };
   if (anyCtx) {
@@ -828,14 +829,17 @@ function renderGenoInsight(g) {
   if (key === genoSeen) return;
   genoSeen = key; host.textContent = '';
   if (!g) return;
-  const label = (g.genotype || {}).label || 'edited line';
+  const gt = g.genotype || {};
+  const factor = gt.kind === 'factor';
+  const label = factor ? 'with ' + (gt.label || 'the factor') : (gt.label || 'edited line');
+  const control = g.control_label || (factor ? 'without it' : 'wild type');
   if (g.stand_in) host.append(el('p', 'warnc', 'STAND-IN MODEL. ' + (g.stand_in_note || '')));
   if (g.assumption) host.append(el('p', 'caveat', 'Assumed: ' + g.assumption));
   if (g.verdict) host.append(el('p', 'm', g.verdict));
   const curves = el('div'); host.append(curves);
-  BSCurves.render(curves, g.curves, { aLabel: 'wild type', bLabel: label });
+  BSCurves.render(curves, g.curves, { aLabel: control, bLabel: label });
   const tab = el('table', 'dtab'); host.append(tab);
-  BSCurves.table(tab, g.deltas, ['wild type', label]);
+  BSCurves.table(tab, g.deltas, [control, label]);
   if ((g.not_represented || []).length) {
     host.append(el('p', 'dim', 'Not represented in the reactor: ' + g.not_represented.join(', ')));
   }
@@ -850,6 +854,57 @@ function hasPartial(r) {
    are leads written while reading, shown before the orchestrator has weighed
    them; the panel says so, and never calls them findings. */
 let insightsSeen = '';
+/* Setpoints a run collected for the process reference: each with its value, its
+   vessel and the quoted source. An admin promotes them under their own name;
+   until then they are only an unreviewed, low-confidence starting value. */
+let refSeen = '';
+function renderReferenceDraft(snap) {
+  const sec = $('#refSec'); if (!sec) return;
+  const d = snap.reference_draft;
+  sec.hidden = !d;
+  if (!d) return;
+  wireSection('refSec', true);
+  const key = JSON.stringify(d);
+  if (key === refSeen) return;
+  refSeen = key;
+  $('#refSum').textContent = `${d.entries.length} entr${d.entries.length === 1 ? 'y' : 'ies'}`
+    + (d.errors.length ? ` · ${d.errors.length} to fix` : '');
+  const host = $('#refDraft'); host.textContent = '';
+  d.entries.forEach(e => {
+    const row = el('div', 'm');
+    const v = e.typical != null ? `${e.typical} ${e.unit || ''}` : (e.range ? `${e.range.lower}–${e.range.upper} ${e.unit || ''}` : '—');
+    row.append(el('b', null, `${e.parameter_id}: ${v}`), el('span', 'dim',
+      `  ${e.basis || '?'} · ${e.confidence || '?'}${e.vessel ? ' · ' + e.vessel : ''}`));
+    (e.sources || []).forEach(src => {
+      const q = el('div', 'dim'); const href = sourceLink(src.ref);
+      if (href) { const a = el('a', null, src.ref); a.href = href; a.target = '_blank'; a.rel = 'noopener'; q.append(a); }
+      else q.append(el('code', null, src.ref || '?'));
+      q.append(` — “${src.quote}”`); row.append(q);
+    });
+    host.append(row);
+  });
+  d.errors.forEach(x => host.append(el('p', 'bad', x)));
+  const who = state.identity || BS.state.identity || {};
+  if (!snap.finished_at || !d.entries.length) return;
+  const form = el('div', 'rv-actions');
+  const name = el('input'); name.type = 'text'; name.placeholder = 'Your name, as the reviewer';
+  name.className = 'refname';
+  const go = el('button', 'btn go', 'Promote to the process reference');
+  go.disabled = !!d.errors.length;
+  go.title = d.errors.length ? 'Fix the entries above first' : 'Admin only: adds these entries under your name';
+  go.addEventListener('click', async () => {
+    if (!name.value.trim()) { name.focus(); return; }
+    if (!confirm(`Promote ${d.entries.length} entr${d.entries.length === 1 ? 'y' : 'ies'} under the name "${name.value.trim()}"?\n\nEvery later run will use them as starting values, labelled with their source.`)) return;
+    go.disabled = true; go.textContent = 'promoting…';
+    try {
+      const r = await post(`/api/discovery/${snap.run_id}/promote-reference`, { reviewed_by: name.value.trim() });
+      host.append(el('p', 'ok', `Promoted: ${r.promoted.join(', ')}`));
+      go.textContent = 'promoted';
+    } catch (e) { go.disabled = false; go.textContent = 'Promote to the process reference'; fail(e); }
+  });
+  form.append(name, go);
+  host.append(form);
+}
 /* A by-stage search: each stage agent's notes, folding on their own. */
 let stagesSeen = '';
 function renderLitStages(rows) {
@@ -948,7 +1003,7 @@ function renderInsights(snap) {
   const panel = $('#insightsPanel'); if (!panel) return;
   const ins = snap.insights, papers = snap.papers_found || [], bio = snap.bioinformatics;
   const geno = snap.genotype_simulation;
-  if (!ins && !papers.length && !bio && !geno) { panel.hidden = true; return; }
+  if (!ins && !papers.length && !bio && !geno && !snap.reference_draft) { panel.hidden = true; return; }
   panel.hidden = false;
   wireSection('litSec', false); wireSection('papersSec', false);
   wireSection('bioSec', false); wireSection('genoSec', true);
@@ -967,6 +1022,7 @@ function renderInsights(snap) {
   }
 
   renderLitStages(snap.literature_stages || []);
+  renderReferenceDraft(snap);
   const key = `${ins ? ins.updated_at : 0}:${papers.length}`;
   if (key === insightsSeen) return;
   insightsSeen = key;
@@ -1458,6 +1514,216 @@ function simulateProtocol(p) {
   location.href = 'simulator.html';
 }
 
+/* ── The protocol as a production chain ────────────────────────
+   Stages are columns sized by their days; a factor is a bar over the stage it
+   is given in; setpoints sit in their stage, and whole-process setpoints run
+   the full width. Every value carries its provenance letter and a three-step
+   confidence bar, and a click shows what it rests on. A lever a hypothesis
+   named that the project does not have is a dashed row: seen, never mistaken
+   for a protocol value. */
+const PROV_LETTER = { reported: 'R', adapted: 'A', design_choice: 'D', gap: 'GAP' };
+const MOLAR = ['pM', 'nM', 'uM', 'µM', 'mM'];
+function isFactor(q) {
+  const u = (q.unit || '').trim();
+  return MOLAR.includes(u) || (/\/(ml|l)$/i.test(u) && !/cell/i.test(u));
+}
+function valueConfidence(q, ledger) {
+  if (q.provenance === 'gap') return { level: null, text: 'no value' };
+  if (q.design_choice) return { level: q.design_choice.confidence, text: q.design_choice.confidence };
+  if (q.hypothesis_ref) {
+    const c = ledger[q.hypothesis_ref];
+    return { level: c || null, text: c || 'unstated' };
+  }
+  return { level: null, text: 'in use' };
+}
+function miniBar(level) {
+  const bar = el('span', 'confbar mini ' + (level || 'none'));
+  for (let i = 1; i <= 3; i++) bar.append(el('span', level && i <= (CONF_LEVELS[level] || 0) ? 'on' : ''));
+  return bar;
+}
+function renderTimeline(p) {
+  const tl = p.timeline;
+  const ledger = {};
+  (p.hypothesis_ledger || []).forEach(r => { ledger[r.hypothesis_id] = r.confidence; });
+  const byStage = {};
+  (p.stages || []).forEach(s => { byStage[s.stage_id] = s.parameters; });
+  const wrap = el('div', 'ptl');
+  wrap.append(el('div', 'lab', 'Production timeline'));
+  wrap.append(el('p', 'caveat', `${tl.total_days} days from seeding to harvest at the project's `
+    + 'stage lengths. R reported · A adapted · D design choice · GAP no value. The bar is how sure '
+    + 'the value is; "in use" is the setting the process already runs at. Click a value for its basis.'));
+  const scroll = el('div', 'ptl-scroll');
+  const grid = el('div', 'ptl-grid');
+  /* Widths follow the days, with a floor so a one-day stage stays readable;
+     below the sum of the floors the chain scrolls inside its own box. */
+  const floors = tl.stages.map(s => Math.max(130, 9 * (s.days || 1)));
+  grid.style.gridTemplateColumns = tl.stages.map((s, i) =>
+    `minmax(${floors[i]}px, ${s.days || 1}fr)`).join(' ');
+  grid.style.minWidth = (floors.reduce((a, b) => a + b, 0) + 8 * (floors.length - 1)) + 'px';
+  const basis = el('div', 'ptl-basis'); basis.hidden = true;
+  let picked = null;
+
+  const chip = (q, cls) => {
+    const c = valueConfidence(q, ledger);
+    const b = el('button', 'ptl-val ' + (cls || '') + ' prov-' + q.provenance);
+    b.type = 'button';
+    b.append(el('span', 'nm', q.label));
+    b.append(el('span', 'v', q.provenance === 'gap' ? '—'
+      : num(q.recommended_value) + (q.unit ? ' ' + q.unit : '')));
+    if (q.changed) b.append(el('span', 'was', `was ${num(q.control_value)}`));
+    const meta = el('span', 'meta');
+    meta.append(el('span', 'pl ' + q.provenance, PROV_LETTER[q.provenance] || '?'), miniBar(c.level),
+      el('span', 'ct', c.text));
+    b.append(meta);
+    b.addEventListener('click', () => {
+      if (picked) picked.classList.remove('on');
+      if (picked === b) { picked = null; basis.hidden = true; return; }
+      picked = b; b.classList.add('on'); showBasis(basis, q, c, ledger);
+    });
+    return b;
+  };
+
+  tl.stages.forEach((s, i) => {
+    const h = el('div', 'ptl-head');
+    h.style.gridColumn = String(i + 1);
+    h.append(el('strong', null, s.label));
+    h.append(el('span', 'days', s.days == null ? 'days not set'
+      : `d${num(s.day_start)}–${num(s.day_start + s.days)} · ${num(s.days)} d`));
+    if (s.goal) h.append(el('span', 'goal', s.goal));
+    grid.append(h);
+  });
+  const lane = (name) => {
+    const l = el('div', 'ptl-lane', name);
+    l.style.gridColumn = `1 / ${tl.stages.length + 1}`;
+    grid.append(l);
+  };
+  const factors = [], setpoints = [];
+  tl.stages.forEach((s, i) => (byStage[s.stage_id] || []).forEach(q =>
+    (isFactor(q) ? factors : setpoints).push([i, q])));
+  /* One cell per stage, so each factor's bar spans exactly its stage's days. */
+  const cells = (rows, cls) => tl.stages.forEach((s, i) => {
+    const cell = el('div', 'ptl-cell');
+    cell.style.gridColumn = String(i + 1);
+    rows.filter(([j]) => j === i).forEach(([, q]) => cell.append(chip(q, cls)));
+    grid.append(cell);
+  });
+  if (factors.length) { lane('Factors — each bar is the window it is given in'); cells(factors, 'fbar'); }
+  if (setpoints.length) { lane('Stage setpoints'); cells(setpoints); }
+  const whole = byStage.all || [];
+  if (whole.length) {
+    lane('Whole process');
+    whole.forEach(q => {
+      const c = chip(q, 'fbar whole');
+      c.style.gridColumn = `1 / ${tl.stages.length + 1}`;
+      grid.append(c);
+    });
+  }
+  if ((tl.candidates || []).length) {
+    lane('Named by a hypothesis, not yet a parameter of this project');
+    tl.candidates.forEach(cand => {
+      const i = tl.stages.findIndex(s => s.stage_id === cand.stage_id);
+      const b = el('div', 'ptl-val fbar cand');
+      b.style.gridColumn = i >= 0 ? String(i + 1) : `1 / ${tl.stages.length + 1}`;
+      b.append(el('span', 'nm', cand.label));
+      b.append(el('span', 'v', cand.candidate_value != null
+        ? num(cand.candidate_value) + (cand.unit ? ' ' + cand.unit : '')
+        : (cand.direction || 'direction only')));
+      const meta = el('span', 'meta');
+      meta.append(el('span', 'pl cand', 'NEW'), miniBar(cand.confidence),
+        el('span', 'ct', cand.confidence || ''));
+      b.append(meta);
+      b.title = (cand.statement || '') + ' — not in the protocol until it is registered.';
+      const reg = el('button', 'btn sm', 'Register in my project');
+      reg.type = 'button';
+      reg.addEventListener('click', () => {
+        const f = b.querySelector('.regform');
+        if (f) { f.remove(); return; }
+        b.append(registerForm(p, cand, tl.stages));
+      });
+      b.append(reg);
+      grid.append(b);
+    });
+  }
+  scroll.append(grid);
+  wrap.append(scroll, basis);
+  return wrap;
+}
+/* A lever a hypothesis named becomes a parameter of the person's own project:
+   a unit, the range a hypothesis may propose within, and the stage it is given
+   in. No value is set here — the hypothesis supplies it, or the row stays a gap. */
+function registerForm(p, cand, stages) {
+  const f = el('form', 'regform');
+  const field = (label, input) => { const l = el('label', null, label); l.append(input); f.append(l); return input; };
+  const unit = field('Unit', Object.assign(el('input'), { value: cand.unit || '', required: true,
+    maxLength: 30, placeholder: 'ng/mL' }));
+  const stage = field('Given during', el('select'));
+  [['all', 'the whole process']].concat(stages.map(s => [s.stage_id, s.label])).forEach(([v, l]) => {
+    const o = el('option', null, l); o.value = v; if (v === (cand.stage_id || 'all')) o.selected = true;
+    stage.append(o);
+  });
+  const lo = field('Lowest a hypothesis may propose', Object.assign(el('input'),
+    { type: 'number', step: 'any', value: '0', required: true }));
+  const hi = field('Highest', Object.assign(el('input'), { type: 'number', step: 'any', required: true }));
+  if (cand.candidate_value != null) hi.value = String(Math.max(cand.candidate_value * 4, 1));
+  const why = field('Where the range comes from (optional)', Object.assign(el('input'),
+    { maxLength: 300, placeholder: 'e.g. doses used in the cited papers' }));
+  const go = el('button', 'btn go sm', 'Add to my project'); go.type = 'submit';
+  const msg = el('p', 'dim');
+  f.append(go, msg);
+  f.addEventListener('submit', async ev => {
+    ev.preventDefault(); go.disabled = true; msg.textContent = 'adding…';
+    try {
+      const runId = state.run && state.run.run_id;
+      const d = await post(`/api/projects/${encodeURIComponent(p.project.project_id)}/parameters`, {
+        label: cand.label, parameter_id: cand.parameter_id, hypothesis_id: cand.hypothesis_id,
+        unit: unit.value.trim(), stage: stage.value, minimum: +lo.value, maximum: +hi.value,
+        bound_basis: why.value.trim(), meaning: cand.statement || null, run_id: runId,
+      });
+      msg.textContent = d.note + (d.protocol_rebuilt ? ' The protocol below was rebuilt.'
+        : d.rebuild_note ? ' ' + d.rebuild_note + '.' : '');
+      if (d.protocol_rebuilt && runId) setTimeout(() => watchRun(runId), 600);
+      loadProjects().catch(() => {});
+    } catch (e) { msg.textContent = e.message; go.disabled = false; }
+  });
+  return f;
+}
+
+function showBasis(box, q, c, ledger) {
+  box.hidden = false; box.textContent = '';
+  box.append(el('h4', null, `${q.label}: ${q.provenance === 'gap' ? 'no value'
+    : num(q.recommended_value) + (q.unit ? ' ' + q.unit : '')}`));
+  const tags = el('div', 'tags');
+  tags.append(term('provenance', q.provenance, null, 'tag ' + q.provenance));
+  if (q.estimate_type) tags.append(term('estimate_type', q.estimate_type, null, 'tag'));
+  tags.append(term('simulator_coverage', q.simulator_coverage, null, 'tag ' + q.simulator_coverage));
+  const conf = el('span', 'confline');
+  conf.append(miniBar(c.level), ' ', c.text === 'in use' ? 'the value the process already uses'
+    : c.text === 'no value' ? 'nothing sets it yet' : c.text + ' confidence');
+  tags.append(conf);
+  box.append(tags);
+  const dl = el('dl', 'kv');
+  const add = (k, v) => { if (v == null || v === '' || (Array.isArray(v) && !v.length)) return;
+    dl.append(el('dt', null, k), el('dd', null, Array.isArray(v) ? v.join('; ') : String(v))); };
+  if (q.changed) add('Changed from', num(q.control_value) + (q.unit ? ' ' + q.unit : ''));
+  add('Why', q.reason);
+  if (q.hypothesis_ref) add('Hypothesis', q.hypothesis_ref);
+  add('Evidence', q.evidence_sources);
+  const dc = q.design_choice;
+  if (dc) {
+    add('Derived from', dc.derived_from);
+    add('Reference entry', dc.reference_entry);
+    add('Context', dc.context_note);
+    add('Would settle it', dc.would_settle_it);
+    add('Risk if wrong', dc.risk_if_wrong);
+  }
+  if (!q.hypothesis_ref && !dc && q.provenance !== 'gap')
+    add('Basis', 'The value this process already runs at (the project profile). Nothing in this run proposed changing it.');
+  if (q.suggested_range) add('Allowed range', `${num(q.suggested_range.minimum)} – ${num(q.suggested_range.maximum)}`);
+  if (q.constraint) add('Range set by', `${q.constraint.source}${q.constraint.basis ? ': ' + q.constraint.basis : ''}`);
+  if (q.provenance === 'gap') add('Blocks the wet lab', 'Needs evidence or a named design choice before a run.');
+  box.append(dl);
+}
+
 function renderProtocol(p) {
   const host = $('#protocol'); if (!host) return;
   host.textContent = '';
@@ -1487,6 +1753,10 @@ function renderProtocol(p) {
       + `${c.hypotheses_adopted} of ${c.hypotheses_total} hypotheses are in the protocol; `
       + `${c.hypotheses_discarded} are not.` }));
 
+  if (p.timeline && (p.timeline.stages || []).length) host.append(renderTimeline(p));
+  const rowsBox = el('details', 'proto-rows');
+  rowsBox.append(el('summary', null, 'Every value, row by row'));
+  host.append(rowsBox);
   p.stages.forEach(st => {
     const w = el('div', 'proto-stage');
     w.append(el('h4', null, st.label));
@@ -1525,7 +1795,7 @@ function renderProtocol(p) {
         w.append(box);
       }
     });
-    host.append(w);
+    rowsBox.append(w);
   });
 
   host.append(el('div', 'lab', 'Hypotheses this run formed'));
@@ -1730,15 +2000,6 @@ function wire() {
         });
         location.reload();
       } catch (e) { msg.textContent = e.message || 'sign-in failed'; }
-    });
-  }
-  const view = $('#viewBtn');
-  if (view) {
-    view.addEventListener('click', () => {
-      const tech = document.body.dataset.view !== 'technical';
-      document.body.dataset.view = tech ? 'technical' : 'simple';
-      view.textContent = tech ? 'Simple view' : 'Technical view';
-      view.setAttribute('aria-pressed', String(tech));
     });
   }
 }

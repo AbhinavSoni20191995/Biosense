@@ -105,6 +105,13 @@ async function boot() {
     $('#' + id + 'V').textContent = '×' + (+e.target.value).toFixed(2);
   }));
   $('#genoBtn').addEventListener('click', genotypeCompare);
+  $('#genoKind').addEventListener('change', e => {
+    const factor = e.target.value === 'factor';
+    $('#genoStageWrap').hidden = !factor;
+    const name = $('#genoLabel');
+    if (factor && name.value === 'BACH2 KO') name.value = 'IL-34';
+    if (!factor && name.value === 'IL-34') name.value = 'BACH2 KO';
+  });
   const h = readHandoff();
   if (h) applyHandoff(h);
   run();
@@ -410,21 +417,25 @@ function condition() {
 /* ── wild type against an engineered line ─────────────────── */
 async function genotypeCompare() {
   const b = $('#genoBtn'); b.disabled = true; b.textContent = 'running both…';
-  const label = ($('#genoLabel').value || '').trim() || 'edited line';
-  const body = Object.assign(condition(), { genotype: { label,
+  const kind = $('#genoKind').value;
+  const label = ($('#genoLabel').value || '').trim() || (kind === 'factor' ? 'added factor' : 'edited line');
+  const body = Object.assign(condition(), { genotype: { label, kind,
+    stage: kind === 'factor' ? $('#genoStage').value : null,
     growth_ratio: +$('#genoGrowth').value, diff_ratio: +$('#genoDiff').value } });
   try {
     const r = await fetch('/api/sim/genotype', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || `the server answered ${r.status}`);
-    $('#genoVerdict').textContent = d.verdict;
-    BSCurves.render($('#genoCurves'), d.curves, { aLabel: 'wild type', bLabel: d.genotype.label });
-    BSCurves.table($('#genoTab'), d.deltas, ['wild type', d.genotype.label]);
+    const names = [d.control_label || 'wild type',
+      d.genotype.kind === 'factor' ? 'with ' + d.genotype.label : d.genotype.label];
+    $('#genoVerdict').textContent = 'ASSUMED EFFECT · ' + d.verdict;
+    BSCurves.render($('#genoCurves'), d.curves, { aLabel: names[0], bLabel: names[1] });
+    BSCurves.table($('#genoTab'), d.deltas, names);
     $('#genoNote').textContent = d.note;
   } catch (e) {
     $('#genoVerdict').textContent = e.message;
-  } finally { b.disabled = false; b.textContent = 'Compare wild type and edited line'; }
+  } finally { b.disabled = false; b.textContent = 'Compare against the control'; }
 }
 
 /* ── run one condition ───────────────────────────────────── */

@@ -428,6 +428,136 @@
         "type": "object"
       },
       "description": "The same limitations, folded and grouped by what the reader can do about them. A flat list of forty-two lines, in which the one structural finding sat at number thirty, is why this exists."
+    },
+    "timeline": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "The process in days, for drawing it as a production chain. Stage lengths are the project defaults, never a recommendation. candidates are levers a hypothesis named that the project does not have: shown, never part of the protocol until registered.",
+      "required": [
+        "stages",
+        "total_days",
+        "candidates"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "type": "string"
+        },
+        "total_days": {
+          "type": "number"
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "stage_id",
+              "label",
+              "days",
+              "day_start"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "stage_id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "goal": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "days": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "day_start": {
+                "type": "number"
+              },
+              "min_days": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "max_days": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "parameter_id",
+              "label"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "parameter_id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "unit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "direction": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "candidate_value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "hypothesis_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "confidence": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "statement": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
