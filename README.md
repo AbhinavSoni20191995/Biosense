@@ -29,6 +29,30 @@ own every statistic, simulation and decision envelope; a person approves.
 > bioreactor is a **synthetic stand-in**: nothing here has closed the loop on
 > real cells. [What this is **not**](#what-this-is-not) sets out the limits.
 
+## The problem, and what BioSense does about it
+
+BioSense is designed to accelerate the development of cell-based therapies by
+tackling one of the biggest bottlenecks in the field: biological manufacturing
+and experimental optimisation are complex, slow, and still heavily dependent on
+fragmented data, manual interpretation, and repeated trial-and-error. Instead of
+forcing scientists to navigate literature, datasets, experimental variables, and
+process measurements separately, BioSense turns a high-level biological objective
+into an iterative **design → run → measure → decide** workflow.
+
+An agentic orchestration layer coordinates specialised AI agents for literature
+evidence, bioinformatics, data analysis, simulation, and experimental planning,
+continuously combining prior knowledge with new results. During execution,
+feedback from the bioreactor and multiple sensors, detectors, and analytical
+measurements provides real-time information on how the cell product is
+responding, allowing the system to refine conditions and propose the next
+experiment. Scientists interact through a simple interface — asking a question,
+defining the desired outcome, and reviewing transparent assumptions and
+reasoning — while BioSense manages the complexity underneath.
+
+The long-term goal is a closed-loop discovery and manufacturing system that
+learns from every experiment, reduces unnecessary iterations, and helps move
+safer, more effective cell therapies toward patients faster.
+
 ## Architecture
 
 <picture>
@@ -685,31 +709,11 @@ was explicitly **not** verified →
 ## Supplementary
 
 <details>
-<summary><b>The problem, and what BioSense does about it</b></summary>
+<summary><b>Where the repository stands against the long-term goal</b></summary>
 
-BioSense is designed to accelerate the development of cell-based therapies by
-tackling one of the biggest bottlenecks in the field: biological manufacturing
-and experimental optimisation are complex, slow, and still heavily dependent on
-fragmented data, manual interpretation, and repeated trial-and-error. Instead of
-forcing scientists to navigate literature, datasets, experimental variables, and
-process measurements separately, BioSense turns a high-level biological objective
-into an iterative **design → run → measure → decide** workflow.
-
-An agentic orchestration layer coordinates specialised AI agents for literature
-evidence, bioinformatics, data analysis, simulation, and experimental planning,
-continuously combining prior knowledge with new results. During execution,
-feedback from the bioreactor and multiple sensors, detectors, and analytical
-measurements provides real-time information on how the cell product is
-responding, allowing the system to refine conditions and propose the next
-experiment. Scientists interact through a simple interface — asking a question,
-defining the desired outcome, and reviewing transparent assumptions and
-reasoning — while BioSense manages the complexity underneath.
-
-The long-term goal is a closed-loop discovery and manufacturing system that
-learns from every experiment, reduces unnecessary iterations, and helps move
-safer, more effective cell therapies toward patients faster.
-
-> **Where the repository stands against that.** The specialist agents exist,
+> **Where the repository stands against
+> [the long-term goal](#the-problem-and-what-biosense-does-about-it).**
+> The specialist agents exist,
 > live model-driven discovery runs work end to end, the data analyst plans and
 > executes real analyses over public and private datasets, and runs learn
 > across each other through the shared cell production library and process
