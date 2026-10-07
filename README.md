@@ -5,13 +5,12 @@
 ### Accelerating cell-based therapy with agentic orchestration and real time evidence detection.
 ### Define your purpose. Watch agents work it. Read why every choice was made.
 
-<a href="deploy/README.md"><b>Use the hosted app</b></a> ·
 <a href="docs/RUN_ON_YOUR_PC.md"><b>Run it yourself</b></a> ·
 <a href="#synthetic-example"><b>Synthetic example</b></a> ·
 <a href="examples/real/README.md"><b>Real examples</b></a> ·
 <a href="reports/"><b>Example reports</b></a> ·
 <a href="docs/BIOINFORMATICS.md"><b>Data &amp; evidence</b></a> ·
-<a href="deploy/README.md"><b>Hosting</b></a>
+<a href="deploy/README.md"><b>Host your own</b></a>
 
 </div>
 
@@ -23,18 +22,28 @@ recommended protocol, with every number labelled by where it came from. A
 reasoning **orchestrator** directs specialist AI agents; deterministic tools
 own every statistic, simulation and decision envelope; a person approves.
 
-> **Where it stands.** Live AI discovery runs work on the hosted service and
-> learn across runs through a shared cell production library and process
-> reference. The bioreactor is a **synthetic stand-in**: nothing here has
-> closed the loop on real cells. [What this is **not**](#what-this-is-not)
-> sets out the limits.
+> **Where it stands.** Live AI discovery runs work end to end and learn across
+> runs through a shared cell production library and process reference. There is
+> **no public hosted instance at the moment** — run it on your own machine
+> ([docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md)) or host your own
+> ([deploy/README.md](deploy/README.md)). The bioreactor is a **synthetic
+> stand-in**: nothing here has closed the loop on real cells.
+> [What this is **not**](#what-this-is-not) sets out the limits.
 
 ## Architecture
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-system-dark.svg">
-  <img alt="A person states an objective. The orchestrator asks the literature and bioinformatics specialists what evidence is missing. The bioinformatics agent fetches a public dataset or registers a private one, and plans an analysis against a named uncertainty. Deterministic tools execute that plan over the data itself and return an AnalysisResult, and only those results — never the raw datasets — enter evidence synthesis, which produces candidate parameters. A decision envelope validates or refuses, and the simulator or bioreactor returns sensor, FACS and omics measurements to the orchestrator. Each box is marked Current, Phase 1 or Planned." src="docs/assets/arch-system-light.svg" width="100%">
+  <img alt="A person states an objective. The orchestrator asks the literature and bioinformatics specialists what evidence is missing. The bioinformatics agent fetches a public dataset or registers a private one; the data analyst plans an analysis against a named uncertainty. Deterministic tools execute that plan over the data itself and return an AnalysisResult, and only those results — never the raw datasets — enter evidence synthesis, which produces candidate parameters. A decision envelope validates or refuses, and the simulator or bioreactor returns sensor, FACS and omics measurements to the orchestrator. Each box is marked Current, Phase 1 or Planned." src="docs/assets/arch-system-light.svg" width="100%">
 </picture>
+
+Reading the picture: the **green boxes are the reasoning agents** — the
+orchestrator at the top, and the literature, bioinformatics and data-analyst
+specialists it dispatches. The **blue boxes are deterministic code**: they
+execute the analyst's plan over the data, compute every statistic, and keep
+provenance through evidence synthesis. The red decision envelope refuses
+anything the verdict does not permit, and the only dashed box — the real
+bioreactor — is the part that does not exist yet.
 
 | Agent | What it does | What it may not do |
 |---|---|---|
@@ -240,44 +249,44 @@ Reports, committed and readable without running anything →
 
 </details>
 
-## The incubator: the BioSimulator
+## The BioSimulator: the stand-in bioreactor
 
-A reactor model you can drive by hand, or from a protocol. Something the model
-has no term for — an edited line, a new cytokine, a parameter you registered
-with a stated response — is played as an **assumed effect** on growth or
-differentiation in its stage, against the same run without it, and labelled as
-an assumption every time.
+BioSense runs no real cells. In place of the bioreactor sits the
+**BioSimulator** — a mechanistic stand-in model of a stirred-tank
+iPSC→monocyte process. Its job is to let a candidate protocol be *played*
+before anyone commits a week of real cells to it, with every number it
+produces labelled **SIMULATED** and never passed off as a measurement.
+
+You meet it in three places:
+
+1. **Inside the loop.** The orchestrator sends a candidate protocol in;
+   trajectories for growth, viability and harvest come back, each labelled.
+2. **Factor comparison.** Something the model has no term for — an edited
+   line, a new cytokine, a parameter you registered with a stated response —
+   is played as an **assumed effect** on growth or differentiation in its
+   stage, against the same run without it, and labelled as an assumption
+   every time.
+3. **Simulator mode.** The same reactor driven by hand: ten setpoints, a
+   vessel you can watch day by day, and the instrument readings each
+   condition produces.
+
+The screenshot below is a factor comparison (the second of those). At the top
+is the assumed-effect verdict; in the middle, growth curves for viable
+density, viability and cumulative harvest — one line for the run with the
+added factor, one without; at the bottom, a table of the outcome metrics
+(harvest per input cell, peak density, viability, differentiation
+efficiency) for both runs side by side.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/factor-compare-dark.png">
   <img alt="The Simulator comparing a run with and without an added factor given during the myeloid stage: an assumed-effect verdict, growth curves for viable density, viability and cumulative harvest for both runs, and a table of harvest per input cell, peak density, viability and differentiation efficiency." src="docs/assets/factor-compare-light.png" width="100%">
 </picture>
 
-<details>
-<summary><b>How each parameter acts in the model</b></summary>
-
-The same table sits at the foot of the Simulator page, generated from the knob list the sliders use. The full derivation is in [docs/BIOSIMULATOR_MODEL.md](docs/BIOSIMULATOR_MODEL.md); these equations describe the stand-in model, not real cells.
-
-- **Growth.** μ = μmax × glucose term × lactate term × ammonia term × bell(DO) × (1 − necrotic) × (1 − X/6.0) × ROCK inhibitor; any term near zero stops growth.
-- **Death.** baseline + shear above threshold + necrotic cores + ammonia; cells change by (μ − death)·X each step.
-- **Differentiation efficiency.** bell(aggregate size) × bell(DO) × lactate term × cytokine term × viability, per stage; in the myeloid stage it drives continuous monocyte release.
-- **Stages.** Expansion, mesoderm, hemogenic and myeloid stages each want their own aggregate size and oxygen; their lengths are set by the stage days.
-- **New parameters.** A parameter the model has no term for (an edited line, a new factor, a parameter registered with a stated response) is played as an assumed multiplier on growth or on differentiation efficiency, in its stage only, and labelled as an assumption.
-
-| Parameter | Stage | Acts on | How it reaches growth and harvest |
-|---|---|---|---|
-| Seed density (1e6 cells/mL) | expansion | cells at the start | Sets the starting density X. Growth slows as the vessel fills, μ × (1 − X/6.0), and harvest is reported per input cell, so a denser seed fills the vessel sooner and divides the yield per input iPSC. |
-| Agitation (rpm) | every stage | shear, oxygen transfer, aggregate size | Stirring raises shear, 0.06·(rpm/75)^1.6, which adds death above 0.07 dyne/cm²; raises oxygen transfer, kLa = 4.0·(rpm/60)^1.4; and breaks aggregates to an equilibrium diameter. Diameter and oxygen set the necrotic core, which stops growth (× (1 − necrotic)) and adds death; diameter also sets the differentiation efficiency of each stage, a bell around the size it wants. |
-| Dissolved oxygen (fraction) | every stage | oxygen in the medium | Growth carries a bell around the oxygen optimum of each stage (too little and too much both hurt), and oxygen sets how deep the viable shell of an aggregate reaches — 110·√(DO/0.20) µm — so low oxygen grows a necrotic core. The same bell enters differentiation efficiency. |
-| Feed exchange (fraction of volume) | every stage | glucose, lactate, ammonia | At each feed this fraction of the medium is replaced: glucose restored, lactate and ammonia diluted. Growth carries glucose/(0.4 + glucose) × 22/(22 + lactate) × 4.5/(4.5 + ammonia); ammonia above 3 mM adds death; lactate also lowers efficiency. |
-| Feed interval (h) | every stage | how long waste builds up | Hours between exchanges: the longer, the further glucose falls and lactate and ammonia rise before the next feed, through the same three growth terms. |
-| ROCK inhibitor (h) | expansion | survival after seeding | While ROCK inhibitor is present single cells survive seeding; without it growth runs at 85% for the first half-day. After that it changes nothing. |
-| BMP4 (ng/mL) | mesoderm | mesoderm efficiency | Mesoderm only. Multiplies the mesoderm transition efficiency by a bell around a line-specific optimum: off the optimum, fewer cells become mesoderm. It does not change growth. |
-| VEGF (ng/mL) | mesoderm | mesoderm efficiency | Mesoderm only, beside BMP4: a second bell on the same efficiency. |
-| M-CSF (ng/mL) | myeloid | myeloid efficiency → harvest | Myeloid stage only. A bell on transition efficiency, and efficiency drives monocyte release: 0.028 × efficiency × X per step. This is the chain that makes it the dominant lever on harvest. |
-| IL-3 (ng/mL) | myeloid | myeloid efficiency → harvest | Myeloid stage only, beside M-CSF: a second bell on the efficiency that drives release. |
-
-</details>
+How each parameter moves the model — the growth, death and differentiation
+equations and the knob-by-knob table — lives with the model's own
+documentation: **[docs/BIOSIMULATOR_MODEL.md](docs/BIOSIMULATOR_MODEL.md)**.
+The same table sits at the foot of the Simulator page, generated from the
+knob list the sliders use.
 
 <details>
 <summary><b>Turn the knobs yourself</b></summary>
@@ -457,31 +466,33 @@ add screenshots to the new folder, and link it here. The full checklist is in
 
 ## Quick start
 
-> **Use the hosted app** — no install. Pick a project, state your objective,
-> press **Run AI discovery**. Or run it on your own machine:
-> [docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md).
+> **Run it on your own machine** — two commands, real AI on your own key:
+> [docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md). There is **no public
+> hosted instance at the moment**; hosting your own is one Dockerfile, one
+> volume and one secret: [deploy/README.md](deploy/README.md).
 
 <details>
 <summary><b>Everything about running, hosting, projects, accounts and limits</b></summary>
 
-**BioSense is a web application, and the hosted one runs the real agents.**
-For most people there is nothing to install and no terminal to open.
+**BioSense is a web application.** You start it once and everything else
+happens in the browser. A hosted deployment runs the Omnigent runtime and the
+agent bundle inside itself, so its visitors install nothing and open no
+terminal.
 
-### Just use it
+### Using a hosted instance
 
-> **Open the hosted app:** <!-- BIOSENSE_HOSTED_URL -->`https://biosense-production-e48f.up.railway.app`
->
+There is no public instance online right now — the earlier Railway deployment
+has been retired. Anyone can stand one up from
+[deploy/README.md](deploy/README.md), and what follows describes what a
+visitor gets when one is online.
+
 > Pick a project, state your objective, press **Run AI discovery**. The badge on
 > screen says **REAL AI — ONLINE**, and the discovery agents do the work:
 > real literature search, real analyses over the data you selected, a real
 > quantified hypothesis, one recommended protocol.
 
-**Zero terminal commands.** You do not install Omnigent, start a server,
-register an agent, or keep anybody's laptop switched on. The service runs the
-Omnigent runtime and the agent bundle inside itself.
-
-> **Which image is behind that link matters, and the page says so.** A service
-> deployed from `deploy/Dockerfile.ai` with a model key offers
+> **Which image is behind a deployment matters, and the page says so.** A
+> service deployed from `deploy/Dockerfile.ai` with a model key offers
 > **REAL AI — ONLINE**. One deployed from `deploy/Dockerfile` — the original,
 > credential-free image — offers **SYNTHETIC DEMO** only, and shows the real
 > option greyed with the reason. The badge on screen is always the truth about
@@ -489,11 +500,11 @@ Omnigent runtime and the agent bundle inside itself.
 > path, a volume mount at `/app/runs` and one secret:
 > [deploy/README.md](deploy/README.md).
 
-**What it costs you: nothing. What it costs the service: model credits** — which
-is why real runs on the public instance are capped, and the caps are shown in
-the page before you press anything:
+**What it costs the visitor: nothing. What it costs the service: model
+credits** — which is why real runs on a hosted instance are capped, and the
+caps are shown in the page before anything is pressed:
 
-| Cap | Default on the hosted instance |
+| Cap | Default on a hosted instance |
 |---|---|
 | Real AI runs per visitor per day | 3 |
 | Real AI runs across the service per day | 40 |
@@ -566,8 +577,8 @@ Sign-in is an **Omnigent account**: BioSense forwards your credentials to the
 configured accounts server once, keeps only the session it returns, server-side,
 and stores no password of its own.
 
-Hosted Real AI currently runs on **BioSense-managed demo access** — this
-deployment's own model credentials, under the caps above. A later version may let
+Hosted Real AI runs on **BioSense-managed demo access** — the deployment's
+own model credentials, under the caps above. A later version may let
 you connect your own model-provider credentials; that is
 [planned and not implemented](docs/ACCOUNTS.md), and nothing in the interface
 asks you for a key.
@@ -578,9 +589,9 @@ anybody else's data. How to designate one: [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
 ### Run it yourself, if you need one of these
 
-| You want | Why the hosted app cannot give it to you |
+| You want | Why a hosted instance cannot give it to you |
 |---|---|
-| **Real AI with no caps, on your own key** | the hosted instance pays for its own runs, so it limits them |
+| **Real AI with no caps, on your own key** | a hosted instance pays for its own runs, so it limits them |
 | **Your own private data analysed** | a private dataset never leaves the machine that ingested it, by design |
 | **To develop or evaluate the code** | — |
 
@@ -699,15 +710,15 @@ The long-term goal is a closed-loop discovery and manufacturing system that
 learns from every experiment, reduces unnecessary iterations, and helps move
 safer, more effective cell therapies toward patients faster.
 
-> **Where the repository stands against that.** The five specialist agents exist,
-> the measurement-driven analysis is implemented, and the bioinformatics agent
-> now plans and executes real analyses over public and private datasets rather
-> than only reading gene annotations. Three parts of the goal are not reached:
-> the loop runs against a **synthetic stand-in, not a real bioreactor**; **live
-> model-driven orchestration has not been run yet**; and each loop starts fresh,
-> so **nothing is learned across runs**. Everything below describes what
-> runs today, and [What this is **not**](#what-this-is-not) sets out the limits
-> in full.
+> **Where the repository stands against that.** The specialist agents exist,
+> live model-driven discovery runs work end to end, the data analyst plans and
+> executes real analyses over public and private datasets, and runs learn
+> across each other through the shared cell production library and process
+> reference. The largest part of the goal
+> is not reached: the loop runs against a **synthetic stand-in, not a real
+> bioreactor**, and no loop has closed on real cells with a result-dependent
+> decision. Everything below describes what runs today, and
+> [What this is **not**](#what-this-is-not) sets out the limits in full.
 
 </details>
 
@@ -948,7 +959,7 @@ An evaluator should know the limits before the features.
   touches carries the calibrated value it started from.
 - **Live AI runs work; the loop has not closed on a real bioreactor.** Live
   discovery runs — literature, bioinformatics, data analysis, hypothesis and a
-  recommended protocol — have run end to end on the hosted service. A loop that
+  recommended protocol — have run end to end on a hosted deployment. A loop that
   runs a real bioreactor and makes a result-dependent decision has not, and
   nothing here claims it has.
 - **The committed dataset fixtures are invented.** Every committed example

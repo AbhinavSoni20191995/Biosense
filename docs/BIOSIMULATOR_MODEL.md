@@ -276,6 +276,33 @@ Estimate carries a baseline and a candidate value, and here there are neither.
 
 ---
 
+## Knob by knob: how each parameter reaches growth and harvest
+
+The short form of everything above, one row per setpoint. The same table sits
+at the foot of the Simulator page, generated from the knob list the sliders
+use. These equations describe the stand-in model, not real cells.
+
+- **Growth.** μ = μmax × glucose term × lactate term × ammonia term × bell(DO) × (1 − necrotic) × (1 − X/6.0) × ROCK inhibitor; any term near zero stops growth.
+- **Death.** baseline + shear above threshold + necrotic cores + ammonia; cells change by (μ − death)·X each step.
+- **Differentiation efficiency.** bell(aggregate size) × bell(DO) × lactate term × cytokine term × viability, per stage; in the myeloid stage it drives continuous monocyte release.
+- **Stages.** Expansion, mesoderm, hemogenic and myeloid stages each want their own aggregate size and oxygen; their lengths are set by the stage days.
+- **New parameters.** A parameter the model has no term for (an edited line, a new factor, a parameter registered with a stated response) is played as an assumed multiplier on growth or on differentiation efficiency, in its stage only, and labelled as an assumption.
+
+| Parameter | Stage | Acts on | How it reaches growth and harvest |
+|---|---|---|---|
+| Seed density (1e6 cells/mL) | expansion | cells at the start | Sets the starting density X. Growth slows as the vessel fills, μ × (1 − X/6.0), and harvest is reported per input cell, so a denser seed fills the vessel sooner and divides the yield per input iPSC. |
+| Agitation (rpm) | every stage | shear, oxygen transfer, aggregate size | Stirring raises shear, 0.06·(rpm/75)^1.6, which adds death above 0.07 dyne/cm²; raises oxygen transfer, kLa = 4.0·(rpm/60)^1.4; and breaks aggregates to an equilibrium diameter. Diameter and oxygen set the necrotic core, which stops growth (× (1 − necrotic)) and adds death; diameter also sets the differentiation efficiency of each stage, a bell around the size it wants. |
+| Dissolved oxygen (fraction) | every stage | oxygen in the medium | Growth carries a bell around the oxygen optimum of each stage (too little and too much both hurt), and oxygen sets how deep the viable shell of an aggregate reaches — 110·√(DO/0.20) µm — so low oxygen grows a necrotic core. The same bell enters differentiation efficiency. |
+| Feed exchange (fraction of volume) | every stage | glucose, lactate, ammonia | At each feed this fraction of the medium is replaced: glucose restored, lactate and ammonia diluted. Growth carries glucose/(0.4 + glucose) × 22/(22 + lactate) × 4.5/(4.5 + ammonia); ammonia above 3 mM adds death; lactate also lowers efficiency. |
+| Feed interval (h) | every stage | how long waste builds up | Hours between exchanges: the longer, the further glucose falls and lactate and ammonia rise before the next feed, through the same three growth terms. |
+| ROCK inhibitor (h) | expansion | survival after seeding | While ROCK inhibitor is present single cells survive seeding; without it growth runs at 85% for the first half-day. After that it changes nothing. |
+| BMP4 (ng/mL) | mesoderm | mesoderm efficiency | Mesoderm only. Multiplies the mesoderm transition efficiency by a bell around a line-specific optimum: off the optimum, fewer cells become mesoderm. It does not change growth. |
+| VEGF (ng/mL) | mesoderm | mesoderm efficiency | Mesoderm only, beside BMP4: a second bell on the same efficiency. |
+| M-CSF (ng/mL) | myeloid | myeloid efficiency → harvest | Myeloid stage only. A bell on transition efficiency, and efficiency drives monocyte release: 0.028 × efficiency × X per step. This is the chain that makes it the dominant lever on harvest. |
+| IL-3 (ng/mL) | myeloid | myeloid efficiency → harvest | Myeloid stage only, beside M-CSF: a second bell on the efficiency that drives release. |
+
+---
+
 ## What the model does not know
 
 - **Your line.** Hidden state is sampled, not measured from your cells.

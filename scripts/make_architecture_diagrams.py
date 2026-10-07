@@ -134,12 +134,12 @@ def system(c):
     s = [head(W, H, c,
               'A person states an objective. The orchestrator asks the literature and '
               'bioinformatics specialists for evidence. The bioinformatics agent discovers a '
-              'public dataset or registers a private one and plans an analysis against a named '
-              'uncertainty; deterministic tools then execute that plan over the data itself and '
-              'return an AnalysisResult. Only those results, never the raw datasets, enter '
-              'evidence synthesis, which produces candidate parameters; a validated decision '
-              'reaches the simulator or the bioreactor, and measurements return to the '
-              'orchestrator.')]
+              'public dataset or registers a private one; the data analyst plans an analysis '
+              'against a named uncertainty; deterministic tools then execute that plan over the '
+              'data itself and return an AnalysisResult. Only those results, never the raw '
+              'datasets, enter evidence synthesis, which produces candidate parameters; a '
+              'validated decision reaches the simulator or the bioreactor, and measurements '
+              'return to the orchestrator.')]
 
     s.append(box(390, 24, 200, 48, 'Person', 'objective · constraints', c,
                  c['human'], c['human_soft'], 'CURRENT'))
@@ -151,7 +151,7 @@ def system(c):
     s.append(box(62, 206, 216, 58, 'Literature agent', 'cited claims, with|source and quote', c,
                  c['brand'], c['brand_soft'], 'CURRENT'))
     s.append(box(318, 206, 344, 58, 'Bioinformatics agent',
-                 'annotation · dataset discovery|analysis planning', c,
+                 'annotation · dataset discovery|and registration', c,
                  c['brand'], c['brand_soft'], 'PHASE 1'))
     s.append(arrow(330, 166, 200, 206, c, '', color=c['brand']))
     s.append(arrow(490, 166, 490, 206, c, '', color=c['brand']))
@@ -163,13 +163,14 @@ def system(c):
                  c, c['data'], c['data_soft'], 'PHASE 1'))
     s.append(box(504, 300, 176, 54, 'Private datasets', 'never served, never|a citation', c,
                  c['human'], c['human_soft'], 'PHASE 1'))
-    s.append(box(708, 206, 216, 58, 'Analysis planner', 'needs a named|uncertainty', c,
-                 c['code'], c['code_soft'], 'PHASE 1'))
+    s.append(box(708, 206, 216, 58, 'Data analyst', 'plans, repairs and|interprets the analysis',
+                 c, c['brand'], c['brand_soft'], 'PHASE 1'))
     s.append(arrow(388, 264, 388, 300, c, 'fetches', color=c['data'], lx=382, ly=288,
                    anchor='end'))
     s.append(arrow(592, 264, 592, 300, c, 'registers', color=c['human'], lx=598, ly=288,
                    anchor='start'))
-    s.append(arrow(662, 234, 708, 234, c, 'plans', color=c['code'], ly=228))
+    s.append(arrow(662, 234, 708, 234, c, 'data', color=c['brand'], ly=228))
+    s.append(elbow([(650, 150), (816, 150), (816, 206)], c, '', color=c['brand']))
 
     # The join the earlier drawing got wrong: the data goes INTO the tools, and
     # what leaves is a computed result. A dataset never reaches synthesis itself.
@@ -179,7 +180,8 @@ def system(c):
                  c['code'], c['code_soft'], 'PHASE 1'))
     s.append(arrow(388, 354, 388, 396, c, '', color=c['data']))
     s.append(arrow(592, 354, 592, 396, c, '', color=c['human']))
-    s.append(arrow(816, 264, 816, 396, c, '', color=c['code']))
+    s.append(elbow([(816, 264), (816, 396)], c, 'AnalysisPlan —|needs a named|uncertainty',
+                   color=c['code'], lx=824, ly=312, anchor='start'))
 
     s.append(box(300, 500, 380, 56, 'Evidence synthesis',
                  'every source keeps its class, its visibility|and its parent', c,

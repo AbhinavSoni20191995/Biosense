@@ -677,7 +677,7 @@ about without the private bytes ever moving.
 
 The diagram now draws that: `Bioinformatics agent --fetches-->` public datasets
 and `--registers-->` private datasets; both, together with the plan from the
-**Analysis planner**, feed one **Deterministic analysis** box; and a single
+**Data analyst**, feed one **Deterministic analysis** box; and a single
 arrow labelled `AnalysisResult — derived analysis` carries its output into
 **Evidence synthesis**. The literature agent's cited claims still enter synthesis
 directly, because a cited claim is already evidence and has no dataset to

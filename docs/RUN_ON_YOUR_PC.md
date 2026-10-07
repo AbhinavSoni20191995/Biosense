@@ -1,9 +1,10 @@
 # Running BioSense on your own computer
 
-**You may not need to.** The hosted app runs the real discovery agents with no
-install and no terminal — see the [README](../README.md). Run it yourself when
-you want real AI with no run caps on your own key, your own private data
-analysed on the machine that holds it, or to develop the code.
+**This is currently the way to use BioSense** — there is no public hosted
+instance at the moment. Running it yourself gives you real AI with no run caps
+on your own key, your own private data analysed on the machine that holds it,
+and the code to develop. To stand up a hosted instance for others, see
+[deploy/README.md](../deploy/README.md).
 
 **BioSense is a web application.** You start it once in a terminal and everything
 else happens in the browser.
@@ -391,5 +392,5 @@ Everything in **A** works natively in PowerShell. Two differences:
 | `decision refused: ...` | the envelope rejected a decision. Working as designed |
 | Omnigent cannot find a tool | you are not in the repository root, or `uv sync` has not been run |
 | `NOT READY — nothing is answering at http://127.0.0.1:6767` | the runtime is not running: `./scripts/start_local_ai.sh` |
-| `Run limit reached` on the hosted app | its caps, not a fault. Run it yourself for none: `./scripts/start_local_ai.sh` |
+| `Run limit reached` on a hosted instance | its caps, not a fault. Run it yourself for none: `./scripts/start_local_ai.sh` |
 | A run says **interrupted** | the server was replaced while it ran. It was stopped, not completed; start it again |
