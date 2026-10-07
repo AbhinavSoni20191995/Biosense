@@ -93,9 +93,13 @@ def _get(url, timeout=60, max_bytes=MAX_DOWNLOAD):
 
 
 def _text(data):
-    if data[:2] == b'\x1f\x8b':
+    # A .gz file can arrive gzipped twice (the file itself, and the transfer),
+    # and urllib undoes neither: unwrap until it is no longer gzip.
+    for _ in range(3):
+        if data[:2] != b'\x1f\x8b':
+            break
         data = gzip.decompress(data)
-    return data.decode('utf-8', errors='replace')
+    return data.decode('utf-8', errors='replace').lstrip('\ufeff')
 
 
 def _cells(line):
@@ -225,12 +229,31 @@ def parse_counts(text):
     return genes, gsms, rows
 
 
+ID_HEADERS = ('geneid', 'gene_id', 'entrezid', 'entrezgeneid', 'ncbigeneid', 'id')
+SYMBOL_HEADERS = ('symbol', 'genesymbol', 'gene_symbol', 'genename', 'name')
+
+
 def parse_annotation(text):
-    """GeneID -> Symbol from NCBI's annotation table."""
-    reader = csv.DictReader(io.StringIO(text), delimiter='\t')
+    """GeneID -> Symbol from NCBI's annotation table.
+
+    Read by meaning, not by exact header: a byte-order mark, a comment line or
+    a header in another case once made this return nothing, silently, and every
+    gene kept its number. The caller reports how many ids got a symbol.
+    """
+    lines = [l for l in text.lstrip('\ufeff').splitlines() if l.strip() and not l.startswith('#')]
+    if not lines:
+        return {}
+    reader = csv.reader(lines, delimiter='\t')
+    head = [_norm(h.strip().strip('"')) for h in next(reader)]
+    idc = next((head.index(_norm(h)) for h in ID_HEADERS if _norm(h) in head), None)
+    syc = next((head.index(_norm(h)) for h in SYMBOL_HEADERS if _norm(h) in head), None)
+    if idc is None or syc is None:
+        return {}
     out = {}
     for r in reader:
-        gid, sym = (r.get('GeneID') or '').strip(), (r.get('Symbol') or '').strip()
+        if len(r) <= max(idc, syc):
+            continue
+        gid, sym = r[idc].strip().strip('"'), r[syc].strip().strip('"')
         if gid and sym:
             out[gid] = sym
     return out
@@ -876,19 +899,31 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
         conv = lambda x, j: x
     else:
         raise K.ContractError(f'unknown transform {transform!r}')
+    ids_of = {}
     for i, gid in enumerate(gene_ids):
         sym = symbols.get(gid, gid)
+        ids_of[sym.upper()] = gid
         logcpm.append((sym, [conv(matrix[i][j], j) for j, _, _ in chosen]))
 
     limit = max(1, min(max_genes, MAX_ROWS // max(1, len(chosen))))
     missing = []
     if genes:
+        # A gene may be asked for by symbol or by the series' own id (an NCBI
+        # GeneID, say), and is found either way.
         want = {g.upper() for g in genes}
-        picked = [x for x in logcpm if x[0].upper() in want]
-        found = {x[0].upper() for x in picked}
+        picked = [x for x in logcpm
+                  if x[0].upper() in want or str(ids_of.get(x[0].upper(), '')).upper() in want]
+        found = {x[0].upper() for x in picked} | {str(ids_of.get(x[0].upper(), '')).upper()
+                                                  for x in picked}
         missing = sorted(g for g in genes if g.upper() not in found)
         if not picked:
-            raise K.ContractError(f'none of {", ".join(genes)} is in this series\' counts')
+            mapped = sum(1 for g in gene_ids if g in symbols)
+            why = ('' if mapped >= len(gene_ids) / 2 else
+                   f' This series\' rows are its own ids ({", ".join(list(gene_ids)[:3])}, ...), '
+                   f'not gene symbols: only {mapped} of {len(gene_ids)} were given a symbol, so a '
+                   f'symbol cannot match. Name the genes by those ids, or report the symbol '
+                   f'table as unreadable.')
+            raise K.ContractError(f'none of {", ".join(genes)} is in this series\' counts.' + why)
         picked = picked[:limit]
     else:
         picked = sorted(logcpm, key=lambda x: -sum(x[1]) / len(x[1]))[:limit]
@@ -934,12 +969,27 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
         counts_url, annot_url = counts_urls(acc, organism)
         try:
             gene_ids, gsms, matrix = parse_counts(_text(_get(counts_url, timeout)))
-            symbols = parse_annotation(_text(_get(annot_url, timeout)))
+            # The counts are usable without the symbol table, so its failure is
+            # recorded and said loudly, never a reason to drop the counts.
+            try:
+                symbols, annot_error = parse_annotation(_text(_get(annot_url, timeout))), None
+            except (urllib.error.URLError, OSError, K.ContractError) as e:
+                symbols, annot_error = {}, f'{type(e).__name__}: {str(e)[:200]}'
             rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, symbols,
                                            **common)
             route = 'ncbi_processed'
             sources.update(counts=counts_url, annotation=annot_url)
-            read = {'transform': 'counts'}
+            mapped = sum(1 for g in gene_ids if g in symbols)
+            read = {'transform': 'counts',
+                    'symbols': (f'{mapped} of {len(gene_ids)} NCBI GeneIDs given a symbol from '
+                                f'NCBI\'s annotation table'
+                                + (f' (the table could not be read: {annot_error})'
+                                   if annot_error else ''))}
+            if mapped < len(gene_ids) / 2:
+                read['symbols_warning'] = (
+                    f'Only {mapped} of {len(gene_ids)} genes have a symbol: this table\'s genes '
+                    f'are mostly NCBI GeneIDs. A gene set, a pathway library or a symbol named '
+                    f'in a plan will not match them.')
         except urllib.error.HTTPError as e:
             why_not_ncbi = f'NCBI has no processed counts for {acc} (HTTP {e.code})'
     else:
@@ -1026,7 +1076,8 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             notes=(f'route: {route}; sources: {sources}; confidence ceiling for this species '
                    f'and route: {weight["confidence_ceiling"]}'),
             extra_limitations=([weight['note']] if weight['note'] else [])
-            + column_limitations(read),
+            + column_limitations(read)
+            + ([read['symbols_warning']] if read.get('symbols_warning') else []),
             overwrite=overwrite)
     return {'dataset_id': did, 'accession': acc, 'table': str(table),
             'samples_table': str(sample_tsv), 'organism': organism, 'route': route,

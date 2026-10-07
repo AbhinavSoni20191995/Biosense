@@ -59,6 +59,15 @@ def run(table, manifest, plan):
         s = _score(r)
         if s is not None:
             scores[str(r['readout']).upper()] = s
+    ids = [g for g in scores if g.isdigit() or g.startswith(('ENSG', 'ENSMUSG'))]
+    if len(ids) > len(scores) / 2:
+        # A pathway library names genes by symbol; matching it against numbers
+        # would quietly test almost nothing and report that nothing moved.
+        raise K.ContractError(
+            f'{len(ids)} of {len(scores)} genes in this table are ids, not symbols '
+            f'({", ".join(ids[:3])}, ...). The pathway library is keyed by symbol, so they would '
+            f'not match. Re-register the dataset with symbols (fetch-geo reports how many ids '
+            f'were given one) before asking which programmes moved.')
     if len(scores) < 50:
         raise K.ContractError(f'{len(scores)} genes have a test result; ranking pathways needs '
                               f'a genome-wide table (at least 50 tested genes). Fetch the series '

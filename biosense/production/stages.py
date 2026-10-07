@@ -71,8 +71,12 @@ COMMAND_STAGES = (
     (re.compile(r'bioinformatics\.cli\s+analyse\s+plan\b|analysis-plan'), 'planning_analysis'),
     (re.compile(r'bioinformatics\.cli\s+(annotate|datasets|search|plan|sets|tools)\b'),
      'searching_datasets'),
-    (re.compile(r'production\.cli\s+report\b|reasoning_report'), 'generating_report'),
-    (re.compile(r'simulate-standin|sim_mode|sim-compare|simulator'), 'testing_simulator'),
+    (re.compile(r'production\.cli\s+report\b|reasoning_report|evidence\.cli\s+round-(plan|compare)\b'
+                r'|RUN_SUMMARY|landscape_summary'), 'generating_report'),
+    # `evidence.cli simulate` and `term` are how a discovery run reaches the
+    # reactor; the older names are kept so a recorded run still maps.
+    (re.compile(r'evidence\.cli\s+(simulate|term)\b|simulate-standin|sim_mode|sim-compare'
+                r'|simulator'), 'testing_simulator'),
     (re.compile(r'propose-decision|quantified_hypothesis|hypothesis'), 'building_hypothesis'),
     (re.compile(r'production\.cli\s+advise|loop-status'), 'synthesizing_evidence'),
     (re.compile(r'production\.cli\s+loop-init|validate-request|autonomy'),

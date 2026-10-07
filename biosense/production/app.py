@@ -359,6 +359,16 @@ class DiscoveryRun:
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
 
+    def reach(self, stage):
+        """Mark a stage reached because its artifact exists, without an event.
+
+        The command a run used is one signal; the file it left is a firmer one.
+        A simulation file means the reactor ran; a protocol report means the
+        report was written — whatever the commands were called.
+        """
+        with self.cv:
+            self.stages_reached.add(stage)
+
     def add(self, event):
         with self.cv:
             new_stage = bool(event.get('stage')) and event['stage'] not in self.stages_reached
@@ -592,6 +602,12 @@ class DiscoveryRun:
         except OSError:
             return
         sig = tuple((f.name, f.stat().st_mtime) for f in files)
+        if files:
+            self.reach('testing_simulator')
+        for name in ('RUN_SUMMARY.md', 'landscape_summary.md', 'round_plan.json'):
+            if (self.out_dir / name).is_file():
+                self.reach('generating_report')
+                break
         if self._live_mtimes.get('genotype_sim') == sig:
             return
         self._live_mtimes['genotype_sim'] = sig
@@ -1122,6 +1138,7 @@ class DiscoveryRegistry:
                                     projects_dir=run.projects_dir)
                 summary = res['omnigent']
                 run.session = summary['session']
+                run.scan_artifacts(force=True)
                 # AI execution is over; BioSense's is not. Everything from here
                 # — settling, discovering, validating, ingesting, assembling —
                 # is reported as FINALIZING RESULTS rather than as COMPLETE.
@@ -1134,6 +1151,9 @@ class DiscoveryRegistry:
                 # A real run that wrote nothing is the most confusing outcome
                 # this product can produce. It says what happened instead of
                 # leaving an empty hypothesis panel.
+                if final.get('protocol'):
+                    # BioSense assembled the protocol report from what the run wrote.
+                    run.reach('generating_report')
                 final['diagnosis'] = run.activity.diagnose(
                     artifacts_ingested=(final.get('bundle') or {}).get('artifacts_ingested', 0),
                     hypotheses=len((final.get('bundle') or {}).get('hypotheses') or []),

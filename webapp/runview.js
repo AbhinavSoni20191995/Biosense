@@ -330,10 +330,13 @@ const RV = (() => {
       const li = el('li', 'stg ' + r.status);
       li.dataset.stage = r.stage;
       li.append(el('span', 'tick', r.status === 'done' ? '✓'
-        : r.status === 'current' ? '●' : '○'));
+        : r.status === 'current' ? '●' : r.status === 'skipped' ? '–' : '○'));
       const d = el('div', null);
       d.append(el('div', 't', r.label));
       if (r.status === 'current') d.append(el('div', 'b', r.blurb));
+      /* A finished run that never reached a step says so, rather than leaving an
+         empty circle that reads as "still to come". */
+      if (r.status === 'skipped') d.append(el('div', 'b', 'not done in this run'));
       li.append(d);
       ul.append(li);
     });
