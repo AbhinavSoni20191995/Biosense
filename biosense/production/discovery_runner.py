@@ -288,8 +288,17 @@ def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
         (Path(out_dir) / 'protocol_summary.md').write_text(
             PS.markdown(protocol), encoding='utf-8')
 
+    library = None
+    if request.get('purpose') == 'landscape' and runtime_mode != 'synthetic_demo':
+        # What the area agents extracted joins the server's library, paper by
+        # paper; a refused paper says why and the rest are kept.
+        from ..evidence import library as LIB
+        library = LIB.merge_run(out_dir, from_run=Path(out_dir).name)
+        library['stats'] = LIB.stats()
+
     return {
         'request': request,
+        'library': library,
         'runtime_mode': runtime_mode,
         'runtime_label': RT.LABELS[runtime_mode],
         'bundle': bundle,

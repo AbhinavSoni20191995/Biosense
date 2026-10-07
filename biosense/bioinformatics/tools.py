@@ -172,6 +172,73 @@ def live_lookup(symbol, sources=None, timeout=20):
     return out
 
 
+def _uniprot_summary(payload):
+    rec = ((payload or {}).get('results') or [None])[0] or {}
+    if not rec:
+        return {}
+    out = {'uniprot': rec.get('primaryAccession'),
+           'protein': (((rec.get('proteinDescription') or {}).get('recommendedName') or {})
+                       .get('fullName') or {}).get('value')}
+    for c in rec.get('comments') or []:
+        if c.get('commentType') == 'FUNCTION' and not out.get('function'):
+            out['function'] = ' '.join(x.get('value', '') for x in c.get('texts') or [])[:1200]
+        if c.get('commentType') == 'SUBCELLULAR LOCATION':
+            out['subcellular'] = sorted({(x.get('location') or {}).get('value')
+                                         for x in c.get('subcellularLocations') or []
+                                         if (x.get('location') or {}).get('value')})[:8]
+    go = []
+    for x in rec.get('uniProtKBCrossReferences') or []:
+        if x.get('database') != 'GO':
+            continue
+        for prop in x.get('properties') or []:
+            v = prop.get('value') or ''
+            if prop.get('key') == 'GoTerm' and v.startswith('P:'):
+                go.append(v[2:])
+    out['go_biological_process'] = go[:20]
+    out['keywords'] = [k.get('name') for k in rec.get('keywords') or [] if k.get('name')][:15]
+    return out
+
+
+def gene_info(symbols, *, timeout=20, lookup=None):
+    """What public databases say about each gene, read into a few fields.
+
+    Ensembl (identity), UniProt (function, GO biological process, location) and
+    STRING (interaction partners). General records about the gene: no direction
+    of effect, no statement about this cell type, stage or process — the
+    agent may cite them as background and must say so. A gene the databases do
+    not answer for says which source failed, never "no role".
+    """
+    lookup = lookup or live_lookup
+    genes = []
+    for sym in symbols:
+        res = lookup(sym, sources=('Ensembl', 'UniProt', 'STRING'), timeout=timeout)
+        g = {'symbol': res['symbol'], 'sources': [{'source': r['source'], 'url': r['url']}
+                                                   for r in res['results']],
+             'errors': res['errors'], 'retrieved_at': res['retrieved_at']}
+        for r in res['results']:
+            pl = r['payload']
+            if r['source'] == 'Ensembl' and isinstance(pl, dict):
+                g.update(ensembl_id=pl.get('id'), description=pl.get('description'),
+                         biotype=pl.get('biotype'))
+            elif r['source'] == 'UniProt':
+                g.update(_uniprot_summary(pl))
+            elif r['source'] == 'STRING' and isinstance(pl, list):
+                partners = {}
+                for e in pl:
+                    for a, b in (('preferredName_A', 'preferredName_B'),
+                                 ('preferredName_B', 'preferredName_A')):
+                        if (e.get(a) or '').upper() == res['symbol'].upper() and e.get(b):
+                            partners[e[b]] = max(partners.get(e[b], 0), e.get('score') or 0)
+                g['interaction_partners'] = [k for k, _ in sorted(partners.items(),
+                                                                  key=lambda x: -x[1])][:12]
+        g['found'] = bool(g.get('ensembl_id') or g.get('uniprot'))
+        genes.append(g)
+    return {'genes': genes, 'evidence_class': 'live_annotation', 'retrieved_at': K.now_iso(),
+            'note': ('Public database records about each gene in general. Background for a '
+                     'hypothesis, citable by source URL; not a direction of effect and not a '
+                     'statement about this cell type, stage or process.')}
+
+
 def render_report(report):
     """Markdown summary for the orchestrator and the loop record."""
     r = report['request']

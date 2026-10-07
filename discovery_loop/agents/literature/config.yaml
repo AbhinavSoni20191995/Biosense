@@ -65,6 +65,12 @@ instructions: |
     do not look for one and do not write a protocol. Work in the run directory
     the task names, within the budget it states (searches, full texts, minutes).
     Do it in this order, and it fits in a few turns:
+      0. If the task gives cell production library lines or the library
+         search command, start there: run
+           .venv/bin/python -m biosense.evidence.library search --terms <words> [--stage <s>]
+         for each lever, and search the literature only for what the library
+         lacks. To cite a library value, re-read its paragraph with
+         `fetch <PMCID> --find "<term>"` so the claim quotes the source.
       1. ONE `discover` call with every query at once (one per lever and
          stage, synonyms expanded, `--fetch <full-text budget> --find` with
          the dose/time words), e.g.
@@ -88,6 +94,10 @@ instructions: |
     pass the `--cache-dir` the task names to `discover` so papers another
     stage already read are not fetched again, and report — not search —
     anything you see that crosses into another stage.
+    Never stop at "not reported for this exact cell and stage": follow
+    "When the exact value is not reported" in agent_prompt.md — the closest
+    reported proxy with its conversion, then the widening circles — and list
+    under not found only what no circle answered, each with the closest proxy.
     Reply with: the claims (ID, value, unit, stage, context, source and
     paragraph, full text or abstract), the synthesis (what the body of
     evidence means, direct and indirect, convergent and contradicting), each
@@ -96,6 +106,22 @@ instructions: |
     the minutes the task states even if the record is incomplete: a partial
     answer on time is worth more than a complete one after the orchestrator
     has finished without it.
+  - LIBRARY: build the cell production library for one AREA the task names
+    (e.g. aggregates and embryoid bodies). Breadth over depth: run `discover`
+    with many queries across the area (cell types, formats, synonyms; `--sort
+    cited` surfaces the established protocols; reviews lead to primary sources),
+    read the full texts with --find on the area's quantities ("cells/mL",
+    "EBs", "per well", "rpm", "ng/mL", "day"), and for EVERY paper that reports
+    production values write one record into `<folder>/library.draft.json` in
+    the shape `.venv/bin/python -m biosense.evidence.library template` prints:
+    paper_id, title, year, system (cells, target, format, vessel), stages, a
+    two-sentence summary, and each value it states with the sentence quoted
+    and its locator. A value about a neighbouring quantity is a proxy:
+    `proxy_for` names the parameter it informs and `conversion` says how, in
+    words. Never average papers and never write a value without its quote.
+    Check the file with `library check --draft <file>` before replying. Aim
+    for many papers (15-30 in a thorough run). Reply with the count, the
+    stages and quantities well covered, and those reported only as proxies.
   - PROCESS REFERENCE: collect established suspension-culture setpoints of
     hiPSC and hiPSC-derived cells (seeding density, agitation with its vessel and
     volume, dissolved oxygen, feed exchange fraction and interval, temperature

@@ -61,6 +61,46 @@ def cmd_annotate(a):
     return 0 if any(g['found'] for g in report['genes']) else 2
 
 
+def _emit(doc, out):
+    if out:
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        K.write_json_atomic(out, doc)
+    _print(doc)
+    return 0
+
+
+def cmd_gene_info(a):
+    if not a.i_have_network_permission:
+        _print({'refused': 'gene-info touches the network. Pass --i-have-network-permission only '
+                           'when the run permits public-database access.'})
+        return 1
+    return _emit(BT.gene_info([KB.validate_symbol(g) for g in a.genes]), a.out)
+
+
+def cmd_geo_samples(a):
+    from ..data.sources import geo_fetch as GF
+    doc = GF.samples(a.accession, i_have_network_permission=a.i_have_network_permission)
+    if not a.out:
+        # The full sample list can be long; the console gets the part a choice needs.
+        doc = dict(doc, samples=doc['samples'][:12], samples_total=len(doc['samples']))
+    return _emit(doc, a.out)
+
+
+def cmd_fetch_geo(a):
+    from ..data.sources import geo_fetch as GF
+    keep = {}
+    for kv in a.keep or []:
+        if '=' not in kv:
+            raise K.ContractError(f'--keep takes FIELD=VALUE, got {kv!r}')
+        k, v = kv.split('=', 1)
+        keep[k.strip()] = v.strip()
+    doc = GF.fetch(a.accession, condition_key=a.condition_key, control=a.control,
+                   treatments=a.treatment, keep=keep, genes=a.genes, max_genes=a.max_genes,
+                   dataset_id=a.dataset_id, cell_type=a.cell_type,
+                   i_have_network_permission=a.i_have_network_permission)
+    return _emit(doc, a.out)
+
+
 def cmd_live_lookup(a):
     if not a.i_have_network_permission:
         _print({'refused': 'live lookups touch the network. Pass --i-have-network-permission only when the '
@@ -223,6 +263,12 @@ def main(argv=None):
     p.add_argument('--timeout', type=int, default=20); p.add_argument('--out')
     p.add_argument('--i-have-network-permission', action='store_true')
     p.set_defaults(fn=cmd_live_lookup)
+    p = sub.add_parser('gene-info', help='public records per gene: identity, function, GO '
+                                         'process, partners (network)')
+    p.add_argument('--genes', nargs='+', required=True)
+    p.add_argument('--i-have-network-permission', action='store_true')
+    p.add_argument('--out')
+    p.set_defaults(fn=cmd_gene_info)
     p = sub.add_parser('sets', help='list loaded knowledge sets and their genes')
     p.add_argument('--knowledge-set', nargs='*'); p.set_defaults(fn=cmd_sets)
 
@@ -250,6 +296,27 @@ def main(argv=None):
     p.set_defaults(fn=cmd_datasets_list)
     p = ds.add_parser('show', help='one dataset manifest and its lineage')
     p.add_argument('--dataset-id', required=True); p.set_defaults(fn=cmd_datasets_show)
+    p = ds.add_parser('geo-samples', help='a GEO series\' samples and the fields a condition '
+                                          'can be read from (network)')
+    p.add_argument('--accession', required=True)
+    p.add_argument('--i-have-network-permission', action='store_true')
+    p.add_argument('--out')
+    p.set_defaults(fn=cmd_geo_samples)
+    p = ds.add_parser('fetch-geo', help='NCBI processed counts for a GEO RNA-seq series -> a '
+                                        'registered public dataset (network)')
+    p.add_argument('--accession', required=True)
+    p.add_argument('--condition-key', required=True,
+                   help='a groupable field from geo-samples (a characteristic, title or source)')
+    p.add_argument('--control', required=True)
+    p.add_argument('--treatment', nargs='+', required=True)
+    p.add_argument('--keep', nargs='*', default=[], metavar='FIELD=VALUE',
+                   help='keep only samples whose field has this value (e.g. "cell type=macrophage")')
+    p.add_argument('--genes', nargs='*')
+    p.add_argument('--max-genes', type=int, default=2000)
+    p.add_argument('--dataset-id'); p.add_argument('--cell-type')
+    p.add_argument('--i-have-network-permission', action='store_true')
+    p.add_argument('--out')
+    p.set_defaults(fn=cmd_fetch_geo)
     p = ds.add_parser('search', help='find candidate datasets (offline by default)')
     p.add_argument('--query', required=True)
     p.add_argument('--source', default='geo')
@@ -292,7 +359,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         return a.fn(a)
-    except (K.ContractError, ValueError, KeyError, FileNotFoundError) as e:
+    except (K.ContractError, ValueError, KeyError, OSError) as e:
         _print({'error': type(e).__name__, 'message': str(e)})
         return 1
 

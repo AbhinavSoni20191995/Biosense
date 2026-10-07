@@ -204,14 +204,19 @@
         "single",
         "by_stage"
       ],
-      "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards \u2014 faster on the literature phase, more of the model allowance, and the orchestrator must reconcile the stages."
+      "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards — faster on the literature phase, more of the model allowance, and the orchestrator must reconcile the stages."
     },
     "purpose": {
       "enum": [
         "discovery",
-        "process_reference"
+        "process_reference",
+        "landscape"
       ],
-      "description": "discovery: a question about the process (the default). process_reference: collect cited, cell-type-independent suspension-culture setpoints into a draft an admin reviews and promotes into the server's process reference."
+      "description": "discovery: a question about the process (the default). process_reference: collect cited, cell-type-independent suspension-culture setpoints into a draft an admin reviews and promotes into the server's process reference. landscape: build the server's cell production library — literature agents read the field across stages and formats, and the values they extract (each with its quote) are merged into the library every later run starts from."
+    },
+    "public_data": {
+      "type": "boolean",
+      "description": "Whether the agents may query public databases (Ensembl, UniProt, STRING, GEO) in this run. On by default for a real run; never for a synthetic demo."
     }
   }
 }

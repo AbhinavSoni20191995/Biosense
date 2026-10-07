@@ -99,6 +99,36 @@ were confirmed is worth naming as such. Never let indirect evidence become a
 reported value: the number stays with the paper that measured it, in its own
 context, and the inference stays visible.
 
+## When the exact value is not reported
+
+"Not reported for this cell type and stage" is where the search starts, not
+where it ends. A protocol needs a number, and the field nearly always reports
+something close to it.
+
+1. **The closest reported quantity, as a proxy.** Progenitor density at the
+   start of differentiation is rarely stated, but the protocols state embryoid
+   bodies per well, cells seeded per EB, aggregate diameter or the expansion
+   density the cells came from. Report that value with its quote, mark what it
+   is a proxy for, and give the conversion in words with every assumption
+   ("~10 EBs per well in 3 mL; at ~1,000-2,000 cells per EB this is roughly
+   3-7 x 10^3 cells/mL, assuming EB size from the same paper's Methods"). A
+   conversion that uses only reported numbers is an adapted value; one that
+   needs an assumed number is a best guess and says which number was assumed.
+2. **Widening circles.** If the exact system says nothing, search outward and
+   say which circle answered: (a) the same cell type and stage in another
+   format (static plates, EBs, spinner, stirred tank); (b) the same lineage
+   from another source (cord blood, bone marrow, monocyte cultures); (c) other
+   iPSC-derived production processes in the same format (cardiomyocytes,
+   neural, hepatic, T and NK cells) — physical setpoints transfer best;
+   (d) general mammalian suspension-culture practice. The further the circle,
+   the lower the confidence, and the rationale names the circle.
+3. **Under "not found"** list only what no circle answered, each with the
+   closest proxy found and why it does not transfer.
+
+Being strict about provenance is not being strict about relevance: a proxy is
+labelled, converted in the open and given a lower confidence, never silently
+dropped.
+
 ## Best guesses
 
 When the evidence does not settle a number, the person still needs a starting

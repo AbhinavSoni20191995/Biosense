@@ -158,6 +158,8 @@ def _search_live(query, plan, limit, timeout):
                 payload = json.loads(r.read(8_000_001)).get('result', {})
             for i in ids:
                 rec = payload.get(i) or {}
+                if not str(rec.get('accession') or '').startswith('GSE'):
+                    continue        # a GDS, platform or sample record: only series are fetched
                 strategy = (rec.get('gdstype') or '').lower()
                 modality = next((m for k, m in STRATEGY_MODALITY.items() if k in strategy), None)
                 if modality is None:
@@ -167,7 +169,8 @@ def _search_live(query, plan, limit, timeout):
                     modality=modality, organism=rec.get('taxon', ''), source=NAME,
                     url=f'https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={rec.get("accession", i)}',
                     sample_count=int(rec.get('n_samples') or 0) or None,
-                    relevance_reason=f'GEO esearch hit for {query!r}',
+                    relevance_reason=(f'GEO esearch hit for {query!r}: '
+                                      f'{(rec.get("summary") or "")[:300]}'),
                     retrieved_at=K.now_iso()))
     except (urllib.error.URLError, OSError, ValueError) as e:
         return SearchResult(source=NAME, query=query, candidates=[], query_plan=plan, live=True,
@@ -176,5 +179,7 @@ def _search_live(query, plan, limit, timeout):
                                  f'No result is not the same as no such data.')
     return SearchResult(source=NAME, query=query, candidates=out, query_plan=plan, live=True,
                         searched_at=K.now_iso(),
-                        note='Live GEO records. Nothing has been downloaded: fetch a processed '
-                             'file and register it before any analysis.')
+                        note='Live GEO records. Nothing has been downloaded: read a series\' '
+                             'samples with `datasets geo-samples`, then `datasets fetch-geo` '
+                             'builds and registers an analysable table from NCBI\'s processed '
+                             'counts (human and mouse RNA-seq).')

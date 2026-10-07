@@ -103,6 +103,7 @@ RUN uv sync --locked --extra omnigent --extra singlecell
 # enforces at startup: a server rooted inside the private root would serve it.
 ENV RUNS_DIR=/app/data/runs \
     BIOSENSE_PRIVATE_DATA=/app/data/private \
+    BIOSENSE_DATA_CACHE=/app/data/cache \
     PORT=8000 \
     BIOSENSE_OMNIGENT_PORT=6767 \
     BIOSENSE_RUNTIME_MODE=local \

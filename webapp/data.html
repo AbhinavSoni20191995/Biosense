@@ -51,6 +51,8 @@ body[data-view="simple"] .tech{display:none}
 </style>
 </head>
 <body data-view="simple">
+<div class="wrap">
+
 <header class="bar">
   <div class="brand">
     <img src="assets/biosense-mark.png" alt="">
@@ -72,7 +74,37 @@ body[data-view="simple"] .tech{display:none}
   <button class="btn" id="theme" title="Switch light / dark">Theme</button>
 </header>
 
-<div class="wrap">
+
+
+  <!-- The landscape every run starts from: papers on making cells, each read for
+       the values it states, with the sentence that states them. Built by a
+       literature run an admin starts here; searched by every later run. -->
+  <section class="glass card" id="libCard">
+    <div class="head"><h2>Cell production library</h2><span class="dim" id="libCount"></span></div>
+    <p class="sub">What the literature reports about producing cells from iPSC — expansion,
+      embryoid bodies and aggregates, differentiation, maturation, scale-up and harvest — read
+      once and kept on this server. Every run starts its literature search here and looks
+      only for what the library lacks. Each value keeps the sentence it came from; a value
+      about a neighbouring quantity (EBs per well rather than cells per mL) is marked as a
+      proxy with its conversion.</p>
+    <div id="libBuild" hidden>
+      <form id="libForm" class="upform">
+        <label>Project to carry the run <select id="libProject"></select></label>
+        <label>Depth <select id="libEffort">
+          <option value="standard">standard — about 40 minutes</option>
+          <option value="thorough" selected>thorough — more papers, longer</option></select></label>
+        <label style="grid-column:1/-1">Focus (optional)
+          <input type="text" id="libFocus" maxlength="300"
+            placeholder="e.g. myeloid and macrophage production; stirred bioreactors"></label>
+        <button class="btn go" type="submit" id="libGo">Build the library</button>
+      </form>
+      <p class="dim" id="libMsg"></p>
+    </div>
+    <div class="libsearch"><input type="search" id="libQ"
+      placeholder="Search the library — e.g. embryoid body density, M-CSF, agitation"></div>
+    <div id="libMatches"></div>
+    <div id="libPapers" class="dim">loading…</div>
+  </section>
 
   <section class="glass card">
     <div class="head"><h2>Datasets</h2><span class="dim" id="dsCount"></span></div>
@@ -309,7 +341,99 @@ $('#uploadForm').addEventListener('submit', async ev => {
 });
 renderMyUploads();
 
-datasets(); tools(); projects();
+/* ── the cell production library ─────────────────────────── */
+const fmtVal = v => (v.value != null ? (+v.value).toLocaleString()
+  : [v.low, v.high].filter(x => x != null).map(x => (+x).toLocaleString()).join('–'))
+  + (v.unit ? ' ' + v.unit : '');
+function valueLine(v) {
+  const li = el('li');
+  li.append(el('b', null, v.parameter + ': '), document.createTextNode(fmtVal(v) + ' · ' + v.stage));
+  if (v.proxy_for) li.append(' ', tag('proxy for ' + v.proxy_for, 'warn'));
+  if (v.context) li.append(el('div', 'dim', v.context));
+  if (v.conversion) li.append(el('div', 'dim', 'conversion: ' + v.conversion));
+  li.append(el('div', 'quote', '“' + v.quote + '”' + (v.locator ? ' — ' + v.locator : '')));
+  return li;
+}
+function paperLink(id) {
+  const a = el('a', null, id); a.target = '_blank'; a.rel = 'noopener';
+  a.href = id.startsWith('PMC') ? `https://europepmc.org/article/PMC/${id}`
+    : id.startsWith('PMID:') ? `https://pubmed.ncbi.nlm.nih.gov/${id.slice(5)}/`
+    : `https://doi.org/${id.replace(/^doi:/i, '')}`;
+  return a;
+}
+async function library(q) {
+  const host = $('#libPapers');
+  try {
+    const d = await get('/api/library' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    const s = d.stats;
+    $('#libCount').textContent = s.papers ? `${s.papers} papers · ${s.values} values` : 'empty';
+    $('#libBuild').hidden = !d.can_build;
+    const mh = $('#libMatches'); mh.textContent = '';
+    if (q) {
+      const ul = el('ul', 'libvals');
+      (d.matches || []).forEach(v => {
+        const li = valueLine(v);
+        li.prepend(paperLink(v.paper_id), ' ');
+        ul.append(li);
+      });
+      mh.append(el('p', 'dim', (d.matches || []).length ? `Values mentioning “${q}”:` : `Nothing mentions “${q}”.`), ul);
+    }
+    host.textContent = '';
+    if (!d.papers.length) {
+      host.append(el('p', 'dim', d.can_build
+        ? 'Empty. Build it once above; every later run starts from it.'
+        : 'Empty. An admin builds it from this page.'));
+      return;
+    }
+    d.papers.forEach(p => {
+      const det = el('details', 'libpaper');
+      const sum = el('summary');
+      sum.append(el('b', null, p.title), ' ',
+        el('span', 'dim', [p.year, (p.system || {}).cells, (p.system || {}).format]
+          .filter(Boolean).join(' · ') + ` · ${p.n_values} values`));
+      det.append(sum);
+      const meta = el('p', 'dim'); meta.append(paperLink(p.paper_id), ' · ' + (p.stages || []).join(', '));
+      det.append(meta);
+      if (p.summary) det.append(el('p', null, p.summary));
+      const ul = el('ul', 'libvals'); (p.values || []).forEach(v => ul.append(valueLine(v)));
+      det.append(ul);
+      host.append(det);
+    });
+  } catch (_) { host.textContent = 'the library did not answer'; }
+}
+let libTimer = null;
+$('#libQ').addEventListener('input', e => {
+  clearTimeout(libTimer); libTimer = setTimeout(() => library(e.target.value.trim()), 300);
+});
+(async function libProjects() {
+  try {
+    const d = await get('/api/projects');
+    const sel = $('#libProject');
+    d.projects.forEach(p => { const o = el('option', null, p.name); o.value = p.project_id; sel.append(o); });
+  } catch (_) { /* the build form says so on submit */ }
+})();
+$('#libForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const go = $('#libGo'), msg = $('#libMsg');
+  go.disabled = true; msg.textContent = 'starting…';
+  const focus = $('#libFocus').value.trim();
+  try {
+    const r = await fetch('/api/discovery', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: $('#libProject').value, purpose: 'landscape',
+        effort: $('#libEffort').value,
+        objective: 'Build the cell production library: what the literature reports about producing '
+          + 'cells from iPSC across expansion, aggregates and embryoid bodies, differentiation, '
+          + 'maturation, scale-up and harvest' + (focus ? '. Focus: ' + focus : '.') }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `the server answered ${r.status}`);
+    try { localStorage.setItem('bs-last-discovery-run', d.run_id); } catch (_) {}
+    msg.textContent = '';
+    msg.append('Started. ', Object.assign(el('a', null, 'Watch it in AI Discovery'), { href: 'console.html' }),
+      ' — the papers appear here when it finishes.');
+  } catch (e) { msg.textContent = e.message; go.disabled = false; }
+});
+
+library(); datasets(); tools(); projects();
 </script>
 <script src="runstate.js"></script>
 <script>mountRunBeacon();</script>

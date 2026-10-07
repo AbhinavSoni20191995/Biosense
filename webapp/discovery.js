@@ -640,6 +640,7 @@ function buildRequest() {
     effort: ($('#effort') && $('#effort').value) || 'standard',
     literature_mode: ($('#litMode') && $('#litMode').value) || 'single',
     purpose: ($('#purpose') && $('#purpose').value) || 'discovery',
+    public_data: !($('#publicData') && $('#publicData').value === 'off'),
     dataset_ids: $$('#datasetPicks input:checked').map(i => i.value),
   };
   if (anyCtx) {

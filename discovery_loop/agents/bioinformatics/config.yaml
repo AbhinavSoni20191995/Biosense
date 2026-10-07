@@ -21,6 +21,10 @@ os_env:
       # agent finish having written nothing.
       - ./runs
       - ./data/runs
+      # Public GEO series fetched by `datasets fetch-geo` are registered in the
+      # data cache (./data_cache on a laptop, ./data/cache in the hosted image).
+      - ./data_cache
+      - ./data/cache
     # Deliberately NOT ./private_data: the agent reads registered datasets
     # through the CLI, which refuses to serve or copy a private payload. An
     # agent that could write there could also move a private file somewhere

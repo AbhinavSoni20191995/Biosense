@@ -68,9 +68,14 @@ def run(table, manifest, plan):
         raise K.ContractError(f'{len(features)} features is beyond what this minimal tool is for; '
                               f'use the external-tool adapter')
 
+    # One pass to group rows by gene: scanning the whole table once per gene
+    # made a few-thousand-gene public series take minutes.
+    by_gene = {}
+    for i, r in enumerate(table.rows):
+        by_gene.setdefault(r[feature], []).append(i)
     rows = []
     for g in features:
-        idx = [i for i, r in enumerate(table.rows) if r[feature] == g]
+        idx = by_gene.get(g, [])
         a = [vals[i] for i in idx if table.rows[i][cond] == control]
         b = [vals[i] for i in idx if table.rows[i][cond] == treatment]
         if len(a) < S.MIN_N or len(b) < S.MIN_N:

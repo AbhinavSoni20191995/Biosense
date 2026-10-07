@@ -305,6 +305,11 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
             <option value="discovery" selected>A question about this process (default)</option>
             <option value="process_reference">Build the process reference — cited bioreactor setpoints, any cell type</option>
           </select>
+          <label class="lab" for="publicData" style="margin-top:14px">Public databases</label>
+          <select id="publicData" class="select">
+            <option value="on" selected>Allowed — gene records (Ensembl, UniProt, STRING) and real GEO datasets (default)</option>
+            <option value="off">Off — committed knowledge sets and named datasets only</option>
+          </select>
           <label class="lab" for="litMode" style="margin-top:14px">Literature search</label>
           <select id="litMode" class="select">
             <option value="single" selected>One agent across every lever (default)</option>

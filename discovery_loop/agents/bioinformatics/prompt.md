@@ -103,7 +103,30 @@ order is fixed, and the first step is the one that matters.
      --source geo --modality bulk_rna
    ```
 
-   Search is offline: it reads a committed fixture index whose accessions all
+   **When your task says public databases are permitted**, search GEO itself
+   and turn a real series into a dataset — this is the normal path, not an
+   extra:
+
+   ```
+   .venv/bin/python -m biosense.bioinformatics.cli datasets search --query "<question>" \
+     --organism "Homo sapiens" --modality bulk_rna --live --i-have-network-permission
+   .venv/bin/python -m biosense.bioinformatics.cli datasets geo-samples --accession GSE… \
+     --i-have-network-permission --out <run dir>/bioinformatics/GSE…_samples.json
+   .venv/bin/python -m biosense.bioinformatics.cli datasets fetch-geo --accession GSE… \
+     --condition-key "<field from groupable_fields>" --control "<value>" --treatment "<value>" \
+     [--keep "<field>=<value>"] [--genes <SYMBOL ...>] --i-have-network-permission
+   ```
+
+   Choose the series whose cells, stage and treatment are closest to the
+   uncertainty; read its samples before choosing the comparison, and take the
+   condition values exactly as GEO wrote them. Try a few series (and a few
+   queries: synonyms, the cell type, the factor) before concluding none fits.
+   `fetch-geo` refuses a series without NCBI processed counts (microarrays,
+   single-cell, non-human/mouse): note it and try the next. It registers a
+   PUBLIC dataset and prints the `analyse plan` line to run next. Write each
+   series you considered, and why it was or was not used, into your notes.
+
+   Without that permission, search is offline: it reads a committed fixture index whose accessions all
    begin with `SYNTHETIC-GSE`. An empty result means that index has no match,
    **never** that no such data exists — say which you mean. A match there is a
    demo fixture, not data about the question: unless the person selected it,
@@ -152,14 +175,23 @@ order is fixed, and the first step is the one that matters.
   design question, and the tools refuse it.
 - Never treat a mock external-tool run as evidence.
 
-## LIVE LOOKUP
+## PUBLIC GENE RECORDS
 
-Only when the orchestrator says the request permits it
-(`bioinformatics.live_lookups`). Use `live-lookup --gene <SYMBOL>
---i-have-network-permission`. It returns raw public records. Do **not** convert
-them into perturbation effects yourself: say what the records contain and
-recommend that a person curates them into a knowledge set with an explicit
-source before any decision leans on them.
+Only when your task says public databases are permitted. For every gene the
+loaded sets do not cover (`found: false`), run
+
+```
+.venv/bin/python -m biosense.bioinformatics.cli gene-info --genes <SYMBOL ...> \
+  --i-have-network-permission --out <run dir>/bioinformatics/gene_info.json
+```
+
+It reads Ensembl, UniProt (function, GO biological process, location) and
+STRING (interaction partners) into a few fields. Report what they say about
+each gene — its function, the processes it is annotated to, its partners — as
+`live_annotation` background with the source URL. Do **not** turn it into a
+direction of effect for this process: that comes from the literature or a
+dataset. It does tell you which genes to carry into `fetch-geo --genes`.
+(`live-lookup --gene` still returns the raw records if you need one.)
 
 ## What you must not do
 

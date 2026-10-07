@@ -93,7 +93,8 @@ MAX_STAGE_SHARDS = 4
 def build(*, project_id, objective, runtime_mode, research_context=None, dataset_ids=(),
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
-          projects_dir=None, effort=None, literature_mode=None, purpose=None):
+          projects_dir=None, effort=None, literature_mode=None, purpose=None,
+          public_data=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -124,12 +125,19 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
     if effort not in EFFORT:
         raise K.ContractError(f'effort must be one of {sorted(EFFORT)}; got {effort!r}')
     purpose = (purpose or 'discovery').strip().lower()
-    if purpose not in ('discovery', 'process_reference'):
-        raise K.ContractError(f'purpose must be discovery or process_reference; got {purpose!r}')
+    if purpose not in PURPOSES:
+        raise K.ContractError(f'purpose must be one of {", ".join(PURPOSES)}; got {purpose!r}')
     literature_mode = (literature_mode or DEFAULT_LITERATURE_MODE).strip().lower()
     if literature_mode not in LITERATURE_MODES:
         raise K.ContractError(f'literature_mode must be one of {LITERATURE_MODES}; '
                               f'got {literature_mode!r}')
+
+    # Public databases (Ensembl, UniProt, STRING, GEO) are on for a real run
+    # unless the person turned them off; a synthetic demo never touches the
+    # network.
+    if public_data is None:
+        public_data = mode != 'synthetic_demo'
+    public_data = bool(public_data) and mode != 'synthetic_demo'
 
     rid = request_id or f'disc-{uuid.uuid4().hex[:12]}'
     if not REQUEST_ID.match(rid):
@@ -153,6 +161,7 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'effort': effort,
         'literature_mode': literature_mode,
         'purpose': purpose,
+        'public_data': public_data,
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
         'notes': _clean(notes, field='notes', limit=2000),
     }
@@ -329,12 +338,45 @@ def privacy(req):
             'export_policy': 'private' if private else 'public_safe'}
 
 
+PURPOSES = ('discovery', 'process_reference', 'landscape')
+# A library run reads the field, not one process: four areas in parallel,
+# whatever the project's own stages are.
+LANDSCAPE_AREAS = (
+    ('expansion', 'iPSC expansion and banking — static and suspension, seeding density, '
+                  'aggregate size, passaging, medium exchange, agitation, DO, yields'),
+    ('aggregation', 'aggregates and embryoid bodies — formation method, cells per EB or '
+                    'aggregate, EBs per well or per mL, size, early lineage induction '
+                    '(mesoderm, endoderm, ectoderm) and its growth factors'),
+    ('differentiation', 'differentiation and maturation of iPSC-derived cells — blood and '
+                        'immune (HSPC, monocyte/macrophage, T/NK), and other lineages '
+                        '(cardiomyocyte, neural, hepatic) — factor doses, timing, densities'),
+    ('bioprocess', 'scale-up and bioreactors for cell products — stirred tank, vertical '
+                   'wheel, spinner, wave; agitation, DO, pH, feeding, perfusion, harvest, '
+                   'yields per input cell, cryopreservation'),
+)
+
+
+def _landscape_plan(loop_dir, python):
+    rows = '\n'.join(
+        f'    - `title: "literature-{a}"` → `{loop_dir}/literature/{a}/` — {what}'
+        for a, what in LANDSCAPE_AREAS)
+    return (f'Send `agent: "literature"` {len(LANDSCAPE_AREAS)} tasks in one response with '
+            f'`sys_session_send`, one per area, each starting `LIBRARY:` and naming its folder, '
+            f'its area, the search budget, and `--cache-dir {loop_dir}/literature/cache` for '
+            f'`discover`:\n{rows}\n'
+            f'  Each writes `<its folder>/library.draft.json` in the shape '
+            f'`{python} -m biosense.evidence.library template` prints, and checks it with '
+            f'`{python} -m biosense.evidence.library check --draft <file>`.')
+
+
 # ── the brief handed to the orchestrator ────────────────────────────────
 def _literature_plan(req, project, loop_dir, budget):
     """The literature dispatch the brief asks for, and what to do once it returns."""
     common = ('`args:` starting `DISCOVERY EVIDENCE:`, then the objective, the project, the '
-              'scope, {focus}, its run directory (`{folder}`) and what to bring back: cited claims '
-              'and labelled best guesses with their confidence')
+              'scope, {focus}, its run directory (`{folder}`) and what to bring back: cited claims, '
+              'labelled best guesses with their confidence, and for any lever with no direct '
+              'value the closest reported proxy with its conversion and the widening circle it '
+              'came from — never a bare "not found"')
     if (req.get('literature_mode') or DEFAULT_LITERATURE_MODE) != 'by_stage' or \
             len(project.stages) < 2:
         return (('Send the literature agent its task with `sys_session_send` — `agent: '
@@ -411,6 +453,53 @@ the target cell is.
    as an unreviewed, low-confidence starting value.
 
 """
+    if req.get('purpose') == 'landscape':
+        lit_dispatch, lit_after = _landscape_plan(loop_dir, python), ''
+        purpose_section = f"""## This run builds the cell production library
+
+The person asked for the **landscape of cell production**, not an answer about
+one process: what the literature reports about making cells from iPSC — in
+every stage and format — so that every later run starts from it. Breadth over
+depth: many papers, each read for the values it states.
+
+1. {lit_dispatch}
+2. A hypothesis, protocol and simulation are not required in this run. When the
+   area agents have replied, write a short `{loop_dir}/landscape_summary.md`:
+   per area, what is well covered (several consistent sources), what is thin,
+   and which quantities are reported only as proxies (EBs per well rather than
+   cells per mL, for example).
+3. BioSense adds every `library.draft.json` the agents wrote to the server's
+   library when the run ends. Each value keeps its quote and paper; a later run
+   re-reads the paragraph before citing it.
+
+"""
+    library_section = ''
+    if req.get('purpose') != 'landscape':
+        from ..evidence import library as LIB
+        lines, st = LIB.for_brief(project)
+        search = (f'`{python} -m biosense.evidence.library search --terms <words ...> '
+                  f'[--stage expansion|aggregation|differentiation|maturation|harvest]`')
+        if lines:
+            library_section = f"""## The cell production library — start here
+
+This server's library holds {st['papers']} papers and {st['values']} reported
+values from earlier literature runs. The ones that look most relevant to this
+project:
+
+{lines}
+
+Search it for more with {search}. Put that command and the relevant lines in the
+literature task, and have the literature agent start from them and search only
+for what the library lacks. A library value is a lead with its quote: to cite
+it, re-read the paragraph (`fetch <PMCID> --find "<term>"`) so the claim quotes
+the source itself. A proxy (`proxy for …`) informs its parameter only through
+the conversion it states.
+
+"""
+        else:
+            library_section = ('## The cell production library\n\nThe library is empty on '
+                               'this server (an admin builds it from the Data page), so the '
+                               'literature search starts from scratch.\n\n')
     # A specialist's shell can start in a per-session scratch directory, where
     # every relative path in this brief is missing: one run lost its
     # bioinformatics agent to ".venv/bin/python: No such file or directory".
@@ -447,8 +536,20 @@ survives a restart.
     # fixtures. An analysis of one runs, and proves the tools work; it says
     # nothing about this objective, and the orchestrator has to be told so
     # before it reads one as biology.
+    public = bool(req.get('public_data'))
     if req['dataset_ids']:
         data_note = ''
+    elif public:
+        data_note = """
+   **No dataset was named, and public data is permitted for this run.** The
+   offline index holds only invented demo fixtures (accessions beginning
+   `SYNTHETIC-`): never analyse one. Instead have `bioinformatics` find a real
+   public series that bears on the decision-blocking uncertainty and turn it
+   into a dataset (see "Public databases" below), then plan and run the
+   analysis on that. If no suitable series exists or none has processed counts,
+   record that as a limitation with what was searched, and carry on from the
+   literature and annotation.
+"""
     else:
         data_note = """
    **No dataset was named for this run**, so there is no measured data here.
@@ -462,12 +563,36 @@ survives a restart.
    where the magnitude is not established).
 """
 
+    bio = f'{python} -m biosense.bioinformatics.cli'
+    public_section = (f"""## Public databases — permitted for this run
+
+The person allowed this run to query public databases. Tell `bioinformatics`
+so in its task, with these commands (each needs `--i-have-network-permission`):
+
+- `{bio} gene-info --genes <SYMBOL ...> --out {loop_dir}/bioinformatics/gene_info.json`
+  — Ensembl identity, UniProt function and GO biological process, STRING
+  partners. General background about each gene, citable by its URL; never a
+  direction of effect for this process.
+- `{bio} datasets search --query "<question>" --organism "Homo sapiens"
+  --modality bulk_rna --live` — real GEO series (live, not the fixture index).
+- `{bio} datasets geo-samples --accession GSE… --out {loop_dir}/bioinformatics/GSE…_samples.json`
+  — the series' samples and the fields a condition can be read from.
+- `{bio} datasets fetch-geo --accession GSE… --condition-key "<field>"
+  --control "<value>" --treatment "<value>" [--keep "<field>=<value>"]
+  [--genes <SYMBOL ...>]` — NCBI's processed counts as log2(CPM+1), registered
+  as a public dataset; it prints the `analyse plan` line to run next.
+
+Then `analyse plan` (with `--evidence-gap`) and `analyse run` on that dataset.
+A public series is another lab's experiment: evidence to weigh by how close its
+cells, stage and treatment are to this process, never a measurement of it.
+
+""" if public else '')
     return f"""# BioSense web discovery run
 
 A person started this from the BioSense web application. They are not watching a
 terminal, so everything they need has to end up in the files named below.
 
-{purpose_section}## Nobody will answer in this session
+{purpose_section}{library_section}{public_section}## Nobody will answer in this session
 
 This is a **one-shot discovery run**, not the interactive production loop. There
 is no conversation: nothing you ask here reaches a person, and a turn that ends
@@ -712,7 +837,7 @@ These are the commands, run from the workspace root:
 
 ```
 # the analysis: plan against the named uncertainty, then run it
-{python} -m biosense.bioinformatics.cli analyse plan --plan-id P1 --question "…" \\
+{python} -m biosense.bioinformatics.cli analyse plan --plan-id plan-01 --question "…" \\
     --evidence-gap U1 --uncertainty "…" --why "…" --dataset-ids <id> --analysis-type <type> --tool <tool> \\
     --decision-relevance "…" --out {loop_dir}/analysis_plan.json
 {python} -m biosense.bioinformatics.cli analyse run --plan {loop_dir}/analysis_plan.json \\

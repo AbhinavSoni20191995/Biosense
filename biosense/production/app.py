@@ -47,6 +47,7 @@ Endpoints
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
     POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
+    GET  /api/library             the cell production library: size, papers, values (?q= to search)
     POST /api/projects/<id>/parameters   register a lever a hypothesis named into your own copy
                                   of the project; with run_id, rebuild that run's protocol
     GET  /api/datasets            registered PUBLIC datasets only; private ones are
@@ -1703,6 +1704,7 @@ class Handler(BaseHTTPRequestHandler):
             candidate_values=body.get('candidate_values'),
             title=body.get('title'), notes=body.get('notes'), effort=body.get('effort'),
             literature_mode=body.get('literature_mode'), purpose=body.get('purpose'),
+            public_data=body.get('public_data'),
             requested_by=identity.owner if identity.authenticated else None,
             projects_dir=self._projects_dir(identity))
 
@@ -1713,6 +1715,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _start_discovery(self, body):
         req = self._discovery_request(body)
+        if req.get('purpose') == 'landscape':
+            # The library is shared by every run on this server, so only an
+            # operator adds to it.
+            self._require_operator('building the cell production library')
         try:
             identity = self._identity()
             run = self.discovery.start(req, identity=identity, client=self._client(),
@@ -1734,6 +1740,27 @@ class Handler(BaseHTTPRequestHandler):
             return True
         except Exception:  # noqa: BLE001 - not an operator is an answer, not a fault
             return False
+
+    def _library_summary(self, q=None):
+        """The cell production library: its size, and its papers (newest first)."""
+        from ..evidence import library as LIB
+        lib = LIB.load()
+        terms = [x for x in ((q or {}).get('q') or [''])[0].split() if x] if isinstance(q, dict) \
+            else []
+        papers = sorted(lib.get('papers') or [], key=lambda p: p.get('added_at') or '',
+                        reverse=True)
+        rows = [{'paper_id': p['paper_id'], 'title': p['title'], 'year': p.get('year'),
+                 'system': p.get('system'), 'stages': p.get('stages'),
+                 'summary': p.get('summary'), 'status': p.get('status'),
+                 'values': p.get('values')[:12], 'n_values': len(p.get('values') or [])}
+                for p in papers[:200]]
+        out = {'stats': LIB.stats(lib), 'papers': rows,
+               'can_build': self._is_operator(self._identity()),
+               'note': 'Built by literature runs. Each value quotes its paper; a run re-reads '
+                       'the paragraph before citing it.'}
+        if terms:
+            out['matches'] = LIB.search(terms, limit=40, lib=lib)
+        return self._send(200, out)
 
     def _promote_reference(self, rid, body):
         """An admin promotes a run's process-reference draft, as its named reviewer."""
@@ -2035,6 +2062,8 @@ class Handler(BaseHTTPRequestHandler):
                         'system can express, and none of them measures any real cell.'})
         if path == '/api/sim/config':
             return self._send(200, SM.config())
+        if path == '/api/library':
+            return self._library_summary(q)
         if path == '/api/glossary':
             # Served rather than documented: a reader who does not know what the
             # word beside a number means is reading decoration, and nobody goes

@@ -253,3 +253,39 @@ def ingest_local(path, *, dataset_id, title, modality=None, organism='Homo sapie
         path_out = REG.register(m, root=(dirs or {}).get(visibility) if dirs else None,
                                 overwrite=overwrite)
     return m, path_out
+
+
+def ingest_public_table(path, *, dataset_id, accession, source, title, source_url=None,
+                        organism='Homo sapiens', cell_type=None, perturbation=None,
+                        modality='bulk_rna', experimental_design=None, description=None,
+                        registered_by=None, notes=None, register=True, overwrite=False):
+    """Register a table BioSense built from a public repository record.
+
+    Public, with its accession and where it came from: evidence about another
+    lab's experiment, citable by accession, never mistaken for a private upload
+    or a fixture.
+    """
+    p = Path(path)
+    t = TB.read_table(p, 'tsv' if p.suffix.lower() in ('.tsv', '.txt') else 'csv')
+    design = dict(experimental_design or {})
+    for key in ('condition_column', 'sample_id_column'):
+        if design.get(key) and design[key] not in t.columns:
+            raise K.ContractError(f'experimental_design.{key} names {design[key]!r}, which is '
+                                  f'not in {p.name}')
+    cond = design.get('condition_column')
+    m = MF.build(
+        dataset_id=dataset_id, title=title, source=source, modality=modality,
+        organism=organism, visibility='public', accession=accession, source_url=source_url,
+        retrieved_at=K.now_iso(),
+        files=[MF.file_entry(p, 'matrix', p.suffix.lstrip('.').lower(), columns=t.columns,
+                             rows=t.n)],
+        cell_type=cell_type, perturbation=perturbation,
+        conditions=t.levels(cond) if cond else [], sample_metadata=TB.describe(t),
+        experimental_design=design, description=description, registered_by=registered_by,
+        notes=notes,
+        limitations=['Built by BioSense from a public repository record: the numbers are the '
+                     'repository\'s processed values after the transform stated in the '
+                     'description. Another lab\'s experiment — evidence to weigh, not a '
+                     'measurement of this process.'])
+    path_out = REG.register(m, overwrite=overwrite) if register else None
+    return m, path_out
