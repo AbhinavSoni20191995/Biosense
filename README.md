@@ -5,6 +5,7 @@
 ### Accelerating cell-based therapy with agentic orchestration and real time evidence detection.
 ### Define your purpose. Watch agents work it. Read why every choice was made.
 
+<a href="https://biosense-production-e48f.up.railway.app"><b>Use the hosted app</b></a> ·
 <a href="docs/RUN_ON_YOUR_PC.md"><b>Run it yourself</b></a> ·
 <a href="#synthetic-example"><b>Synthetic example</b></a> ·
 <a href="examples/real/README.md"><b>Real examples</b></a> ·
@@ -22,13 +23,11 @@ recommended protocol, with every number labelled by where it came from. A
 reasoning **orchestrator** directs specialist AI agents; deterministic tools
 own every statistic, simulation and decision envelope; a person approves.
 
-> **Where it stands.** Live AI discovery runs work end to end and learn across
-> runs through a shared cell production library and process reference. There is
-> **no public hosted instance at the moment** — run it on your own machine
-> ([docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md)) or host your own
-> ([deploy/README.md](deploy/README.md)). The bioreactor is a **synthetic
-> stand-in**: nothing here has closed the loop on real cells.
-> [What this is **not**](#what-this-is-not) sets out the limits.
+> **Where it stands.** Live AI discovery runs work on the hosted service —
+> **<https://biosense-production-e48f.up.railway.app>** — and learn across
+> runs through a shared cell production library and process reference. The
+> bioreactor is a **synthetic stand-in**: nothing here has closed the loop on
+> real cells. [What this is **not**](#what-this-is-not) sets out the limits.
 
 ## Architecture
 
@@ -466,32 +465,32 @@ add screenshots to the new folder, and link it here. The full checklist is in
 
 ## Quick start
 
-> **Run it on your own machine** — two commands, real AI on your own key:
-> [docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md). There is **no public
-> hosted instance at the moment**; hosting your own is one Dockerfile, one
-> volume and one secret: [deploy/README.md](deploy/README.md).
+> **Use the hosted app** — no install:
+> **<https://biosense-production-e48f.up.railway.app>**
+>
+> Pick a project, state your objective, press **Run AI discovery**. Or run it
+> on your own machine: [docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md).
 
 <details>
 <summary><b>Everything about running, hosting, projects, accounts and limits</b></summary>
 
-**BioSense is a web application.** You start it once and everything else
-happens in the browser. A hosted deployment runs the Omnigent runtime and the
-agent bundle inside itself, so its visitors install nothing and open no
-terminal.
+**BioSense is a web application, and the hosted one runs the real agents.**
+For most people there is nothing to install and no terminal to open.
 
-### Using a hosted instance
+### Just use it
 
-There is no public instance online right now — the earlier Railway deployment
-has been retired. Anyone can stand one up from
-[deploy/README.md](deploy/README.md), and what follows describes what a
-visitor gets when one is online.
-
+> **Open the hosted app:** <!-- BIOSENSE_HOSTED_URL -->`https://biosense-production-e48f.up.railway.app`
+>
 > Pick a project, state your objective, press **Run AI discovery**. The badge on
 > screen says **REAL AI — ONLINE**, and the discovery agents do the work:
 > real literature search, real analyses over the data you selected, a real
 > quantified hypothesis, one recommended protocol.
 
-> **Which image is behind a deployment matters, and the page says so.** A
+**Zero terminal commands.** You do not install Omnigent, start a server,
+register an agent, or keep anybody's laptop switched on. The service runs the
+Omnigent runtime and the agent bundle inside itself.
+
+> **Which image is behind that link matters, and the page says so.** A
 > service deployed from `deploy/Dockerfile.ai` with a model key offers
 > **REAL AI — ONLINE**. One deployed from `deploy/Dockerfile` — the original,
 > credential-free image — offers **SYNTHETIC DEMO** only, and shows the real
@@ -500,11 +499,11 @@ visitor gets when one is online.
 > path, a volume mount at `/app/runs` and one secret:
 > [deploy/README.md](deploy/README.md).
 
-**What it costs the visitor: nothing. What it costs the service: model
-credits** — which is why real runs on a hosted instance are capped, and the
-caps are shown in the page before anything is pressed:
+**What it costs you: nothing. What it costs the service: model credits** — which
+is why real runs on the public instance are capped, and the caps are shown in
+the page before you press anything:
 
-| Cap | Default on a hosted instance |
+| Cap | Default on the hosted instance |
 |---|---|
 | Real AI runs per visitor per day | 3 |
 | Real AI runs across the service per day | 40 |
@@ -577,8 +576,8 @@ Sign-in is an **Omnigent account**: BioSense forwards your credentials to the
 configured accounts server once, keeps only the session it returns, server-side,
 and stores no password of its own.
 
-Hosted Real AI runs on **BioSense-managed demo access** — the deployment's
-own model credentials, under the caps above. A later version may let
+Hosted Real AI currently runs on **BioSense-managed demo access** — this
+deployment's own model credentials, under the caps above. A later version may let
 you connect your own model-provider credentials; that is
 [planned and not implemented](docs/ACCOUNTS.md), and nothing in the interface
 asks you for a key.
@@ -589,9 +588,9 @@ anybody else's data. How to designate one: [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
 ### Run it yourself, if you need one of these
 
-| You want | Why a hosted instance cannot give it to you |
+| You want | Why the hosted app cannot give it to you |
 |---|---|
-| **Real AI with no caps, on your own key** | a hosted instance pays for its own runs, so it limits them |
+| **Real AI with no caps, on your own key** | the hosted instance pays for its own runs, so it limits them |
 | **Your own private data analysed** | a private dataset never leaves the machine that ingested it, by design |
 | **To develop or evaluate the code** | — |
 
@@ -959,7 +958,7 @@ An evaluator should know the limits before the features.
   touches carries the calibrated value it started from.
 - **Live AI runs work; the loop has not closed on a real bioreactor.** Live
   discovery runs — literature, bioinformatics, data analysis, hypothesis and a
-  recommended protocol — have run end to end on a hosted deployment. A loop that
+  recommended protocol — have run end to end on the hosted service. A loop that
   runs a real bioreactor and makes a result-dependent decision has not, and
   nothing here claims it has.
 - **The committed dataset fixtures are invented.** Every committed example
