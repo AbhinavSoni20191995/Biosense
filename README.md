@@ -248,13 +248,33 @@ Reports, committed and readable without running anything →
 
 </details>
 
-## The incubator: the BioSimulator
+## The BioSimulator: the stand-in bioreactor
 
-A reactor model you can drive by hand, or from a protocol. Something the model
-has no term for — an edited line, a new cytokine, a parameter you registered
-with a stated response — is played as an **assumed effect** on growth or
-differentiation in its stage, against the same run without it, and labelled as
-an assumption every time.
+BioSense runs no real cells. In place of the bioreactor sits the
+**BioSimulator** — a mechanistic stand-in model of a stirred-tank
+iPSC→monocyte process. Its job is to let a candidate protocol be *played*
+before anyone commits a week of real cells to it, with every number it
+produces labelled **SIMULATED** and never passed off as a measurement.
+
+You meet it in three places:
+
+1. **Inside the loop.** The orchestrator sends a candidate protocol in;
+   trajectories for growth, viability and harvest come back, each labelled.
+2. **Factor comparison.** Something the model has no term for — an edited
+   line, a new cytokine, a parameter you registered with a stated response —
+   is played as an **assumed effect** on growth or differentiation in its
+   stage, against the same run without it, and labelled as an assumption
+   every time.
+3. **Simulator mode.** The same reactor driven by hand: ten setpoints, a
+   vessel you can watch day by day, and the instrument readings each
+   condition produces.
+
+The screenshot below is a factor comparison (the second of those). At the top
+is the assumed-effect verdict; in the middle, growth curves for viable
+density, viability and cumulative harvest — one line for the run with the
+added factor, one without; at the bottom, a table of the outcome metrics
+(harvest per input cell, peak density, viability, differentiation
+efficiency) for both runs side by side.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/factor-compare-dark.png">
