@@ -426,6 +426,11 @@ where `.venv/bin/python`, `agent_tools.py` and `{loop_dir}` do not exist. Start
 every shell command with `cd {workspace} && `, and put that same sentence,
 with this path, at the top of every task you send a specialist.
 
+Keep scratch files (saved command output, notes, drafts) in `{loop_dir}/scratch/`,
+never in `/tmp`: the file tools read only inside the workspace, so a file the
+shell wrote to `/tmp` cannot be opened again — and the run directory is what
+survives a restart.
+
 """
     doc = json.dumps(req, indent=2, ensure_ascii=False)
     modelled = sorted(project.modelled_ids())

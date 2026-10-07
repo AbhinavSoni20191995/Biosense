@@ -499,6 +499,21 @@ class SubAgentTests(unittest.TestCase):
         self.assertTrue(any('Literature agent failed' in t
                             and 'provider closed the stream' in t for t in texts), texts)
 
+    def test_a_file_outside_the_workspace_is_a_note_not_an_analysis_limitation(self):
+        """An agent's shell wrote /tmp/dump.txt and the file tool would not read it
+        back. That is about the workspace, not the science."""
+        a = AC.Activity(started_at=0)
+        a.observe({'kind': 'tool_result', 'at': 1, 'tool': None, 'technical': json.dumps(
+            {'error': "Access to '/tmp/dump.txt' is blocked: path is outside the environment "
+                      "root '/app' and no sandbox read grant covers it"})})
+        snap = a.snapshot()
+        self.assertEqual([], snap['limitations'])
+        self.assertTrue(any(r['kind'] == 'workspace' for r in snap['timeline']))
+        brief = DISC.render_brief(DISC.build(
+            project_id='ipsc_macrophage', objective='Increase viable macrophage production.',
+            runtime_mode='synthetic_demo'), loop_dir='ai-x', workspace='/app')
+        self.assertIn('ai-x/scratch/', brief)
+
     def test_stopping_a_run_stops_its_working_children(self):
         h = self.harness(busy_polls=10 ** 6)
         flag = {'n': 0}

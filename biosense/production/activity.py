@@ -68,6 +68,13 @@ REFUSAL_RE = re.compile(
     r'\b(refus\w+|not supported|unsupported|cannot be joined|too large|no exact|'
     r'unavailable|not modelled|not registered|declined|requires an uncertainty)\b', re.I)
 
+# The file tools' own boundary: an agent asked for a path outside the
+# workspace (usually a scratch file its shell wrote to /tmp). It says nothing
+# about the science, and the agent carries on another way, so it is a note in
+# the timeline rather than a limitation of the analysis.
+WORKSPACE_BOUNDARY_RE = re.compile(
+    r'is blocked: path is outside the environment root|no sandbox read grant', re.I)
+
 MAX_TIMELINE = 300
 MAX_LIMITATIONS = 60
 MAX_ARTIFACTS = 40
@@ -329,6 +336,11 @@ class Activity:
 
     def _limit(self, at, text, tool=None, cap=300):
         if not text:
+            return
+        if WORKSPACE_BOUNDARY_RE.search(text):
+            self._note(at, 'workspace', 'An agent tried to open a file outside the workspace '
+                       '(a scratch file); it carries on from the run directory. Not a '
+                       'limitation of the analysis.')
             return
         text = _short(text, cap)
         if any(row['text'] == text for row in self.limitations):
