@@ -47,6 +47,9 @@ Endpoints
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
     POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
+    POST /api/projects/<id>/parameters/<pid>/model   state how a parameter acts (a declared
+                                  response) so the simulator can play it as an assumed effect
+    POST /api/sim/project-effects  the assumed effects a project's modelled parameters imply
     GET  /api/library             the cell production library: size, papers, values (?q= to search)
     POST /api/projects/<id>/parameters   register a lever a hypothesis named into your own copy
                                   of the project; with run_id, rebuild that run's protocol
@@ -427,10 +430,16 @@ class DiscoveryRun:
         Only what validates is shown: the plan's question, dataset, tool and the
         uncertainty it targets; the result's key findings, or its refusal.
         """
-        plans, results = [], []
+        plans, results, interps, agent_runs = [], [], [], []
         try:
-            files = sorted(self.out_dir.glob('analysis_plan*.json')) + \
-                sorted(self.out_dir.glob('analysis_result*.json'))
+            files = []
+            # The run directory, and the analyst's and bioinformatics' folders.
+            for base in (self.out_dir, self.out_dir / 'analyst', self.out_dir / 'bioinformatics'):
+                if base.is_dir():
+                    files += sorted(base.glob('analysis_plan*.json'))
+                    files += sorted(base.glob('analysis_result*.json'))
+                    files += sorted(base.glob('interpretation*.json'))
+                    files += sorted(base.glob('*/agent_analysis.json'))
         except OSError:
             return
         sig = tuple((f.name, f.stat().st_mtime) for f in files if f.is_file())
@@ -459,9 +468,21 @@ class DiscoveryRun:
                                 'confidence': doc.get('confidence'),
                                 'key_findings': (doc.get('key_findings') or [])[:5],
                                 'limitations': (doc.get('limitations') or [])[:3]})
+            elif f.name.startswith('interpretation') and \
+                    not K.schema_errors('analysis_interpretation', doc):
+                interps.append({k: doc.get(k) for k in (
+                    'question', 'what_it_shows', 'meaning_for_process', 'transfer',
+                    'confidence', 'confidence_claimed', 'confidence_capped_by',
+                    'confidence_reason', 'confirm_with', 'recommendation', 'caveats')})
+            elif f.name == 'agent_analysis.json' and not K.schema_errors('agent_analysis', doc):
+                agent_runs.append({k: doc.get(k) for k in (
+                    'analysis_id', 'question', 'succeeded', 'problem', 'method', 'findings',
+                    'confidence')} | {'script': (doc.get('script') or {}).get('path')})
         bio = dict(self.bioinformatics or {})
-        bio.update(plans=plans, results=results)
-        self.bioinformatics = bio if (plans or results or bio.get('notes')) else None
+        bio.update(plans=plans, results=results, interpretations=interps,
+                   agent_analyses=agent_runs)
+        self.bioinformatics = bio if (plans or results or interps or agent_runs
+                                      or bio.get('notes')) else None
 
     def _read_reference_draft(self):
         """Process-reference entries this run collected, for an admin to review."""
@@ -1425,6 +1446,11 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/projects/([^/]+)/parameters', path)
             if m:
                 return self._add_parameter(m.group(1), self._body())
+            m = re.fullmatch(r'/api/projects/([^/]+)/parameters/([^/]+)/model', path)
+            if m:
+                return self._model_parameter(m.group(1), m.group(2), self._body())
+            if path == '/api/sim/project-effects':
+                return self._project_effects(self._body())
             if path == '/api/benchmarks/run':
                 return self._run_benchmark(self._body(MAX_BODY_DISCOVERY))
             if path == '/api/projects':
@@ -1828,6 +1854,31 @@ class Handler(BaseHTTPRequestHandler):
                                        None: 'no such finished run of yours'}.get(
                                            rebuilt, str(rebuilt))
         return self._send(200, out)
+
+    def _model_parameter(self, project_id, parameter_id, body):
+        """A person states how a parameter acts, so the simulator can play it."""
+        identity = self._identity()
+        who = str(getattr(identity, 'display', None) or identity.owner or 'local user')[:80]
+        doc, pid = PB.model_parameter(identity, PB.check_project_id(project_id), parameter_id,
+                                      body.get('response_model'), declared_by=who)
+        from . import response_model as RM
+        q = next(p for p in doc['parameters'] if p['parameter_id'] == pid)
+        return self._send(200, {'project_id': project_id, 'parameter_id': pid,
+                                'version': doc['version'],
+                                'description': RM.describe(q['response_model']),
+                                'note': 'Stored on your project as EXPERT-DECLARED: a stated '
+                                        'response, not a fitted one. The Simulator plays it as '
+                                        'an assumed effect in its stage.'})
+
+    def _project_effects(self, body):
+        """The assumed effects a project's modelled new parameters imply at given values."""
+        identity = self._identity()
+        project = PB.load_for(identity, PB.check_project_id(body.get('project_id') or ''))
+        values = {}
+        for k, v in (body.get('values') or {}).items():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                values[str(k)] = float(v)
+        return self._send(200, SM.effects_from_project(project, values))
 
     def _delete_project(self, project_id, body):
         """Move a workspace's own project — and, if asked, its runs — to the trash."""

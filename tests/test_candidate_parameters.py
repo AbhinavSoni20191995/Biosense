@@ -173,6 +173,55 @@ class RegisterTests(unittest.TestCase):
 
 
 
+class ModelledParameterTests(RegisterTests):
+    """A new parameter gets a stated effect, and the reactor plays it in its stage."""
+    RM = {'shape': 'saturating', 'target': 'transition_efficiency', 'half_max': 50,
+          'max_effect': 0.4, 'basis': 'IL-34 supports macrophage differentiation, plateauing'}
+
+    def test_a_stated_effect_is_stored_and_played_in_its_stage(self):
+        from biosense.production import sim_mode as SM
+        self.register(response_model=self.RM)
+        mine = PB.load_for(self.me, 'ipsc_macrophage')
+        q = mine.parameter('il34_ng_ml')
+        self.assertEqual('expert_declared', q.simulator_coverage)
+        self.assertEqual('Dr A', q.response_model['proposed_by'])
+        eff = SM.effects_from_project(mine, {'il34_ng_ml': 100.0})
+        e = eff['effects'][0]
+        self.assertEqual(('myeloid', 1.0), (e['stage'], e['growth_ratio']))
+        self.assertAlmostEqual(1 + 0.4 * 100 / 150, e['diff_ratio'], 4)
+        d = SM.genotype_compare({'seed': 7, 'assumed_effects': eff['effects']})
+        self.assertEqual('without them', d['control_label'])
+        self.assertIn('IL-34 in myeloid', d['verdict'])
+        h = d['deltas']['harvest_per_input_ipsc']
+        self.assertGreater(h['b'], h['a'])
+
+    def test_a_registered_parameter_can_be_modelled_later_but_not_a_calibrated_one(self):
+        from biosense.production import sim_mode as SM
+        self.register()
+        mine = PB.load_for(self.me, 'ipsc_macrophage')
+        self.assertIn('no modelled effect',
+                      SM.effects_from_project(mine, {'il34_ng_ml': 100.0})['not_applied'][0]['why'])
+        PB.model_parameter(self.me, 'ipsc_macrophage', 'il34_ng_ml', self.RM, declared_by='Dr B')
+        self.assertEqual('expert_declared',
+                         PB.load_for(self.me, 'ipsc_macrophage').coverage('il34_ng_ml'))
+        with self.assertRaisesRegex(K.ContractError, 'calibrated model'):
+            PB.model_parameter(self.me, 'ipsc_macrophage', 'mcsf_ng_ml', self.RM)
+        with self.assertRaisesRegex(K.ContractError, 'basis'):
+            PB.model_parameter(self.me, 'ipsc_macrophage', 'il34_ng_ml', dict(self.RM, basis=''))
+
+    def test_the_cli_plays_the_modelled_parameters(self):
+        import contextlib
+        import io
+        self.register(response_model=self.RM)
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = EVCLI.main(['simulate', '--project', 'ipsc_macrophage', '--projects-dir',
+                               str(WS.projects_dir(self.me)), '--set', 'il34_ng_ml=100',
+                               '--modelled-parameters', '--out', str(self.tmp / 's.json')])
+        self.assertEqual(0, code)
+        g = K.read_json(self.tmp / 's.json')['genotype_simulation']
+        self.assertIn('stated for them on the project', g['assumption'])
+
+
 class RegisterApiTests(RegisterTests):
     """From a finished run's timeline: register the lever, and the run's protocol carries it."""
 
@@ -249,6 +298,12 @@ class RegisterApiTests(RegisterTests):
     test_a_new_lever_becomes_a_parameter_of_my_copy_and_the_protocol_adopts_it = None
     test_a_name_that_is_already_canonical_adds_that_parameter = None
     test_what_cannot_be_registered_is_refused_and_nothing_is_written = None
+
+
+for _n in ('test_a_new_lever_becomes_a_parameter_of_my_copy_and_the_protocol_adopts_it',
+           'test_a_name_that_is_already_canonical_adds_that_parameter',
+           'test_what_cannot_be_registered_is_refused_and_nothing_is_written'):
+    setattr(ModelledParameterTests, _n, None)
 
 
 if __name__ == '__main__':

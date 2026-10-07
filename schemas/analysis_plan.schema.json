@@ -174,6 +174,20 @@
             "type": "string"
           },
           "description": "Which measured columns to compare; empty means every numeric column"
+        },
+        "value_column": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The measured column to compare, when the tool cannot tell from its name."
+        },
+        "feature_column": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The column naming each gene or feature, when the tool cannot tell from its name."
         }
       }
     },

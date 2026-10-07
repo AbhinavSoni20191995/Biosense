@@ -351,7 +351,8 @@ def _genotype(text):
     return out
 
 
-def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, seed=7):
+def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, seed=7,
+                        effects=None):
     """Wild type against an engineered line on the reactor, with this project's values.
 
     On the project's own reactor model its mapped setpoints are used; a project
@@ -374,9 +375,20 @@ def genotype_simulation(project_id, settings, genotype, *, projects_dir=None, se
         elif pid in values:
             unused.append(pid)
     stand_in = (project.simulator or {}).get('model_id') != SM.config()['model_id']
-    doc = SM.genotype_compare({'setpoints': knobs, 'seed': seed, 'genotype': genotype})
+    doc = SM.genotype_compare({'setpoints': knobs, 'seed': seed, 'genotype': genotype,
+                               'assumed_effects': effects or []})
     g = doc['genotype']
     what = 'the factor' if g.get('kind') == 'factor' else 'the edit'
+    if g.get('effects'):
+        doc.update(project_id=project.project_id, stand_in=stand_in, used=used,
+                   not_represented=unused,
+                   assumption=('The new parameters act through the responses stated for them '
+                               'on the project (' + '; '.join(
+                                   f'{e["label"]}: growth ×{e["growth_ratio"]:.3g}, '
+                                   f'differentiation ×{e["diff_ratio"]:.3g}'
+                                   + (f' in {e["stage"]}' if e['stage'] else '')
+                                   for e in g['effects']) + '); uncalibrated.'))
+        return doc
     doc.update(project_id=project.project_id, stand_in=stand_in, used=used,
                not_represented=unused,
                assumption=(f'{g["label"]} assumed to change growth ×{g["growth_ratio"]:g} and '
@@ -410,6 +422,19 @@ def cmd_simulate(a):
         doc['genotype_simulation'] = genotype_simulation(
             a.project, dict(a.set or []), a.genotype or a.factor, projects_dir=a.projects_dir,
             seed=a.seed)
+    elif a.modelled_parameters:
+        from ..production import sim_mode as SM
+        project = PJ.load(a.project, a.projects_dir)
+        values = {PR.resolve(k, required=False) or k: v for k, v in (a.set or [])}
+        eff = SM.effects_from_project(project, values)
+        if not eff['effects']:
+            raise K.ContractError('no parameter set here has a modelled effect on the project: '
+                                  + '; '.join(f'{n["label"]}: {n["why"]}'
+                                              for n in eff['not_applied']) or 'none set')
+        doc['genotype_simulation'] = genotype_simulation(
+            a.project, dict(a.set or []), None, projects_dir=a.projects_dir, seed=a.seed,
+            effects=eff['effects'])
+        doc['genotype_simulation']['not_applied'] = eff['not_applied']
     out = _write(doc, a.out)
     print(json.dumps({'written': str(out), 'prediction': doc['prediction'],
                       'applied': [r.get('parameter_id') for r in doc['applied']],
@@ -522,6 +547,9 @@ def main(argv=None):
     p.add_argument('--set', action='append', type=_setting, metavar='PARAMETER=VALUE')
     p.add_argument('--genotype', type=_genotype, metavar='LABEL:growth=R,diff=R',
                    help='also run wild type against an edited line with this assumed effect')
+    p.add_argument('--modelled-parameters', action='store_true',
+                   help='also run without and with the project\'s new parameters, each acting '
+                        'through the response stated for it on the project')
     p.add_argument('--factor', type=_factor, metavar='LABEL:stage=S,growth=R,diff=R',
                    help='also run without and with an added factor (one the project has no '
                         'term for) whose assumed effect acts only in stage S')

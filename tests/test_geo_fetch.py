@@ -172,9 +172,67 @@ class FetchTests(unittest.TestCase):
         served = dict(SERVED)
         served.pop('_raw_counts_GRCh38.p13_NCBI.tsv.gz')
         with mock.patch.object(GF, '_get', fake_get(served)):
-            with self.assertRaisesRegex(K.ContractError, 'no processed RNA-seq counts.*suppl'):
+            with self.assertRaisesRegex(K.ContractError, 'no processed counts.*supplementary'):
                 GF.fetch(ACC, condition_key='treatment', control='vehicle',
                          treatments=['ATRA 100 nM'], i_have_network_permission=True)
+
+
+ZEBRAFISH = MATRIX.replace('Homo sapiens', 'Danio rerio')
+LISTING = ('<a href="GSE123456_RAW.tar">GSE123456_RAW.tar</a> '
+           '<a href="GSE123456_filelist.txt">filelist</a> '
+           '<a href="GSE123456_normalized_tpm.txt.gz">GSE123456_normalized_tpm.txt.gz</a>')
+# Headers are the sample titles, not GSM ids; a description column sits between.
+TPM = '\n'.join([
+    'gene_name\tdescription\tveh_1\tveh_2\tveh_3\tra_1\tra_2\tra_3',
+    'gata6\tGATA binding\t10.5\t11.0\t9.5\t40.1\t42.3\t38.0',
+    'actb\tactin\t900\t910\t890\t905\t899\t901',
+    'tfrc\ttransferrin\t60\t61\t59\t20\t22\t19',
+])
+
+
+class AnySpeciesTests(FetchTests):
+    """Other species, and human series NCBI has not processed: the depositors' table."""
+
+    def test_a_zebrafish_series_is_read_from_its_own_table_at_low_confidence(self):
+        served = {'_series_matrix.txt.gz': ZEBRAFISH, '_normalized_tpm.txt.gz': TPM,
+                  '/suppl/': LISTING}
+        with mock.patch.object(GF, '_get', fake_get(served)):
+            d = GF.fetch(ACC, condition_key='treatment', control='vehicle',
+                         treatments=['ATRA 100 nM'], i_have_network_permission=True)
+        self.assertEqual(('depositor_supplementary', 'Danio rerio'), (d['route'], d['organism']))
+        self.assertEqual('low', d['evidence_weight']['confidence_ceiling'])
+        self.assertEqual('linear', d['how_read']['transform'])
+        self.assertEqual('gene_name', d['how_read']['feature_column'])
+        self.assertIn('description', d['how_read']['unmatched_columns'])
+        self.assertIn('NCBI processes human and mouse', d['why_not_ncbi'])
+        from biosense.data import registry as REG
+        self.assertTrue(any('not a mammal' in x for x in REG.require(d['dataset_id'])['limitations']))
+
+    def test_a_human_series_without_ncbi_counts_falls_back_to_its_table(self):
+        served = {'_series_matrix.txt.gz': MATRIX, '_normalized_tpm.txt.gz': TPM,
+                  '/suppl/': LISTING}
+        with mock.patch.object(GF, '_get', fake_get(served)):
+            d = GF.fetch(ACC, condition_key='treatment', control='vehicle',
+                         treatments=['ATRA 100 nM'], genes=['GATA6'],
+                         i_have_network_permission=True)
+        self.assertEqual(('depositor_supplementary', 'moderate'),
+                         (d['route'], d['evidence_weight']['confidence_ceiling']))
+        self.assertEqual(1, d['genes_in_table'])
+
+    def test_unmatched_headers_are_listed_and_a_column_map_resolves_them(self):
+        rows, _ = GF.parse_series_matrix(MATRIX)
+        odd = TPM.replace('veh_1', 'S1').replace('veh_2', 'S2').replace('veh_3', 'S3') \
+            .replace('ra_1', 'S4').replace('ra_2', 'S5').replace('ra_3', 'S6')
+        with self.assertRaisesRegex(K.ContractError, 'Columns: gene_name, description, S1'):
+            GF.parse_supplementary_table(odd, rows)
+        cmap = {f'S{i + 1}': g for i, g in enumerate(GSMS)}
+        genes, gsms, m, how = GF.parse_supplementary_table(odd, rows, column_map=cmap)
+        self.assertEqual(GSMS, gsms)
+
+    def test_species_weights(self):
+        self.assertEqual('high', GF.species_weight('Homo sapiens', 'ncbi_processed')['confidence_ceiling'])
+        self.assertEqual('moderate', GF.species_weight('Mus musculus', 'ncbi_processed')['confidence_ceiling'])
+        self.assertEqual('low', GF.species_weight('Sus scrofa', 'depositor_supplementary')['confidence_ceiling'])
 
 
 class GeneInfoTests(unittest.TestCase):

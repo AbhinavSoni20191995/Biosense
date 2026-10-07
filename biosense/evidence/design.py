@@ -72,6 +72,20 @@ def choice(parameter_id, value, *, rationale, derived_from, confidence, project,
     if lims:
         raise K.ContractError(f'{pid} = {v} is ' + ' and '.join(lims) +
                               '; a design choice may not leave the project\'s own bounds')
+    # The parameter's own limits of physical sense hold whatever the project
+    # says, and the unit is the parameter's: a dissolved-oxygen "100" written
+    # as % air saturation is 1.0 as a fraction, and must not pass as 100.
+    c = q.canonical
+    if unit and q.unit and _unit(unit) != _unit(q.unit):
+        raise K.ContractError(f'{pid} is set in {q.unit}; give the value in that unit (it was '
+                              f'given in {unit}) and state any conversion in the rationale')
+    if isinstance(v, float):
+        if (c.global_min is not None and v < c.global_min) or \
+                (c.global_max is not None and v > c.global_max):
+            hint = (f' If {v:g} is a percentage, the value in {q.unit} is {v / 100:g}.'
+                    if q.unit in ('fraction', 'fraction of volume') and 1 < v <= 100 else '')
+            raise K.ContractError(f'{pid} = {v:g} {q.unit} is outside what the parameter can be '
+                                  f'([{c.global_min}, {c.global_max}] {q.unit}).{hint}')
     rng = None
     if range_:
         lo, hi = float(range_['lower']), float(range_['upper'])
@@ -80,6 +94,10 @@ def choice(parameter_id, value, *, rationale, derived_from, confidence, project,
             'range': rng, 'rationale': rationale.strip(), 'derived_from': refs,
             'confidence': confidence, 'context_note': context_note,
             'would_settle_it': would_settle_it, 'risk_if_wrong': risk_if_wrong}
+
+
+def _unit(u):
+    return ''.join(str(u).lower().split()).replace('µ', 'u').replace('°', 'deg')
 
 
 def build(draft, *, project, run_id=None, created_by='orchestrator'):

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentAnalysis",
+  "description": "An analysis an AI agent wrote as a Python script and BioSense ran: the script, its inputs' checksums, its output and exit code are kept. AGENT-WRITTEN: never a validated tool, confidence capped at low, never citable.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "analysis_id",
+    "created_at",
+    "method_kind",
+    "question",
+    "succeeded",
+    "script",
+    "inputs",
+    "findings",
+    "statistics",
+    "confidence",
+    "citable",
+    "exit_code",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "analysis_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "method_kind": {
+      "const": "agent_written"
+    },
+    "question": {
+      "type": "string",
+      "minLength": 3
+    },
+    "executed_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "succeeded": {
+      "type": "boolean"
+    },
+    "problem": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "script": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "text"
+      ]
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "dataset_id",
+          "path_checksum"
+        ]
+      }
+    },
+    "source_visibility": {
+      "enum": [
+        "public",
+        "private"
+      ]
+    },
+    "method": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "statistics": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "confidence": {
+      "const": "low"
+    },
+    "citable": {
+      "const": false
+    },
+    "stdout_tail": {
+      "type": "string"
+    },
+    "stderr_tail": {
+      "type": "string"
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "seconds": {
+      "type": "number"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

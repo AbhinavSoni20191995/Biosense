@@ -94,9 +94,16 @@ def cmd_fetch_geo(a):
             raise K.ContractError(f'--keep takes FIELD=VALUE, got {kv!r}')
         k, v = kv.split('=', 1)
         keep[k.strip()] = v.strip()
+    cmap = {}
+    for kv in a.column_map or []:
+        if '=' not in kv:
+            raise K.ContractError(f'--column-map takes HEADER=GSM, got {kv!r}')
+        h, g = kv.rsplit('=', 1)
+        cmap[h.strip()] = g.strip()
     doc = GF.fetch(a.accession, condition_key=a.condition_key, control=a.control,
                    treatments=a.treatment, keep=keep, genes=a.genes, max_genes=a.max_genes,
                    dataset_id=a.dataset_id, cell_type=a.cell_type,
+                   supplementary=a.supplementary, column_map=cmap or None,
                    i_have_network_permission=a.i_have_network_permission)
     return _emit(doc, a.out)
 
@@ -200,7 +207,9 @@ def cmd_analyse_plan(a):
         parameters_that_may_change=a.parameters or [], created_by=a.created_by,
         comparison=({'group_column': a.group_column, 'control': a.control,
                      'treatment': a.treatment_level, 'paired': a.paired, 'covariates': [],
-                     'readouts': a.readouts or []} if a.group_column or a.control else None),
+                     'readouts': a.readouts or [], 'value_column': a.value_column,
+                     'feature_column': a.feature_column}
+                    if a.group_column or a.control or a.value_column else None),
         loop_id=a.loop_id, iteration=a.iteration, analysis_report=report,
         recorded_gaps=[a.evidence_gap] if a.evidence_gap else ())
     if a.out:
@@ -225,6 +234,35 @@ def cmd_analyse_run(a):
             'out': a.out,
             'note': 'Candidates only. This result cannot change a protocol; the orchestrator '
                     'decides, and a revision still has to pass the envelope.'})
+    return 0
+
+
+def cmd_analyse_inspect(a):
+    from . import analyst as AN
+    return _emit(AN.inspect(a.dataset_id), a.out)
+
+
+def cmd_analyse_script(a):
+    from . import analyst as AN
+    doc = AN.run_script(a.script, dataset_ids=a.dataset_ids, question=a.question,
+                        out_dir=a.out_dir, analysis_id=a.analysis_id)
+    _print({k: doc[k] for k in ('analysis_id', 'succeeded', 'problem', 'method', 'findings',
+                                'statistics', 'confidence', 'limitations')}
+           | {'written': str(Path(a.out_dir) / 'agent_analysis.json')})
+    return 0 if doc['succeeded'] else 1
+
+
+def cmd_analyse_interpret(a):
+    from . import analyst as AN
+    if a.template:
+        _print(AN.TEMPLATE)
+        return 0
+    if not (a.draft and a.out):
+        raise K.ContractError('give --draft and --out (or --template to see the shape)')
+    doc = AN.interpret_file(a.draft, a.out)
+    _print({'written': a.out, 'confidence': doc['confidence'],
+            'confidence_claimed': doc['confidence_claimed'],
+            'confidence_capped_by': doc['confidence_capped_by']})
     return 0
 
 
@@ -302,8 +340,8 @@ def main(argv=None):
     p.add_argument('--i-have-network-permission', action='store_true')
     p.add_argument('--out')
     p.set_defaults(fn=cmd_geo_samples)
-    p = ds.add_parser('fetch-geo', help='NCBI processed counts for a GEO RNA-seq series -> a '
-                                        'registered public dataset (network)')
+    p = ds.add_parser('fetch-geo', help='a GEO expression series (any species) -> a registered '
+                                        'public dataset (network)')
     p.add_argument('--accession', required=True)
     p.add_argument('--condition-key', required=True,
                    help='a groupable field from geo-samples (a characteristic, title or source)')
@@ -314,6 +352,9 @@ def main(argv=None):
     p.add_argument('--genes', nargs='*')
     p.add_argument('--max-genes', type=int, default=2000)
     p.add_argument('--dataset-id'); p.add_argument('--cell-type')
+    p.add_argument('--supplementary', help='use this supplementary file name (any species)')
+    p.add_argument('--column-map', nargs='*', default=[], metavar='HEADER=GSM',
+                   help='which table column is which sample, when headers are not GSM ids or titles')
     p.add_argument('--i-have-network-permission', action='store_true')
     p.add_argument('--out')
     p.set_defaults(fn=cmd_fetch_geo)
@@ -346,6 +387,8 @@ def main(argv=None):
     p.add_argument('--group-column'); p.add_argument('--control')
     p.add_argument('--treatment-level'); p.add_argument('--paired', action='store_true')
     p.add_argument('--readouts', nargs='*')
+    p.add_argument('--value-column', help='the measured column, when its name is not a usual one')
+    p.add_argument('--feature-column', help='the gene/feature column, when its name is not a usual one')
     p.add_argument('--created-by', default='bioinformatics_agent')
     p.add_argument('--loop-id'); p.add_argument('--iteration', type=int)
     p.add_argument('--out'); p.set_defaults(fn=cmd_analyse_plan)
@@ -353,6 +396,22 @@ def main(argv=None):
     p.add_argument('--plan', required=True)
     p.add_argument('--analysis-id'); p.add_argument('--executed-by', default='bioinformatics_agent')
     p.add_argument('--out'); p.set_defaults(fn=cmd_analyse_run)
+
+    p = an.add_parser('inspect', help='a dataset\'s columns, groups and the plan arguments '
+                                      'that fit it')
+    p.add_argument('--dataset-id', required=True)
+    p.add_argument('--out'); p.set_defaults(fn=cmd_analyse_inspect)
+    p = an.add_parser('script', help='run an agent-written analysis script, labelled as such')
+    p.add_argument('--script', required=True)
+    p.add_argument('--dataset-ids', nargs='+', required=True)
+    p.add_argument('--question', required=True)
+    p.add_argument('--out-dir', required=True)
+    p.add_argument('--analysis-id')
+    p.set_defaults(fn=cmd_analyse_script)
+    p = an.add_parser('interpret', help='check an interpretation and cap its confidence')
+    p.add_argument('--draft'); p.add_argument('--out')
+    p.add_argument('--template', action='store_true', help='print the draft shape')
+    p.set_defaults(fn=cmd_analyse_interpret)
 
     p = sub.add_parser('tools', help='the analysis tool registry and external adapters')
     p.set_defaults(fn=cmd_tools)

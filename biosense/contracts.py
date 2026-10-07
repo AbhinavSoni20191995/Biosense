@@ -59,6 +59,8 @@ SCHEMAS = {
     # reasoned starting values for setpoints no source states for this process:
     # not evidence, not a gap, and always a person's to approve
     'design_choices': 'design_choices.schema.json',
+    'agent_analysis': 'agent_analysis.schema.json',
+    'analysis_interpretation': 'analysis_interpretation.schema.json',
     # established suspension-culture setpoints, shared across target cell types
     'process_reference': 'process_reference.schema.json',
     'research_context': 'research_context.schema.json',

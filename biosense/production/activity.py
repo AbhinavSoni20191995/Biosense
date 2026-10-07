@@ -45,10 +45,11 @@ from . import stages as ST
 # The specialists the orchestrator dispatches to, in the order a run uses them.
 # `orchestrator` is first because it is the one that is working whenever nothing
 # else is.
-AGENTS = ('orchestrator', 'literature', 'bioinformatics', 'analysis', 'biosimulator', 'outcome')
+AGENTS = ('orchestrator', 'literature', 'bioinformatics', 'analyst', 'analysis', 'biosimulator',
+          'outcome')
 AGENT_LABEL = {
     'orchestrator': 'Orchestrator', 'literature': 'Literature',
-    'bioinformatics': 'Bioinformatics', 'analysis': 'Analysis',
+    'bioinformatics': 'Bioinformatics', 'analyst': 'Data analyst', 'analysis': 'Analysis',
     'biosimulator': 'BioSimulator', 'outcome': 'Outcome',
 }
 QUEUED, RUNNING, COMPLETE, FAILED, CANCELLED = (
@@ -133,8 +134,18 @@ def _json_or_none(text):
         return None
 
 
+_AGENT_FIELD = re.compile(r'["\']?agent["\']?\s*[:=]\s*["\']([a-z_]+)["\']', re.I)
+
+
 def agent_named(text):
-    """The specialist a piece of text names, or None. One rule for every caller."""
+    """The specialist a piece of text names, or None. One rule for every caller.
+
+    A dispatch's own `agent: "<name>"` field wins: a task for the data analyst
+    that mentions "analysis" belongs to the analyst.
+    """
+    m = _AGENT_FIELD.search(text or '')
+    if m and m.group(1).lower() in AGENT_RE:
+        return m.group(1).lower()
     for name, rx in AGENT_RE.items():
         if rx.search(text or ''):
             return name

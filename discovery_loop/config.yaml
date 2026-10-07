@@ -50,6 +50,7 @@ tools:
   agents:
     - literature
     - bioinformatics
+    - analyst
     - analysis
     - biosimulator
     - outcome

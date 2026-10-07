@@ -121,8 +121,14 @@ order is fixed, and the first step is the one that matters.
    uncertainty; read its samples before choosing the comparison, and take the
    condition values exactly as GEO wrote them. Try a few series (and a few
    queries: synonyms, the cell type, the factor) before concluding none fits.
-   `fetch-geo` refuses a series without NCBI processed counts (microarrays,
-   single-cell, non-human/mouse): note it and try the next. It registers a
+   Any species works. `fetch-geo` uses NCBI's processed counts where they
+   exist (human, mouse) and otherwise the depositors' own processed table
+   (`--supplementary <file>` to choose one; `--column-map HEADER=GSM` when its
+   headers are neither GSM ids nor sample titles — the refusal lists both). It
+   returns an `evidence_weight` with a confidence ceiling for the species and
+   route: another mammal or a depositor's table is weaker evidence than human
+   via NCBI, a non-mammal weaker still. Prefer the closest system; use a
+   distant one when nothing closer exists, and say so. It registers a
    PUBLIC dataset and prints the `analyse plan` line to run next. Write each
    series you considered, and why it was or was not used, into your notes.
 
@@ -134,7 +140,14 @@ order is fixed, and the first step is the one that matters.
    provided, and which public data would answer the question.
 3. **Check what the tools can do.** `cli tools` lists what runs and what is only
    declared. A declared tool is refused; do not work around it.
-4. **Plan, then run.**
+4. **Hand registered data to the analyst.** In a web discovery run the
+   orchestrator sends each registered dataset to the `analyst` agent, which
+   inspects it, plans against it, repairs refused plans and interprets the
+   result. Reply with the dataset ids you registered, what each holds (groups,
+   sizes, species, route, evidence weight) and the question each bears on.
+   Plan and run yourself only when your task says to, as below.
+
+   **Plan, then run.**
 
    ```
    .venv/bin/python -m biosense.bioinformatics.cli analyse plan --plan-id <id> \

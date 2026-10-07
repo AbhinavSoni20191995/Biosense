@@ -40,6 +40,15 @@ def _pick(table, candidates, what):
         f'{", ".join(table.columns)}. Name it in the plan rather than letting this guess.')
 
 
+def _named(table, name):
+    if not name:
+        return None
+    if name not in table.columns:
+        raise K.ContractError(f'the plan names column {name!r}; the table has '
+                              f'{", ".join(table.columns)}')
+    return name
+
+
 def run(table, manifest, plan):
     design = manifest['experimental_design']
     comp = plan.get('comparison') or {}
@@ -50,8 +59,10 @@ def run(table, manifest, plan):
         raise K.ContractError('a bulk comparison needs a condition column, a control level and a '
                               'treatment level; they are not inferred')
 
-    feature = _pick(table, FEATURE_COLUMNS, 'feature')
-    value = _pick(table, VALUE_COLUMNS, 'expression value')
+    feature = (_named(table, comp.get('feature_column'))
+               or _pick(table, FEATURE_COLUMNS, 'feature'))
+    value = _named(table, comp.get('value_column')) or _pick(table, VALUE_COLUMNS,
+                                                            'expression value')
     vals = table.numeric_column(value)
 
     # Raw counts through a Welch test is the classic wrong answer, so it is refused

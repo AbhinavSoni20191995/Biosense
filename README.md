@@ -7,7 +7,8 @@
 
 <a href="deploy/README.md"><b>Use the hosted app</b></a> ·
 <a href="docs/RUN_ON_YOUR_PC.md"><b>Run it yourself</b></a> ·
-<a href="docs/IPSC_TCELL_EXAMPLE.md"><b>Worked example</b></a> ·
+<a href="#synthetic-example"><b>Synthetic example</b></a> ·
+<a href="examples/real/README.md"><b>Real examples</b></a> ·
 <a href="reports/"><b>Example reports</b></a> ·
 <a href="docs/BIOINFORMATICS.md"><b>Data &amp; evidence</b></a> ·
 <a href="deploy/README.md"><b>Hosting</b></a>
@@ -16,43 +17,41 @@
 
 ---
 
-## The problem, and what BioSense does about it
+BioSense turns a cell-production objective — *more viable macrophages from
+iPSC, keeping identity* — into evidence, a quantified hypothesis and one
+recommended protocol, with every number labelled by where it came from. A
+reasoning **orchestrator** directs specialist AI agents; deterministic tools
+own every statistic, simulation and decision envelope; a person approves.
 
-BioSense is designed to accelerate the development of cell-based therapies by
-tackling one of the biggest bottlenecks in the field: biological manufacturing
-and experimental optimisation are complex, slow, and still heavily dependent on
-fragmented data, manual interpretation, and repeated trial-and-error. Instead of
-forcing scientists to navigate literature, datasets, experimental variables, and
-process measurements separately, BioSense turns a high-level biological objective
-into an iterative **design → run → measure → decide** workflow.
+> **Where it stands.** Live AI discovery runs work on the hosted service and
+> learn across runs through a shared cell production library and process
+> reference. The bioreactor is a **synthetic stand-in**: nothing here has
+> closed the loop on real cells. [What this is **not**](#what-this-is-not)
+> sets out the limits.
 
-An agentic orchestration layer coordinates specialised AI agents for literature
-evidence, bioinformatics, data analysis, simulation, and experimental planning,
-continuously combining prior knowledge with new results. During execution,
-feedback from the bioreactor and multiple sensors, detectors, and analytical
-measurements provides real-time information on how the cell product is
-responding, allowing the system to refine conditions and propose the next
-experiment. Scientists interact through a simple interface — asking a question,
-defining the desired outcome, and reviewing transparent assumptions and
-reasoning — while BioSense manages the complexity underneath.
+## Architecture
 
-The long-term goal is a closed-loop discovery and manufacturing system that
-learns from every experiment, reduces unnecessary iterations, and helps move
-safer, more effective cell therapies toward patients faster.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-system-dark.svg">
+  <img alt="A person states an objective. The orchestrator asks the literature and bioinformatics specialists what evidence is missing. The bioinformatics agent fetches a public dataset or registers a private one, and plans an analysis against a named uncertainty. Deterministic tools execute that plan over the data itself and return an AnalysisResult, and only those results — never the raw datasets — enter evidence synthesis, which produces candidate parameters. A decision envelope validates or refuses, and the simulator or bioreactor returns sensor, FACS and omics measurements to the orchestrator. Each box is marked Current, Phase 1 or Planned." src="docs/assets/arch-system-light.svg" width="100%">
+</picture>
 
-> **Where the repository stands against that.** The five specialist agents exist,
-> the measurement-driven analysis is implemented, and the bioinformatics agent
-> now plans and executes real analyses over public and private datasets rather
-> than only reading gene annotations. Three parts of the goal are not reached:
-> the loop runs against a **synthetic stand-in, not a real bioreactor**; **live
-> model-driven orchestration has not been run yet**; and each loop starts fresh,
-> so **nothing is learned across runs**. Everything below describes what
-> runs today, and [What this is **not**](#what-this-is-not) sets out the limits
-> in full.
+| Agent | What it does | What it may not do |
+|---|---|---|
+| **Orchestrator** | reads the evidence, forms hypotheses, decides | approve a protocol, invent a number |
+| **Literature** | searches Europe PMC and PubMed, reads full texts, quotes every value; starts from the library | cite a value it has not read |
+| **Bioinformatics** | gene records (Ensembl, UniProt, STRING), finds and registers public datasets (GEO, any species) | state an effect no source states |
+| **Data analyst** | inspects data, plans and repairs the analysis, runs it, interprets it with a capped confidence | compute a number by hand |
+| **BioSimulator** | plays a protocol, an edit or a new factor through the reactor model | call a simulation a measurement |
+| **Analysis · Outcome** | read a bioreactor run against fixed targets and QC | move a target after seeing results |
 
----
+<details>
+<summary><b>The loop it runs, and why the work is split this way</b></summary>
 
-## How it works
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-loop-dark.svg">
+  <img alt="One iteration: objective, uncertainty, evidence, analysis, candidate parameter, decision envelope, simulator or bioreactor, measurements, and then either finish or optimise against the dominant remaining uncertainty." src="docs/assets/arch-loop-light.svg" width="100%">
+</picture>
 
 Language models are good at reading and reasoning. They are **not** good at being
 trusted with the arithmetic, the pass/fail calls, or the authority to spend a week
@@ -60,11 +59,6 @@ of someone's cells. So those jobs are split apart:
 
 **The agent chooses. Separate, deterministic code decides what it is allowed to
 choose — and refuses the rest.**
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-system-dark.svg">
-  <img alt="A person states an objective. The orchestrator asks the literature and bioinformatics specialists what evidence is missing. The bioinformatics agent fetches a public dataset or registers a private one, and plans an analysis against a named uncertainty. Deterministic tools execute that plan over the data itself and return an AnalysisResult, and only those results — never the raw datasets — enter evidence synthesis, which produces candidate parameters. A decision envelope validates or refuses, and the simulator or bioreactor returns sensor, FACS and omics measurements to the orchestrator. Each box is marked Current, Phase 1 or Planned." src="docs/assets/arch-system-light.svg" width="100%">
-</picture>
 
 Everything a model writes is a **proposal**. Everything that counts as a fact —
 the verdict, the QC calls, the metrics, the comparison between arms, every
@@ -82,17 +76,393 @@ permit, the envelope refuses it and says why.
 
 ### The loop it runs
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-loop-dark.svg">
-  <img alt="One iteration: objective, uncertainty, evidence, analysis, candidate parameter, decision envelope, simulator or bioreactor, measurements, and then either finish or optimise against the dominant remaining uncertainty." src="docs/assets/arch-loop-light.svg" width="100%">
-</picture>
-
 An analysis never changes a parameter. It produces evidence; the orchestrator
 decides, and the envelope can refuse.
 
+</details>
+
+## Capabilities
+
+| | |
+|---|---|
+| **Evidence** | Literature with quotes and paragraph locators; proxies with their conversion when the exact value is not reported; widening search circles; a server-wide **cell production library** every run starts from |
+| **Data** | Public GEO series of any species made analysable (NCBI processed counts, or the depositors' own table) with an evidence weight; private uploads; deterministic statistics, cytometry and bulk expression |
+| **Analysis** | An AI **data analyst** plans against the data, repairs refused plans, writes labelled scripts for what the tools cannot express, and interprets each result with a confidence capped by species, route and closeness |
+| **Hypotheses** | Direction, magnitude and confidence as typed estimates (measured, derived, simulated, predicted, judgement); contradicted and superseded ideas kept |
+| **Protocol** | The production chain as a timeline: stages by days, factors over their windows, every value with provenance (R/A/D/GAP) and a confidence bar; shared setpoints filled from the **process reference**; new levers registered into your project |
+| **Simulation** | The calibrated iPSC→monocyte stand-in; edited lines and **new factors** as assumed effects; new parameters with a **stated response** played in their stage |
+| **Watching** | Live insights while agents work; the **Loop Tracker** follows a running AI run; runs saved per project, pausable and extendable |
+
+## Synthetic example
+
+The demonstration path runs every stage on committed, invented fixtures, so
+anyone can see the whole flow without a model key. The protocol it ends with,
+drawn as the production chain — click any value for what it rests on:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/protocol-timeline-dark.png">
+  <img alt="The recommended protocol as a production timeline: four stages sized by their days, factors as bars over the stage they are given in, stage and whole-process setpoints, each with a provenance letter and a confidence bar, and the basis of the selected value below." src="docs/assets/protocol-timeline-light.png" width="100%">
+</picture>
+
+And the same run as the Loop Tracker shows it, agent by agent:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/tracker-live-dark.png">
+  <img alt="The Loop Tracker following an AI discovery run: the orchestrator connected to literature, bioinformatics, the data analyst, the bioreactor, analysis and the BioSimulator; agent lanes with their state; the objective; the recommended protocol parameters; and the live event stream." src="docs/assets/tracker-live-light.png" width="100%">
+</picture>
+
+<details>
+<summary><b>The full worked demonstration</b></summary>
+
+<!-- BENCHMARK:START -->
+
+## A worked demonstration
+
+> **SYNTHETIC DEMONSTRATION.** Every input is an invented fixture committed to this
+> repository and the simulator is a mechanistic stand-in. No number below is a
+> measurement of any real cell.
+
+**Is M-CSF limiting monocyte output?** — project `ipsc_macrophage` v1.0.0, run offline with no model API and no network.
+
+```bash
+uv run --frozen python -m biosense.benchmark.cli run \
+  --config benchmarks/configs/macrophage_mcsf_demo.json
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/workflow-dark.svg">
+  <img alt="The benchmark workflow: objective, uncertainty, evidence, analysis, hypothesis, candidate parameter, simulator, next experiment." src="benchmarks/public/macrophage_mcsf_demo/figures/workflow-light.svg" width="100%">
+</picture>
+
+BioSense started from the objective *"Increase viable macrophage production while maintaining macrophage identity and viability."*, identified the unresolved question `GAP-mcsf-dose`, and planned an analysis against it.
+
+It ran `cytometry.population_comparison` v1.0.0 over `facs-mcsf-fixture`:
+
+- CD14_pos_pct: 41.18 in control vs 67.58 in mcsf_high (+26.4) — *Welch's t-test, p=0.00132, BH-q=0.00176, n=3 vs 3, 95% CI [21.5, 31.5]*
+- CD206_pos_pct: 33.5 in control vs 57.52 in mcsf_high (+24.02) — *Welch's t-test, p=0.000335, BH-q=0.000671, n=3 vs 3, 95% CI [21.4, 26.7]*
+
+### The hypothesis it formed
+
+Changing M-CSF may improve the objective: Increase viable macrophage production while maintaining macrophage identity and viability.
+
+| Outcome | Baseline → Candidate | Change | Provenance |
+|---|---|---|---|
+| CD14 pos pct | 41.18% → 67.58% | +26.4 pp (+64.1%) | DERIVED |
+| CD16 pos pct | 16.93% → 31% | +14.06 pp (+83.04%) | DERIVED |
+| viability pct | 93.96% → 91.04% | -2.922 pp (-3.11%) | DERIVED |
+| CD206 pos pct | 33.5% → 57.52% | +24.02 pp (+71.69%) | DERIVED |
+| Monocytes per input iPSC | 17.99 cells/input_cell → 29.66 cells/input_cell | +11.67 cells/input_cell (+64.87%) | SIMULATED |
+| Harvested cells | 8.995 1e6 cells/mL → 14.83 1e6 cells/mL | +5.835 1e6 cells/mL (+64.87%) | SIMULATED |
+| Final viability | 80.78% → 80.78% | +0 pp (+0%) | SIMULATED |
+| Cells in the monocyte gate | 76.66% → 90.25% | +13.59 pp (+17.73%) | SIMULATED |
+| Peak viable cell density | 4.762 1e6 cells/mL → 4.762 1e6 cells/mL | +0 1e6 cells/mL (+0%) | SIMULATED |
+| Mean aggregate diameter | 273.9 um → 273.9 um | +0 um (+0%) | SIMULATED |
+| Mean condition score | 92.7 score → 92.7 score | +0 score (+0%) | SIMULATED |
+
+**Confidence: moderate.** supported by 2 source(s) across 2 evidence class(es) capped below high: no real experimental measurement of this process supports it yet
+
+### Simulator coverage
+
+Every candidate parameter is accounted for. A parameter the model cannot predict is labelled, never dropped and never predicted anyway.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/parameter_change-dark.svg">
+  <img alt="Candidate parameters and simulator coverage: M-CSF maps to a model knob and is modelled; temperature is a real design variable the model has no term for." src="benchmarks/public/macrophage_mcsf_demo/figures/parameter_change-light.svg" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/simulator_comparison-dark.svg">
+  <img alt="Control versus candidate in the project simulator, with every number labelled SIMULATED." src="benchmarks/public/macrophage_mcsf_demo/figures/simulator_comparison-light.svg" width="100%">
+</picture>
+
+**Next experiment.** Test M-CSF at 20, 50, 80 ng/mL against the current process, measuring monocytes per input ipsc, harvested cells, final viability.
+
+**Capability scorecard: 17 PASS / 0 FAIL.** This is a SYSTEM CAPABILITY scorecard. It records whether BioSense identified an uncertainty, planned an analysis, executed it deterministically, quantified what it could, checked simulator coverage and labelled every number. It does NOT measure biological truth, and a run can pass every row while being biologically wrong.
+
+Full bundle — report, figures, tables, provenance and the audit package → [`benchmarks/public/macrophage_mcsf_demo/`](benchmarks/public/macrophage_mcsf_demo/) · how benchmarks work → [docs/BENCHMARKING.md](docs/BENCHMARKING.md)
+
+<!-- BENCHMARK:END -->
+
+### One protocol at the end, and the ideas that did not survive
+
+A run forms several hypotheses and some of them are wrong. Reading eight cards
+and working out which survived is not the deliverable; one protocol is.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/protocol-card-dark.png">
+  <img alt="The recommended protocol: the process stage by stage, each parameter showing its current value, the recommended one where it changes, a provenance tag reading R reported, A adapted, D design choice or GAP, and the simulator coverage. Beneath it, a ledger of every hypothesis the run formed with its status, whether it is in the protocol, and why not where it is not. The whole card is stamped PROPOSED — NOT APPROVED." src="docs/assets/protocol-card-light.png" width="640">
+</picture>
+
+It is stamped **PROPOSED — NOT APPROVED** and names the act that would approve
+it: `approve-protocol --approved-by "<a person>"`, which is a command-line act
+with a human behind it. No part of the web application can do it on their behalf.
+
+Every value carries how firm it is — **R** reported, **A** adapted from cited
+claims, **D** a design choice, **GAP** no evidence at all. A gap is never filled
+with a plausible number; it is listed, and it blocks the wet lab.
+
+And the hypotheses that did not make it stay on the page with the reason.
+Showing only the winner would hide that three alternatives were considered and
+ruled out, which is the part a reviewer most needs.
+
+### A worked result
+
+Two questions, one run each:
+
+1. *Optimise wild-type T cells grown from iPSC.*
+2. *Now do it with a **BACH2 knockout** that must reach the same target.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/trajectory-dark.png">
+  <img alt="Two lines climbing toward a dashed target line at 25. The wild-type line starts near 20 and reaches the target quickly; the knockout line starts near 7 and takes far longer, with visible steps backwards where moves were reverted." src="docs/assets/trajectory-light.png" width="100%">
+</picture>
+
+| | Arms | Iterations used | Outcome |
+|---|---|---|---|
+| Wild type alone | WT | **3** of 30 | 25.7 — target met |
+| With the knockout | WT + BACH2 KO | **25** of 30 | 25.7 and 26.0 — both met |
+
+The number to look at is **3 against 25**. Adding one knocked-out arm multiplied
+the search eightfold, and the loop says why in its own words:
+
+> IL-7 cannot be set to one shared value: moving it 16 → 25.6 ng/mL improved
+> BACH2_KO and degraded WT. The arms are being given separate values of this
+> parameter from here on.
+
+That is the finding: **no single shared recipe could serve both genotypes.** The
+search established it from measurements rather than assuming it, then split the
+parameter per arm. The knockout ended up needing more IL-7 at every stage and a
+weaker TCR stimulus.
+
+Reports, committed and readable without running anything →
+**[`reports/`](reports/)** · the full write-up, including everything this does
+*not* show → **[docs/IPSC_TCELL_EXAMPLE.md](docs/IPSC_TCELL_EXAMPLE.md)**
+
+</details>
+
+## The incubator: the BioSimulator
+
+A reactor model you can drive by hand, or from a protocol. Something the model
+has no term for — an edited line, a new cytokine, a parameter you registered
+with a stated response — is played as an **assumed effect** on growth or
+differentiation in its stage, against the same run without it, and labelled as
+an assumption every time.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/factor-compare-dark.png">
+  <img alt="The Simulator comparing a run with and without an added factor given during the myeloid stage: an assumed-effect verdict, growth curves for viable density, viability and cumulative harvest for both runs, and a table of harvest per input cell, peak density, viability and differentiation efficiency." src="docs/assets/factor-compare-light.png" width="100%">
+</picture>
+
+<details>
+<summary><b>How each parameter acts in the model</b></summary>
+
+The same table sits at the foot of the Simulator page, generated from the knob list the sliders use. The full derivation is in [docs/BIOSIMULATOR_MODEL.md](docs/BIOSIMULATOR_MODEL.md); these equations describe the stand-in model, not real cells.
+
+- **Growth.** μ = μmax × glucose term × lactate term × ammonia term × bell(DO) × (1 − necrotic) × (1 − X/6.0) × ROCK inhibitor; any term near zero stops growth.
+- **Death.** baseline + shear above threshold + necrotic cores + ammonia; cells change by (μ − death)·X each step.
+- **Differentiation efficiency.** bell(aggregate size) × bell(DO) × lactate term × cytokine term × viability, per stage; in the myeloid stage it drives continuous monocyte release.
+- **Stages.** Expansion, mesoderm, hemogenic and myeloid stages each want their own aggregate size and oxygen; their lengths are set by the stage days.
+- **New parameters.** A parameter the model has no term for (an edited line, a new factor, a parameter registered with a stated response) is played as an assumed multiplier on growth or on differentiation efficiency, in its stage only, and labelled as an assumption.
+
+| Parameter | Stage | Acts on | How it reaches growth and harvest |
+|---|---|---|---|
+| Seed density (1e6 cells/mL) | expansion | cells at the start | Sets the starting density X. Growth slows as the vessel fills, μ × (1 − X/6.0), and harvest is reported per input cell, so a denser seed fills the vessel sooner and divides the yield per input iPSC. |
+| Agitation (rpm) | every stage | shear, oxygen transfer, aggregate size | Stirring raises shear, 0.06·(rpm/75)^1.6, which adds death above 0.07 dyne/cm²; raises oxygen transfer, kLa = 4.0·(rpm/60)^1.4; and breaks aggregates to an equilibrium diameter. Diameter and oxygen set the necrotic core, which stops growth (× (1 − necrotic)) and adds death; diameter also sets the differentiation efficiency of each stage, a bell around the size it wants. |
+| Dissolved oxygen (fraction) | every stage | oxygen in the medium | Growth carries a bell around the oxygen optimum of each stage (too little and too much both hurt), and oxygen sets how deep the viable shell of an aggregate reaches — 110·√(DO/0.20) µm — so low oxygen grows a necrotic core. The same bell enters differentiation efficiency. |
+| Feed exchange (fraction of volume) | every stage | glucose, lactate, ammonia | At each feed this fraction of the medium is replaced: glucose restored, lactate and ammonia diluted. Growth carries glucose/(0.4 + glucose) × 22/(22 + lactate) × 4.5/(4.5 + ammonia); ammonia above 3 mM adds death; lactate also lowers efficiency. |
+| Feed interval (h) | every stage | how long waste builds up | Hours between exchanges: the longer, the further glucose falls and lactate and ammonia rise before the next feed, through the same three growth terms. |
+| ROCK inhibitor (h) | expansion | survival after seeding | While ROCK inhibitor is present single cells survive seeding; without it growth runs at 85% for the first half-day. After that it changes nothing. |
+| BMP4 (ng/mL) | mesoderm | mesoderm efficiency | Mesoderm only. Multiplies the mesoderm transition efficiency by a bell around a line-specific optimum: off the optimum, fewer cells become mesoderm. It does not change growth. |
+| VEGF (ng/mL) | mesoderm | mesoderm efficiency | Mesoderm only, beside BMP4: a second bell on the same efficiency. |
+| M-CSF (ng/mL) | myeloid | myeloid efficiency → harvest | Myeloid stage only. A bell on transition efficiency, and efficiency drives monocyte release: 0.028 × efficiency × X per step. This is the chain that makes it the dominant lever on harvest. |
+| IL-3 (ng/mL) | myeloid | myeloid efficiency → harvest | Myeloid stage only, beside M-CSF: a second bell on the efficiency that drives release. |
+
+</details>
+
+<details>
+<summary><b>Turn the knobs yourself</b></summary>
+
+The console asks the loop to find a condition. **Simulator mode** hands you the
+same reactor — ten setpoints, a vessel you can watch day by day, and the
+instrument readings each condition produces.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/simulator-dark.png">
+  <img alt="Simulator mode: a process selector above setpoint sliders grouped by stage, control and candidate presets, a side and top view of the vessel with aggregates sized from the imaging channels, a day timeline, and the day's instrument readings." src="docs/assets/simulator-light.png" width="100%">
+</picture>
+
+Nothing in the drawing is decorative: circle size is the measured aggregate
+diameter, a dark core means that fraction of aggregates is past the diameter
+where the centre goes hypoxic, the specks are released LDH. Each day is scored
+`good` / `strained` / `failing` by arithmetic over stated thresholds, and the
+thresholds ship with the page.
+
+Pick a probe fault from the *Starting culture* menu and the same exercise the
+analysis agent faces appears: one channel says the culture is thinning, three
+others disagree, and nothing about the biology has changed.
+
+Hold two conditions, compare them, and carry one into a loop run — where every
+quantity arrives as a **`design_choice`**, the provenance class that blocks the
+wet lab until a named reviewer accepts it. A sandbox cannot launder a number
+into a protocol.
+
+Choosing a process this model is not for does **not** render borrowed sliders.
+It lists that project's own knobs read-only and says why there is no trajectory:
+an M-CSF control on a CAR-T process would invite a setpoint nobody can run, and
+a prediction for it would be invented outright.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/simulator-no-model-dark.png">
+  <img alt="The simulator with the CAR-T process selected: no sliders, a note saying this process has no mechanistic model at all and that borrowing another process's model would produce a number rather than an answer, and below it the eight CAR-T knobs listed read-only with their ranges." src="docs/assets/simulator-no-model-light.png" width="520">
+</picture>
+
+Details, including what it does **not** model →
+**[docs/SIMULATOR_MODE.md](docs/SIMULATOR_MODE.md)**
+
+</details>
+
+## Data extraction
+
+**Literature.** Each value is extracted with the sentence that states it and
+where it sits in the paper. When the exact quantity is not reported, the
+closest proxy is reported with its conversion (embryoid bodies per well for a
+progenitor density), and the search widens in circles before anything is
+called "not found". A one-time landscape run, started from the Data page,
+builds the **cell production library** — papers and quoted values across
+expansion, aggregates, differentiation, maturation and scale-up — which every
+later run starts from.
+
+**Public and private datasets.** The bioinformatics agent finds a GEO series,
+reads its samples, and registers an analysable table: NCBI's processed counts
+where they exist, the depositors' own table otherwise, for any species — each
+with a confidence ceiling for its species and route. The data analyst plans
+against it, repairs what the tools refuse, and interprets the result for this
+process, resolving a named uncertainty.
+
+<details>
+<summary><b>Evidence classes, analyses and provenance in detail</b></summary>
+
+BioSense weighs published literature, public datasets, a person's own
+unpublished data, simulation and real measurements — and keeps them apart.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-evidence-dark.svg">
+  <img alt="Five sources feed one evidence layer that records what a thing is, what it came from, who may see it, which dataset it came from, and the checksums. A derived analysis stays derived; the citation firewall means no dataset can become a literature claim." src="docs/assets/arch-evidence-light.svg" width="100%">
+</picture>
+
+Three facts stay separate, because collapsing them is how provenance gets lost.
+An analysis of somebody's own FACS run is:
+
+```
+evidence_class        : derived_analysis      ← what it IS
+source_evidence_class : private_user_dataset  ← what it came FROM
+source_visibility     : private               ← who may SEE it
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/analysis-card-dark.png">
+  <img alt="An analysis card in the console: Resolving H01, badges reading DERIVED ANALYSIS, SOURCE: SYNTHETIC FIXTURE, PUBLIC and CONFIDENCE MODERATE, the finding, the candidate parameter il7_ng_ml increase, and the line 'Evidence for the orchestrator. It changes no parameter by itself.'" src="docs/assets/analysis-card-light.png" width="760">
+</picture>
+
+**No analysis may run without naming the uncertainty it would reduce.** Not as a
+convention — `AnalysisPlan` requires `uncertainty_ref`, and a plan citing a
+hypothesis the loop never raised is refused by name. That is the difference
+between a bioinformatics capability and a dashboard.
+
+What runs today, and what is only declared:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-capabilities-dark.svg">
+  <img alt="Generic statistics, processed flow cytometry and a screening bulk expression comparison run today, as does single-cell pseudobulk once its optional extra is installed and peak overlap over called ATAC or ChIP peaks. Raw FCS, FlowSOM and UMAP are declared but not written. DESeq2 is implemented behind the external-tool adapter and needs Rscript. Each box is marked Phase 1, Phase 2, Needs R or Planned." src="docs/assets/arch-capabilities-light.svg" width="100%">
+</picture>
+
+The **Data** page answers the three questions people ask before starting: what
+data is here, what analysis can run, and which processes BioSense knows how to
+tune. The four capability states read differently on purpose — *runs here*,
+*needs an install*, *needs a program*, *not written yet* — because only the last
+has no remedy.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/data-panel-dark.png">
+  <img alt="The Data page: registered datasets each badged public or private; the analyses that can run here badged RUNS HERE; and the analyses that cannot, badged NEEDS AN INSTALL, NEEDS A PROGRAM or NOT WRITTEN YET, each with the reason beside it." src="docs/assets/data-panel-light.png" width="100%">
+</picture>
+
+Each process exposes only its own knobs, with its own limits and the origin of
+any bound narrower than the global one. A parameter the model has no term for is
+marked **not modelled** rather than hidden: it is a real design variable you can
+set in the lab, and what it lacks is a prediction.
+
+### Every number knows how it was produced
+
+The most dangerous thing a system like this could do is let a simulated figure
+and a measured one sit side by side looking alike. So the estimate type travels
+with each number rather than with the card, report or hypothesis holding it, and
+a comparison takes the weaker of its two inputs.
+
+The hypothesis card is where that shows up: the badge sits beside each number,
+because one card holds a measured baseline and a simulated candidate at once and
+a single badge over both would be a claim about neither.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hypothesis-card-dark.png">
+  <img alt="A hypothesis card: raise M-CSF from 25 to 50 nanograms per millilitre. Each expected effect shows percentage points and relative change as two separate figures, with its own badge reading DERIVED or SIMULATED. Below, the evidence rows carry class badges, then the recommended next experiment, then a note that the public benchmark runs on invented fixtures and none of its numbers measures any real cell." src="docs/assets/hypothesis-card-light.png" width="700">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-provenance-dark.svg">
+  <img alt="Five estimate types: measured, derived, simulated, predicted and target. Combining a measured value with a simulated one gives simulated; two measured values give derived, because nothing measured the difference. Percentage points and relative change are reported as separate figures. A quantified hypothesis carries its parameter, effects, evidence and limitations, and a prediction committed before the run becomes a residual once a measurement exists." src="docs/assets/arch-provenance-light.svg" width="100%">
+</picture>
+
+A change computed from two measured values is **derived**, not measured: no
+instrument measured a difference, code subtracted two readings, and a reader who
+sees MEASURED beside "+26 percentage points" would believe something stronger
+than is true. 42% to 68% is *+26 percentage points* **and** *+62% relative*,
+reported as two figures, because one standing for both is a larger-sounding
+claim about a different quantity. A prediction whose magnitude is not yet
+estimated is a state the contract can express, with a required reason, rather
+than a blank somebody fills in later.
+
+The loop closes at the residual. A prediction is hashed when it is committed, and
+a commitment timestamped after the run is refused — otherwise the comparison is a
+model fitted to a result and then congratulated for matching it. Agreement is
+reported; the model is never called validated.
+
+Your own data stays yours: it lives outside every served directory, is
+git-ignored, is never listed by the web app, and **can never become a literature
+citation** — a claim needs a source, a paragraph and a verbatim quote, and a
+measurement has none of those. It can support a hypothesis, contradict public
+evidence and suggest a parameter. It cannot be cited.
+
+Full detail → **[docs/BIOINFORMATICS.md](docs/BIOINFORMATICS.md)**
+
 ---
 
+</details>
+
+## Real examples
+
+Real runs, exported without anything that must not be committed (full texts,
+raw logs, private-data results). **To add one:** run it in the app with a real
+runtime, then
+
+```bash
+uv run --frozen python -m biosense.production.export_example \
+  --run runs/ai-YYYYMMDD-xxxxxx --name short-name --out examples/real
+```
+
+add screenshots to the new folder, and link it here. The full checklist is in
+[examples/real/README.md](examples/real/README.md).
+
+*No real example yet — the next live run will be the first.*
+
 ## Quick start
+
+> **Use the hosted app** — no install. Pick a project, state your objective,
+> press **Run AI discovery**. Or run it on your own machine:
+> [docs/RUN_ON_YOUR_PC.md](docs/RUN_ON_YOUR_PC.md).
+
+<details>
+<summary><b>Everything about running, hosting, projects, accounts and limits</b></summary>
 
 **BioSense is a web application, and the hosted one runs the real agents.**
 For most people there is nothing to install and no terminal to open.
@@ -300,9 +670,49 @@ What was built for the hosted service, what was verified by running it, and what
 was explicitly **not** verified →
 **[docs/PHASE3_DELIVERABLES.md](docs/PHASE3_DELIVERABLES.md)**
 
----
+</details>
 
-## Synthetic, or real
+## Supplementary
+
+<details>
+<summary><b>The problem, and what BioSense does about it</b></summary>
+
+BioSense is designed to accelerate the development of cell-based therapies by
+tackling one of the biggest bottlenecks in the field: biological manufacturing
+and experimental optimisation are complex, slow, and still heavily dependent on
+fragmented data, manual interpretation, and repeated trial-and-error. Instead of
+forcing scientists to navigate literature, datasets, experimental variables, and
+process measurements separately, BioSense turns a high-level biological objective
+into an iterative **design → run → measure → decide** workflow.
+
+An agentic orchestration layer coordinates specialised AI agents for literature
+evidence, bioinformatics, data analysis, simulation, and experimental planning,
+continuously combining prior knowledge with new results. During execution,
+feedback from the bioreactor and multiple sensors, detectors, and analytical
+measurements provides real-time information on how the cell product is
+responding, allowing the system to refine conditions and propose the next
+experiment. Scientists interact through a simple interface — asking a question,
+defining the desired outcome, and reviewing transparent assumptions and
+reasoning — while BioSense manages the complexity underneath.
+
+The long-term goal is a closed-loop discovery and manufacturing system that
+learns from every experiment, reduces unnecessary iterations, and helps move
+safer, more effective cell therapies toward patients faster.
+
+> **Where the repository stands against that.** The five specialist agents exist,
+> the measurement-driven analysis is implemented, and the bioinformatics agent
+> now plans and executes real analyses over public and private datasets rather
+> than only reading gene annotations. Three parts of the goal are not reached:
+> the loop runs against a **synthetic stand-in, not a real bioreactor**; **live
+> model-driven orchestration has not been run yet**; and each loop starts fresh,
+> so **nothing is learned across runs**. Everything below describes what
+> runs today, and [What this is **not**](#what-this-is-not) sets out the limits
+> in full.
+
+</details>
+
+<details>
+<summary><b>Synthetic, or real</b></summary>
 
 These are different claims about the same question, and BioSense never
 substitutes one for the other. The runtime badge is on screen the whole time.
@@ -343,9 +753,10 @@ and it calls no model at all.
   <img alt="Transient cards naming each agent as it works: the analysis agent reporting a verdict, the orchestrator committing a decision, the reporter writing the report." src="docs/assets/agents-light.png" width="100%">
 </picture>
 
----
+</details>
 
-## Make it your own process
+<details>
+<summary><b>Make it your own process</b></summary>
 
 BioSense has no universal control panel, and the Quick start's project is an
 example, not the product.
@@ -372,9 +783,10 @@ own Omnigent account and they belong to you; without a server configured there i
 one local workspace, private because the machine is, and the interface says so in
 those words rather than implying more.
 
----
+</details>
 
-## Benchmarks, in the app
+<details>
+<summary><b>Benchmarks, in the app</b></summary>
 
 A benchmark records whether BioSense did its job — identified an uncertainty,
 planned an analysis, executed it deterministically, quantified what it could,
@@ -389,277 +801,10 @@ biology is not run again — and one whose lineage touches private data is marke
 
 The benchmark CLI stays exactly as it is, for CI and automation.
 
----
+</details>
 
-## A worked result
-
-Two questions, one run each:
-
-1. *Optimise wild-type T cells grown from iPSC.*
-2. *Now do it with a **BACH2 knockout** that must reach the same target.*
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/trajectory-dark.png">
-  <img alt="Two lines climbing toward a dashed target line at 25. The wild-type line starts near 20 and reaches the target quickly; the knockout line starts near 7 and takes far longer, with visible steps backwards where moves were reverted." src="docs/assets/trajectory-light.png" width="100%">
-</picture>
-
-| | Arms | Iterations used | Outcome |
-|---|---|---|---|
-| Wild type alone | WT | **3** of 30 | 25.7 — target met |
-| With the knockout | WT + BACH2 KO | **25** of 30 | 25.7 and 26.0 — both met |
-
-The number to look at is **3 against 25**. Adding one knocked-out arm multiplied
-the search eightfold, and the loop says why in its own words:
-
-> IL-7 cannot be set to one shared value: moving it 16 → 25.6 ng/mL improved
-> BACH2_KO and degraded WT. The arms are being given separate values of this
-> parameter from here on.
-
-That is the finding: **no single shared recipe could serve both genotypes.** The
-search established it from measurements rather than assuming it, then split the
-parameter per arm. The knockout ended up needing more IL-7 at every stage and a
-weaker TCR stimulus.
-
-Reports, committed and readable without running anything →
-**[`reports/`](reports/)** · the full write-up, including everything this does
-*not* show → **[docs/IPSC_TCELL_EXAMPLE.md](docs/IPSC_TCELL_EXAMPLE.md)**
-
----
-
-## It reasons across evidence, not just papers
-
-BioSense weighs published literature, public datasets, a person's own
-unpublished data, simulation and real measurements — and keeps them apart.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-evidence-dark.svg">
-  <img alt="Five sources feed one evidence layer that records what a thing is, what it came from, who may see it, which dataset it came from, and the checksums. A derived analysis stays derived; the citation firewall means no dataset can become a literature claim." src="docs/assets/arch-evidence-light.svg" width="100%">
-</picture>
-
-Three facts stay separate, because collapsing them is how provenance gets lost.
-An analysis of somebody's own FACS run is:
-
-```
-evidence_class        : derived_analysis      ← what it IS
-source_evidence_class : private_user_dataset  ← what it came FROM
-source_visibility     : private               ← who may SEE it
-```
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/analysis-card-dark.png">
-  <img alt="An analysis card in the console: Resolving H01, badges reading DERIVED ANALYSIS, SOURCE: SYNTHETIC FIXTURE, PUBLIC and CONFIDENCE MODERATE, the finding, the candidate parameter il7_ng_ml increase, and the line 'Evidence for the orchestrator. It changes no parameter by itself.'" src="docs/assets/analysis-card-light.png" width="760">
-</picture>
-
-**No analysis may run without naming the uncertainty it would reduce.** Not as a
-convention — `AnalysisPlan` requires `uncertainty_ref`, and a plan citing a
-hypothesis the loop never raised is refused by name. That is the difference
-between a bioinformatics capability and a dashboard.
-
-What runs today, and what is only declared:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-capabilities-dark.svg">
-  <img alt="Generic statistics, processed flow cytometry and a screening bulk expression comparison run today, as does single-cell pseudobulk once its optional extra is installed and peak overlap over called ATAC or ChIP peaks. Raw FCS, FlowSOM and UMAP are declared but not written. DESeq2 is implemented behind the external-tool adapter and needs Rscript. Each box is marked Phase 1, Phase 2, Needs R or Planned." src="docs/assets/arch-capabilities-light.svg" width="100%">
-</picture>
-
-The **Data** page answers the three questions people ask before starting: what
-data is here, what analysis can run, and which processes BioSense knows how to
-tune. The four capability states read differently on purpose — *runs here*,
-*needs an install*, *needs a program*, *not written yet* — because only the last
-has no remedy.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/data-panel-dark.png">
-  <img alt="The Data page: registered datasets each badged public or private; the analyses that can run here badged RUNS HERE; and the analyses that cannot, badged NEEDS AN INSTALL, NEEDS A PROGRAM or NOT WRITTEN YET, each with the reason beside it." src="docs/assets/data-panel-light.png" width="100%">
-</picture>
-
-Each process exposes only its own knobs, with its own limits and the origin of
-any bound narrower than the global one. A parameter the model has no term for is
-marked **not modelled** rather than hidden: it is a real design variable you can
-set in the lab, and what it lacks is a prediction.
-
-### Every number knows how it was produced
-
-The most dangerous thing a system like this could do is let a simulated figure
-and a measured one sit side by side looking alike. So the estimate type travels
-with each number rather than with the card, report or hypothesis holding it, and
-a comparison takes the weaker of its two inputs.
-
-The hypothesis card is where that shows up: the badge sits beside each number,
-because one card holds a measured baseline and a simulated candidate at once and
-a single badge over both would be a claim about neither.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hypothesis-card-dark.png">
-  <img alt="A hypothesis card: raise M-CSF from 25 to 50 nanograms per millilitre. Each expected effect shows percentage points and relative change as two separate figures, with its own badge reading DERIVED or SIMULATED. Below, the evidence rows carry class badges, then the recommended next experiment, then a note that the public benchmark runs on invented fixtures and none of its numbers measures any real cell." src="docs/assets/hypothesis-card-light.png" width="700">
-</picture>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/arch-provenance-dark.svg">
-  <img alt="Five estimate types: measured, derived, simulated, predicted and target. Combining a measured value with a simulated one gives simulated; two measured values give derived, because nothing measured the difference. Percentage points and relative change are reported as separate figures. A quantified hypothesis carries its parameter, effects, evidence and limitations, and a prediction committed before the run becomes a residual once a measurement exists." src="docs/assets/arch-provenance-light.svg" width="100%">
-</picture>
-
-A change computed from two measured values is **derived**, not measured: no
-instrument measured a difference, code subtracted two readings, and a reader who
-sees MEASURED beside "+26 percentage points" would believe something stronger
-than is true. 42% to 68% is *+26 percentage points* **and** *+62% relative*,
-reported as two figures, because one standing for both is a larger-sounding
-claim about a different quantity. A prediction whose magnitude is not yet
-estimated is a state the contract can express, with a required reason, rather
-than a blank somebody fills in later.
-
-The loop closes at the residual. A prediction is hashed when it is committed, and
-a commitment timestamped after the run is refused — otherwise the comparison is a
-model fitted to a result and then congratulated for matching it. Agreement is
-reported; the model is never called validated.
-
-Your own data stays yours: it lives outside every served directory, is
-git-ignored, is never listed by the web app, and **can never become a literature
-citation** — a claim needs a source, a paragraph and a verbatim quote, and a
-measurement has none of those. It can support a hypothesis, contradict public
-evidence and suggest a parameter. It cannot be cited.
-
-Full detail → **[docs/BIOINFORMATICS.md](docs/BIOINFORMATICS.md)**
-
----
-
-<!-- BENCHMARK:START -->
-
-## A worked demonstration
-
-> **SYNTHETIC DEMONSTRATION.** Every input is an invented fixture committed to this
-> repository and the simulator is a mechanistic stand-in. No number below is a
-> measurement of any real cell.
-
-**Is M-CSF limiting monocyte output?** — project `ipsc_macrophage` v1.0.0, run offline with no model API and no network.
-
-```bash
-uv run --frozen python -m biosense.benchmark.cli run \
-  --config benchmarks/configs/macrophage_mcsf_demo.json
-```
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/workflow-dark.svg">
-  <img alt="The benchmark workflow: objective, uncertainty, evidence, analysis, hypothesis, candidate parameter, simulator, next experiment." src="benchmarks/public/macrophage_mcsf_demo/figures/workflow-light.svg" width="100%">
-</picture>
-
-BioSense started from the objective *"Increase viable macrophage production while maintaining macrophage identity and viability."*, identified the unresolved question `GAP-mcsf-dose`, and planned an analysis against it.
-
-It ran `cytometry.population_comparison` v1.0.0 over `facs-mcsf-fixture`:
-
-- CD14_pos_pct: 41.18 in control vs 67.58 in mcsf_high (+26.4) — *Welch's t-test, p=0.00132, BH-q=0.00176, n=3 vs 3, 95% CI [21.5, 31.5]*
-- CD206_pos_pct: 33.5 in control vs 57.52 in mcsf_high (+24.02) — *Welch's t-test, p=0.000335, BH-q=0.000671, n=3 vs 3, 95% CI [21.4, 26.7]*
-
-### The hypothesis it formed
-
-Changing M-CSF may improve the objective: Increase viable macrophage production while maintaining macrophage identity and viability.
-
-| Outcome | Baseline → Candidate | Change | Provenance |
-|---|---|---|---|
-| CD14 pos pct | 41.18% → 67.58% | +26.4 pp (+64.1%) | DERIVED |
-| CD16 pos pct | 16.93% → 31% | +14.06 pp (+83.04%) | DERIVED |
-| viability pct | 93.96% → 91.04% | -2.922 pp (-3.11%) | DERIVED |
-| CD206 pos pct | 33.5% → 57.52% | +24.02 pp (+71.69%) | DERIVED |
-| Monocytes per input iPSC | 17.99 cells/input_cell → 29.66 cells/input_cell | +11.67 cells/input_cell (+64.87%) | SIMULATED |
-| Harvested cells | 8.995 1e6 cells/mL → 14.83 1e6 cells/mL | +5.835 1e6 cells/mL (+64.87%) | SIMULATED |
-| Final viability | 80.78% → 80.78% | +0 pp (+0%) | SIMULATED |
-| Cells in the monocyte gate | 76.66% → 90.25% | +13.59 pp (+17.73%) | SIMULATED |
-| Peak viable cell density | 4.762 1e6 cells/mL → 4.762 1e6 cells/mL | +0 1e6 cells/mL (+0%) | SIMULATED |
-| Mean aggregate diameter | 273.9 um → 273.9 um | +0 um (+0%) | SIMULATED |
-| Mean condition score | 92.7 score → 92.7 score | +0 score (+0%) | SIMULATED |
-
-**Confidence: moderate.** supported by 2 source(s) across 2 evidence class(es) capped below high: no real experimental measurement of this process supports it yet
-
-### Simulator coverage
-
-Every candidate parameter is accounted for. A parameter the model cannot predict is labelled, never dropped and never predicted anyway.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/parameter_change-dark.svg">
-  <img alt="Candidate parameters and simulator coverage: M-CSF maps to a model knob and is modelled; temperature is a real design variable the model has no term for." src="benchmarks/public/macrophage_mcsf_demo/figures/parameter_change-light.svg" width="100%">
-</picture>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="benchmarks/public/macrophage_mcsf_demo/figures/simulator_comparison-dark.svg">
-  <img alt="Control versus candidate in the project simulator, with every number labelled SIMULATED." src="benchmarks/public/macrophage_mcsf_demo/figures/simulator_comparison-light.svg" width="100%">
-</picture>
-
-**Next experiment.** Test M-CSF at 20, 50, 80 ng/mL against the current process, measuring monocytes per input ipsc, harvested cells, final viability.
-
-**Capability scorecard: 17 PASS / 0 FAIL.** This is a SYSTEM CAPABILITY scorecard. It records whether BioSense identified an uncertainty, planned an analysis, executed it deterministically, quantified what it could, checked simulator coverage and labelled every number. It does NOT measure biological truth, and a run can pass every row while being biologically wrong.
-
-Full bundle — report, figures, tables, provenance and the audit package → [`benchmarks/public/macrophage_mcsf_demo/`](benchmarks/public/macrophage_mcsf_demo/) · how benchmarks work → [docs/BENCHMARKING.md](docs/BENCHMARKING.md)
-
-<!-- BENCHMARK:END -->
-
----
-
-## One protocol at the end, and the ideas that did not survive
-
-A run forms several hypotheses and some of them are wrong. Reading eight cards
-and working out which survived is not the deliverable; one protocol is.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/protocol-card-dark.png">
-  <img alt="The recommended protocol: the process stage by stage, each parameter showing its current value, the recommended one where it changes, a provenance tag reading R reported, A adapted, D design choice or GAP, and the simulator coverage. Beneath it, a ledger of every hypothesis the run formed with its status, whether it is in the protocol, and why not where it is not. The whole card is stamped PROPOSED — NOT APPROVED." src="docs/assets/protocol-card-light.png" width="640">
-</picture>
-
-It is stamped **PROPOSED — NOT APPROVED** and names the act that would approve
-it: `approve-protocol --approved-by "<a person>"`, which is a command-line act
-with a human behind it. No part of the web application can do it on their behalf.
-
-Every value carries how firm it is — **R** reported, **A** adapted from cited
-claims, **D** a design choice, **GAP** no evidence at all. A gap is never filled
-with a plausible number; it is listed, and it blocks the wet lab.
-
-And the hypotheses that did not make it stay on the page with the reason.
-Showing only the winner would hide that three alternatives were considered and
-ruled out, which is the part a reviewer most needs.
-
----
-
-## Or turn the knobs yourself
-
-The console asks the loop to find a condition. **Simulator mode** hands you the
-same reactor — ten setpoints, a vessel you can watch day by day, and the
-instrument readings each condition produces.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/simulator-dark.png">
-  <img alt="Simulator mode: a process selector above setpoint sliders grouped by stage, control and candidate presets, a side and top view of the vessel with aggregates sized from the imaging channels, a day timeline, and the day's instrument readings." src="docs/assets/simulator-light.png" width="100%">
-</picture>
-
-Nothing in the drawing is decorative: circle size is the measured aggregate
-diameter, a dark core means that fraction of aggregates is past the diameter
-where the centre goes hypoxic, the specks are released LDH. Each day is scored
-`good` / `strained` / `failing` by arithmetic over stated thresholds, and the
-thresholds ship with the page.
-
-Pick a probe fault from the *Starting culture* menu and the same exercise the
-analysis agent faces appears: one channel says the culture is thinning, three
-others disagree, and nothing about the biology has changed.
-
-Hold two conditions, compare them, and carry one into a loop run — where every
-quantity arrives as a **`design_choice`**, the provenance class that blocks the
-wet lab until a named reviewer accepts it. A sandbox cannot launder a number
-into a protocol.
-
-Choosing a process this model is not for does **not** render borrowed sliders.
-It lists that project's own knobs read-only and says why there is no trajectory:
-an M-CSF control on a CAR-T process would invite a setpoint nobody can run, and
-a prediction for it would be invented outright.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/simulator-no-model-dark.png">
-  <img alt="The simulator with the CAR-T process selected: no sliders, a note saying this process has no mechanistic model at all and that borrowing another process's model would produce a number rather than an answer, and below it the eight CAR-T knobs listed read-only with their ranges." src="docs/assets/simulator-no-model-light.png" width="520">
-</picture>
-
-Details, including what it does **not** model →
-**[docs/SIMULATOR_MODE.md](docs/SIMULATOR_MODE.md)**
-
----
-
-## Every run explains itself
+<details>
+<summary><b>Every run explains itself</b></summary>
 
 The console shows the answer. The exported report carries the justification:
 
@@ -675,71 +820,10 @@ The console shows the answer. The exported report carries the justification:
 A decision made by deterministic code is labelled as such. The report never
 presents a rule as a model's reasoning.
 
----
+</details>
 
-## What this is **not**
-
-An evaluator should know the limits before the features.
-
-- **The bioreactor is a synthetic stand-in.** It is a phenomenological model, not
-  a digital twin. No number this produces is a measurement of any real cell.
-- **The stand-in was built to reward the levers the annotations suggest.** That
-  is what makes the demonstration legible, and exactly what makes it worthless as
-  biology. A real experiment could reward the opposite.
-- **No protocol value is attributed to a publication.** The citations support the
-  *direction* of a lever; every number is a design choice. The reports show that
-  count rather than hiding it.
-- **The cited BACH2 work is in peripheral and engineered T cells**, not
-  iPSC-derived ones. The knowledge set separates what a paper reports
-  (`local_annotation`) from a transfer to this cell type (`inference`).
-- **One replicate per arm.** Every between-arm difference is directional only.
-- **A loop that reaches a target has not produced a validated process.**
-  Confirmation runs, replicate design and human QA sign-off are all outside it.
-- **The reactor stays a stand-in even with real AI on.** Real AI makes the
-  evidence, the analysis and the hypothesis real work over real data. It does not
-  make the bioreactor real: nothing here actuates anything, and a prediction for
-  a new process comes from the one calibrated stand-in model, a response the
-  agents proposed, or one you declared — each labelled, none of them a
-  measurement.
-- **A proposed response is not a fitted one.** A `DE NOVO` or `EXPERT-DECLARED`
-  term predicts because deterministic code evaluates a shape somebody chose with
-  constants somebody supplied. Nothing was fitted to data, the effect it may have
-  is bounded in the contract and clamped again in code, and every number it
-  touches carries the calibrated value it started from.
-- **Live model-driven orchestration has not been run end to end yet.** The
-  deterministic path is fully exercised and the Omnigent adapter is verified
-  against a real local server — agent resolution, session creation, the SSE
-  stream and the no-runner refusal — but a complete live discovery session with
-  model credentials remains a genuine test.
-- **The dataset fixtures are invented.** Every committed example table is
-  synthetic and every fixture accession begins with `SYNTHETIC-GSE`. BioSense has
-  not downloaded or analysed a real public dataset.
-- **Live repository search is written but unverified from this repository.**
-  Outbound access to NCBI is blocked in the environment it was developed in, so
-  the live branch has never run against the real service.
-- **Single cell, ChIP-seq, ATAC-seq and raw FCS are declared, not implemented.**
-  The contracts accept them so a manifest written today stays valid; calling one
-  is refused with a message saying why.
-- **Only one project has a mechanistic model.** `ipsc_macrophage` has
-  `ipsc_monocyte_v1`; `cart_expansion` has none, and every parameter there
-  reports `no_simulator` rather than borrowing one. A candidate parameter the
-  model cannot predict is labelled `not_modelled`, never dropped and never
-  predicted anyway.
-- **Sign-in is Omnigent's, and a local instance has none.** Signing in through
-  an Omnigent account gives you a workspace that is yours, because that server
-  checked a password. Without one there is a single local workspace, private
-  because the machine is private and not because anything verified it — which is
-  what the interface says, rather than implying more.
-- **A closed loop is authorised, not unattended.** A campaign authorisation is
-  one named person covering a bounded number of iterations inside a stated
-  envelope, checked every round. Past the count or outside the bounds the loop
-  stops and asks again, and it cannot authorise itself.
-- **A capability scorecard is not a measure of biological truth.** A benchmark
-  can pass every row while being biologically wrong, and the artifact says so.
-
----
-
-## Safety properties, enforced in code
+<details>
+<summary><b>Safety properties, enforced in code</b></summary>
 
 Not conventions — things the software refuses to do:
 
@@ -764,7 +848,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1095 tests
+uv run --frozen python -m unittest     # 1114 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip
@@ -778,9 +862,10 @@ tools on a SYNTHETIC fixture, the simulator, the hypothesis and context builders
 runs in CI and at every hosted boot; operators can run it, including `--live`,
 from the Runs page.
 
----
+</details>
 
-## Where things are
+<details>
+<summary><b>Where things are</b></summary>
 
 | Path | What it holds |
 |---|---|
@@ -827,5 +912,69 @@ from the Runs page.
 ---
 
 <div align="center">
-<sub>Not clinical or manufacturing guidance. MIT licensed.</sub>
+<sub>Not clinical or manufacturing guidance. Licensed under Apache-2.0 (see LICENSE and NOTICE).</sub>
 </div>
+
+</details>
+
+## What this is **not**
+
+An evaluator should know the limits before the features.
+
+- **The bioreactor is a synthetic stand-in.** It is a phenomenological model, not
+  a digital twin. No number this produces is a measurement of any real cell.
+- **The stand-in was built to reward the levers the annotations suggest.** That
+  is what makes the demonstration legible, and exactly what makes it worthless as
+  biology. A real experiment could reward the opposite.
+- **No protocol value is attributed to a publication.** The citations support the
+  *direction* of a lever; every number is a design choice. The reports show that
+  count rather than hiding it.
+- **The cited BACH2 work is in peripheral and engineered T cells**, not
+  iPSC-derived ones. The knowledge set separates what a paper reports
+  (`local_annotation`) from a transfer to this cell type (`inference`).
+- **One replicate per arm.** Every between-arm difference is directional only.
+- **A loop that reaches a target has not produced a validated process.**
+  Confirmation runs, replicate design and human QA sign-off are all outside it.
+- **The reactor stays a stand-in even with real AI on.** Real AI makes the
+  evidence, the analysis and the hypothesis real work over real data. It does not
+  make the bioreactor real: nothing here actuates anything, and a prediction for
+  a new process comes from the one calibrated stand-in model, a response the
+  agents proposed, or one you declared — each labelled, none of them a
+  measurement.
+- **A proposed response is not a fitted one.** A `DE NOVO` or `EXPERT-DECLARED`
+  term predicts because deterministic code evaluates a shape somebody chose with
+  constants somebody supplied. Nothing was fitted to data, the effect it may have
+  is bounded in the contract and clamped again in code, and every number it
+  touches carries the calibrated value it started from.
+- **Live AI runs work; the loop has not closed on a real bioreactor.** Live
+  discovery runs — literature, bioinformatics, data analysis, hypothesis and a
+  recommended protocol — have run end to end on the hosted service. A loop that
+  runs a real bioreactor and makes a result-dependent decision has not, and
+  nothing here claims it has.
+- **The committed dataset fixtures are invented.** Every committed example
+  table is synthetic and every fixture accession begins with `SYNTHETIC-GSE`.
+  A run can now fetch a real public GEO series (any species) and register it as
+  a public dataset; no result from one is committed here.
+- **The live GEO fetch is unverified from this repository.** Outbound access to
+  NCBI is blocked in the environment it was developed in, so the fetch is
+  tested against recorded response shapes; its first contact with the real
+  service is a hosted run. A failure there is reported, never filled in.
+- **Single cell, ChIP-seq, ATAC-seq and raw FCS are declared, not implemented.**
+  The contracts accept them so a manifest written today stays valid; calling one
+  is refused with a message saying why.
+- **Only one project has a mechanistic model.** `ipsc_macrophage` has
+  `ipsc_monocyte_v1`; `cart_expansion` has none, and every parameter there
+  reports `no_simulator` rather than borrowing one. A candidate parameter the
+  model cannot predict is labelled `not_modelled`, never dropped and never
+  predicted anyway.
+- **Sign-in is Omnigent's, and a local instance has none.** Signing in through
+  an Omnigent account gives you a workspace that is yours, because that server
+  checked a password. Without one there is a single local workspace, private
+  because the machine is private and not because anything verified it — which is
+  what the interface says, rather than implying more.
+- **A closed loop is authorised, not unattended.** A campaign authorisation is
+  one named person covering a bounded number of iterations inside a stated
+  envelope, checked every round. Past the count or outside the bounds the loop
+  stops and asks again, and it cannot authorise itself.
+- **A capability scorecard is not a measure of biological truth.** A benchmark
+  can pass every row while being biologically wrong, and the artifact says so.

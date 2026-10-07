@@ -258,7 +258,8 @@ def ingest_local(path, *, dataset_id, title, modality=None, organism='Homo sapie
 def ingest_public_table(path, *, dataset_id, accession, source, title, source_url=None,
                         organism='Homo sapiens', cell_type=None, perturbation=None,
                         modality='bulk_rna', experimental_design=None, description=None,
-                        registered_by=None, notes=None, register=True, overwrite=False):
+                        registered_by=None, notes=None, register=True, overwrite=False,
+                        extra_limitations=()):
     """Register a table BioSense built from a public repository record.
 
     Public, with its accession and where it came from: evidence about another
@@ -286,6 +287,6 @@ def ingest_public_table(path, *, dataset_id, accession, source, title, source_ur
         limitations=['Built by BioSense from a public repository record: the numbers are the '
                      'repository\'s processed values after the transform stated in the '
                      'description. Another lab\'s experiment — evidence to weigh, not a '
-                     'measurement of this process.'])
+                     'measurement of this process.'] + [x for x in extra_limitations if x])
     path_out = REG.register(m, overwrite=overwrite) if register else None
     return m, path_out

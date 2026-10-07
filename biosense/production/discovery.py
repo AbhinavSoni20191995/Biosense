@@ -579,10 +579,12 @@ so in its task, with these commands (each needs `--i-have-network-permission`):
   — the series' samples and the fields a condition can be read from.
 - `{bio} datasets fetch-geo --accession GSE… --condition-key "<field>"
   --control "<value>" --treatment "<value>" [--keep "<field>=<value>"]
-  [--genes <SYMBOL ...>]` — NCBI's processed counts as log2(CPM+1), registered
-  as a public dataset; it prints the `analyse plan` line to run next.
+  [--genes <SYMBOL ...>]` — any species: NCBI's processed counts (human,
+  mouse) or the depositors' own table, on a log2 scale, registered as a public
+  dataset with an evidence weight (a confidence ceiling for the species and
+  route); it prints the `analyse plan` line to run next.
 
-Then `analyse plan` (with `--evidence-gap`) and `analyse run` on that dataset.
+Then send each registered dataset to `analyst` to plan, run and interpret.
 A public series is another lab's experiment: evidence to weigh by how close its
 cells, stage and treatment are to this process, never a measurement of it.
 
@@ -618,7 +620,16 @@ on a question ends the run with nothing to show. So:
   search you run yourself can fail on DNS, and even where it works it skips the
   agent that extracts and cites the claims. Do not run literature or web
   searches yourself; send the question to `literature`.{lit_after}
-- Gene and dataset questions go to `bioinformatics`.
+- Gene and dataset questions go to `bioinformatics`: annotation, finding
+  public data and registering it.
+- **Analysing a dataset goes to `analyst`** (`agent: "analyst"`, title
+  `analyst-<dataset>`), once a dataset is registered (one `bioinformatics`
+  fetched, or one the person named): give it the dataset id(s), the question,
+  the evidence-gap id and the run directory. It inspects the data, plans the
+  comparison against it, repairs the plan when a tool refuses it, runs it, and
+  writes an interpretation whose confidence is capped by the result, the
+  dataset's species and route, and how close the experiment is to this
+  process. Send several datasets as several analyst tasks in one response.
 - **If a specialist fails or refuses**, read its reply for the reason. Send it
   once more, narrower (one gene, one parameter, a smaller budget), under a new
   title such as `literature-it1-retry`. If that fails too, record the reason it
@@ -776,6 +787,9 @@ invent one for them, and do not drop them.
    `--factor "<FACTOR>:stage=<stage>,growth=<ratio>,diff=<ratio>"` in place of
    `--genotype`. The same rules hold: the ratios are your labelled best guess
    from the evidence direction, said in the hypothesis, never a prediction.
+   If the project already has new parameters with an effect a person stated for
+   them, `--modelled-parameters` (with `--set` for their values) plays those
+   stated effects through the reactor instead.
 6. **Give every setpoint the process needs a number, or say why it must not have
    one.** A protocol with a blank cannot be run, and the literature will not
    report the value for this exact vessel, density and line. Each parameter the

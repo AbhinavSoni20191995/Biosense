@@ -811,7 +811,37 @@ function renderBioInsights(bio) {
     (r.key_findings || []).forEach(f => row.append(el('div', null, '• ' + (typeof f === 'string' ? f : (f.statement || f.summary || JSON.stringify(f))))));
     host.append(row);
   });
-  if (!(bio.plans || []).length && !(bio.results || []).length) {
+  (bio.agent_analyses || []).forEach(r => {
+    const row = el('div', 'm');
+    row.append(el('span', 'tag warn', 'AGENT-WRITTEN'), ' ', el('b', null, r.question || r.analysis_id));
+    if (!r.succeeded) row.append(el('div', 'dim', 'Did not run: ' + (r.problem || 'unknown')));
+    if (r.method) row.append(el('div', 'dim', r.method));
+    (r.findings || []).forEach(f => row.append(el('div', null, '• ' + f)));
+    row.append(el('div', 'dim', 'A script the analyst wrote, run here; its confidence is capped at low.'));
+    host.append(row);
+  });
+  /* The analyst's reading: what the result means here, and how far it carries. */
+  (bio.interpretations || []).forEach(i => {
+    const row = el('div', 'm interp');
+    row.append(el('span', 'tag', 'INTERPRETATION'), ' ', el('b', null, i.question || ''));
+    const top = el('div', 'confhead');
+    const level = i.confidence || 'low';
+    top.append(miniBar(level), el('span', 'conf ' + level, level + ' confidence'));
+    if (i.confidence_claimed && i.confidence_claimed !== i.confidence) {
+      top.append(el('span', 'dim', ` (claimed ${i.confidence_claimed}; capped: ${(i.confidence_capped_by || []).join('; ')})`));
+    }
+    row.append(top);
+    if (i.what_it_shows) row.append(el('div', null, 'Shows: ' + i.what_it_shows));
+    if (i.meaning_for_process) row.append(el('div', null, 'For this process: ' + i.meaning_for_process));
+    const tr = i.transfer || {};
+    row.append(el('div', 'dim', `Transfer — cells ${tr.cells}, stage ${tr.stage}, treatment ${tr.treatment}`
+      + (tr.species ? `, ${tr.species}` : '') + (tr.notes ? ` (${tr.notes})` : '')));
+    if (i.recommendation) row.append(el('div', null, 'Recommends: ' + i.recommendation));
+    if (i.confirm_with) row.append(el('div', 'dim', 'Would confirm it: ' + i.confirm_with));
+    host.append(row);
+  });
+  if (!(bio.plans || []).length && !(bio.results || []).length
+      && !(bio.interpretations || []).length && !(bio.agent_analyses || []).length) {
     host.append(el('p', 'dim', 'No analysis planned yet.'));
   }
   if (bio.notes) {
@@ -1013,7 +1043,9 @@ function renderInsights(snap) {
   if (bio) {
     renderBioInsights(bio);
     $('#bioSum').textContent = [`${(bio.plans || []).length} planned`,
-      `${(bio.results || []).length} run`, bio.notes ? `notes ${BS.fmt.ago(bio.notes.updated_at)}` : null]
+      `${(bio.results || []).length + (bio.agent_analyses || []).length} run`,
+      (bio.interpretations || []).length ? `${bio.interpretations.length} interpreted` : null,
+      bio.notes ? `notes ${BS.fmt.ago(bio.notes.updated_at)}` : null]
       .filter(Boolean).join(' · ');
   }
   $('#genoSec').hidden = !geno;
@@ -1562,6 +1594,7 @@ function renderTimeline(p) {
     `minmax(${floors[i]}px, ${s.days || 1}fr)`).join(' ');
   grid.style.minWidth = (floors.reduce((a, b) => a + b, 0) + 8 * (floors.length - 1)) + 'px';
   const basis = el('div', 'ptl-basis'); basis.hidden = true;
+  basis.dataset.project = (p.project || {}).project_id || '';
   let picked = null;
 
   const chip = (q, cls) => {
@@ -1649,6 +1682,44 @@ function renderTimeline(p) {
   wrap.append(scroll, basis);
   return wrap;
 }
+/* How a parameter acts, stated by a person so the reactor can play it: a shape,
+   what it acts on, its constant(s), a bounded size and the reason. Stored on the
+   project as EXPERT-DECLARED — a stated response, never a fitted one. */
+function effectFields(holder, hint) {
+  const box = el('fieldset', 'effbox');
+  box.append(el('legend', null, 'Model its effect (optional) — so the Simulator can play it'));
+  const f = (label, input) => { const l = el('label', null, label); l.append(input); box.append(l); return input; };
+  const shape = f('Shape', el('select'));
+  [['saturating', 'rises to a plateau'], ['bell', 'has an optimum'], ['threshold', 'switches on above a level'],
+   ['linear', 'proportional']].forEach(([v, l]) => { const o = el('option', null, l); o.value = v; shape.append(o); });
+  const target = f('Acts on', el('select'));
+  [['transition_efficiency', 'differentiation'], ['growth', 'growth'], ['harvest', 'harvest'],
+   ['viability', 'viability (not playable in the reactor)']].forEach(([v, l]) => {
+    const o = el('option', null, l); o.value = v; target.append(o); });
+  const k1 = f('Half-maximal value', Object.assign(el('input'), { type: 'number', step: 'any', placeholder: hint || '' }));
+  const k2 = f('Tolerance (±)', Object.assign(el('input'), { type: 'number', step: 'any' }));
+  k2.parentElement.hidden = true;
+  const eff = f('At best, changes it by (%)', Object.assign(el('input'), { type: 'number', step: 'any', value: '20' }));
+  const basis = f('Why this shape and size', Object.assign(el('input'), { maxLength: 400,
+    placeholder: 'e.g. two papers show a dose-dependent rise that plateaus near 1 uM' }));
+  basis.parentElement.style.gridColumn = '1/-1';
+  const names = { saturating: 'Half-maximal value', bell: 'Optimum', threshold: 'Threshold', linear: 'Slope per unit' };
+  shape.addEventListener('change', () => {
+    k1.parentElement.firstChild.textContent = names[shape.value];
+    k2.parentElement.hidden = shape.value !== 'bell';
+  });
+  holder.append(box);
+  return () => {
+    if (k1.value === '' && !basis.value.trim()) return null;      // left empty: not modelled
+    const rm = { shape: shape.value, target: target.value, max_effect: (+eff.value || 0) / 100,
+      basis: basis.value.trim(), origin: 'expert_declared', calibrated: false };
+    const key = { saturating: 'half_max', bell: 'optimum', threshold: 'threshold', linear: 'slope' }[shape.value];
+    rm[key] = +k1.value;
+    if (shape.value === 'bell') rm.tolerance = +k2.value;
+    return rm;
+  };
+}
+
 /* A lever a hypothesis named becomes a parameter of the person's own project:
    a unit, the range a hypothesis may propose within, and the stage it is given
    in. No value is set here — the hypothesis supplies it, or the row stays a gap. */
@@ -1668,6 +1739,7 @@ function registerForm(p, cand, stages) {
   if (cand.candidate_value != null) hi.value = String(Math.max(cand.candidate_value * 4, 1));
   const why = field('Where the range comes from (optional)', Object.assign(el('input'),
     { maxLength: 300, placeholder: 'e.g. doses used in the cited papers' }));
+  const model = effectFields(f, cand.candidate_value != null ? String(cand.candidate_value) : '');
   const go = el('button', 'btn go sm', 'Add to my project'); go.type = 'submit';
   const msg = el('p', 'dim');
   f.append(go, msg);
@@ -1679,6 +1751,7 @@ function registerForm(p, cand, stages) {
         label: cand.label, parameter_id: cand.parameter_id, hypothesis_id: cand.hypothesis_id,
         unit: unit.value.trim(), stage: stage.value, minimum: +lo.value, maximum: +hi.value,
         bound_basis: why.value.trim(), meaning: cand.statement || null, run_id: runId,
+        response_model: model(),
       });
       msg.textContent = d.note + (d.protocol_rebuilt ? ' The protocol below was rebuilt.'
         : d.rebuild_note ? ' ' + d.rebuild_note + '.' : '');
@@ -1723,6 +1796,28 @@ function showBasis(box, q, c, ledger) {
   if (q.constraint) add('Range set by', `${q.constraint.source}${q.constraint.basis ? ': ' + q.constraint.basis : ''}`);
   if (q.provenance === 'gap') add('Blocks the wet lab', 'Needs evidence or a named design choice before a run.');
   box.append(dl);
+  if (['not_modelled', 'no_simulator'].includes(q.simulator_coverage) && box.dataset.project) {
+    const open = el('button', 'btn sm', 'Give it a modelled effect');
+    open.type = 'button';
+    box.append(open);
+    open.addEventListener('click', () => {
+      open.remove();
+      const form = el('form', 'regform');
+      const read = effectFields(form, q.recommended_value != null ? String(q.recommended_value) : '');
+      const go = el('button', 'btn go sm', 'Save the effect'); go.type = 'submit';
+      const msg = el('p', 'dim'); form.append(go, msg); box.append(form);
+      form.addEventListener('submit', async ev => {
+        ev.preventDefault(); go.disabled = true;
+        try {
+          const rm = read();
+          if (!rm) throw new Error('state the constant and why');
+          const d = await post(`/api/projects/${encodeURIComponent(box.dataset.project)}/parameters/`
+            + `${encodeURIComponent(q.parameter_id)}/model`, { response_model: rm });
+          msg.textContent = `${d.description.summary} — ${d.note}`;
+        } catch (e) { msg.textContent = e.message; go.disabled = false; }
+      });
+    });
+  }
 }
 
 function renderProtocol(p) {

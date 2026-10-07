@@ -181,5 +181,5 @@ def _search_live(query, plan, limit, timeout):
                         searched_at=K.now_iso(),
                         note='Live GEO records. Nothing has been downloaded: read a series\' '
                              'samples with `datasets geo-samples`, then `datasets fetch-geo` '
-                             'builds and registers an analysable table from NCBI\'s processed '
-                             'counts (human and mouse RNA-seq).')
+                             'builds and registers an analysable table (any species: NCBI\'s '
+                             'processed counts, or the depositors\' own table).')

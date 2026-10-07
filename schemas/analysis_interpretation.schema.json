@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnalysisInterpretation",
+  "description": "An AI analyst's reading of a computed result: what it shows, what it means for this process, how far it transfers, and a confidence capped by the result, the dataset's species/route evidence ceiling and the closeness of the experiment. The numbers stay the result's.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "created_at",
+    "analysis_ref",
+    "what_it_shows",
+    "meaning_for_process",
+    "transfer",
+    "confidence",
+    "confidence_claimed",
+    "confidence_capped_by",
+    "confidence_reason",
+    "confirm_with",
+    "evidence_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "analysis_ref": {
+      "type": "string"
+    },
+    "question": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "what_it_shows": {
+      "type": "string",
+      "minLength": 3
+    },
+    "meaning_for_process": {
+      "type": "string",
+      "minLength": 3
+    },
+    "transfer": {
+      "type": "object",
+      "required": [
+        "cells",
+        "stage",
+        "treatment"
+      ],
+      "properties": {
+        "species": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cells": {
+          "enum": [
+            "same",
+            "related",
+            "distant"
+          ]
+        },
+        "stage": {
+          "enum": [
+            "same",
+            "related",
+            "distant"
+          ]
+        },
+        "treatment": {
+          "enum": [
+            "same",
+            "related",
+            "distant"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "moderate",
+        "high"
+      ]
+    },
+    "confidence_claimed": {
+      "enum": [
+        "low",
+        "moderate",
+        "high"
+      ]
+    },
+    "confidence_capped_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confidence_reason": {
+      "type": "string"
+    },
+    "confirm_with": {
+      "type": "string"
+    },
+    "recommendation": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "caveats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_status": {
+      "const": "interpretation"
+    },
+    "note": {
+      "type": "string"
+    }
+  }
+}

@@ -49,6 +49,29 @@ function status(txt, cls) {
 function fail(msg) { const e = $('#err'); e.textContent = msg; e.classList.remove('hide'); }
 function clearFail() { $('#err').classList.add('hide'); }
 
+/* ── how each parameter acts, from the same knob list ─────── */
+function renderHow(cfg) {
+  const sum = $('#howSummary'), tab = $('#howTab');
+  if (!sum || !tab) return;
+  const names = { growth: 'Growth', death: 'Death', efficiency: 'Differentiation efficiency',
+    stages: 'Stages', new_parameters: 'New parameters' };
+  Object.entries(cfg.model_summary || {}).forEach(([k, v]) => {
+    const row = el('div'); row.append(el('b', null, (names[k] || k) + '. '), document.createTextNode(v));
+    sum.append(row);
+  });
+  const head = el('tr');
+  ['Parameter', 'Stage', 'Acts on', 'How it reaches growth and harvest'].forEach(h => head.append(el('th', null, h)));
+  tab.append(head);
+  const stage = { all: 'every stage', expansion: 'expansion', mesoderm: 'mesoderm', hemato: 'hemogenic', myeloid: 'myeloid' };
+  (cfg.knobs || []).forEach(k => {
+    if (!k.how) return;
+    const tr = el('tr');
+    tr.append(el('td', null, `${k.label} (${k.unit})`), el('td', null, stage[k.stage] || k.stage),
+      el('td', null, k.acts_on), el('td', null, k.how));
+    tab.append(tr);
+  });
+}
+
 /* ── build the controls from the server's own knob list ──── */
 async function boot() {
   try {
@@ -56,6 +79,7 @@ async function boot() {
   } catch (_) { return fail('the simulator service did not answer'); }
   const cfg = state.cfg;
   $('#notModelled').textContent = 'Not modelled: ' + cfg.not_modelled.join('; ') + '.';
+  renderHow(cfg);
 
   const byStage = {};
   cfg.knobs.forEach(k => (byStage[k.stage] = byStage[k.stage] || []).push(k));
@@ -304,6 +328,59 @@ function applyProtocolHandoff(h) {
     value: v.value, label: v.label || v.parameter_id, from: h.from_run || 'protocol' }));
   state.handoff = h;
   applyPreset('candidate');
+  loadProjectEffects(h);
+}
+
+/* The protocol's new parameters — ones the reactor has no term for — played
+   through it as the effects stated for them on the project. Nothing is played
+   that nobody stated: a parameter with no modelled effect says so. */
+async function loadProjectEffects(h) {
+  const host = $('#protoEffects');
+  const values = {};
+  (h.values || []).forEach(v => { values[v.parameter_id] = v.value; });
+  let d;
+  try {
+    const r = await fetch('/api/sim/project-effects', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: h.project_id, values }) });
+    d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+  } catch (_) { return; }
+  if (!(d.effects || []).length && !(d.not_applied || []).length) return;
+  host.hidden = false; host.textContent = '';
+  host.append(el('div', 'ttl', 'New parameters in this protocol'));
+  (d.effects || []).forEach(e => host.append(el('div', null,
+    `${e.label} = ${e.value} (control ${e.control_value}) · ${e.description} · in `
+    + `${e.stage || 'every stage'}: growth ×${(+e.growth_ratio).toFixed(3)}, differentiation `
+    + `×${(+e.diff_ratio).toFixed(3)} · ${e.origin === 'expert_declared' ? 'EXPERT-DECLARED' : 'DE NOVO'}`)));
+  (d.not_applied || []).forEach(n => host.append(el('div', 'dim', `${n.label}: ${n.why}`)));
+  host.append(el('div', 'dim', d.note));
+  if ((d.effects || []).length) {
+    const b = el('button', 'btn go', 'Compare the protocol with and without them');
+    b.type = 'button';
+    b.addEventListener('click', () => compareEffects(d.effects, b));
+    host.append(b);
+  }
+}
+
+async function compareEffects(effects, b) {
+  b.disabled = true; const label = b.textContent; b.textContent = 'running both…';
+  const body = Object.assign(condition(), { assumed_effects: effects.map(e => ({
+    label: e.label, stage: e.stage, growth_ratio: e.growth_ratio, diff_ratio: e.diff_ratio })) });
+  try {
+    const r = await fetch('/api/sim/genotype', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `the server answered ${r.status}`);
+    const names = [d.control_label || 'without them', 'with them'];
+    $('#genoVerdict').textContent = 'MODELLED NEW PARAMETERS · ' + d.verdict;
+    BSCurves.render($('#genoCurves'), d.curves, { aLabel: names[0], bLabel: names[1] });
+    BSCurves.table($('#genoTab'), d.deltas, names);
+    $('#genoNote').textContent = d.note;
+    $('#genoCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    $('#genoVerdict').textContent = e.message;
+  } finally { b.disabled = false; b.textContent = label; }
 }
 
 function applyHandoff(h) {

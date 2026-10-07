@@ -595,10 +595,11 @@ def add_parameter(identity, project_id, spec, *, registered_by=None, from_run=No
     if any(p['parameter_id'] == pid for p in doc['parameters']):
         raise K.ContractError(f'{project.project_id} already has {pid}')
     status = (doc.get('simulator') or {}).get('status')
+    rm = spec.get('response_model')
     origin = (f'registered by {registered_by or "a person"}'
               + (f' from run {from_run}' if from_run else '')
               + (f' (hypothesis {spec["hypothesis_id"]})' if spec.get('hypothesis_id') else ''))
-    doc['parameters'].append({
+    row = {
         'parameter_id': pid, 'stage': stage,
         'simulator_coverage': 'no_simulator' if status == 'none' else 'not_modelled',
         'display_name': label, 'minimum': lo, 'maximum': hi,
@@ -606,10 +607,52 @@ def add_parameter(identity, project_id, spec, *, registered_by=None, from_run=No
                          'basis': (spec.get('bound_basis') or '').strip()[:300]
                                   or f'the range given when the lever was {origin}'},
         'notes': (f'Candidate lever {origin}. The reactor model has no term for it: it is a '
-                  f'design variable, and any simulated effect is an assumption.')})
-    major, minor, patch = (list(map(int, str(doc.get('version') or '0.1.0').split('.')[:3]))
-                           + [0, 0, 0])[:3]
-    doc['version'] = f'{major}.{minor}.{patch + 1}'
+                  f'design variable, and any simulated effect is an assumption.')}
+    if rm:
+        row.update(_declared(rm, pid, registered_by))
+    doc['parameters'].append(row)
+    _bump(doc)
     PJ.Project(doc)                     # validated before anything is written
     save(identity, doc, overwrite=True)
     return doc, pid, how
+
+
+def _bump(doc):
+    major, minor, patch = (list(map(int, str(doc.get('version') or '0.1.0').split('.')[:3]))
+                           + [0, 0, 0])[:3]
+    doc['version'] = f'{major}.{minor}.{patch + 1}'
+
+
+def _declared(rm, pid, by):
+    """A person's statement of how a parameter acts, as the project stores it."""
+    if not isinstance(rm, dict):
+        raise K.ContractError('response_model is an object: shape, target, constants, '
+                              'max_effect and basis')
+    rm = dict(rm, proposed_by=by or rm.get('proposed_by'))
+    return {'simulator_coverage': 'expert_declared',
+            'response_model': _response_model(rm, pid, 'expert_declared')}
+
+
+def model_parameter(identity, project_id, parameter_id, response_model, *, declared_by=None):
+    """Give a parameter of the caller's own project a declared response.
+
+    For a parameter the project's model has no term for. A parameter the
+    calibrated model covers keeps its fitted term: a declared one beside it
+    would be a second, unfitted definition of the same thing.
+    """
+    project = load_for(identity, project_id)
+    doc = dict(project.doc)
+    doc['parameters'] = [dict(p) for p in doc['parameters']]
+    pid = PR.resolve(parameter_id, required=False) or parameter_id
+    row = next((p for p in doc['parameters'] if p['parameter_id'] == pid), None)
+    if row is None:
+        raise K.ContractError(f'{project.project_id} has no parameter {pid}; register it first')
+    if row.get('simulator_coverage') == 'modelled':
+        raise K.ContractError(f'{pid} is covered by the calibrated model; its effect is the '
+                              f'model\'s, not a declared one')
+    row.update(_declared(response_model, pid, declared_by))
+    row.pop('simulator_mapping', None)
+    _bump(doc)
+    PJ.Project(doc)
+    save(identity, doc, overwrite=True)
+    return doc, pid

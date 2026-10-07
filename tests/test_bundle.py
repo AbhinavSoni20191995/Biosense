@@ -70,7 +70,7 @@ class BundleCopyTests(unittest.TestCase):
         failed on '.venv/bin/python: No such file or directory', run after run."""
         BN.write_copy(K.ROOT / 'discovery_loop', self.tmp / 'b', cwd='/app')
         cfgs = [self.tmp / 'b' / 'config.yaml'] + sorted((self.tmp / 'b' / 'agents').glob('*/config.yaml'))
-        self.assertEqual(6, len(cfgs))
+        self.assertEqual(7, len(cfgs))
         for cfg in cfgs:
             text = cfg.read_text()
             self.assertIn('\n  cwd: /app\n', text, cfg)

@@ -79,7 +79,61 @@ KNOBS = (
          min=0.0, max=80.0, step=1.0, default=25.0,
          note='Myeloid commitment, alongside M-CSF.'),
 )
+# How each knob reaches growth and harvest in the model's equations (the same
+# equations docs/BIOSIMULATOR_MODEL.md sets out). Shown at the foot of the
+# Simulator so a reader can follow a setting to the curve it moves.
+MECHANISM = {
+    'seed_density': ('cells at the start', 'Sets the starting density X. Growth slows as the '
+                     'vessel fills, μ × (1 − X/6.0), and harvest is reported per input cell, so '
+                     'a denser seed fills the vessel sooner and divides the yield per input iPSC.'),
+    'agitation_rpm': ('shear, oxygen transfer, aggregate size', 'Stirring raises shear, '
+                      '0.06·(rpm/75)^1.6, which adds death above 0.07 dyne/cm²; raises oxygen '
+                      'transfer, kLa = 4.0·(rpm/60)^1.4; and breaks aggregates to an equilibrium '
+                      'diameter. Diameter and oxygen set the necrotic core, which stops growth '
+                      '(× (1 − necrotic)) and adds death; diameter also sets the '
+                      'differentiation efficiency of each stage, a bell around the size it wants.'),
+    'do_setpoint': ('oxygen in the medium', 'Growth carries a bell around the oxygen optimum '
+                    'of each stage (too little and too much both hurt), and oxygen sets how deep the '
+                    'viable shell of an aggregate reaches — 110·√(DO/0.20) µm — so low oxygen '
+                    'grows a necrotic core. The same bell enters differentiation efficiency.'),
+    'feed_fraction': ('glucose, lactate, ammonia', 'At each feed this fraction of the medium is '
+                      'replaced: glucose restored, lactate and ammonia diluted. Growth carries '
+                      'glucose/(0.4 + glucose) × 22/(22 + lactate) × 4.5/(4.5 + ammonia); '
+                      'ammonia above 3 mM adds death; lactate also lowers efficiency.'),
+    'feed_interval_h': ('how long waste builds up', 'Hours between exchanges: the longer, the '
+                        'further glucose falls and lactate and ammonia rise before the next feed, '
+                        'through the same three growth terms.'),
+    'rocki_hours': ('survival after seeding', 'While ROCK inhibitor is present single cells '
+                    'survive seeding; without it growth runs at 85% for the first half-day. '
+                    'After that it changes nothing.'),
+    'bmp4': ('mesoderm efficiency', 'Mesoderm only. Multiplies the mesoderm transition '
+             'efficiency by a bell around a line-specific optimum: off the optimum, fewer cells '
+             'become mesoderm. It does not change growth.'),
+    'vegf': ('mesoderm efficiency', 'Mesoderm only, beside BMP4: a second bell on the same '
+             'efficiency.'),
+    'mcsf': ('myeloid efficiency → harvest', 'Myeloid stage only. A bell on transition '
+             'efficiency, and efficiency drives monocyte release: 0.028 × efficiency × X per '
+             'step. This is the chain that makes it the dominant lever on harvest.'),
+    'il3': ('myeloid efficiency → harvest', 'Myeloid stage only, beside M-CSF: a second bell on '
+            'the efficiency that drives release.'),
+}
+for _k in KNOBS:
+    _k['acts_on'], _k['how'] = MECHANISM[_k['id']]
 KNOB_BY_ID = {k['id']: k for k in KNOBS}
+MODEL_SUMMARY = {
+    'growth': 'μ = μmax × glucose term × lactate term × ammonia term × bell(DO) × (1 − necrotic) '
+              '× (1 − X/6.0) × ROCK inhibitor; any term near zero stops growth.',
+    'death': 'baseline + shear above threshold + necrotic cores + ammonia; cells change by '
+             '(μ − death)·X each step.',
+    'efficiency': 'bell(aggregate size) × bell(DO) × lactate term × cytokine term × viability, '
+                  'per stage; in the myeloid stage it drives continuous monocyte release.',
+    'new_parameters': 'A parameter the model has no term for (an edited line, a new factor, a '
+                      'parameter registered with a stated response) is played as an assumed '
+                      'multiplier on growth or on differentiation efficiency, in its stage only, '
+                      'and labelled as an assumption.',
+    'stages': 'Expansion, mesoderm, hemogenic and myeloid stages each want their own aggregate '
+              'size and oxygen; their lengths are set by the stage days.',
+}
 
 STAGES = (
     dict(id='expansion', label='Expansion', default_days=4.0, min=2.0, max=10.0,
@@ -164,6 +218,96 @@ def parse_genotype(raw):
     return out
 
 
+# ── parameters the reactor has no term for, played as assumed effects ───
+# A person (or an agent) states how a new parameter acts — a shape, what it
+# acts on, a bounded size — on the project. Here that statement becomes a
+# change in growth or differentiation inside the parameter's stage, because
+# those are the only two levers this reactor has for biology it does not model.
+EFFECT_TARGET = {'growth': 'growth_ratio', 'transition_efficiency': 'diff_ratio',
+                 'harvest': 'diff_ratio'}
+STAGE_HINTS = (('expan', 'expansion'), ('meso', 'mesoderm'), ('hemat', 'hemato'),
+               ('hemog', 'hemato'), ('endoth', 'hemato'), ('myel', 'myeloid'),
+               ('matur', 'myeloid'), ('harvest', 'myeloid'), ('macroph', 'myeloid'),
+               ('monocyt', 'myeloid'), ('differ', 'myeloid'))
+
+
+def reactor_stage(stage_id, label=None):
+    """The reactor stage a project stage corresponds to, or None for the whole process."""
+    if stage_id in STAGE_BY_ID:
+        return stage_id
+    if stage_id in (None, '', 'all'):
+        return None
+    text = f'{stage_id} {label or ""}'.lower()
+    return next((s for k, s in STAGE_HINTS if k in text), None)
+
+
+def parse_effects(raw):
+    """[{label, stage, growth_ratio, diff_ratio, ...}] -> clamped effects, or []."""
+    out = []
+    for e in raw or []:
+        if not isinstance(e, dict):
+            raise K.ContractError('each assumed effect is an object')
+        stage = e.get('stage')
+        stage = None if stage in (None, '', 'all') else str(stage)
+        if stage is not None and stage not in STAGE_BY_ID:
+            raise K.ContractError(f'assumed effect stage must be one of {", ".join(STAGE_BY_ID)}')
+        row = {'label': str(e.get('label') or 'assumed effect')[:60], 'stage': stage}
+        for key in ('growth_ratio', 'diff_ratio'):
+            try:
+                v = float(e.get(key, 1.0))
+            except (TypeError, ValueError):
+                raise K.ContractError(f'{key} must be a number') from None
+            row[key] = min(GENOTYPE_RANGE[1], max(GENOTYPE_RANGE[0], v))
+        out.append(row)
+    return out[:12]
+
+
+def effects_from_project(project, values):
+    """The assumed effects a project's modelled new parameters imply at these values.
+
+    Each parameter whose coverage is a proposed or declared response, and that
+    has a value, contributes its response's multiplier (value against the
+    control: the project default, or 0 for a factor the process does not use
+    yet) as a growth or differentiation ratio in its stage. Everything that
+    cannot be played says why.
+    """
+    from .. import projects as PJ
+    from . import response_model as RM
+    effects, not_applied = [], []
+    labels = {s['stage_id']: s.get('label') for s in project.stages}
+    for pid in project.parameter_ids:
+        q = project.parameter(pid)
+        if pid not in values:
+            continue
+        if q.simulator_coverage not in PJ.UNCALIBRATED or not q.response_model:
+            if q.simulator_coverage in ('not_modelled', 'no_simulator') and not q.simulator_mapping:
+                not_applied.append({'parameter_id': pid, 'label': q.label,
+                                    'why': 'no modelled effect yet; give it one to play it here'})
+            continue
+        rm = q.response_model
+        control = q.default_value if q.default_value is not None else 0.0
+        m = RM.multiplier(rm, control, values[pid])
+        key = EFFECT_TARGET.get(rm['target'])
+        if m is None or key is None:
+            not_applied.append({'parameter_id': pid, 'label': q.label,
+                                'why': (f'acts on {rm["target"]}, which this reactor has no '
+                                        f'lever for' if key is None else 'no value to compare')})
+            continue
+        stage = reactor_stage(rm.get('stage') or q.stage, labels.get(rm.get('stage') or q.stage))
+        effects.append({'label': q.label, 'parameter_id': pid, 'stage': stage,
+                        'growth_ratio': m if key == 'growth_ratio' else 1.0,
+                        'diff_ratio': m if key == 'diff_ratio' else 1.0,
+                        'multiplier': round(m, 4), 'target': rm['target'],
+                        'control_value': control, 'value': values[pid],
+                        'origin': rm['origin'], 'basis': rm.get('basis'),
+                        'description': RM.describe(rm)['summary']})
+    return {'effects': effects, 'not_applied': not_applied,
+            'note': ('Each effect is the response a person or an agent stated for a parameter '
+                     'this reactor has no term for, applied as a change in growth or '
+                     'differentiation in its stage. Uncalibrated: an assumption played '
+                     'through the reactor, not a prediction.')}
+
+
 LIMITS = dict(
     viability_good=88.0, viability_poor=75.0,
     lactate_high=22.0, lactate_severe=30.0,
@@ -245,7 +389,8 @@ def parse_condition(payload):
 
     sp = Setpoints(**values)
     meta = dict(challenge=challenge, seed=seed, clamped=clamped,
-                total_days=round(total, 2), genotype=parse_genotype(payload.get('genotype')))
+                total_days=round(total, 2), genotype=parse_genotype(payload.get('genotype')),
+                assumed_effects=parse_effects(payload.get('assumed_effects')))
     return sp, stage_days, meta
 
 
@@ -262,6 +407,10 @@ def _reactor(meta):
         line.genotype_diff_ratio = g['diff_ratio']
         if g.get('stage'):
             line.genotype_stages = (g['stage'],)
+    for e in meta.get('assumed_effects') or []:
+        key = e['stage'] or '*'
+        mu, diff = line.stage_effects.get(key, (1.0, 1.0))
+        line.stage_effects[key] = (mu * e['growth_ratio'], diff * e['diff_ratio'])
     ch = meta['challenge']
     if ch == 'variant':
         introduce_variant(line, 0.02)
@@ -501,6 +650,11 @@ def genotype_compare(payload):
     """
     payload = dict(payload or {})
     g = parse_genotype(payload.get('genotype'))
+    effects = parse_effects(payload.get('assumed_effects'))
+    if not g and effects:
+        names = ', '.join(e['label'] for e in effects)
+        g = {'label': names[:40], 'kind': 'factor', 'stage': None,
+             'growth_ratio': 1.0, 'diff_ratio': 1.0, 'effects': effects}
     if not g:
         raise K.ContractError('name the engineered line: {"genotype": {"label", '
                               '"growth_ratio", "diff_ratio"}}')
@@ -508,9 +662,10 @@ def genotype_compare(payload):
     control = 'without it' if factor else 'wild type'
     window = (f' during {g["stage"]}' if g.get('stage') else
               (' throughout' if factor else ''))
-    base = {k: v for k, v in payload.items() if k != 'genotype'}
+    base = {k: v for k, v in payload.items() if k not in ('genotype', 'assumed_effects')}
     wt = dict(base, label=control)
-    ed = dict(base, label=g['label'], genotype=g)
+    ed = dict(base, label=g['label'], genotype=None if g.get('effects') else g,
+              assumed_effects=g.get('effects') or [])
     cmp = compare({'conditions': [wt, ed]})
     a, b = cmp['a'], cmp['b']
     curves = {'days': [f['day'] for f in a['frames']],
@@ -519,15 +674,28 @@ def genotype_compare(payload):
     h = cmp['deltas'].get('harvest_per_input_ipsc') or {}
     pk = cmp['deltas'].get('peak_vcd_e6_per_ml') or {}
     who = f'with {g["label"]}' if factor else g['label']
-    verdict = (f'Under the assumed effect{window} (growth ×{g["growth_ratio"]:g}, '
-               f'differentiation ×{g["diff_ratio"]:g}), the run {who} '
+    if g.get('effects'):
+        control = 'without them'
+        who = 'with the modelled parameters'
+        stated = '; '.join(f'{e["label"]} {"in " + e["stage"] if e["stage"] else "throughout"}: '
+                           f'growth ×{e["growth_ratio"]:.3g}, differentiation '
+                           f'×{e["diff_ratio"]:.3g}' for e in g['effects'])
+        lead = f'Under the modelled effects ({stated}), '
+    else:
+        lead = (f'Under the assumed effect{window} (growth ×{g["growth_ratio"]:g}, '
+                f'differentiation ×{g["diff_ratio"]:g}), ')
+    verdict = (lead + f'the run {who} '
                f'{"out-yields" if (h.get("delta") or 0) > 0 else "under-yields"} {control} by '
                f'{abs(h.get("delta") or 0):.3f} cells per input iPSC'
                + (f'; peak density {pk["b"]:.2f} ({who}) against {pk["a"]:.2f} ({control}) '
                   f'1e6/mL' if pk else '')
                + '. One replicate each: the direction of an assumption, not a prediction '
                  + ('about the factor.' if factor else 'about the gene.'))
-    note = ((f'{g["label"]} is modelled as an assumed change in growth rate and '
+    note = (('Each new parameter acts through the response stated for it on the project, '
+             'applied as a change in growth or differentiation in its stage: the reactor has no '
+             'term for any of them. Uncalibrated; an assumption played through the reactor, '
+             'never evidence.') if g.get('effects') else
+            (f'{g["label"]} is modelled as an assumed change in growth rate and '
              f'differentiation efficiency{window}, nothing else: the reactor has no term for '
              f'it. The numbers are a sandbox reading from an uncalibrated model, never '
              f'evidence about the factor.') if factor else
@@ -584,6 +752,7 @@ def config():
         # this page serves instead of guessing and quietly guessing wrong.
         model_id='ipsc_monocyte_v1',
         knobs=[dict(k) for k in KNOBS],
+        model_summary=dict(MODEL_SUMMARY),
         stages=[dict(s) for s in STAGES],
         challenges=[dict(c) for c in CHALLENGES],
         genotype_range=list(GENOTYPE_RANGE),

@@ -63,6 +63,15 @@ SHOTS = {
                                select=('#project', 'cart_expansion')),
     'agents': dict(page='loop.html', w=1440, h=940, wait=2200, run=True, sel='#flowPanel'),
     'trajectory': dict(page='loop.html', w=1000, h=900, wait=2200, run=True, sel='#chartPanel'),
+    # The protocol drawn as the production chain, after a discovery run.
+    'protocol-timeline': dict(page='console.html', w=1100, h=1400, sel='.ptl', wait=2200,
+                              discover=True, click='.ptl-val:not(.cand)'),
+    # The Loop Tracker following that run live: it picks the newest AI run.
+    'tracker-live': dict(page='console.html', w=1280, h=1000, wait=2200, discover=True,
+                         then='index.html', then_wait=5000),
+    # A factor the reactor has no term for, played as an assumed effect.
+    'factor-compare': dict(page='simulator.html', w=1300, h=1000, sel='#genoCard', wait=3400,
+                           factor=True),
 }
 
 # The two-arm comparison, so the trajectory shot actually shows two lines and
@@ -140,8 +149,26 @@ def main(argv=None):
                         pg.fill('#candValue', '50')
                         pg.click('#candAdd')
                         pg.click('#runBtn')
-                        pg.wait_for_selector(f'{cfg["sel"]}:not([hidden])', timeout=90_000)
+                        pg.wait_for_selector(f'{cfg.get("wait_for", cfg.get("sel", "#protocolPanel"))}'
+                                             f':not([hidden])', timeout=90_000)
                         pg.wait_for_timeout(2000)
+                    if cfg.get('then'):
+                        pg.goto(f'http://127.0.0.1:{port}/{cfg["then"]}')
+                        pg.wait_for_timeout(cfg.get('then_wait', 2000))
+                    if cfg.get('factor'):
+                        pg.select_option('#genoKind', 'factor')
+                        pg.eval_on_selector('#genoDiff', 'e => { e.value = "1.3"; '
+                                            'e.dispatchEvent(new Event("input")); }')
+                        pg.click('#genoBtn')
+                        pg.wait_for_selector('#genoCurves svg', timeout=60_000)
+                        pg.wait_for_timeout(800)
+                    if cfg.get('sel') or cfg.get('then'):
+                        # the sticky header would sit over an element shot
+                        pg.evaluate('document.querySelector("header.bar") && '
+                                    '(document.querySelector("header.bar").style.position = "static")')
+                    if cfg.get('click'):
+                        pg.click(cfg['click'])
+                        pg.wait_for_timeout(300)
                     out = ASSETS / f'{name}-{theme}.png'
                     if cfg.get('sel'):
                         pg.locator(cfg['sel']).screenshot(path=str(out))

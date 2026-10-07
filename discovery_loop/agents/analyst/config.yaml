@@ -1,10 +1,11 @@
 spec_version: 1
-name: bioinformatics
+name: analyst
 description: >-
-  Bioinformatics specialist: what annotation sets say about a gene and a
-  perturbation, which bioreactor parameters those statements implicate, whether
-  the protocol already differentiates them between arms, and which questions
-  cannot be settled in this machine at all.
+  Data analyst: inspects a dataset, writes the analysis plan that fits it,
+  repairs it from the tool's refusal, runs it with the deterministic tools (or,
+  when they cannot express it, an agent-written script that is labelled as
+  such), and interprets the result for this process with a capped confidence.
+  Reports to the orchestrator. Never computes a number by hand.
 instructions: prompt.md
 executor:
   type: omnigent
@@ -38,8 +39,5 @@ os_env:
       - ~/.local/share/uv/python
     cwd_allow_hidden:
       - .venv
-    # Public databases (Ensembl, UniProt, STRING, GEO) are reached only through
-    # CLI commands that refuse without --i-have-network-permission, which the
-    # agent passes only when the run's request permits public data. The sandbox
-    # allows the network so that a permitted run can actually use it.
-    allow_network: true
+    # The analyst works on datasets already registered; it needs no network.
+    allow_network: false

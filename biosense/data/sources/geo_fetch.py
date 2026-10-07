@@ -14,12 +14,21 @@ This is the in-between, in two steps a person or an agent can follow:
                   table and registered as a PUBLIC dataset with its accession,
                   URLs, retrieval time and the transform applied.
 
-Why NCBI's processed counts rather than the depositors' supplementary files:
-those are in any format anyone chose, while NCBI re-aligns human and mouse
-RNA-seq series to one reference and publishes one GeneID x GSM matrix per
-series. A series without them (microarrays, older or non-human/mouse data) is
-refused with that reason and the supplementary-file location — never parsed
-by guesswork.
+Two routes, in this order:
+
+* NCBI's uniformly processed raw counts (human and mouse RNA-seq): one
+  reference, one GeneID x GSM matrix per series — preferred where it exists;
+* the depositors' own processed table from the series' supplementary files,
+  for ANY species and for human or mouse series NCBI has not processed. Its
+  columns are used only where they match a sample (GSM, title, or a column
+  map the agent supplies), and what the values are (counts, linear, log) is
+  read from the numbers and stated.
+
+Every result carries an evidence weight — a confidence ceiling from the
+species and the route: human via NCBI can support high confidence; another
+mammal, or a depositor's table, moderate or low; a non-mammal low — with the
+reason, so a zebrafish or pig series still informs a hypothesis, labelled for
+what it is.
 
 Network only with an explicit permission flag, like every live path here.
 Nothing in this module decides which comparison is interesting; it only
@@ -217,17 +226,130 @@ def parse_annotation(text):
     return out
 
 
+# ── any species: the depositors' own processed table ────────────────────
+TABLE_RE = re.compile(r'href="([^"/?]+\.(?:txt|tsv|csv)(?:\.gz)?)"', re.I)
+PREFER = ('count', 'expression', 'matrix', 'tpm', 'fpkm', 'rpkm', 'cpm', 'norm', 'gene')
+SKIP = ('filelist', 'raw.tar', 'readme', 'peaks', 'barcodes', 'features', 'clusters')
+MAMMALS = ('Homo sapiens', 'Mus musculus', 'Rattus norvegicus', 'Macaca mulatta',
+           'Macaca fascicularis', 'Pan troglodytes', 'Sus scrofa', 'Bos taurus',
+           'Ovis aries', 'Canis lupus familiaris', 'Equus caballus', 'Oryctolagus cuniculus')
+FEATURE_NAMES = ('symbol', 'gene_symbol', 'gene_name', 'genename', 'gene', 'name', 'id',
+                 'gene_id', 'geneid', 'ensembl', 'ensembl_id', 'feature')
+
+
+def supplementary_files(listing_html):
+    """Table-like supplementary files from a GEO directory listing, likeliest first."""
+    names = []
+    for n in TABLE_RE.findall(listing_html or ''):
+        low = n.lower()
+        if any(s in low for s in SKIP) or n in names:
+            continue
+        names.append(n)
+    return sorted(names, key=lambda n: (not any(w in n.lower() for w in PREFER), n))
+
+
+def _norm(s):
+    return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
+
+def parse_supplementary_table(text, sample_rows, column_map=None):
+    """A depositor's gene x sample table -> (gene ids, gsms, matrix, how it was read).
+
+    A column is a sample when its header is the GSM accession, contains it, or
+    is the sample's title (ignoring case and punctuation), or when the caller's
+    column_map says so. Nothing else is guessed: unmatched columns are listed
+    so the agent can supply the map.
+    """
+    lines = [l for l in text.splitlines() if l.strip() and not l.startswith('#')]
+    if len(lines) < 3:
+        raise K.ContractError('the table has fewer than two data rows')
+    delim = '\t' if lines[0].count('\t') >= lines[0].count(',') else ','
+    rows = list(csv.reader(lines, delimiter=delim))
+    head = [h.strip().strip('"') for h in rows[0]]
+    by_title = {_norm(s['title']): s['gsm'] for s in sample_rows if s.get('title')}
+    gsm_ids = {s['gsm'] for s in sample_rows}
+    cmap = dict(column_map or {})
+    cols = {}
+    for j, h in enumerate(head):
+        g = cmap.get(h)
+        if g is None:
+            g = next((x for x in gsm_ids if x == h or re.search(rf'\b{x}\b', h)), None)
+        if g is None:
+            g = by_title.get(_norm(h))
+        if g in gsm_ids and g not in cols.values():
+            cols[j] = g
+    if not cols:
+        raise K.ContractError(
+            'no column of this table could be matched to a sample (by GSM, title or '
+            f'column_map). Columns: {", ".join(head[:30])}. Sample titles: '
+            + ', '.join(f'{s["gsm"]}={s["title"]}' for s in sample_rows[:30]))
+    low = [_norm(h) for h in head]
+    feat = next((low.index(_norm(n)) for n in FEATURE_NAMES if _norm(n) in low
+                 and low.index(_norm(n)) not in cols), 0)
+    gene_ids, matrix = [], []
+    for r in rows[1:]:
+        if len(r) < len(head):
+            continue
+        try:
+            vals = [float(r[j]) for j in cols]
+        except ValueError:
+            continue                     # a summary or annotation row
+        gid = r[feat].strip().strip('"')
+        if gid:
+            gene_ids.append(gid)
+            matrix.append(vals)
+    if len(gene_ids) < 2:
+        raise K.ContractError('fewer than two numeric rows in the sample columns')
+    flat = [v for row in matrix for v in row]
+    integer = all(abs(v - round(v)) < 1e-9 for v in flat[:200000])
+    top = max(flat)
+    transform = ('counts' if integer and top > 1000 else
+                 'log' if top <= 50 and min(flat) < 0 or top <= 25 else 'linear')
+    gsms = list(cols.values())
+    return gene_ids, gsms, matrix, {
+        'feature_column': head[feat], 'transform': transform,
+        'matched_columns': {head[j]: g for j, g in cols.items()},
+        'unmatched_columns': [h for j, h in enumerate(head) if j not in cols and j != feat][:40]}
+
+
+def species_weight(organism, route):
+    """How far evidence from this species and processing route can carry here."""
+    if organism == 'Homo sapiens':
+        ceiling = 'high' if route == 'ncbi_processed' else 'moderate'
+        note = None
+    elif organism in MAMMALS:
+        ceiling = 'moderate' if route == 'ncbi_processed' else 'low'
+        note = (f'{organism}: another mammal. Genes are matched to human by symbol only, '
+                f'orthology is not resolved, and regulation can differ.')
+    else:
+        ceiling = 'low'
+        note = (f'{organism}: not a mammal. Conserved pathways may transfer, specific doses '
+                f'and kinetics rarely do; genes are matched by symbol only.')
+    if route != 'ncbi_processed':
+        rnote = ('Values are the depositors\' own processed table, not a uniform '
+                 're-processing: methods differ between labs.')
+        note = f'{note} {rnote}' if note else rnote
+    return {'route': route, 'organism': organism, 'confidence_ceiling': ceiling, 'note': note}
+
+
 def _value_of(sample, key):
     if key == 'title':
         return sample['title']
     if key == 'source':
         return sample['source']
+    if key == 'organism':
+        return sample.get('organism')
     return sample['characteristics'].get(key.lower())
 
 
 def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_key, control,
-                     treatments, keep=None, genes=None, max_genes=DEFAULT_MAX_GENES):
-    """The analysable table: one row per gene and sample, with log2(CPM + 1).
+                     treatments, keep=None, genes=None, max_genes=DEFAULT_MAX_GENES,
+                     transform='counts'):
+    """The analysable table: one row per gene and sample, on a log2 scale.
+
+    `transform` says what the matrix holds: `counts` (raw, normalised here to
+    log2(CPM + 1)), `linear` (already normalised, e.g. TPM or FPKM: log2(x + 1))
+    or `log` (already on a log scale: used as it is).
 
     Pure, so every refusal is tested without a network: an unknown field or
     level, too few samples per group, a gene list with nothing in this series.
@@ -261,16 +383,23 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
                 f'comparison needs at least {MIN_PER_GROUP} per group. Values of '
                 f'{condition_key!r}: {", ".join(present)}')
 
-    # Library size over every gene, before any subsetting: CPM must not depend
-    # on which genes someone asked about.
-    lib = {j: sum(row[j] for row in matrix) for j, _, _ in chosen}
-    if any(v <= 0 for v in lib.values()):
-        raise K.ContractError('a chosen sample has no counts at all')
     logcpm = []
+    if transform == 'counts':
+        # Library size over every gene, before any subsetting: CPM must not
+        # depend on which genes someone asked about.
+        lib = {j: sum(row[j] for row in matrix) for j, _, _ in chosen}
+        if any(v <= 0 for v in lib.values()):
+            raise K.ContractError('a chosen sample has no counts at all')
+        conv = lambda x, j: math.log2(max(x, 0.0) / lib[j] * 1e6 + 1)
+    elif transform == 'linear':
+        conv = lambda x, j: math.log2(max(x, 0.0) + 1)
+    elif transform == 'log':
+        conv = lambda x, j: x
+    else:
+        raise K.ContractError(f'unknown transform {transform!r}')
     for i, gid in enumerate(gene_ids):
         sym = symbols.get(gid, gid)
-        vals = [math.log2(matrix[i][j] / lib[j] * 1e6 + 1) for j, _, _ in chosen]
-        logcpm.append((sym, vals))
+        logcpm.append((sym, [conv(matrix[i][j], j) for j, _, _ in chosen]))
 
     limit = max(1, min(max_genes, MAX_ROWS // max(1, len(chosen))))
     missing = []
@@ -298,7 +427,7 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
 def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
           max_genes=DEFAULT_MAX_GENES, dataset_id=None, title=None, cell_type=None,
           registered_by='bioinformatics_agent', i_have_network_permission=False, timeout=90,
-          out_root=None, register=True, overwrite=True):
+          out_root=None, register=True, overwrite=True, supplementary=None, column_map=None):
     """Fetch, normalise, write and register one comparison from a GEO series."""
     from .. import ingest as ING
     _need(i_have_network_permission)
@@ -307,24 +436,62 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
         raise K.ContractError('name at least one treatment value to compare with the control')
     info = samples(acc, i_have_network_permission=True, timeout=timeout)
     orgs = info['organisms']
-    if len(orgs) != 1:
-        raise K.ContractError(f'{acc} mixes organisms ({", ".join(orgs) or "none stated"}); '
-                              f'this fetch handles one')
-    counts_url, annot_url = counts_urls(acc, orgs[0])
-    try:
-        counts_text = _text(_get(counts_url, timeout))
-    except urllib.error.HTTPError as e:
-        raise K.ContractError(
-            f'NCBI has no processed RNA-seq counts for {acc} (HTTP {e.code}): it is probably a '
-            f'microarray, single-cell or not-yet-processed series. Its supplementary files are '
-            f'at {series_url(acc)}/suppl/ — a person can register a processed table from there.'
-        ) from None
-    gene_ids, gsms, matrix = parse_counts(counts_text)
-    symbols = parse_annotation(_text(_get(annot_url, timeout)))
-    rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, symbols,
-                                   condition_key=condition_key, control=control,
-                                   treatments=treatments, keep=keep, genes=genes,
-                                   max_genes=max_genes)
+    keep = dict(keep or {})
+    if len(orgs) > 1 and 'organism' not in keep:
+        raise K.ContractError(f'{acc} mixes organisms ({", ".join(orgs)}); choose one with '
+                              f'--keep "organism=<name>"')
+    organism = keep.get('organism') or (orgs[0] if orgs else 'unspecified')
+    common = dict(condition_key=condition_key, control=control, treatments=treatments,
+                  keep=keep, genes=genes, max_genes=max_genes)
+    route, sources, why_not_ncbi, read = None, {'samples': info['url']}, None, {}
+    if organism in GENOMES:
+        counts_url, annot_url = counts_urls(acc, organism)
+        try:
+            gene_ids, gsms, matrix = parse_counts(_text(_get(counts_url, timeout)))
+            symbols = parse_annotation(_text(_get(annot_url, timeout)))
+            rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, symbols,
+                                           **common)
+            route = 'ncbi_processed'
+            sources.update(counts=counts_url, annotation=annot_url)
+            read = {'transform': 'counts'}
+        except urllib.error.HTTPError as e:
+            why_not_ncbi = f'NCBI has no processed counts for {acc} (HTTP {e.code})'
+    else:
+        why_not_ncbi = f'NCBI processes human and mouse RNA-seq only; this is {organism}'
+    if route is None:
+        # Any species, and human or mouse series NCBI has not processed: the
+        # depositors' own table, read only where its columns match samples.
+        try:
+            listing = _text(_get(f'{series_url(acc)}/suppl/', timeout))
+        except urllib.error.HTTPError:
+            listing = ''
+        files = [f for f in supplementary_files(listing)
+                 if not supplementary or f == supplementary][:4]
+        if not files:
+            raise K.ContractError(
+                f'{why_not_ncbi}, and {acc} has no table-like supplementary file at '
+                f'{series_url(acc)}/suppl/ (only archives or raw data). A person can register a '
+                f'processed table from there.')
+        errors = []
+        for name in files:
+            url = f'{series_url(acc)}/suppl/{name}'
+            try:
+                gene_ids, gsms, matrix, read = parse_supplementary_table(
+                    _text(_get(url, timeout)), info['samples'], column_map=column_map)
+                rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, {},
+                                               transform=read['transform'], **common)
+            except (K.ContractError, urllib.error.HTTPError) as e:
+                errors.append(f'{name}: {str(e)[:400]}')
+                continue
+            route = 'depositor_supplementary'
+            sources.update(table=url)
+            break
+        if route is None:
+            raise K.ContractError(f'{why_not_ncbi}. No supplementary table could be used: '
+                                  + ' | '.join(errors))
+    weight = species_weight(organism, route)
+    counts_url = sources.get('counts') or sources.get('table')
+    annot_url = sources.get('annotation')
 
     did = dataset_id or f'{acc.lower()}_{_slug(condition_key)}'
     base = Path(out_root or roots.cache_root()) / 'geo' / did
@@ -350,24 +517,31 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             title=title or f'{acc}: {info["series"].get("title") or "GEO series"} '
                            f'({condition_key}: {", ".join(treatments)} vs {control})',
             source_url=f'https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={acc}',
-            organism=orgs[0], cell_type=cell_type, modality='bulk_rna',
+            organism=organism, cell_type=cell_type, modality='bulk_rna',
             experimental_design={'condition_column': 'condition', 'control': control,
                                  'treatments': list(treatments),
                                  'sample_id_column': 'sample_id'},
-            description=(f'NCBI-generated raw counts for {acc}, normalised to log2(CPM+1) with '
-                         f'library size over all genes, restricted to '
+            description=((f'NCBI-generated raw counts for {acc}, normalised to log2(CPM+1) '
+                          f'with library size over all genes' if route == 'ncbi_processed' else
+                          f'The depositors\' processed table {sources["table"].rsplit("/", 1)[-1]} '
+                          f'for {acc}, read as {read["transform"]} and put on a log2 scale')
+                         + ', restricted to '
                          + (f'{stats["genes_in_table"]} requested genes'
                             if genes else f'the {stats["genes_in_table"]} most expressed genes')
                          + f'. Samples grouped by {condition_key!r}'
                          + (f', kept where {keep}' if keep else '') + '.'),
             registered_by=registered_by,
-            notes=f'counts: {counts_url}; annotation: {annot_url}; samples: {info["url"]}',
+            notes=(f'route: {route}; sources: {sources}; confidence ceiling for this species '
+                   f'and route: {weight["confidence_ceiling"]}'),
+            extra_limitations=[weight['note']] if weight['note'] else [],
             overwrite=overwrite)
     return {'dataset_id': did, 'accession': acc, 'table': str(table),
-            'samples_table': str(sample_tsv), 'organism': orgs[0],
+            'samples_table': str(sample_tsv), 'organism': organism, 'route': route,
+            'evidence_weight': weight, 'how_read': read,
+            'why_not_ncbi': why_not_ncbi,
             'condition_key': condition_key, 'control': control, 'treatments': list(treatments),
             'keep': keep or {}, **stats,
-            'sources': {'counts': counts_url, 'annotation': annot_url, 'samples': info['url']},
+            'sources': sources,
             'registered': bool(m), 'retrieved_at': K.now_iso(),
             'next': (f'analyse plan --dataset-ids {did} --analysis-type '
                      f'bulk_expression_comparison --tool bulk.expression_comparison '

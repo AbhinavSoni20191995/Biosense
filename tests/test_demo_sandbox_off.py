@@ -316,8 +316,9 @@ class BootScriptTests(unittest.TestCase):
                                                        ('allow_network: false',
                                                         'allow_network: true')))
                 changed += 1
-        # six sandbox types, five network lines (literature already had network)
-        self.assertEqual(11, changed)
+        # seven sandbox types, five network lines (literature and bioinformatics already
+        # had network)
+        self.assertEqual(12, changed)
         # The image's own bundle is untouched.
         self.assertIn('type: auto', (ROOT / 'discovery_loop' / 'config.yaml').read_text())
 

@@ -290,6 +290,7 @@ and nothing here decides anything.</p>
     reactor has no term for) acts only in the stage you give it. The curves are that assumption
     played through the reactor, labelled as one — not a prediction of what the gene or the factor
     does.</p>
+  <div id="protoEffects" hidden></div>
   <div class="genoform">
     <label>What is new <select id="genoKind">
       <option value="edit">an edited line</option>
@@ -311,6 +312,17 @@ and nothing here decides anything.</p>
   <div id="genoCurves"></div>
   <table class="dtab" id="genoTab"></table>
   <p class="caveat" id="genoNote"></p>
+</section>
+
+<!-- ── how the model works ──────────────────────────────── -->
+<!-- Generated from the same knob list the sliders are, so it cannot drift. -->
+<section class="glass card" id="howCard">
+  <h3><span class="eyebrow">How each parameter acts in the model</span></h3>
+  <p class="caveat">Follow a setting to the curve it moves. These are the stand-in model's own
+    equations (the full derivation is in <a href="https://github.com/AbhinavSoni20191995/Biosense/blob/main/docs/BIOSIMULATOR_MODEL.md"
+    target="_blank" rel="noopener">BIOSIMULATOR_MODEL.md</a>); they describe the model, not real cells.</p>
+  <div id="howSummary" class="howsum"></div>
+  <table class="dtab howtab" id="howTab"></table>
 </section>
 
 <!-- ── carry brief ─────────────────────────────────────── -->

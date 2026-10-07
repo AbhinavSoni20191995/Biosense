@@ -7,6 +7,7 @@
   --ink: #0f181d; --ink-2: #4a5a63; --ink-3: #78888f; --line: #ccd7dc; --line-2: #aebcc3;
   --orch: #0a6a73; --orch-s: #d3e8ea; --lit: #1f6fa8; --lit-s: #d8e8f3; --bio: #6c4b9c; --bio-s: #e5dcf2;
   --ana: #a8475f; --ana-s: #f6dde3; --lab: #2b6540; --lab-s: #d9ebdf; --hum: #9a5b00; --hum-s: #f6e6cd;
+  --anl: #8a5a12; --anl-s: #f3e4c9; --sim: #3b6aa0; --sim-s: #dbe6f3;
   --stop: #9d2f28; --stop-s: #f7dedb;
   --display: "Chivo", "Helvetica Neue", Arial, sans-serif;
   --body: "Source Sans 3", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -17,12 +18,14 @@
   --ink: #e8eff2; --ink-2: #a6b8c0; --ink-3: #7a8d96; --line: #273439; --line-2: #3b4f58;
   --orch: #4cc6cf; --orch-s: #0e3338; --lit: #65b4e8; --lit-s: #112c3e; --bio: #b89ae8; --bio-s: #251b39;
   --ana: #ea8fa4; --ana-s: #37161f; --lab: #74c48f; --lab-s: #13301e; --hum: #e0a44f; --hum-s: #352610;
+  --anl: #d9a85a; --anl-s: #33250f; --sim: #8fb4e3; --sim-s: #14243a;
   --stop: #ef8178; --stop-s: #371713; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0b1115; --panel: #141d22; --panel-2: #1c272d; --sunk: #101a1e;
   --ink: #e8eff2; --ink-2: #a6b8c0; --ink-3: #7a8d96; --line: #273439; --line-2: #3b4f58;
   --orch: #4cc6cf; --orch-s: #0e3338; --lit: #65b4e8; --lit-s: #112c3e; --bio: #b89ae8; --bio-s: #251b39;
   --ana: #ea8fa4; --ana-s: #37161f; --lab: #74c48f; --lab-s: #13301e; --hum: #e0a44f; --hum-s: #352610;
+  --anl: #d9a85a; --anl-s: #33250f; --sim: #8fb4e3; --sim-s: #14243a;
   --stop: #ef8178; --stop-s: #371713; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; margin: 0; -webkit-font-smoothing: antialiased; }
@@ -44,6 +47,13 @@ h1,h2,h3,h4 { font-family: var(--display); margin: 0; letter-spacing: -0.015em; 
   text-decoration: none; }
 .modes a:hover { color: var(--orch); }
 .modes a[aria-current] { background: var(--orch); color: #fff; }
+/* On a phone the switch and the parameter table scroll in place, not the page. */
+.modes { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.modes a { flex: 0 0 auto; }
+.ptable { overflow-x: auto; max-width: 100%; }
+.grid > *, .panel { min-width: 0; }
+#looppick { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.livebar { flex-wrap: wrap; }
 .pill { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 5px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .pill .led { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 .pill.run { background: var(--orch-s); color: var(--orch); } .pill.ok { background: var(--lab-s); color: var(--lab); }
@@ -173,7 +183,7 @@ tr.changed td.pname::before { content: "▸ "; color: var(--orch); font-weight: 
 .ev .msg2 code { font-family: var(--mono); font-size: .9em; color: var(--ink); }
 .ev.flag .msg2 { color: var(--ink); font-weight: 600; }
 .w-orch { color: var(--orch); } .w-lit { color: var(--lit); } .w-bio { color: var(--bio); }
-.w-ana { color: var(--ana); } .w-human { color: var(--hum); } .w-lab { color: var(--lab); } .w-sys { color: var(--ink-3); }
+.w-ana { color: var(--ana); } .w-anl { color: var(--anl); } .w-sim { color: var(--sim); } .w-human { color: var(--hum); } .w-lab { color: var(--lab); } .w-sys { color: var(--ink-3); }
 
 /* timeline */
 .tl { display: flex; gap: 7px; padding: 4px 15px 14px; overflow-x: auto; }
@@ -323,7 +333,9 @@ const NODES = {
   lit:   { label: "Literature", role: "LLM agent", c: "lit" },
   bio:   { label: "Bioinformatics", role: "LLM + tools", c: "bio" },
   lab:   { label: "Bioreactor", role: "people + hardware", c: "lab" },
-  ana:   { label: "Analysis", role: "LLM + tools", c: "ana" }
+  ana:   { label: "Analysis", role: "LLM + tools", c: "ana" },
+  anl:   { label: "Data analyst", role: "LLM + tools", c: "anl" },
+  sim:   { label: "BioSimulator", role: "model + tools", c: "sim" }
 };
 const EDGES = [
   { id: "h-o", a: "human", b: "orch", bow: 0, label: "aim · constraints" },
@@ -332,10 +344,12 @@ const EDGES = [
   { id: "o-lab", a: "orch", b: "lab", bow: 0, label: "run sheet" },
   { id: "lab-a", a: "lab", b: "ana", bow: 22, label: "measurements" },
   { id: "a-o", a: "ana", b: "orch", bow: -20, label: "verdict" },
-  { id: "o-h", a: "orch", b: "human", bow: 32, label: "approve · consult", gate: true }
+  { id: "o-h", a: "orch", b: "human", bow: 32, label: "approve · consult", gate: true },
+  { id: "o-anl", a: "orch", b: "anl", bow: 18, label: "dataset · interpret" },
+  { id: "o-sim", a: "orch", b: "sim", bow: -18, label: "simulate" }
 ];
 const REQ = { metric: "CAR+ T cells per input T cell", required: 12, day: 10 };
-const AGENTS = ["human", "orch", "lit", "bio", "lab", "ana"];
+const AGENTS = ["human", "orch", "lit", "bio", "anl", "lab", "ana", "sim"];
 
 function A(id, gt, obs, marker, viab, met) {
   return { arm_id: id, genotype: gt, observed: obs, marker, viability: viab, status: met ? "MET" : "NOT_MET" };
@@ -459,8 +473,8 @@ const gEl = document.getElementById("graph");
 let L = {}, paths = {}, nodeEls = {}, narrow = false;
 function layout() {
   narrow = window.innerWidth < 820;
-  if (narrow) return { w: 430, h: 620, nw: 140, nh: 46, pos: { human: [45, 10], orch: [145, 130], bio: [10, 260], lit: [270, 260], lab: [145, 400], ana: [145, 530] } };
-  return { w: 1040, h: 330, nw: 158, nh: 50, pos: { human: [20, 20], orch: [430, 140], bio: [20, 250], lit: [840, 20], lab: [430, 10], ana: [840, 240] } };
+  if (narrow) return { w: 430, h: 600, nw: 135, nh: 46, pos: { human: [5, 10], orch: [145, 130], bio: [5, 260], lit: [285, 260], anl: [5, 400], lab: [285, 400], ana: [145, 530], sim: [285, 530] } };
+  return { w: 1040, h: 340, nw: 158, nh: 50, pos: { human: [20, 20], orch: [430, 140], bio: [20, 250], lit: [840, 20], lab: [430, 10], ana: [840, 240], anl: [250, 280], sim: [620, 280] } };
 }
 const cxx = id => L.pos[id][0] + L.nw / 2, cyy = id => L.pos[id][1] + L.nh / 2;
 function edgePath(e) {
@@ -607,7 +621,8 @@ function renderConsults(stateKey) {
 }
 function pushEvent(e) {
   const who = e.who === "orch" ? "orchestrator" : e.who === "lit" ? "literature" : e.who === "bio" ? "bioinformatics"
-    : e.who === "ana" ? "analysis" : e.who === "lab" ? "bioreactor" : e.who === "human" ? "person" : "system";
+    : e.who === "ana" ? "analysis" : e.who === "anl" ? "data analyst" : e.who === "sim" ? "biosimulator"
+    : e.who === "lab" ? "bioreactor" : e.who === "human" ? "person" : "system";
   const d = document.createElement("div");
   d.className = "ev" + (e.flag ? " flag" : "");
   d.innerHTML = `<span class="ts tnum">${fmt(e.t ?? state.t)}</span><span><span class="who w-${e.who}">${who}</span>` +
@@ -766,7 +781,7 @@ window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() =
    page shows decisions, it never makes them. */
 const LIVE = (() => {
   const bar = el("livebar"), label = el("livelabel"), pick = el("looppick"), meta = el("livemeta");
-  let current = null, seenDecisions = 0, seenAnalyses = 0, failures = 0;
+  let current = null, seenDecisions = 0, seenAnalyses = 0, seenTimeline = 0, failures = 0, pinned = false;
 
   const get = async (u) => {
     const r = await fetch(u, { cache: "no-store" });
@@ -774,18 +789,30 @@ const LIVE = (() => {
     return r.json();
   };
 
+  /* Two kinds of thing to watch: an AI discovery run (the agents working now)
+     and a production loop on disk. A run in progress is chosen first. */
   async function refreshList() {
-    const loops = await get("api/loops");
-    if (!loops.length) { label.textContent = "no loops on disk yet"; bar.classList.add("stale"); return null; }
-    const keep = current && loops.some(l => l.dir === current) ? current : loops[0].dir;
-    if (pick.options.length !== loops.length || pick.value !== keep) {
-      pick.innerHTML = loops.map(l => `<option value="${l.dir}">${l.dir} — ${l.request_id || "?"}</option>`).join("");
-      pick.value = keep;
+    let runs = [], loops = [];
+    try { runs = (await get("api/discovery")).runs || []; } catch (_) { /* older server */ }
+    try { loops = await get("api/loops"); } catch (_) { /* none */ }
+    const opts = runs.slice(0, 25).map(r => ({
+      v: "run:" + r.run_id, live: r.group === "active",
+      t: `${r.group === "active" ? "● " : ""}AI run ${r.run_id.slice(0, 6)} — ${(r.objective || r.project_id || "").slice(0, 60)}` }))
+      .concat(loops.map(l => ({ v: "loop:" + l.dir, t: `loop ${l.dir} — ${l.request_id || "?"}` })));
+    if (!opts.length) { label.textContent = "no runs or loops yet"; bar.classList.add("stale"); return null; }
+    const active = opts.find(o => o.live);
+    let keep = current && opts.some(o => o.v === current) ? current : (active || opts[0]).v;
+    if (!pinned && active && current !== active.v && current && current.startsWith("run:")
+        && !opts.find(o => o.v === current).live) keep = active.v;   // follow a new run
+    const sig = opts.map(o => o.v + o.t).join("|");
+    if (pick.dataset.sig !== sig || pick.value !== keep) {
+      pick.innerHTML = opts.map(o => `<option value="${o.v}">${o.t.replace(/</g, "&lt;")}</option>`).join("");
+      pick.dataset.sig = sig; pick.value = keep;
     }
     return keep;
   }
 
-  function apply(bundle, firstLoad) {
+  function applyLoop(bundle, firstLoad) {
     BioSense.loadLoopState(bundle.state);
     for (const a of bundle.analyses.slice(seenAnalyses)) BioSense.loadAnalysis(a.analysis);
     const fresh = bundle.decisions.slice(seenDecisions);
@@ -808,12 +835,97 @@ const LIVE = (() => {
     bar.classList.remove("stale");
   }
 
+  /* ── an AI discovery run, as its agents work ───────────── */
+  const NODE_OF = { orchestrator: "orch", literature: "lit", bioinformatics: "bio", analyst: "anl",
+    analysis: "ana", biosimulator: "sim", outcome: "ana" };
+  const LANE_STATE = { running: "running", complete: "done", failed: "failed", cancelled: "idle", queued: "idle" };
+  const esc = s => String(s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  let discoveryMode = false;
+  const replayButtons = on => ["play", "speed", "reset"].forEach(id => { el(id).disabled = !on;
+    el(id).title = on ? "" : "Replay controls are for the recorded demo; this is a live run."; });
+  function enterDiscovery(snap) {
+    if (discoveryMode) return;
+    discoveryMode = true;
+    pause();
+    replayButtons(false);
+    el("stream").innerHTML = ""; el("evcount").textContent = "0 events";
+    el("targethint").textContent = "objective";
+    el("qcstrip").innerHTML = "";
+    el("timeline").innerHTML = "";
+    el("deccard").innerHTML = `<p class="cempty">The orchestrator has not formed a hypothesis yet.</p>`;
+    el("budget").innerHTML = "";
+    renderConsults(null);
+  }
+  function applyRun(snap) {
+    enterDiscovery(snap);
+    el("loopid").textContent = "AI run " + snap.run_id.slice(0, 8);
+    el("autonomypill").textContent = (snap.runtime_label || "").toLowerCase() || "ai run";
+    const elapsed = snap.started_at ? (Date.now() / 1000 - snap.started_at) : 0;
+    el("iterpill").textContent = fmt(Math.max(0, snap.finished_at ? snap.finished_at - snap.started_at : elapsed));
+    const live = ["running", "queued", "finalizing"].includes(snap.status);
+    el("statustext").textContent = snap.paused ? "paused — waiting for you" : snap.status;
+    el("statuspill").className = "pill " + (live ? "run live" : snap.status === "done" ? "ok" : "idle");
+    el("arms").innerHTML = `<p style="margin:0 0 6px;font-size:13px;line-height:1.5">${esc(snap.objective)}</p>`
+      + `<p class="cempty">${esc(snap.project_id)} · ${esc(snap.runtime_label)}</p>`;
+    const act = snap.activity || {};
+    (act.agents || []).forEach(a => {
+      const id = NODE_OF[a.agent]; if (!id || !laneEls[id]) return;
+      if (a.agent === "outcome" && a.status === "queued") return;
+      const st = LANE_STATE[a.status] || "idle", Lx = laneEls[id];
+      Lx.s.textContent = st; Lx.s.className = "lstate s-" + st;
+      Lx.lane.className = "lane" + (st === "running" ? " active" : st === "done" ? " done" : "");
+      if (a.task) Lx.act.innerHTML = esc(a.task);
+      nodeEls[id] && nodeEls[id].classList.toggle("act", st === "running");
+    });
+    const tl = act.timeline || [];
+    if (tl.length < seenTimeline) seenTimeline = 0;
+    const fresh = tl.slice(seenTimeline);
+    fresh.slice(-40).forEach(row => {
+      const who = NODE_OF[row.agent] || (row.kind === "limitation" ? "sys" : "orch");
+      const txt = row.text || "";
+      if (row.kind === "agent" && row.agent && NODE_OF[row.agent] && NODE_OF[row.agent] !== "orch") {
+        const to = NODE_OF[row.agent];
+        if (/started|received/.test(txt)) BioSense.message({ from: "orch", to, label: "task" });
+        else if (/finished|stopped/.test(txt)) BioSense.message({ from: to, to: "orch", label: /stopped/.test(txt) ? "failed" : "reply" });
+      }
+      pushEvent({ t: row.rel_s || 0, who, msg: esc(txt), flag: row.kind === "limitation" || row.kind === "stage" });
+    });
+    seenTimeline = tl.length;
+    const r = snap.result;
+    if (r && r.bundle) {
+      const hs = r.bundle.hypotheses || [];
+      if (hs.length) {
+        el("dechint").textContent = `${hs.length} hypothesis(es)`;
+        el("deccard").innerHTML = hs.slice(0, 3).map(h =>
+          `<div class="dsec"><h5>${esc(h.status || "proposed")} · ${esc(h.confidence || "")} confidence</h5><p>${esc(h.statement)}</p></div>`).join("");
+      }
+    }
+    const proto = r && r.protocol;
+    if (proto && proto.stages) {
+      const rows = [];
+      proto.stages.forEach(s => s.parameters.forEach(q => rows.push([q.label, s.label,
+        q.provenance === "gap" ? "—" : `${q.recommended_value ?? "—"} ${q.unit || ""}`,
+        { reported: "R", adapted: "A", design_choice: "D", gap: "GAP" }[q.provenance] || null,
+        q.changed ? `${q.control_value} → ${q.recommended_value}` : null])));
+      renderParams(rows, 0);
+      el("paramhint").textContent = "recommended protocol · ▸ changed";
+    }
+    meta.textContent = `${(act.active_agents || []).join(", ") || "no specialist working"} · ${tl.length} events`;
+    label.textContent = live ? "LIVE — AI run" : `AI run ${snap.status}`;
+    bar.classList.toggle("stale", !live);
+  }
+
   async function tick(firstLoad) {
     try {
-      const dir = await refreshList();
-      if (!dir) return;
-      if (dir !== current) { current = dir; seenDecisions = 0; seenAnalyses = 0; }
-      apply(await get("api/loops/" + encodeURIComponent(current)), firstLoad);
+      const sel = await refreshList();
+      if (!sel) return;
+      if (sel !== current) { current = sel; seenDecisions = 0; seenAnalyses = 0; seenTimeline = 0; }
+      if (current.startsWith("run:")) {
+        applyRun(await get("api/discovery/" + encodeURIComponent(current.slice(4)) + "?after=1000000000"));
+      } else {
+        if (discoveryMode) { discoveryMode = false; replayButtons(true); reset(); }
+        applyLoop(await get("api/loops/" + encodeURIComponent(current.slice(5))), firstLoad);
+      }
       failures = 0;
     } catch (e) {
       if (++failures > 2) { bar.classList.add("stale"); label.textContent = "backend unreachable"; }
@@ -822,11 +934,15 @@ const LIVE = (() => {
 
   return {
     async start() {
-      try { await get("api/loops"); } catch { return false; }
+      let reachable = false;
+      for (const u of ["api/discovery", "api/loops"]) {
+        try { await get(u); reachable = true; break; } catch (_) { /* try the next */ }
+      }
+      if (!reachable) return false;
       bar.hidden = false;
-      pick.addEventListener("change", () => { current = pick.value; seenDecisions = 0; seenAnalyses = 0; tick(true); });
+      pick.addEventListener("change", () => { pinned = true; current = pick.value; seenDecisions = 0; seenAnalyses = 0; seenTimeline = 0; tick(true); });
       await tick(true);
-      setInterval(() => tick(false), 4000);
+      setInterval(() => tick(false), 3000);
       return true;
     }
   };

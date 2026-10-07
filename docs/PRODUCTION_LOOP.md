@@ -286,3 +286,28 @@ Live: `omnigent run discovery_loop`, then for example:
   for the whole process, each with its provenance letter and a three-step
   confidence bar; a click shows its basis. The Markdown export carries the same
   per-stage table.
+
+## The data analyst, public data of any species, and modelled new parameters
+
+- **Data analyst (AI).** Once `bioinformatics` has registered a dataset, the
+  orchestrator sends it to the `analyst` agent. It inspects the data
+  (`analyse inspect`), plans against the columns and groups actually there,
+  repairs a plan a tool refuses (up to three times), runs it with the
+  deterministic tools — or, when none can express the analysis, a script it
+  writes that runs here and is labelled AGENT-WRITTEN at low confidence — and
+  writes an interpretation (`analyse interpret`) whose confidence is capped by
+  the result, the dataset's species and processing route, and how close the
+  experiment is to this process. Numbers always come from a tool or a script.
+- **Public data, any species.** `datasets fetch-geo` uses NCBI's processed
+  counts where they exist (human, mouse) and otherwise the depositors' own
+  table, for any species, and records an evidence weight: human via NCBI can
+  support high confidence, another mammal or a depositor's table moderate or
+  low, a non-mammal low.
+- **Modelling a new parameter.** A person states how a parameter the model has
+  no term for acts — shape, target, constants, a bounded size and why — when
+  registering it or afterwards from its basis panel. It is stored on their
+  project as EXPERT-DECLARED. The Simulator ("Compare the protocol with and
+  without them") and `evidence.cli simulate --modelled-parameters` play it as
+  an assumed change in growth or differentiation in its stage.
+- **Live tracker.** The Loop Tracker follows a running AI run: agents, hand-offs,
+  events, and the protocol when it lands.
