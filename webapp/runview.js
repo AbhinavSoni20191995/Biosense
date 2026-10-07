@@ -78,16 +78,27 @@ const RV = (() => {
       const box = el('div', 'rv-pause');
       const mins = Math.round((snap.extension_s || 600) / 60);
       const hold = snap.pause_hold_s != null ? Math.max(0, Math.round(snap.pause_hold_s / 60)) : null;
-      box.append(el('b', null, 'Paused at the time limit.'));
-      box.append(el('p', null, 'The agents are stopped; nothing is being spent. Continue to give '
-        + `them ${mins} more minutes from where they left off, or finish with what they have `
-        + 'written so far (shown as a partial result).'
-        + (hold != null ? ` If nobody chooses, it finishes in about ${hold} min.` : '')));
+      const byPerson = snap.pause_reason === 'person';
+      if (byPerson) {
+        box.append(el('b', null, 'Paused by you.'));
+        box.append(el('p', null, 'The agents are held and the clock is stopped; the run keeps '
+          + 'the time it had left. Continue when you are ready, or finish with what they have '
+          + 'written so far (shown as a partial result).'
+          + (hold != null ? ` If nobody chooses, it finishes in about ${hold} min.` : '')));
+      } else {
+        box.append(el('b', null, 'Paused at the time limit.'));
+        box.append(el('p', null, 'The agents are stopped; nothing is being spent. Continue to give '
+          + `them ${mins} more minutes from where they left off, or finish with what they have `
+          + 'written so far (shown as a partial result).'
+          + (hold != null ? ` If nobody chooses, it finishes in about ${hold} min.` : '')));
+      }
       const row = el('div', 'rv-actions');
-      if (opts.onExtend && snap.extendable) {
-        const go = el('button', 'btn go', `Continue (${mins} more minutes)`);
+      const resume = byPerson ? opts.onContinue : (snap.extendable ? opts.onExtend : null);
+      if (resume) {
+        const go = el('button', 'btn go',
+          byPerson ? 'Continue run' : `Continue (${mins} more minutes)`);
         go.addEventListener('click', () => {
-          go.disabled = true; go.textContent = 'continuing…'; opts.onExtend(snap.run_id);
+          go.disabled = true; go.textContent = 'continuing…'; resume(snap.run_id);
         });
         row.append(go);
       }
@@ -132,6 +143,28 @@ const RV = (() => {
         });
         row.append(more);
       }
+      if (opts.onPause && snap.pausable) {
+        const hold = el('button', 'btn more', 'Pause run');
+        hold.title = 'Holds the agents and stops the clock. Continue later with the time '
+          + 'the run has left.';
+        hold.addEventListener('click', () => {
+          hold.disabled = true; hold.textContent = 'pausing…'; opts.onPause(snap.run_id);
+        });
+        row.append(hold);
+      }
+      host.append(row);
+    }
+    /* A stopped or interrupted run is not a dead end: it can continue as a
+       fresh run seeded with everything this one wrote. */
+    if (!isLive(snap) && snap.continuable && opts.onContinue) {
+      const row = el('div', 'rv-actions');
+      const go = el('button', 'btn more', 'Continue this run');
+      go.title = 'Starts a fresh run seeded with everything this one wrote; the agents '
+        + 'read it first instead of redoing it.';
+      go.addEventListener('click', () => {
+        go.disabled = true; go.textContent = 'continuing…'; opts.onContinue(snap.run_id);
+      });
+      row.append(go);
       host.append(row);
     }
   }

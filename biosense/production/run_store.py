@@ -309,6 +309,15 @@ def restore(runs_dir, run_id, *, after=-1):
                              if age > STALE_AFTER_S else
                              'Start the run again, or reload in a moment in case this process '
                              'is still coming up.')
+    # A real run that ended (stopped, interrupted, failed) can continue as a
+    # fresh run seeded with its artifacts. Set from the resolved status and the
+    # record's own runtime, because the stored flag was written while the run
+    # was live and so is always false. A restored run is never itself live, so
+    # it can never be paused or pausable.
+    snap['continuable'] = (snap.get('is_real')
+                           and snap.get('status') in ('stopped', 'interrupted', 'error')
+                           and (Path(d) / 'discovery_request.json').is_file())
+    snap['pausable'] = False
     _settle_counts(snap)
     snap.pop('written_at', None)
     return snap

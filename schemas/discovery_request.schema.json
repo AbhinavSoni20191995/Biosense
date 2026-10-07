@@ -217,6 +217,37 @@
     "public_data": {
       "type": "boolean",
       "description": "Whether the agents may query public databases (Ensembl, UniProt, STRING, GEO) in this run. On by default for a real run; never for a synthetic demo."
+    },
+    "continued_from": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "run_id",
+        "run_dir"
+      ],
+      "additionalProperties": false,
+      "description": "Set when this run picks up where an ended run left off. The prior run's artifacts are copied into this run's directory before the agents start, and the brief says so.",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 64
+        },
+        "run_dir": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 32
+        }
+      }
     }
   }
 }

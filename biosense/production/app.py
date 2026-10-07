@@ -44,6 +44,9 @@ Endpoints
     GET  /api/runs/<id>/report    the reasoning report as HTML
     POST /api/discovery/<id>/cancel   stop a run in flight, and its Omnigent session
     POST /api/discovery/<id>/extend   more time for a live run, within the deployment's bounds
+    POST /api/discovery/<id>/pause    hold a live run now; the clock stops with it
+    POST /api/discovery/<id>/continue resume a paused run with the time it had left, or
+                                  start a fresh run seeded with an ended run's artifacts
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
     POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
@@ -317,6 +320,8 @@ class DiscoveryRun:
         self.extensions_left = (None if self.pauses else MAX_EXTENSIONS) if deadline else 0
         self.paused = False
         self.paused_at = None
+        self.pause_reason = None        # 'deadline': the clock ran out. 'person': they chose.
+        self.pause_remaining_s = None   # a person pause gives its remaining time back
         self.wrap_up_sent = False
         self._inbox = []            # messages for the orchestrator, delivered by the adapter
         self.cancelled = None       # the reason it was stopped, once it is
@@ -660,6 +665,7 @@ class DiscoveryRun:
         if self.deadline and time.time() > self.deadline:
             if self.pauses:
                 self.paused, self.paused_at = True, time.time()
+                self.pause_reason = 'deadline'
                 self.add({'kind': 'note', 'stage': None,
                           'simple': 'Time limit reached: the run is paused. Continue it for '
                                     f'{EXTENSION_S // 60} more minutes, or finish it with what '
@@ -719,6 +725,7 @@ class DiscoveryRun:
             if self.extensions_left is not None:
                 self.extensions_left -= 1
             self.paused, self.paused_at = False, None
+            self.pause_reason, self.pause_remaining_s = None, None
             self.wrap_up_sent = False
         left = '' if self.extensions_left is None else f' ({self.extensions_left} extension(s) left)'
         self.add({'kind': 'note', 'stage': None,
@@ -740,6 +747,66 @@ class DiscoveryRun:
                     f'then the simulator comparison where the project models the parameter.')
         self._tell(text, simple='The orchestrator was told it has more time.',
                    technical='resume message sent' if was_paused else 'extension message sent')
+        return True
+
+    def pause(self):
+        """Hold the run now, because the person asked to.
+
+        The agents are held between stream events and the clock stops: whatever
+        time the run had left is recorded and given back on continue, so a
+        pause costs nothing. The hold is bounded by PAUSE_HOLD_S exactly like
+        the pause at the limit — a paused run still occupies the runtime's
+        one-at-a-time gate, so it cannot hold it for ever; unanswered, it
+        finishes with what the agents have written, as a partial result.
+        """
+        if self.runtime_mode not in RT.REAL_MODES:
+            # A synthetic run is over in seconds and holds no agents; there is
+            # nothing to pause. Guarded here as well as in the snapshot flag, so
+            # the state cannot be reached by any route.
+            return False
+        with self.cv:
+            if self.finished_at is not None or self.cancelled or self.paused:
+                return False
+            self.paused, self.paused_at = True, time.time()
+            self.pause_reason = 'person'
+            if self.deadline:
+                self.pause_remaining_s = max(0.0, self.deadline - time.time())
+        self.add({'kind': 'note', 'stage': None,
+                  'simple': f'Paused by you. The agents are held and the clock is stopped; '
+                            f'continue within {PAUSE_HOLD_S // 60} minutes or the run '
+                            f'finishes with what they have written.',
+                  'technical': f'paused by request; held up to {PAUSE_HOLD_S} s'})
+        return True
+
+    def resume(self):
+        """Continue a run the person paused, with the time it had left.
+
+        Only a person pause resumes here: a pause at the limit is a question
+        about buying more time, and `extend` is its answer. No extension is
+        spent — the run simply gets back the minutes it had.
+        """
+        with self.cv:
+            if self.finished_at is not None or self.cancelled or not self.paused:
+                return False
+            if self.pause_reason != 'person':
+                return False
+            if self.deadline:
+                # Never resume into an instant timeout: a pause pressed with
+                # seconds left still deserves a minute to wrap up.
+                self.deadline = time.time() + max(self.pause_remaining_s or 0.0, 60.0)
+            self.paused, self.paused_at = False, None
+            self.pause_reason, self.pause_remaining_s = None, None
+        self.add({'kind': 'note', 'stage': None,
+                  'simple': 'Continued from your pause with the time it had left.',
+                  'technical': 'resumed from a person pause; no extension spent'})
+        left = f'; about {self._minutes_left()} minutes remain' if self.deadline else ''
+        self._tell('BioSense: the person paused this run and has continued it'
+                   f'{left}. Your last turn and any specialist still working were '
+                   'interrupted. Pick up where you left off: read your inbox, send again '
+                   '(same title, so the thread continues) any specialist whose answer you '
+                   'still need, and carry on.',
+                   simple='The orchestrator was told the run has continued.',
+                   technical='resume message sent')
         return True
 
     @property
@@ -815,9 +882,20 @@ class DiscoveryRun:
                                and bool(self.deadline)
                                and (self.extensions_left is None or self.extensions_left > 0)),
                 'paused': self.paused,
+                'pause_reason': self.pause_reason,
                 'pause_hold_s': (round(PAUSE_HOLD_S - (time.time() - self.paused_at), 1)
                                  if self.paused else None),
                 'pauses_at_limit': self.pauses,
+                # A person can hold a live real run (the agents are polled
+                # between events; a synthetic run is over in seconds), and can
+                # continue an ended real run as a fresh run seeded with this
+                # one's artifacts.
+                'pausable': (self.finished_at is None and not self.cancelled
+                             and not self.paused
+                             and self.runtime_mode in RT.REAL_MODES),
+                'continuable': (self.finished_at is not None
+                                and self.status in ('stopped', 'interrupted', 'error')
+                                and self.runtime_mode in RT.REAL_MODES),
                 'extensions_left': self.extensions_left,
                 'extension_s': EXTENSION_S,
                 'wrap_up_sent': self.wrap_up_sent,
@@ -854,7 +932,8 @@ class DiscoveryRegistry:
         while len(self.order) > MAX_RUNS_TRACKED:
             self.runs.pop(self.order.pop(0), None)
 
-    def start(self, request, *, identity=None, client=None, projects_dir=None):
+    def start(self, request, *, identity=None, client=None, projects_dir=None,
+              seed_from=None):
         mode = request['runtime_mode']
         target = self.cfg.for_mode(mode)
         if mode not in self.cfg.allowed:
@@ -901,11 +980,39 @@ class DiscoveryRegistry:
                 self.active_real += 1
             else:
                 self.active_synthetic += 1
+        if seed_from:
+            self._seed(out, seed_from)
         run.persist()
         t = threading.Thread(target=self._work, args=(run, target), daemon=True,
                              name=f'discovery-{rid[:6]}')
         t.start()
         return run
+
+    @staticmethod
+    def _seed(out_dir, prior_dir):
+        """Copy an ended run's artifacts into a new run's directory, before it starts.
+
+        A continued run begins with everything the old one wrote, so the agents
+        read instead of redoing. The old run's own bookkeeping stays behind: its
+        state header, its event journal and its request describe THAT run, and
+        the new run writes its own. A file that cannot be copied is skipped —
+        the brief tells the agents to read what is there, not what should be.
+        """
+        skip = {RS.STATE_NAME, RS.EVENTS_NAME, 'discovery_request.json'}
+        src, dst = Path(prior_dir), Path(out_dir)
+        if not src.is_dir():
+            return
+        dst.mkdir(parents=True, exist_ok=True)
+        for p in src.iterdir():
+            if p.name in skip or p.name.startswith('.'):
+                continue
+            try:
+                if p.is_dir():
+                    shutil.copytree(p, dst / p.name, dirs_exist_ok=True)
+                elif p.is_file():
+                    shutil.copy2(p, dst / p.name)
+            except OSError:
+                continue
 
     def _settle(self, run):
         """Wait for the run directory to stop changing, within a bound.
@@ -1170,6 +1277,20 @@ class DiscoveryRegistry:
             return None
         return run if run.extend() else False
 
+    def pause(self, rid, *, owner=None):
+        """Hold a live run now, by whoever may see it. None if there is none."""
+        run = self.get(rid, owner=owner)
+        if run is None:
+            return None
+        return run if run.pause() else False
+
+    def resume(self, rid, *, owner=None):
+        """Continue a person-paused run. None if unseen, False if not theirs to resume."""
+        run = self.get(rid, owner=owner)
+        if run is None:
+            return None
+        return run if run.resume() else False
+
     def listing(self, *, owner=None, project_id=None, limit=200):
         """Every run this caller may see: the live ones and the durable ones.
 
@@ -1431,6 +1552,12 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/cancel', path)
             if m:
                 return self._cancel_discovery(m.group(1))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/pause', path)
+            if m:
+                return self._pause_discovery(m.group(1))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/continue', path)
+            if m:
+                return self._continue_discovery(m.group(1))
             m = re.fullmatch(r'/api/discovery/([^/]+)/extend', path)
             if m:
                 return self._extend_discovery(m.group(1))
@@ -1916,6 +2043,99 @@ class Handler(BaseHTTPRequestHandler):
                                              'has no time limit, or has used every extension'})
         return self._send(200, {'run_id': rid, 'deadline_in_s': round(run.deadline - time.time(), 1),
                                 'extensions_left': run.extensions_left})
+
+    def _pause_discovery(self, rid):
+        """Hold a live run now. The agents stop between events and the clock stops."""
+        owner = self._identity().owner
+        run = self.discovery.pause(rid, owner=owner)
+        if run is None:
+            return self._send(404, {'error': 'no such discovery run in this process'})
+        if run is False:
+            return self._send(409, {'error': 'this run cannot pause: it has finished, was '
+                                             'stopped, or is already paused'})
+        return self._send(200, {'run_id': rid, 'paused': True, 'pause_hold_s': PAUSE_HOLD_S})
+
+    def _continue_discovery(self, rid):
+        """Continue a run, whatever state it is in.
+
+        A person-paused run resumes with the time it had left. A run paused at
+        its limit continues the way that pause asks — an extension. An ended
+        run (stopped, interrupted, failed) becomes a fresh run seeded with
+        everything the old one wrote.
+        """
+        identity = self._identity()
+        run = self.discovery.get(rid, owner=identity.owner)
+        if run is not None and run.finished_at is None:
+            if run.paused and (run.resume() or run.extend()):
+                return self._send(200, {
+                    'run_id': rid, 'paused': run.paused,
+                    'deadline_in_s': (round(run.deadline - time.time(), 1)
+                                      if run.deadline else None)})
+            return self._send(409, {'error': 'this run is live and not paused; there is '
+                                             'nothing to continue'})
+        return self._continue_ended(rid, identity)
+
+    def _continue_ended(self, rid, identity):
+        """A fresh run that picks up where an ended one left off.
+
+        The old run's artifacts are copied into the new run's directory and the
+        brief tells the orchestrator to read them before searching anew. In
+        every accounted way it is a new run — it spends budget, holds the
+        one-at-a-time gate and needs the runtime — because what restarts is
+        the agents, and the agents are the cost.
+        """
+        owner = identity.owner
+        old = self.discovery.get(rid, owner=owner)
+        if old is not None:
+            old_dir, old_status, old_owner = old.out_dir, old.status, old.owner
+        else:
+            d = RS.find(self.discovery.runs_dir, rid)
+            if d is None:
+                return self._send(404, {'error': 'no such discovery run'})
+            try:
+                state = K.read_json(d / RS.STATE_NAME)
+            except (OSError, ValueError):
+                return self._send(404, {'error': 'no such discovery run'})
+            old_dir, old_status, old_owner = d, state.get('status'), state.get('owner')
+        if old_owner is not None and old_owner != owner:
+            return self._send(404, {'error': 'no such discovery run'})
+        try:
+            prior = K.read_json(Path(old_dir) / 'discovery_request.json')
+        except (OSError, ValueError):
+            return self._send(409, {'error': 'that run left no request on disk, so it '
+                                             'cannot be continued; start a new run instead'})
+        if prior.get('runtime_mode') not in RT.REAL_MODES:
+            return self._send(409, {'error': 'only a real-AI run can be continued; a '
+                                             'synthetic demonstration reruns in seconds'})
+        if prior.get('purpose') == 'landscape':
+            # The library is shared by every run on this server, so only an
+            # operator continues a build of it — the same rule as starting one.
+            self._require_operator('building the cell production library')
+        # The continuation is the same validated request with a new identity
+        # and the continuation named, so the brief can say what this run is.
+        req = dict(prior,
+                   request_id=f'disc-{uuid.uuid4().hex[:12]}',
+                   created_at=K.now_iso(),
+                   requested_by=owner if identity.authenticated else None,
+                   continued_from={'run_id': rid, 'run_dir': Path(old_dir).name,
+                                   'status': old_status})
+        try:
+            K.require_valid('discovery_request', req)
+        except K.ContractError as e:
+            return self._send(409, {'error': f'the stored request no longer validates, so '
+                                             f'this run cannot be continued: {e}'})
+        try:
+            new = self.discovery.start(req, identity=identity, client=self._client(),
+                                       projects_dir=self._projects_dir(identity),
+                                       seed_from=old_dir)
+        except RT.RuntimeUnavailable as e:
+            return self._send(503, {'error': str(e), 'refused': True, 'reason': e.reason,
+                                    'headline': e.headline, 'next_step': e.next_step,
+                                    'runtime_mode': req['runtime_mode'],
+                                    'runtime_label': RT.LABELS[req['runtime_mode']]})
+        except K.ContractError as e:
+            return self._send(409, {'error': str(e)})
+        return self._send(202, new.snapshot())
 
     def _cancel_discovery(self, rid):
         """Stop a run in flight.

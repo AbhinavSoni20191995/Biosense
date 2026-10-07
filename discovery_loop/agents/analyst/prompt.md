@@ -63,7 +63,10 @@ You receive one or more dataset ids, the question, the uncertainty it bears on
    <dir>` and must write `<dir>/result.json` with `{"method", "findings",
    "statistics"}`. Run it with `analyse script`. The result is labelled
    AGENT-WRITTEN and capped at low confidence; prefer a registered tool
-   whenever one fits.
+   whenever one fits. A script reads only the tables it is given: the sandbox
+   ships no `curl` or `wget` and a script must not fetch anything — a public
+   lookup you need belongs to the bioinformatics agent's CLI, which records
+   the query; ask the orchestrator for it rather than improvising a client.
 5. **Interpret every result.** Print the shape with `analyse interpret
    --template`, write a draft, and check it with `analyse interpret`. Say what
    the result shows (quoting its numbers), what it means for this process, and

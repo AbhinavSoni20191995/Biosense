@@ -765,6 +765,61 @@ class StopAndTimeoutTests(unittest.TestCase):
         self.assertTrue(run.should_stop())
         self.assertEqual('timed_out', run.cancelled)
 
+    def test_a_person_may_pause_a_live_run_and_continue_it_with_its_time(self):
+        """A manual pause holds the agents and stops the clock; continuing gives
+        the run back the time it had, spending no extension."""
+        from biosense.production import app as APP
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        run = APP.DiscoveryRun('a' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                               deadline=time.time() + 300)
+        self.assertTrue(run.snapshot()['pausable'])
+        self.assertTrue(run.pause())
+        snap = run.snapshot()
+        self.assertTrue(snap['paused'] and snap['pause_reason'] == 'person')
+        self.assertFalse(snap['pausable'], 'already paused')
+        self.assertTrue(run.is_paused(), 'the adapter holds the agents')
+        self.assertFalse(run.should_stop(), 'paused is not stopped')
+        self.assertIn('Paused by you', run.events[-1]['simple'])
+        # Continue restores the time it had left (about five minutes), spends no
+        # extension, and tells the orchestrator to pick up.
+        self.assertTrue(run.resume())
+        self.assertFalse(run.is_paused())
+        self.assertGreater(run.deadline, time.time() + 240)
+        self.assertEqual(APP.MAX_EXTENSIONS, run.extensions_left, 'no extension spent')
+        self.assertIn('continued it', run.take_message()['text'])
+        # A synthetic run is over in seconds: it is never pausable.
+        syn = APP.DiscoveryRun('b' * 16, req, Path('/tmp/ai-x'), 'synthetic_demo')
+        self.assertFalse(syn.snapshot()['pausable'])
+        self.assertFalse(syn.pause())
+        # resume only applies to a person pause: a limit pause is extend's job.
+        lim = APP.DiscoveryRun('c' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                               deadline=time.time() - 1, started_by_admin=True)
+        lim.should_stop()
+        self.assertTrue(lim.is_paused() and lim.pause_reason == 'deadline')
+        self.assertFalse(lim.resume(), 'a limit pause continues by extending, not resuming')
+        # An unanswered person pause finishes with what the agents wrote, like any.
+        held = APP.DiscoveryRun('d' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                                deadline=time.time() + 300)
+        held.pause()
+        held.paused_at = time.time() - APP.PAUSE_HOLD_S - 1
+        self.assertTrue(held.should_stop())
+        self.assertEqual('pause_unanswered', held.cancelled)
+
+    def test_a_stopped_real_run_is_continuable_and_synthetic_is_not(self):
+        """An ended real run advertises that it can continue; a synthetic one,
+        and a live run, do not."""
+        from biosense.production import app as APP
+        req = {'request_id': 'r', 'project_id': 'p', 'objective': 'o'}
+        real = APP.DiscoveryRun('e' * 16, req, Path('/tmp/ai-x'), 'local_real_ai',
+                                deadline=time.time() + 60)
+        self.assertFalse(real.snapshot()['continuable'], 'a live run is not continuable')
+        real.stop('cancelled', 'x')
+        real.finish('stopped', None, 'x', reason='cancelled')
+        self.assertTrue(real.snapshot()['continuable'])
+        syn = APP.DiscoveryRun('f' * 16, req, Path('/tmp/ai-x'), 'synthetic_demo')
+        syn.finish('stopped', None, 'x', reason='cancelled')
+        self.assertFalse(syn.snapshot()['continuable'], 'a synthetic run reruns, not continues')
+
     def test_each_stage_agents_notes_show_live_and_papers_merge(self):
         import json
         import tempfile

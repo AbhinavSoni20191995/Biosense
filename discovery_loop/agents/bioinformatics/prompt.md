@@ -117,6 +117,12 @@ order is fixed, and the first step is the one that matters.
      [--keep "<field>=<value>"] [--genes <SYMBOL ...>] --i-have-network-permission
    ```
 
+   The CLI is the only way onto the network here: the sandbox ships no `curl`
+   or `wget`, and a hand-rolled fetch would leave no recorded query and no
+   checksum. If a lookup these commands cannot express is needed, record it as
+   a limitation with the exact public query to run, instead of improvising a
+   client.
+
    Choose the series whose cells, stage and treatment are closest to the
    uncertainty; read its samples before choosing the comparison, and take the
    condition values exactly as GEO wrote them. Try a few series (and a few

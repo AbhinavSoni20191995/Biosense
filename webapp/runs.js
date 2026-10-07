@@ -130,7 +130,8 @@ function openRun(runId) {
     snapshot(snap) {
       $('#detailTitle').textContent = snap.objective || 'Run';
       $('#detailHint').textContent = `${snap.project_id || ''} · ${snap.run_id}`;
-      RV.header(head, snap, { onStop: stop, onExtend: extend });
+      RV.header(head, snap, { onStop: stop, onExtend: extend,
+                              onPause: pause, onContinue: cont });
       RV.stages(stages, snap);
       RV.agents(agents, snap);
       RV.timeline(tl, snap);
@@ -152,6 +153,20 @@ async function extend(runId) {
 async function stop(runId) {
   try { await BS.json(`/api/discovery/${runId}/cancel`, { method: 'POST' }); }
   catch (_) { /* the snapshot will say what happened */ }
+}
+
+async function pause(runId) {
+  try { await BS.json(`/api/discovery/${runId}/pause`, { method: 'POST' }); }
+  catch (e) { alert(e.message || 'that run cannot pause'); }
+}
+
+/* A paused run resumes in place. An ended one continues as a fresh run seeded
+   with its artifacts, and the detail view follows the new run. */
+async function cont(runId) {
+  try {
+    const d = await BS.json(`/api/discovery/${runId}/continue`, { method: 'POST' });
+    if (d && d.run_id && d.run_id !== runId) { await load(); openRun(d.run_id); }
+  } catch (e) { alert(e.message || 'that run cannot be continued'); }
 }
 
 boot();

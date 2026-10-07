@@ -94,7 +94,7 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
           projects_dir=None, effort=None, literature_mode=None, purpose=None,
-          public_data=None):
+          public_data=None, continued_from=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -165,6 +165,15 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
         'notes': _clean(notes, field='notes', limit=2000),
     }
+    if continued_from:
+        req['continued_from'] = {
+            'run_id': _clean(continued_from.get('run_id'), field='continued_from.run_id',
+                             limit=64, minimum=4),
+            'run_dir': _clean(continued_from.get('run_dir'), field='continued_from.run_dir',
+                              limit=128, minimum=1),
+            'status': _clean(continued_from.get('status'), field='continued_from.status',
+                             limit=32),
+        }
     K.require_valid('discovery_request', req)
     return req
 
@@ -306,6 +315,13 @@ def summarise(req, *, projects_dir=None):
         lines.append(f'Constraint: {b["parameter_id"]} within {rng} ({b["source"]})')
     if c.get('notes'):
         lines.append(f'Constraint note: {c["notes"]}')
+    if req.get('continued_from'):
+        prev = req['continued_from']
+        lines.append(
+            f'Continues run {prev["run_id"]} (ended: {prev.get("status") or "unknown"}). '
+            f'That run\'s artifacts were copied into this run directory before you started: '
+            f'read them first, keep what is already settled, and spend this run on what is '
+            f'missing rather than redoing finished searches or analyses.')
     lines.append(f'Runtime: {RT.LABELS[req["runtime_mode"]]}')
     b = EFFORT[req.get('effort') or DEFAULT_EFFORT]
     if (req.get('literature_mode') or DEFAULT_LITERATURE_MODE) == 'by_stage':

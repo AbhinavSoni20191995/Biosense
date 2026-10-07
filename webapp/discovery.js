@@ -713,7 +713,8 @@ function watchRun(runId) {
   state.detach = RV.attach(runId, {
     snapshot(snap) {
       state.run = snap;
-      RV.header($('#rvHead'), snap, { onStop: stopRun, onExtend: extendRun });
+      RV.header($('#rvHead'), snap, { onStop: stopRun, onExtend: extendRun,
+                                      onPause: pauseRun, onContinue: continueRun });
       RV.stages($('#rvStages'), snap);
       RV.agents($('#rvAgents'), snap);
       RV.timeline($('#rvTimeline'), snap);
@@ -760,6 +761,22 @@ async function stopRun(runId) {
 async function extendRun(runId) {
   try { await post(`/api/discovery/${runId}/extend`); }
   catch (e) { fail(e); }
+}
+
+/* Hold a live run: the agents stop between events and the clock stops with
+   them. Continuing gives the run back the time it had. */
+async function pauseRun(runId) {
+  try { await post(`/api/discovery/${runId}/pause`); }
+  catch (e) { fail(e); }
+}
+
+/* Continue a run. A paused one resumes in place; an ended one comes back as a
+   fresh run seeded with its artifacts, and the tracker follows the new one. */
+async function continueRun(runId) {
+  try {
+    const d = await post(`/api/discovery/${runId}/continue`);
+    if (d && d.run_id && d.run_id !== runId) watchRun(d.run_id);
+  } catch (e) { fail(e); }
 }
 
 /* The stop button beside "Run", visible exactly while the watched run is live —
