@@ -90,6 +90,9 @@ body[data-view="simple"] .tech{display:none}
     <div id="libBuild" hidden>
       <form id="libForm" class="upform">
         <label>Project to carry the run <select id="libProject"></select></label>
+        <label>Scope <select id="libScope">
+          <option value="general" selected>general — the whole field, for any project</option>
+          <option value="project">project-specific — this project's biology</option></select></label>
         <label>Depth <select id="libEffort">
           <option value="standard">standard — about 40 minutes</option>
           <option value="thorough" selected>thorough — more papers, longer</option></select></label>
@@ -407,16 +410,39 @@ $('#libQ').addEventListener('input', e => {
 });
 (async function libProjects() {
   try {
-    const d = await get('/api/projects');
+    /* The person's own projects first, then the shipped templates — the same
+       listing the Discovery page offers, because the run is carried by
+       whichever project it is started from and the library it builds is
+       shared by every project on this server. */
+    const d = await get('/api/workspace/projects');
     const sel = $('#libProject');
-    d.projects.forEach(p => { const o = el('option', null, p.name); o.value = p.project_id; sel.append(o); });
+    (d.projects || []).sort((a, b) =>
+      (a.source === 'workspace' ? 0 : 1) - (b.source === 'workspace' ? 0 : 1))
+      .forEach(p => {
+        const o = el('option', null,
+          p.name + (p.source === 'workspace' ? ' — yours' : ' — template'));
+        o.value = p.project_id; sel.append(o);
+      });
   } catch (_) { /* the build form says so on submit */ }
 })();
 $('#libForm').addEventListener('submit', async ev => {
   ev.preventDefault();
   const go = $('#libGo'), msg = $('#libMsg');
   go.disabled = true; msg.textContent = 'starting…';
-  const focus = $('#libFocus').value.trim();
+  let focus = $('#libFocus').value.trim();
+  if ($('#libScope').value === 'project') {
+    /* A project-specific build is the same landscape run, steered: the focus
+       names this project's biology so the searches weight its cells, lineage
+       and format. The library it fills stays shared either way. */
+    try {
+      const pd = await get('/api/projects/' + encodeURIComponent($('#libProject').value));
+      const b = (pd.project && pd.project.biological_system) || {};
+      const bits = [b.species, b.starting_cell, b.target_cell, b.culture_format]
+        .filter(x => x && x !== 'unspecified');
+      focus = pd.project.name + (bits.length ? ' (' + bits.join(', ') + ')' : '')
+        + (focus ? '; ' + focus : '');
+    } catch (_) { /* no detail answered: run it general */ }
+  }
   try {
     const r = await fetch('/api/discovery', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: $('#libProject').value, purpose: 'landscape',
