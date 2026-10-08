@@ -639,10 +639,14 @@ function buildRequest() {
     runtime_mode: chosenRuntime(),
     effort: ($('#effort') && $('#effort').value) || 'standard',
     literature_mode: ($('#litMode') && $('#litMode').value) || 'single',
+    bioinformatics_mode: ($('#bioMode') && $('#bioMode').value) || 'single',
     purpose: ($('#purpose') && $('#purpose').value) || 'discovery',
     public_data: !($('#publicData') && $('#publicData').value === 'off'),
     dataset_ids: $$('#datasetPicks input:checked').map(i => i.value),
   };
+  if (body.bioinformatics_mode === 'by_modality') {
+    body.bioinformatics_specialists = $$('#bioSpecialists input:checked').map(i => i.value);
+  }
   if (anyCtx) {
     body.research_context = Object.assign({
       schema_version: '2.0', strictness: $('#ctxStrictness').value,
@@ -835,6 +839,19 @@ function renderBioInsights(bio) {
   bioSeen = key;
   host.textContent = '';
   if (!bio) return;
+  (bio.specialists || []).forEach(sp => {
+    const d = el('details', 'ins-sub');
+    d.dataset.key = 'bio:' + sp.name;
+    d.open = rememberedOpen(d.dataset.key, false);
+    d.addEventListener('toggle', () => rememberOpen(d.dataset.key, d.open));
+    const sm = el('summary');
+    sm.append(el('b', null, sp.label || sp.name),
+      el('span', 'dim', '  ' + (sp.updated_at ? `notes ${BS.fmt.ago(sp.updated_at)}` : 'no notes yet')));
+    d.append(sm);
+    const body = el('div', 'insights'); d.append(body);
+    if (sp.text) renderNotes(body, sp.text, 'bio-' + sp.name);
+    host.append(d);
+  });
   (bio.plans || []).forEach(p => {
     const row = el('div', 'm');
     row.append(el('span', 'tag', 'PLANNED'), ' ', el('b', null, p.question || p.plan_id));
@@ -1277,6 +1294,7 @@ function renderInsights(snap) {
     $('#bioSum').textContent = [`${(bio.plans || []).length} planned`,
       `${(bio.results || []).length + (bio.agent_analyses || []).length} run`,
       (bio.interpretations || []).length ? `${bio.interpretations.length} interpreted` : null,
+      (bio.specialists || []).length ? `${bio.specialists.length} specialists` : null,
       bio.notes ? `notes ${BS.fmt.ago(bio.notes.updated_at)}` : null]
       .filter(Boolean).join(' · ');
   }
@@ -2301,6 +2319,10 @@ function wire() {
     });
   }
   $('#runBtn').addEventListener('click', start);
+  const bioMode = $('#bioMode');
+  if (bioMode) bioMode.addEventListener('change', () => {
+    $('#bioSpecialists').hidden = bioMode.value !== 'by_modality';
+  });
   $('#stopBtn').addEventListener('click', stopFromButton);
   const add = $('#candAdd');
   if (add) {

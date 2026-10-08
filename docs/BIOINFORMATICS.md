@@ -65,6 +65,37 @@ private to handle — the only safe direction for that rule to fail in.
 
 ---
 
+## One agent, or several specialists
+
+The run form offers three ways to gather bioinformatics, as it does for the
+literature (`bioinformatics_mode` on the request):
+
+| Mode | Who works | Each writes in |
+| --- | --- | --- |
+| `single` (default) | one agent across every kind of data | `bioinformatics/` |
+| `by_modality` | one specialist per kind of data, in parallel | `bioinformatics/<specialist>/` |
+| `by_stage` | one specialist per process stage, in parallel (up to four) | `bioinformatics/<stage>/` |
+
+The specialists are the same agent sent scoped tasks (`SPECIALIST: <name>` or
+`STAGE: <stage>`), so the rules about evidence are the same for all of them.
+What differs is the data each owns and the analyses it plans:
+
+| Specialist | Modalities | Analyses | Public data fetched here |
+| --- | --- | --- | --- |
+| transcriptomics | bulk_rna | expression comparison, gene-set score, pathway enrichment, combine | GEO series, end to end |
+| single_cell | single_cell_rna | identity and purity, composition, pseudobulk | found on GEO; analysed once registered |
+| cytometry (FACS) | flow_cytometry, cytometry_summary | populations, marker intensity, viability, over time | none; gated tables you upload |
+| proteomics | proteomics, secretome | protein abundance | none; PRIDE deposits are named, not fetched |
+| epigenomics | atac_seq, chip_seq | peak overlap | found on GEO; called peaks once registered |
+
+With no specialists chosen, a by-modality run sends the first four, and adds
+the specialist of any dataset the request names. They share the dataset
+registry, so a series one registers the others can use. Each keeps its own
+running notes, shown under its name on the run page. The orchestrator
+reconciles them: agreement between kinds of data raises confidence, and
+disagreement is recorded with the context that may explain it, never averaged.
+Each specialist is another agent session, so it uses more of the model allowance.
+
 ## Datasets
 
 One `DatasetManifest` describes public and private data alike. It records the

@@ -315,6 +315,25 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
             <option value="single" selected>One agent across every lever (default)</option>
             <option value="by_stage">One agent per process stage, in parallel — faster, uses more of the model allowance</option>
           </select>
+          <!-- Bioinformatics, by the same pattern: one agent, one specialist per
+               kind of data, or one per process stage. Each specialist is another
+               agent session, so each costs model allowance. -->
+          <label class="lab" for="bioMode" style="margin-top:14px">Bioinformatics</label>
+          <select id="bioMode" class="select">
+            <option value="single" selected>One agent across every kind of data (default)</option>
+            <option value="by_modality">One specialist per kind of data, in parallel — choose which below</option>
+            <option value="by_stage">One specialist per process stage, in parallel</option>
+          </select>
+          <div id="bioSpecialists" class="picks" hidden>
+            <label class="pick"><input type="checkbox" value="transcriptomics" checked><span>Transcriptomics — bulk RNA-seq, pathways, public GEO series</span></label>
+            <label class="pick"><input type="checkbox" value="single_cell" checked><span>Single-cell RNA-seq — identity, purity, composition</span></label>
+            <label class="pick"><input type="checkbox" value="cytometry" checked><span>Flow cytometry / FACS — marker panel, gating, populations</span></label>
+            <label class="pick"><input type="checkbox" value="proteomics" checked><span>Proteomics &amp; secretome — secreted factors, receptors</span></label>
+            <label class="pick"><input type="checkbox" value="epigenomics"><span>Epigenomics — ATAC-seq, ChIP-seq peaks</span></label>
+            <p class="hint">Only transcriptomics fetches public data end to end. The others
+              analyse datasets you name or upload; without one they return the markers,
+              annotation and the experiment that would produce that data.</p>
+          </div>
           <p class="hint">A synthetic run and a real one are different claims about the same
             question. BioSense never substitutes one for the other: if a real runtime is
             unavailable the run fails with the reason, and says what fixes it.</p>

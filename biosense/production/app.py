@@ -411,6 +411,7 @@ class DiscoveryRun:
         self._read_proposed_terms()
         self._read_round_plan()
         self._read_stage_shards()
+        self._read_bio_specialists()
         self._read_reference_draft()
         papers = ('literature/merged/discover.json'
                   if (self.out_dir / 'literature' / 'merged' / 'discover.json').is_file()
@@ -458,8 +459,11 @@ class DiscoveryRun:
         plans, results, interps, agent_runs = [], [], [], []
         try:
             files = []
-            # The run directory, and the analyst's and bioinformatics' folders.
-            for base in (self.out_dir, self.out_dir / 'analyst', self.out_dir / 'bioinformatics'):
+            # The run directory, the analyst's and bioinformatics' folders, and
+            # each bioinformatics specialist's own folder.
+            bases = [self.out_dir, self.out_dir / 'analyst', self.out_dir / 'bioinformatics']
+            bases += self._bio_specialist_dirs()
+            for base in bases:
                 if base.is_dir():
                     files += sorted(base.glob('analysis_plan*.json'))
                     files += sorted(base.glob('analysis_result*.json'))
@@ -507,7 +511,44 @@ class DiscoveryRun:
         bio.update(plans=plans, results=results, interpretations=interps,
                    agent_analyses=agent_runs)
         self.bioinformatics = bio if (plans or results or interps or agent_runs
-                                      or bio.get('notes')) else None
+                                      or bio.get('notes') or bio.get('specialists')) else None
+
+    def _bio_specialist_dirs(self):
+        """The folders a by-modality or by-stage bioinformatics run writes in."""
+        try:
+            return sorted(d for d in (self.out_dir / 'bioinformatics').iterdir()
+                          if d.is_dir() and d.name not in ('scratch', 'cache'))
+        except OSError:
+            return []
+
+    def _read_bio_specialists(self):
+        """Each bioinformatics specialist's running notes, live, under its name."""
+        rows = []
+        for d in self._bio_specialist_dirs():
+            notes = d / 'insights.md'
+            try:
+                mtime = notes.stat().st_mtime
+            except OSError:
+                continue
+            rows.append((d.name, notes, mtime))
+        sig = tuple((n, m) for n, _, m in rows)
+        if self._live_mtimes.get('bio_specialists') == sig:
+            return
+        self._live_mtimes['bio_specialists'] = sig
+        out = []
+        for name, notes, mtime in rows:
+            try:
+                text = notes.read_text(encoding='utf-8', errors='replace')
+            except OSError:
+                continue
+            if len(text) > INSIGHTS_MAX_CHARS:
+                text = '…' + text[-INSIGHTS_MAX_CHARS:]
+            label = (DISC.BIO_SPECIALISTS.get(name) or {}).get('label') or name
+            out.append({'name': name, 'label': label, 'text': text, 'updated_at': mtime})
+        bio = dict(self.bioinformatics or {})
+        bio['specialists'] = out
+        self.bioinformatics = bio if (out or any(bio.get(k) for k in (
+            'plans', 'results', 'interpretations', 'agent_analyses', 'notes'))) else None
 
     def _read_reference_draft(self):
         """Process-reference entries this run collected, for an admin to review."""
@@ -1957,6 +1998,8 @@ class Handler(BaseHTTPRequestHandler):
             title=body.get('title'), notes=body.get('notes'), effort=body.get('effort'),
             literature_mode=body.get('literature_mode'), purpose=body.get('purpose'),
             public_data=body.get('public_data'),
+            bioinformatics_mode=body.get('bioinformatics_mode'),
+            bioinformatics_specialists=body.get('bioinformatics_specialists'),
             requested_by=identity.owner if identity.authenticated else None,
             projects_dir=self._projects_dir(identity))
 

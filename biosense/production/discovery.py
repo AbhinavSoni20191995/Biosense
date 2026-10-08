@@ -88,13 +88,62 @@ DEFAULT_EFFORT = 'standard'
 LITERATURE_MODES = ('single', 'by_stage')
 DEFAULT_LITERATURE_MODE = 'single'
 MAX_STAGE_SHARDS = 4
+# How bioinformatics is gathered, by the same pattern. One agent is the default.
+# By modality, one specialist per kind of data, each with the tools, public
+# sources and markers of its own field; by stage, one per process stage, each
+# asking which genes, pathways and datasets bear on that stage's levers. The
+# specialists share the dataset registry, so a series one registers the others
+# can use; their notes are kept apart and the orchestrator reconciles them.
+BIOINFORMATICS_MODES = ('single', 'by_modality', 'by_stage')
+DEFAULT_BIOINFORMATICS_MODE = 'single'
+# Each specialism: its label, the dataset modalities it owns (the manifest's
+# enum), the analysis types it plans, and what it brings that the others do not.
+BIO_SPECIALISTS = {
+    'transcriptomics': {
+        'label': 'Transcriptomics (bulk RNA-seq, microarray)',
+        'modalities': ('bulk_rna',),
+        'analyses': ('bulk_expression_comparison', 'gene_set_score', 'pathway_enrichment'),
+        'focus': 'which genes and programmes respond to each lever: differential expression, '
+                 'gene-set scores and pathway enrichment on GEO series, and combining series '
+                 'that ask the same question'},
+    'single_cell': {
+        'label': 'Single-cell RNA-seq',
+        'modalities': ('single_cell_rna',),
+        'analyses': ('identity_purity', 'cell_composition_comparison', 'pseudobulk_comparison'),
+        'focus': 'which cell states a lever produces: identity and purity per sample, '
+                 'composition shifts, off-target populations, and pseudobulk comparisons '
+                 'within one cell type'},
+    'cytometry': {
+        'label': 'Flow cytometry / FACS',
+        'modalities': ('flow_cytometry', 'cytometry_summary'),
+        'analyses': ('population_comparison', 'marker_intensity_comparison',
+                     'viability_comparison', 'longitudinal_population'),
+        'focus': 'the surface-marker panel that defines the target and its impurities, the '
+                 'gating a release assay would use, and gated population tables: percent '
+                 'positive, marker intensity, viability over time'},
+    'proteomics': {
+        'label': 'Proteomics and secretome',
+        'modalities': ('proteomics', 'secretome'),
+        'analyses': ('protein_abundance_comparison',),
+        'focus': 'what the cells make and secrete: protein abundance, secreted factors that '
+                 'act back on the culture (autocrine and paracrine), receptors for the '
+                 'factors the protocol adds, and where protein disagrees with transcript'},
+    'epigenomics': {
+        'label': 'Epigenomics (ATAC-seq, ChIP-seq)',
+        'modalities': ('atac_seq', 'chip_seq'),
+        'analyses': ('peak_overlap_comparison',),
+        'focus': 'whether the lineage gates are open: chromatin accessibility and transcription '
+                 'factor binding at the genes each lever acts through, from called peaks'},
+}
+DEFAULT_BIO_SPECIALISTS = ('transcriptomics', 'single_cell', 'cytometry', 'proteomics')
 
 
 def build(*, project_id, objective, runtime_mode, research_context=None, dataset_ids=(),
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
           projects_dir=None, effort=None, literature_mode=None, purpose=None,
-          public_data=None, continued_from=None):
+          public_data=None, continued_from=None, bioinformatics_mode=None,
+          bioinformatics_specialists=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -132,6 +181,12 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         raise K.ContractError(f'literature_mode must be one of {LITERATURE_MODES}; '
                               f'got {literature_mode!r}')
 
+    bio_mode = (bioinformatics_mode or DEFAULT_BIOINFORMATICS_MODE).strip().lower()
+    if bio_mode not in BIOINFORMATICS_MODES:
+        raise K.ContractError(f'bioinformatics_mode must be one of {BIOINFORMATICS_MODES}; '
+                              f'got {bio_mode!r}')
+    specialists = _specialists(bio_mode, bioinformatics_specialists, ds)
+
     # Public databases (Ensembl, UniProt, STRING, GEO) are on for a real run
     # unless the person turned them off; a synthetic demo never touches the
     # network.
@@ -160,6 +215,8 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'runtime_mode': mode,
         'effort': effort,
         'literature_mode': literature_mode,
+        'bioinformatics_mode': bio_mode,
+        'bioinformatics_specialists': specialists,
         'purpose': purpose,
         'public_data': public_data,
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
@@ -189,6 +246,35 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
                                   f'got {kind!r}')
     K.require_valid('discovery_request', req)
     return req
+
+
+def _specialists(mode, chosen, dataset_ids):
+    """The specialisms a by-modality run dispatches; empty for any other mode.
+
+    The person's choice when they made one. Otherwise the four that cover most
+    questions, plus the specialism of any dataset they named, so a named ATAC
+    series is never left without the specialist who can read it.
+    """
+    if mode != 'by_modality':
+        if chosen:
+            raise K.ContractError('bioinformatics_specialists applies only when '
+                                  'bioinformatics_mode is by_modality')
+        return []
+    names = [str(c).strip().lower() for c in (chosen or []) if str(c).strip()]
+    unknown = [n for n in names if n not in BIO_SPECIALISTS]
+    if unknown:
+        raise K.ContractError(f'unknown bioinformatics specialist(s) {unknown}; '
+                              f'choose from {sorted(BIO_SPECIALISTS)}')
+    if not names:
+        names = list(DEFAULT_BIO_SPECIALISTS)
+        from ..data import registry as DREG
+        for did in dataset_ids:
+            try:
+                modality = (DREG.load(did) or {}).get('modality')
+            except (K.ContractError, OSError, ValueError):
+                continue
+            names += [k for k, v in BIO_SPECIALISTS.items() if modality in v['modalities']]
+    return [k for k in BIO_SPECIALISTS if k in names]
 
 
 def _uncertainty(u):
@@ -351,6 +437,13 @@ def summarise(req, *, projects_dir=None):
     b = EFFORT[req.get('effort') or DEFAULT_EFFORT]
     if (req.get('literature_mode') or DEFAULT_LITERATURE_MODE) == 'by_stage':
         lines.append('Literature: one agent per process stage, in parallel, merged afterwards')
+    bio_mode = req.get('bioinformatics_mode') or DEFAULT_BIOINFORMATICS_MODE
+    if bio_mode == 'by_modality':
+        lines.append('Bioinformatics: one specialist per kind of data, in parallel — '
+                     + ', '.join(BIO_SPECIALISTS[k]['label']
+                                 for k in req.get('bioinformatics_specialists') or []))
+    elif bio_mode == 'by_stage':
+        lines.append('Bioinformatics: one specialist per process stage, in parallel')
     lines.append(f'Effort: {b["label"]} — about {b["searches"]} searches and {b["full_texts"]} '
                  f'full texts for literature, {b["bio_queries"]} queries for bioinformatics, '
                  f'about {b["minutes"]} minutes per specialist')
@@ -458,6 +551,54 @@ def _literature_plan(req, project, loop_dir, budget):
     return dispatch, after
 
 
+def _bioinformatics_plan(req, project, loop_dir, budget):
+    """The bioinformatics dispatch the brief asks for, and how to reconcile it.
+
+    One agent by default. By modality or by stage, the same agent is sent
+    several scoped tasks at once; each begins `SPECIALIST:` or `STAGE:` so the
+    agent's instructions for that scope apply, and each writes in its own folder.
+    """
+    mode = req.get('bioinformatics_mode') or DEFAULT_BIOINFORMATICS_MODE
+    names = req.get('bioinformatics_specialists') or []
+    if mode == 'by_stage' and len(project.stages) >= 2:
+        shards = [(st['stage_id'], 'STAGE', st.get('label') or st['stage_id'],
+                   ('the genes, pathways and markers that govern this stage\'s levers and '
+                    'readouts, and public data from cells at this stage'
+                    + (f' ({st["purpose"]})' if st.get('purpose') else '')))
+                  for st in list(project.stages)[:MAX_STAGE_SHARDS]]
+        how = 'one specialist per process stage'
+    elif mode == 'by_modality' and names:
+        shards = [(k, 'SPECIALIST', BIO_SPECIALISTS[k]['label'], BIO_SPECIALISTS[k]['focus'])
+                  for k in names]
+        how = 'one specialist per kind of data'
+    else:
+        return ('the bioinformatics agent its own (`agent: "bioinformatics"`, `title: '
+                '"bioinformatics-it1"`) in the same response, so they run in parallel.'), ''
+    per_q = max(2, round(budget['bio_queries'] * 0.6))
+    rows = '\n'.join(
+        f'    - `title: "bioinformatics-{key}"`, `args:` starting `{tag}: {key}` → '
+        f'`{loop_dir}/bioinformatics/{key}/` — {label}: {focus}'
+        for key, tag, label, focus in shards)
+    dispatch = (
+        f'`bioinformatics` {len(shards)} tasks, one per row, all in the same response so '
+        f'everything runs in parallel (the person chose **{how}**):\n{rows}\n'
+        f'  Each task names its folder (its `insights.md` and files go there, never in '
+        f'another specialist\'s), the decision-blocking uncertainty, the levers and genes '
+        f'in question, and about {per_q} queries. Each says: check `datasets list` before '
+        f'fetching a series, because a sibling may have registered it already; and report '
+        f'— not pursue — what belongs to another specialist.')
+    after = (
+        f'\n- **When the bioinformatics specialists have replied**, reconcile them '
+        f'yourself; that is the point of asking several. Where two kinds of data agree on '
+        f'a lever (a transcript and its protein, a marker and a cluster, an open promoter '
+        f'and its expression), say so: independent lines raise confidence. Where they '
+        f'disagree, record it with the context difference that may explain it, never an '
+        f'average. Send each dataset any specialist registered to `analyst`. A '
+        f'specialist that has not answered within its minutes is left out and recorded '
+        f'as a limitation.')
+    return dispatch, after
+
+
 def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None, workspace=None):
     """The message an Omnigent session receives, with the request embedded as JSON.
 
@@ -468,6 +609,7 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None,
     project = PJ.load(req['project_id'], projects_dir)
     budget = EFFORT[req.get('effort') or DEFAULT_EFFORT]
     lit_dispatch, lit_after = _literature_plan(req, project, loop_dir, budget)
+    bio_dispatch, bio_after = _bioinformatics_plan(req, project, loop_dir, budget)
     purpose_section = ''
     if req.get('purpose') == 'process_reference':
         purpose_section = f"""## This run builds the process reference
@@ -694,9 +836,8 @@ on a question ends the run with nothing to show. So:
 - Where you would have asked, decide what you can from the request, write the
   question down as an **open question** with the assumption you made instead,
   and carry on. Missing context is a limitation to report, never a reason to stop.
-- **Your first substantive action is a dispatch.** {lit_dispatch} — and the
-  bioinformatics agent its own (`agent: "bioinformatics"`, `title:
-  "bioinformatics-it1"`) in the same response, so they run in parallel. Then end
+- **Your first substantive action is a dispatch.** {lit_dispatch} — and
+  {bio_dispatch} Then end
   your turn; the inbox wakes you with their answers.
 - Only end the run once the files below are written, or once you have written
   down why they could not be.
@@ -709,7 +850,7 @@ on a question ends the run with nothing to show. So:
   agent that extracts and cites the claims. Do not run literature or web
   searches yourself; send the question to `literature`.{lit_after}
 - Gene and dataset questions go to `bioinformatics`: annotation, finding
-  public data and registering it.
+  public data and registering it.{bio_after}
 - **Analysing a dataset goes to `analyst`** (`agent: "analyst"`, title
   `analyst-<dataset>`), once a dataset is registered (one `bioinformatics`
   fetched, or one the person named): give it the dataset id(s), the question,

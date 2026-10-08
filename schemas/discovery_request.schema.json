@@ -206,6 +206,29 @@
       ],
       "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards — faster on the literature phase, more of the model allowance, and the orchestrator must reconcile the stages."
     },
+    "bioinformatics_mode": {
+      "enum": [
+        "single",
+        "by_modality",
+        "by_stage"
+      ],
+      "description": "single: one bioinformatics agent (the default). by_modality: one specialist per kind of data (transcriptomics, single-cell, flow cytometry, proteomics, epigenomics), in parallel. by_stage: one specialist per process stage, in parallel. The specialists share the dataset registry; the orchestrator reconciles them."
+    },
+    "bioinformatics_specialists": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 5,
+      "items": {
+        "enum": [
+          "transcriptomics",
+          "single_cell",
+          "cytometry",
+          "proteomics",
+          "epigenomics"
+        ]
+      },
+      "description": "The specialisms a by_modality run dispatches; empty for any other mode."
+    },
     "purpose": {
       "enum": [
         "discovery",
