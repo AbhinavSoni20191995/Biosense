@@ -85,5 +85,23 @@ class AgentAndFormTests(unittest.TestCase):
         self.assertIn('bioinformatics_mode:', js)
 
 
+
+class FoldTableTests(unittest.TestCase):
+    def test_analyses_and_the_round_plan_are_tables_whose_rows_open(self):
+        js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
+        self.assertIn('function foldTable', js)
+        self.assertIn('function analysisTable', js)
+        self.assertIn("host.append(analysisTable(bio))", js)
+        rp = js[js.index('function renderRoundPlan'):js.index('function runTheRound')]
+        self.assertIn("'What this round settles'", rp)
+        self.assertIn("'Then the next run'", rp)
+        self.assertIn("'Differs from control in'", rp)
+        self.assertNotIn('What the next run does with each outcome', rp,
+                         'the outcome rules sit inside their unknown, not in a long list')
+        self.assertNotIn('innerHTML', js[js.index('function foldTable'):js.index('function renderBioInsights')])
+        css = (K.ROOT / 'webapp' / 'brand.css').read_text()
+        self.assertIn('.ft tr.ft-detail', css)
+        self.assertIn('#roundInsights,#bioInsights{font-size:13px', css)
+
 if __name__ == '__main__':
     unittest.main()

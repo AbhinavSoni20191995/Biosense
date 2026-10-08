@@ -490,7 +490,7 @@ class DiscoveryRun:
                               'why': doc.get('why_requested'),
                               'decision_relevance': doc.get('decision_relevance')})
             elif f.name.startswith('analysis_result') and not K.schema_errors('analysis_result', doc):
-                results.append({'analysis_id': doc.get('analysis_id'),
+                results.append({'analysis_id': doc.get('analysis_id'), 'file': f.name,
                                 'plan_ref': doc.get('plan_ref'),
                                 'question': doc.get('question'),
                                 'source': doc.get('source_evidence_class'),
@@ -500,7 +500,7 @@ class DiscoveryRun:
             elif f.name.startswith('interpretation') and \
                     not K.schema_errors('analysis_interpretation', doc):
                 interps.append({k: doc.get(k) for k in (
-                    'question', 'what_it_shows', 'meaning_for_process', 'transfer',
+                    'analysis_ref', 'question', 'what_it_shows', 'meaning_for_process', 'transfer',
                     'confidence', 'confidence_claimed', 'confidence_capped_by',
                     'confidence_reason', 'confirm_with', 'recommendation', 'caveats')})
             elif f.name == 'agent_analysis.json' and not K.schema_errors('agent_analysis', doc):

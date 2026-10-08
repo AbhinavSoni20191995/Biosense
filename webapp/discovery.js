@@ -829,6 +829,51 @@ function findingLine(f) {
   return box;
 }
 
+/* A compact table whose rows open: each row is one line a reader can scan, and
+   clicking it (or Enter on it) unfolds the full text beneath, across the table.
+   rows: [{cells: [text|Node], detail: Node|null, key}] — open rows are remembered. */
+function foldTable(headers, rows, cls) {
+  const t = el('table', 'ft' + (cls ? ' ' + cls : ''));
+  const hr = el('tr'); hr.append(el('th', 'ft-car'));
+  headers.forEach(h => hr.append(el('th', null, h)));
+  t.append(hr);
+  rows.forEach(r => {
+    const tr = el('tr', 'ft-row');
+    const car = el('td', 'ft-car', r.detail ? '▸' : '');
+    tr.append(car);
+    r.cells.forEach(c => {
+      const td = el('td');
+      if (c instanceof Node) td.append(c); else td.textContent = c == null ? '' : String(c);
+      tr.append(td);
+    });
+    t.append(tr);
+    if (!r.detail) return;
+    const dr = el('tr', 'ft-detail');
+    const td = el('td'); td.colSpan = headers.length + 1; td.append(r.detail);
+    dr.append(td); t.append(dr);
+    const set = open => { dr.hidden = !open; car.textContent = open ? '▾' : '▸';
+      tr.classList.toggle('open', open); tr.setAttribute('aria-expanded', String(open)); };
+    set(r.key ? rememberedOpen(r.key, false) : false);
+    tr.tabIndex = 0;
+    const toggle = () => { const open = dr.hidden; set(open); if (r.key) rememberOpen(r.key, open); };
+    tr.addEventListener('click', toggle);
+    tr.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  });
+  return t;
+}
+function kv(label, text, cls) {
+  if (text == null || text === '' || (Array.isArray(text) && !text.length)) return null;
+  const d = el('div', 'ft-kv' + (cls ? ' ' + cls : ''));
+  d.append(el('span', 'ft-k', label));
+  if (text instanceof Node) d.append(text); else d.append(el('span', null, String(text)));
+  return d;
+}
+function appendAll(host, nodes) { nodes.filter(Boolean).forEach(n => host.append(n)); return host; }
+function oneLine(f) {
+  if (typeof f === 'string' && f.trim().startsWith('{')) { try { f = JSON.parse(f); } catch (_) { /* text */ } }
+  return typeof f === 'string' ? f : (f && (f.finding || f.statement || f.summary)) || '';
+}
+
 function renderBioInsights(bio) {
   const host = $('#bioInsights'); if (!host) return;
   const key = JSON.stringify(bio || null);
@@ -849,60 +894,92 @@ function renderBioInsights(bio) {
     if (sp.text) renderNotes(body, sp.text, 'bio-' + sp.name);
     host.append(d);
   });
-  (bio.plans || []).forEach(p => {
-    const row = el('div', 'm');
-    row.append(el('span', 'tag', 'PLANNED'), ' ', el('b', null, p.question || p.plan_id));
-    const bits = [p.tool && `tool ${p.tool}`, (p.datasets || []).length && `data ${p.datasets.join(', ')}`,
-      p.analysis_type].filter(Boolean);
-    if (bits.length) row.append(el('div', 'dim', bits.join(' · ')));
-    if (p.uncertainty) row.append(el('div', 'dim', 'Settles: ' + p.uncertainty));
-    host.append(row);
-  });
-  (bio.results || []).forEach(r => {
-    const row = el('div', 'm');
-    row.append(el('span', 'tag', 'RESULT'), ' ', el('b', null, r.question || r.analysis_id));
-    if (r.source) row.append(el('span', 'dim', `  from ${r.source}${r.confidence ? ' · ' + r.confidence : ''}`));
-    (r.key_findings || []).forEach(f => row.append(findingLine(f)));
-    host.append(row);
-  });
-  (bio.agent_analyses || []).forEach(r => {
-    const row = el('div', 'm');
-    row.append(el('span', 'tag warn', 'AGENT-WRITTEN'), ' ', el('b', null, r.question || r.analysis_id));
-    if (!r.succeeded) row.append(el('div', 'dim', 'Did not run: ' + (r.problem || 'unknown')));
-    if (r.method) row.append(el('div', 'dim', r.method));
-    (r.findings || []).forEach(f => row.append(findingLine(f)));
-    row.append(el('div', 'dim', 'A script the analyst wrote, run here; its confidence is capped at low.'));
-    host.append(row);
-  });
-  /* The analyst's reading: what the result means here, and how far it carries. */
-  (bio.interpretations || []).forEach(i => {
-    const row = el('div', 'm interp');
-    row.append(el('span', 'tag', 'INTERPRETATION'), ' ', el('b', null, i.question || ''));
-    const top = el('div', 'confhead');
-    const level = i.confidence || 'low';
-    top.append(miniBar(level), el('span', 'conf ' + level, level + ' confidence'));
-    if (i.confidence_claimed && i.confidence_claimed !== i.confidence) {
-      top.append(el('span', 'dim', ` (claimed ${i.confidence_claimed}; capped: ${(i.confidence_capped_by || []).join('; ')})`));
-    }
-    row.append(top);
-    if (i.what_it_shows) row.append(el('div', null, 'Shows: ' + i.what_it_shows));
-    if (i.meaning_for_process) row.append(el('div', null, 'For this process: ' + i.meaning_for_process));
-    const tr = i.transfer || {};
-    row.append(el('div', 'dim', `Transfer — cells ${tr.cells}, stage ${tr.stage}, treatment ${tr.treatment}`
-      + (tr.species ? `, ${tr.species}` : '') + (tr.notes ? ` (${tr.notes})` : '')));
-    if (i.recommendation) row.append(el('div', null, 'Recommends: ' + i.recommendation));
-    if (i.confirm_with) row.append(el('div', 'dim', 'Would confirm it: ' + i.confirm_with));
-    host.append(row);
-  });
-  if (!(bio.plans || []).length && !(bio.results || []).length
-      && !(bio.interpretations || []).length && !(bio.agent_analyses || []).length) {
-    host.append(el('p', 'dim', 'No analysis planned yet.'));
-  }
+  host.append(analysisTable(bio));
   if (bio.notes) {
     host.append(el('div', 'lab', 'Running notes'));
     const notes = el('div', 'insights'); host.append(notes);
     renderNotes(notes, bio.notes.text, 'bio');
   }
+}
+
+/* Every analysis on one line: what it asks, on which data, where it stands,
+   what it found and how far that carries. Open a row for the uncertainty it
+   settles, the findings, the analyst's reading and its caveats. A plan, its
+   result and the interpretation of that result are joined by their ids. */
+function analysisTable(bio) {
+  const results = bio.results || [], interps = bio.interpretations || [];
+  const usedR = new Set(), usedI = new Set();
+  const interpFor = r => {
+    // analysis_ref is the result's id or the path of its file.
+    const ref = i => String(i.analysis_ref || '').split('/').pop();
+    const k = interps.findIndex((i, n) => !usedI.has(n) && ((r.analysis_id && ref(i) === r.analysis_id)
+      || (r.file && ref(i) === r.file) || (!i.analysis_ref && i.question && i.question === r.question)));
+    if (k < 0) return null; usedI.add(k); return interps[k];
+  };
+  const items = [];
+  (bio.plans || []).forEach(p => {
+    const k = results.findIndex((r, n) => !usedR.has(n) && r.plan_ref && r.plan_ref === p.plan_id);
+    const r = k >= 0 ? (usedR.add(k), results[k]) : null;
+    items.push({ p, r, i: r ? interpFor(r) : null });
+  });
+  results.forEach((r, n) => { if (!usedR.has(n)) items.push({ p: null, r, i: interpFor(r) }); });
+  (bio.agent_analyses || []).forEach(a => items.push({ a }));
+  interps.forEach((i, n) => { if (!usedI.has(n)) items.push({ i }); });
+  if (!items.length) return el('p', 'dim', 'No analysis planned yet.');
+
+  const rows = items.map(({ p, r, i, a }, n) => {
+    const q = (p && p.question) || (r && r.question) || (a && a.question) || (i && i.question) || '—';
+    const data = p ? [(p.datasets || []).join(', '), p.tool].filter(Boolean).join(' · ')
+      : a ? 'agent-written script' : r && r.source ? r.source : '';
+    let status, cls;
+    if (a) { status = a.succeeded ? 'script' : 'failed'; cls = a.succeeded ? 'warn' : 'gap'; }
+    else if (i) { status = 'read'; cls = 'reported'; }
+    else if (r) { status = 'done'; cls = 'reported'; }
+    else { status = 'planned'; cls = ''; }
+    const headline = a ? (a.succeeded ? oneLine((a.findings || [])[0]) : a.problem || '')
+      : i && i.what_it_shows ? i.what_it_shows : r ? oneLine((r.key_findings || [])[0]) : '';
+    const conf = (i && i.confidence) || (r && r.confidence) || (a && a.succeeded ? 'low' : '');
+    const confNode = conf ? el('span', 'conf ' + conf, conf) : '';
+
+    const d = el('div', 'ft-body');
+    if (p) appendAll(d, [kv('Settles', p.uncertainty), kv('Why', p.why), kv('Decision', p.decision_relevance),
+      kv('Analysis', [p.analysis_type, p.tool].filter(Boolean).join(' · ')),
+      kv('Data', (p.datasets || []).join(', '))]);
+    if (r) {
+      if ((r.key_findings || []).length) {
+        const f = el('div'); r.key_findings.forEach(x => f.append(findingLine(x)));
+        d.append(kv('Found', f));
+      }
+      (r.limitations || []).forEach(l => d.append(kv('Limitation', l, 'dim')));
+    } else if (p) d.append(kv('Result', 'not run yet', 'dim'));
+    if (a) {
+      appendAll(d, [kv('Method', a.method), a.succeeded ? null : kv('Problem', a.problem)]);
+      if ((a.findings || []).length) { const f = el('div'); a.findings.forEach(x => f.append(findingLine(x))); d.append(kv('Found', f)); }
+      d.append(el('div', 'dim', 'A script the analyst wrote, run here; its confidence is capped at low.'));
+    }
+    if (i) {
+      const tr = i.transfer || {};
+      appendAll(d, [kv('Shows', i.what_it_shows), kv('For this process', i.meaning_for_process),
+        kv('Recommends', i.recommendation),
+        kv('Transfer', `cells ${tr.cells}, stage ${tr.stage}, treatment ${tr.treatment}`
+          + (tr.species ? `, ${tr.species}` : '') + (tr.notes ? ` (${tr.notes})` : ''), 'dim'),
+        i.confidence_claimed && i.confidence_claimed !== i.confidence
+          ? kv('Confidence', `claimed ${i.confidence_claimed}; capped by ${(i.confidence_capped_by || []).join('; ')}`, 'dim') : null,
+        kv('Would confirm it', i.confirm_with, 'dim'),
+        kv('Caveats', (i.caveats || []).join('; '), 'dim')]);
+    }
+    const qc = el('div'); qc.append(el('span', 'clip', q));
+    if (data) qc.append(el('div', 'ft-sub', data));
+    return { cells: [qc, el('span', 'tag ' + cls, status),
+      el('span', 'clip', headline || '—'), confNode], detail: d.childNodes.length ? d : null,
+      key: 'an:' + ((p && p.plan_id) || (r && r.analysis_id) || (a && a.analysis_id) || n) };
+  });
+  const t = foldTable(['Analysis', 'Status', 'Result', 'Conf.'], rows, 'ft-an');
+  const box = el('div');
+  box.append(el('p', 'ft-note', 'Status: planned → done (the tool ran) → read (the analyst '
+    + 'interpreted it, confidence capped). Open a row for what it settles, what it found and '
+    + 'what it means here.'), t);
+  return box;
 }
 
 /* Wild type against the engineered line the run asked about, as the agents ran
@@ -919,34 +996,63 @@ function renderRoundPlan(p, snap) {
   planSeen = key;
   host.textContent = '';
   host.append(el('p', null, p.purpose || ''));
-  (p.unknowns || []).forEach(u => {
-    const row = el('div', 'm');
-    row.append(el('span', 'tag', u.id), ' ', el('b', null, u.question));
-    row.append(el('div', 'dim', 'Unresolved because: ' + u.why_unresolved));
-    if ((u.levers || []).length) row.append(el('div', 'dim', 'Levers: ' + u.levers.join(', ')));
-    host.append(row);
-  });
-  const levers = [...new Set((p.arms || []).flatMap(a => Object.keys(a.setpoints || {})))];
-  const t = el('table', 'rp-arms');
-  const hr = el('tr'); ['Arm', ...levers, 'Basis'].forEach(h => hr.append(el('th', null, h)));
-  t.append(hr);
-  (p.arms || []).forEach(a => {
-    const tr = el('tr');
-    tr.append(el('td', null, `${a.arm_id} ${a.label}${a.control ? ' (control)' : ''}`));
-    levers.forEach(l => tr.append(el('td', null, a.setpoints && l in a.setpoints
-      ? String(a.setpoints[l]) + ' [D]' : (a.control ? 'current' : '—'))));
-    tr.append(el('td', 'dim', a.basis || ''));
-    t.append(tr);
-  });
-  host.append(t);
-  host.append(el('div', 'dim', `${p.replicates} replicate(s) per arm. Measure: `
-    + (p.readouts || []).map(r => `${r.name} (${r.unit}, ${r.when})`).join('; ')));
-  const rules = el('div', 'm');
-  rules.append(el('b', null, 'What the next run does with each outcome'));
-  (p.decision_rules || []).forEach(r => rules.append(
-    el('div', null, `• ${r.unknown}: if ${r.if} → ${r.then}`)));
-  host.append(rules);
-  (p.limitations || []).forEach(l => host.append(el('div', 'dim', 'Limitation: ' + l)));
+  const arms = p.arms || [], rules = p.decision_rules || [];
+  const armIds = arms.map(a => a.arm_id);
+  // Which arms a rule speaks about, from its own words ("if A1 raises … over A0").
+  const armsIn = text => armIds.filter(id => new RegExp(`\\b${id}\\b`).test(text || ''));
+  const control = arms.find(a => a.control) || {};
+  const fmt = v => v == null ? '—' : String(v);
+
+  /* The unknowns, each opening to what the next run does with every outcome. */
+  host.append(el('div', 'lab', 'What this round settles'));
+  host.append(foldTable(['Unknown', 'Arms', 'Outcomes'], (p.unknowns || []).map(u => {
+    const mine = rules.filter(r => r.unknown === u.id);
+    const tested = [...new Set(mine.flatMap(r => armsIn(`${r.if} ${r.then}`)))];
+    const d = el('div', 'ft-body');
+    appendAll(d, [kv('Unresolved because', u.why_unresolved), kv('Levers', (u.levers || []).join(', '))]);
+    if (mine.length) {
+      const rt = el('table', 'ft-rules');
+      const hr = el('tr'); hr.append(el('th', null, 'If'), el('th', null, 'Then the next run'));
+      rt.append(hr);
+      mine.forEach(r => { const tr = el('tr'); tr.append(el('td', null, r.if), el('td', null, r.then)); rt.append(tr); });
+      d.append(rt);
+    }
+    const name = el('span'); name.append(el('span', 'tag', u.id), ' ', el('span', 'clip', u.question));
+    return { cells: [name, tested.join(', ') || '—', mine.length ? `${mine.length} rule(s)` : 'none'],
+      detail: d, key: `rp:${p.commitment_sha256 || ''}:${u.id}` };
+  }), 'ft-rp'));
+
+  /* The arms: only what differs from the control on the line; open for what the
+     arm does and every setpoint. Identical columns are noise, not information. */
+  const levers = [...new Set(arms.flatMap(a => Object.keys(a.setpoints || {})))];
+  host.append(el('div', 'lab', `Arms · ${p.replicates} replicate(s) each`));
+  host.append(foldTable(['Arm', 'Differs from control in', 'Tests'], arms.map(a => {
+    const sp = a.setpoints || {}, csp = control.setpoints || {};
+    const diff = a.control ? [] : levers.filter(l => l in sp && fmt(sp[l]) !== fmt(csp[l]));
+    const tests = [...new Set(rules.filter(r => armsIn(`${r.if} ${r.then}`).includes(a.arm_id)).map(r => r.unknown))];
+    const d = el('div', 'ft-body');
+    d.append(kv('What it does', a.basis || (a.control ? 'The current process, unchanged: every other arm is compared with it.' : '')));
+    if (Object.keys(sp).length) {
+      const chips = el('div', 'ft-chips');
+      Object.entries(sp).forEach(([k, v]) => chips.append(el('span', 'chip' + (diff.includes(k) ? ' on' : ''), `${k} ${fmt(v)} [D]`)));
+      d.append(kv('Setpoints', chips));
+    }
+    const label = el('span'); label.append(el('b', null, a.arm_id), ' ', el('span', 'clip',
+      a.label + (a.control && !/control/i.test(a.label) ? ' (control)' : '')));
+    return { cells: [label,
+      a.control ? 'the reference' : diff.length ? diff.map(l => `${l} ${fmt(sp[l])}`).join(', ')
+        : el('span', 'dim', 'no registered setpoint — see what it does'),
+      tests.join(', ') || '—'], detail: d, key: `arm:${p.commitment_sha256 || ''}:${a.arm_id}` };
+  }), 'ft-rp'));
+  const meas = el('div', 'ft-chips');
+  (p.readouts || []).forEach(r => meas.append(el('span', 'chip', `${r.name} · ${r.unit} · ${r.when}`)));
+  host.append(kv('Measure', meas));
+  if ((p.limitations || []).length) {
+    const lim = el('details', 'ins-sub');
+    lim.append(el('summary', null, `Limitations (${p.limitations.length})`));
+    p.limitations.forEach(l => lim.append(el('div', 'dim', l)));
+    host.append(lim);
+  }
   host.append(el('p', 'dim', (p.status || '') + ' Rules fixed before any result existed'
     + (p.commitment_sha256 ? ` (sha256 ${p.commitment_sha256.slice(0, 12)}…)` : '') + '. '
     + 'When you have results, use "Follow up with results" on this run.'));
