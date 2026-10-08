@@ -1255,8 +1255,17 @@ class DiscoveryRegistry:
                      'technical': str(e)})
             run.finish('refused', None, str(e), reason='refused')
         except Exception as e:  # noqa: BLE001
+            # Name the error where the person sees it, and keep the traceback
+            # beside the run's files: "unexpected error" alone cannot be fixed.
+            import traceback
+            try:
+                (run.out_dir / 'error.log').write_text(traceback.format_exc(), encoding='utf-8')
+            except OSError:
+                pass
             run.add({'kind': 'error', 'stage': 'failed',
-                     'simple': 'The run hit an unexpected error.',
+                     'simple': f'The run hit an unexpected error in BioSense: '
+                               f'{type(e).__name__}: {str(e)[:200]}. Whatever the agents wrote '
+                               f'is kept in the run directory (traceback in error.log).',
                      'technical': f'{type(e).__name__}: {e}'})
             run.finish('error', None, f'{type(e).__name__}: {e}', reason='internal_error')
         finally:

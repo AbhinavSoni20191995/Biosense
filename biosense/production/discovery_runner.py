@@ -306,13 +306,37 @@ def read_design_choices(out_dir, project):
             continue
         if K.schema_errors('design_choices', doc):
             try:
-                doc = DC.build({'choices': (doc or {}).get('choices')}, project=project)
-            except K.ContractError as e:
+                rows = doc.get('choices') if isinstance(doc, dict) else doc
+                doc = DC.build({'choices': rows}, project=project)
+            except (K.ContractError, KeyError, TypeError, ValueError, AttributeError) as e:
                 why_not.append(f'{f.name} was not used: {str(e)[:300]}')
                 continue
         for pid, c in DC.by_parameter(doc).items():
             choices.setdefault(pid, c)
     return choices, why_not
+
+
+def _design(out_dir, project, why_not):
+    choices, problems = read_design_choices(out_dir, project)
+    why_not.extend(problems)
+    return choices
+
+
+def _guarded(out_dir, why_not, what, fallback, fn):
+    """fn(), or `fallback` with the failure recorded as a limitation and its
+    traceback kept in the run directory (finish_errors.log) for whoever fixes it."""
+    try:
+        return fn()
+    except Exception as e:  # noqa: BLE001 — a part failing must not lose the run
+        import traceback
+        why_not.append(f'BioSense could not assemble {what} ({type(e).__name__}: '
+                       f'{str(e)[:200]}); the rest of the run is kept.')
+        try:
+            with open(Path(out_dir) / 'finish_errors.log', 'a', encoding='utf-8') as fh:
+                fh.write(f'--- {K.now_iso()} {what}\n{traceback.format_exc()}\n')
+        except OSError:
+            pass
+        return fallback
 
 
 def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
@@ -337,17 +361,29 @@ def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
             projects_dir=projects_dir)
     elif bundle['hypotheses']:
         # Reasoned starting values, when the run proposed any: a setpoint with a
-        # stated basis is a design choice a person approves, not a gap.
-        choices, why_not = read_design_choices(out_dir, project)
-        ensure_round_plan(out_dir, project, bundle['hypotheses'])
-        plan, ran, terms = read_round_artifacts(out_dir)
-        protocol = PS.from_bundle(
+        # stated basis is a design choice a person approves, not a gap. Each
+        # extra is assembled on its own: one that fails becomes a limitation
+        # with its reason, and the run keeps everything else it wrote.
+        why_not = []
+        choices = _guarded(out_dir, why_not, 'the design choices', {},
+                           lambda: _design(out_dir, project, why_not))
+        _guarded(out_dir, why_not, 'the round plan', None,
+                 lambda: ensure_round_plan(out_dir, project, bundle['hypotheses']))
+        plan, ran, terms = _guarded(out_dir, why_not, 'the round plan and terms',
+                                    (None, False, None), lambda: read_round_artifacts(out_dir))
+        build = lambda **extra: PS.from_bundle(
             bundle, project=project, objective=request['objective'],
             runtime_mode=runtime_mode, run_id=Path(out_dir).name,
             request_id=request['request_id'],
             research_context=request.get('research_context'), privacy=priv,
-            design_choices=choices, extra_limitations=why_not,
-            round_plan=plan, simulation_ran=ran, proposed_terms=terms)
+            extra_limitations=why_not, **extra)
+        protocol = _guarded(out_dir, why_not, 'the protocol with its design choices and '
+                            'round plan', None,
+                            lambda: build(design_choices=choices, round_plan=plan,
+                                          simulation_ran=ran, proposed_terms=terms))
+        if protocol is None:
+            # The plain protocol, from the hypotheses alone, is still the run's answer.
+            protocol = build(design_choices={})
     if protocol is not None:
         K.write_json_atomic(Path(out_dir) / 'protocol_summary.json', protocol)
         (Path(out_dir) / 'protocol_summary.md').write_text(

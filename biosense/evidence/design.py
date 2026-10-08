@@ -88,16 +88,49 @@ def choice(parameter_id, value, *, rationale, derived_from, confidence, project,
                                   f'([{c.global_min}, {c.global_max}] {q.unit}).{hint}')
     rng = None
     if range_:
-        lo, hi = float(range_['lower']), float(range_['upper'])
-        rng = {'lower': min(lo, hi), 'upper': max(lo, hi)}
+        rng = _range(range_)
     return {'parameter_id': pid, 'label': q.label, 'unit': unit or q.unit, 'value': v,
             'range': rng, 'rationale': rationale.strip(), 'derived_from': refs,
             'confidence': confidence, 'context_note': context_note,
             'would_settle_it': would_settle_it, 'risk_if_wrong': risk_if_wrong}
 
 
+# Spellings of one unit. Only names, never a conversion: "% O2" is not a
+# fraction, and stays a unit the agent has to convert and say so.
+UNIT_SYNONYMS = {
+    'hours': 'h', 'hour': 'h', 'hrs': 'h', 'hr': 'h',
+    'days': 'd', 'day': 'd', 'minutes': 'min', 'minute': 'min', 'mins': 'min',
+    'fractionofworkingvolume': 'fractionofvolume', 'fractionofthevolume': 'fractionofvolume',
+    'revolutionsperminute': 'rpm', 'rev/min': 'rpm', 'r/min': 'rpm',
+    'degc': 'degc', 'celsius': 'degc', 'degreescelsius': 'degc', 'c': 'degc',
+    'cells/ml': 'cells/ml', 'cellsperml': 'cells/ml',
+}
+
+
 def _unit(u):
-    return ''.join(str(u).lower().split()).replace('µ', 'u').replace('°', 'deg')
+    k = ''.join(str(u).lower().split()).replace('µ', 'u').replace('°', 'deg')
+    return UNIT_SYNONYMS.get(k, k)
+
+
+def _range(r):
+    """{'lower', 'upper'} from the shapes agents write: lower/upper, low/high,
+    min/max, or a two-number list. Anything else is refused by name."""
+    if isinstance(r, (list, tuple)) and len(r) == 2:
+        lo, hi = r
+    elif isinstance(r, dict):
+        pair = next(((r[a], r[b]) for a, b in (('lower', 'upper'), ('low', 'high'),
+                                                ('min', 'max'), ('from', 'to'))
+                     if a in r and b in r), None)
+        if pair is None:
+            raise K.ContractError(f'a range is {{"lower": …, "upper": …}}; got {r!r}')
+        lo, hi = pair
+    else:
+        raise K.ContractError(f'a range is {{"lower": …, "upper": …}}; got {r!r}')
+    try:
+        lo, hi = float(lo), float(hi)
+    except (TypeError, ValueError):
+        raise K.ContractError(f'a range needs two numbers; got {r!r}') from None
+    return {'lower': min(lo, hi), 'upper': max(lo, hi)}
 
 
 def build(draft, *, project, run_id=None, created_by='orchestrator'):
