@@ -477,7 +477,9 @@ _REP_MARKED = re.compile(r'^(?P<rest>.*?)'
                          r'(?:(?:^|[\s_\-,;:/|()#]+)(?:n|r|rep|repl|replicate|biorep|br)'
                          r'|(?:rep|replicate))[\s_\-.#]*(?P<n>\d{1,2})[\s)\]]*$', re.I)
 _REP_PLAIN = re.compile(r'^(?P<rest>.*?)[\s_,;:/|()#]+(?P<n>\d{1,2})[\s)\]]*$')
-_CHUNK_SPLIT = re.compile(r'[\s_,;/|()\[\]{}:+=#&]+')
+# A dot separates too (R's make.names writes `Control.DMSO.PA.2b`), except
+# between digits, where it is a decimal point (`0.5uM`).
+_CHUNK_SPLIT = re.compile(r'(?:[\s_,;/|()\[\]{}:+=#&]|(?<!\d)\.|\.(?!\d))+')
 
 
 def split_replicate(text):
@@ -935,7 +937,44 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
                          'logcpm': f'{v:.5f}'})
     return rows, {'samples_per_group': groups, 'genes_in_table': len(picked),
                   'genes_missing': missing, 'samples_used': [g for _, g, _ in chosen],
-                  'values_of_condition_key': present}
+                  'values_of_condition_key': present,
+                  'confounded': confounded_fields(by_gsm, chosen, condition_key, keep)}
+
+
+# Fields that, when they split exactly along the contrast, mean a difference
+# may be the donor, line or batch rather than the condition (compared with _norm).
+CONFOUND_KEYS = REPLICATE_KEYS | frozenset((
+    'cellline', 'line', 'clone', 'ipscline', 'background', 'plate', 'flowcell', 'sex',
+    'gender', 'age', 'passage', 'batchid', 'experiment', 'date', 'operator'))
+
+
+def confounded_fields(by_gsm, chosen, condition_key, keep):
+    """Each characteristic that takes one value per group and a different one in
+    every group: the contrast cannot tell it from the condition. Pure.
+
+    -> [{'field', 'values': {group: value}, 'statement'}]. A field with several
+    values inside a group, or the same value in two groups, is not confounded.
+    """
+    skip = {_norm(condition_key)} | {_norm(k) for k in (keep or {})}
+    per = {}
+    for _, gsm, cond in chosen:
+        for k, v in (by_gsm[gsm].get('characteristics') or {}).items():
+            if _norm(k) in CONFOUND_KEYS and _norm(k) not in skip and v:
+                per.setdefault(k, {}).setdefault(cond, set()).add(v)
+    out = []
+    groups = {c for _, _, c in chosen}
+    for k, by_group in per.items():
+        if set(by_group) != groups or any(len(v) != 1 for v in by_group.values()):
+            continue
+        values = {g: next(iter(v)) for g, v in by_group.items()}
+        if len(set(values.values())) != len(values):
+            continue
+        out.append({'field': k, 'values': values, 'statement': (
+            f'{k!r} is perfectly confounded with the contrast ('
+            + ', '.join(f'{g}: {v}' for g, v in sorted(values.items()))
+            + f'): a difference between the groups may be the {k}, not the condition. '
+              f'Say so with any result from this dataset.')})
+    return out
 
 
 def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
@@ -1077,7 +1116,8 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
                    f'and route: {weight["confidence_ceiling"]}'),
             extra_limitations=([weight['note']] if weight['note'] else [])
             + column_limitations(read)
-            + ([read['symbols_warning']] if read.get('symbols_warning') else []),
+            + ([read['symbols_warning']] if read.get('symbols_warning') else [])
+            + [c['statement'] for c in stats.get('confounded') or []],
             overwrite=overwrite)
     return {'dataset_id': did, 'accession': acc, 'table': str(table),
             'samples_table': str(sample_tsv), 'organism': organism, 'route': route,

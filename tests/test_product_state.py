@@ -220,6 +220,29 @@ class ActivityTests(unittest.TestCase):
             a.observe({'at': at, 'kind': 'tool_result', 'tool': 'bash', 'technical': refused})
         self.assertEqual(1, len(a.snapshot()['limitations']), 'the same refusal is one card')
 
+    def test_an_agent_s_own_slip_is_a_note_not_a_limitation(self):
+        """Two cards a live run showed: a shell outside the workspace, and the
+        agent's own inline script failing. Neither is about the data."""
+        wrong_dir = json.dumps({'stdout': '', 'exit_code': 127,
+                                'stderr': '/usr/bin/bash: line 1: .venv/bin/python: '
+                                          'No such file or directory'})
+        scratch = json.dumps({'stdout': '', 'exit_code': 1, 'stderr':
+                              'Traceback (most recent call last):\n  File "<string>", line 7, '
+                              "in <module>\nAttributeError: 'str' object has no attribute 'get'"})
+        tool_crash = json.dumps({'stdout': '', 'exit_code': 1, 'stderr':
+                                 'Traceback (most recent call last):\n  File "<string>", line 1, '
+                                 'in <module>\n  File "/app/biosense/data/registry.py", line 9\n'
+                                 'ValueError: bad manifest'})
+        a = ACT.Activity(started_at=0)
+        for at, t in enumerate((wrong_dir, scratch, tool_crash), 1):
+            a.observe({'at': at, 'kind': 'tool_result', 'tool': 'bash', 'technical': t})
+        snap = a.snapshot()
+        self.assertEqual(1, len(snap['limitations']), 'a BioSense tool failing still counts')
+        self.assertIn('bad manifest', snap['limitations'][0]['text'])
+        slips = [r['text'] for r in snap['timeline'] if r['kind'] == 'agent_slip']
+        self.assertEqual(2, len(slips))
+        self.assertIn("'str' object has no attribute 'get'", slips[1])
+
     def test_a_failed_specialist_says_why_as_a_limitation(self):
         a = ACT.Activity(started_at=0)
         a.observe({'at': 5, 'kind': 'subagent', 'agent': 'literature', 'state': 'failed',

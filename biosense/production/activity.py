@@ -76,6 +76,15 @@ REFUSAL_RE = re.compile(
 WORKSPACE_BOUNDARY_RE = re.compile(
     r'is blocked: path is outside the environment root|no sandbox read grant', re.I)
 
+# An agent's own slip, not the data's: a shell that started outside the
+# workspace (so `.venv/bin/python` is not there), or a throwaway script the
+# agent wrote inline (`python -c` / a heredoc, whose frames are "<string>" or
+# "<stdin>") failing on its own code. The agent retries from the right place;
+# showing either as a limitation of the analysis misleads the reader.
+WRONG_DIR_RE = re.compile(r'\.venv/bin/python: No such file or directory|'
+                          r'agent_tools\.py\W+No such file or directory', re.I)
+SCRATCH_CODE_RE = re.compile(r'File "<(string|stdin)>"')
+
 MAX_TIMELINE = 300
 MAX_LIMITATIONS = 60
 MAX_ARTIFACTS = 40
@@ -352,6 +361,18 @@ class Activity:
             self._note(at, 'workspace', 'An agent tried to open a file outside the workspace '
                        '(a scratch file); it carries on from the run directory. Not a '
                        'limitation of the analysis.')
+            return
+        if WRONG_DIR_RE.search(text):
+            self._note(at, 'agent_slip', 'An agent ran a command outside the workspace, where '
+                       'the tools are not found; it retries from the workspace root. Not a '
+                       'limitation of the analysis.')
+            return
+        if SCRATCH_CODE_RE.search(text) and 'biosense/' not in text:
+            errors = re.findall(r'\b\w*(?:Error|Exception)\b:[^\n]*', text)
+            self._note(at, 'agent_slip', 'A helper script the agent wrote for itself failed ('
+                       + _short(errors[-1] if errors else text.strip()[-120:], 120)
+                       + '). That is the agent\'s own code, not a BioSense tool or the data. '
+                       'Not a limitation of the analysis.')
             return
         text = _short(text, cap)
         if any(row['text'] == text for row in self.limitations):

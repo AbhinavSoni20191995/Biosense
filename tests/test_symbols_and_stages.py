@@ -73,6 +73,55 @@ class SymbolCoverageTests(Sandbox):
             self.fetch(served, 'MAFB', 'MAF')
 
 
+class DepositorTableTests(unittest.TestCase):
+    """GSE327431 in a live run: dotted headers naming the donor where GEO titles name
+    the group, a donor confounded with the group, and a sample count of 50000."""
+
+    def samples(self):
+        rows, i = [], 0
+        for grp, donor in (('Control', 'PEN8E'), ('LCA1', 'PEN1B')):
+            for tr in ('DMSO', 'Halo'):
+                for oid in ('PA.2b', 'PA.3a', 'PB.1c'):
+                    i += 1
+                    rows.append({'gsm': f'GSM{i}', 'title': f'{grp}.{tr}.{oid}',
+                                 'source': 'retinal organoid',
+                                 'characteristics': {'donor': donor, 'group': f'{grp}.{tr}',
+                                                     'treatment': tr}})
+        return rows
+
+    def test_dotted_headers_naming_the_donor_map_on_their_own(self):
+        rows = self.samples()
+        donor = {'Control': 'PEN8E', 'LCA1': 'PEN1B'}
+        headers = [donor[r['title'].split('.')[0]] + r['title'][r['title'].index('.'):]
+                   for r in rows]
+        got = GF.suggest_column_map(headers, rows)
+        self.assertEqual({}, got['unresolved'])
+        self.assertEqual([r['gsm'] for r in rows],
+                         [got['suggested'][h]['gsm'] for h in headers])
+        self.assertIn('0.5', [t for t, _ in GF._units('ATRA.0.5.uM')], 'a decimal stays whole')
+
+    def test_a_donor_that_splits_along_the_contrast_is_flagged(self):
+        rows = self.samples()
+        gsms = [r['gsm'] for r in rows]
+        matrix = [[10.0 + j for j in range(len(gsms))] for _ in range(3)]
+        _, stats = GF.build_long_table(rows, ['A', 'B', 'C'], gsms, matrix, {},
+                                       condition_key='group', control='Control.DMSO',
+                                       treatments=['LCA1.DMSO'], keep={'treatment': 'DMSO'})
+        self.assertEqual(['donor'], [c['field'] for c in stats['confounded']])
+        self.assertIn('perfectly confounded', stats['confounded'][0]['statement'])
+
+    def test_a_long_table_counts_its_samples_not_its_rows(self):
+        from biosense.data import tables as T
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        f = d / 't.tsv'
+        f.write_text('gene\tsample_id\tcondition\tlogcpm\n' + ''.join(
+            f'G{g}\tGSM{s}\t{"a" if s < 3 else "b"}\t1.0\n' for g in range(50) for s in range(6)))
+        meta = T.describe(T.read_table(f))
+        self.assertEqual(6, meta['sample_count'])
+        self.assertEqual(300, meta['row_count'])
+
+
 class StageTests(unittest.TestCase):
     def shell(self, command):
         return ST.stage_for_tool('sys_os_shell', {'command': command})

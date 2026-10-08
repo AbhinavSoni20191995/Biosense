@@ -215,7 +215,8 @@
           "type": [
             "integer",
             "null"
-          ]
+          ],
+          "description": "Distinct samples: the sample-id column's distinct values in a long table, else the row count."
         },
         "columns": {
           "type": "array",
@@ -226,6 +227,13 @@
         "levels": {
           "type": "object",
           "description": "column -> observed distinct values"
+        },
+        "row_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Rows in a long table (one per feature and sample), when it differs from sample_count."
         }
       }
     },

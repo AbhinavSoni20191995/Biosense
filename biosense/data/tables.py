@@ -54,11 +54,7 @@ class Table:
         return self.numeric[name]
 
     def levels(self, name):
-        seen = []
-        for v in self.column(name):
-            if v not in seen:
-                seen.append(v)
-        return seen
+        return list(dict.fromkeys(self.column(name)))      # distinct, in order
 
     def where(self, name, value):
         return [i for i, r in enumerate(self.rows) if r[name] == value]
@@ -124,4 +120,14 @@ def describe(t, max_levels=24):
             continue
         vs = t.levels(c)
         levels[c] = vs if len(vs) <= max_levels else vs[:max_levels] + ['…']
-    return {'sample_count': t.n, 'columns': list(t.columns), 'levels': levels}
+    # A long table has one row per feature and sample: its samples are the
+    # distinct ids, not its rows (5000 genes x 10 samples is 10 samples).
+    sid = next((c for c in t.columns if c.lower() in SAMPLE_ID_COLUMNS), None)
+    n = len(t.levels(sid)) if sid else t.n
+    out = {'sample_count': n, 'columns': list(t.columns), 'levels': levels}
+    if sid:
+        out['row_count'] = t.n
+    return out
+
+
+SAMPLE_ID_COLUMNS = ('sample_id', 'sample', 'gsm', 'sample_name')

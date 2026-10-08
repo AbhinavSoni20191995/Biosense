@@ -554,7 +554,9 @@ def _bioinformatics_plan(req, project, loop_dir, budget):
     dispatch = (
         f'`bioinformatics` {len(shards)} tasks, one per row, all in the same response so '
         f'everything runs in parallel (the person chose **{how}**):\n{rows}\n'
-        f'  Each task names its folder (its `insights.md` and files go there, never in '
+        f'  Each task opens with the workspace sentence from "Where you are" (every shell '
+        f'command starts `cd <workspace root> && `): a specialist whose shell starts '
+        f'elsewhere finds no `.venv/bin/python`. Each names its folder (its `insights.md` and files go there, never in '
         f'another specialist\'s), the decision-blocking uncertainty, the levers and genes '
         f'in question, and about {per_q} queries. Each says: check `datasets list` before '
         f'fetching a series, because a sibling may have registered it already; and report '
