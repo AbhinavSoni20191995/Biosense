@@ -68,31 +68,38 @@ private to handle — the only safe direction for that rule to fail in.
 ## One agent, or several specialists
 
 The run form offers three ways to gather bioinformatics, as it does for the
-literature (`bioinformatics_mode` on the request):
+literature (`bioinformatics_mode` on the request). The categories are fixed
+and broad: the person picks the mode, not the specialists, so every split run
+asks the same questions and runs stay comparable.
 
-| Mode | Who works | Each writes in |
+| Mode | Specialists, in parallel |
+| --- | --- |
+| `single` (default) | one agent across everything, in `bioinformatics/` |
+| `by_analysis` | expression · phenotype · proteome · regulation |
+| `by_process` | expansion · commitment · differentiation · product |
+
+Each specialist is the same agent sent a scoped task (`ANALYSIS: <area>` or
+`PROCESS: <area>`) and writes in `bioinformatics/<area>/`.
+
+| By analysis | Modalities | Public data fetched here |
 | --- | --- | --- |
-| `single` (default) | one agent across every kind of data | `bioinformatics/` |
-| `by_modality` | one specialist per kind of data, in parallel | `bioinformatics/<specialist>/` |
-| `by_stage` | one specialist per process stage, in parallel (up to four) | `bioinformatics/<stage>/` |
+| expression | bulk_rna, single_cell_rna | GEO bulk series end to end; single-cell once registered |
+| phenotype (FACS) | flow_cytometry, cytometry_summary; identity and purity from single-cell | none; gated tables you upload |
+| proteome | proteomics, secretome | none; PRIDE deposits are named, not fetched |
+| regulation | atac_seq, chip_seq | found on GEO; called peaks once registered |
 
-The specialists are the same agent sent scoped tasks (`SPECIALIST: <name>` or
-`STAGE: <stage>`), so the rules about evidence are the same for all of them.
-What differs is the data each owns and the analyses it plans:
+| By process | Covers |
+| --- | --- |
+| expansion | iPSC growth, survival and pluripotency |
+| commitment | aggregation or EBs, germ-layer and progenitor induction |
+| differentiation | specifying and maturing the target cell |
+| product | identity, purity, viability, stress and function at harvest |
 
-| Specialist | Modalities | Analyses | Public data fetched here |
-| --- | --- | --- | --- |
-| transcriptomics | bulk_rna | expression comparison, gene-set score, pathway enrichment, combine | GEO series, end to end |
-| single_cell | single_cell_rna | identity and purity, composition, pseudobulk | found on GEO; analysed once registered |
-| cytometry (FACS) | flow_cytometry, cytometry_summary | populations, marker intensity, viability, over time | none; gated tables you upload |
-| proteomics | proteomics, secretome | protein abundance | none; PRIDE deposits are named, not fetched |
-| epigenomics | atac_seq, chip_seq | peak overlap | found on GEO; called peaks once registered |
-
-With no specialists chosen, a by-modality run sends the first four, and adds
-the specialist of any dataset the request names. They share the dataset
-registry, so a series one registers the others can use. Each keeps its own
-running notes, shown under its name on the run page. The orchestrator
-reconciles them: agreement between kinds of data raises confidence, and
+The process areas are not the project's own stages; each specialist maps the
+project's stages onto its area and says which it means. The specialists
+share the dataset registry, so a series one registers the others can use.
+Each keeps its own running notes, shown under its name on the run page. The
+orchestrator reconciles them: agreement between areas raises confidence, and
 disagreement is recorded with the context that may explain it, never averaged.
 Each specialist is another agent session, so it uses more of the model allowance.
 

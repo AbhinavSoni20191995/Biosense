@@ -89,61 +89,69 @@ LITERATURE_MODES = ('single', 'by_stage')
 DEFAULT_LITERATURE_MODE = 'single'
 MAX_STAGE_SHARDS = 4
 # How bioinformatics is gathered, by the same pattern. One agent is the default.
-# By modality, one specialist per kind of data, each with the tools, public
-# sources and markers of its own field; by stage, one per process stage, each
-# asking which genes, pathways and datasets bear on that stage's levers. The
-# specialists share the dataset registry, so a series one registers the others
-# can use; their notes are kept apart and the orchestrator reconciles them.
-BIOINFORMATICS_MODES = ('single', 'by_modality', 'by_stage')
+# Split, the same agent is sent one scoped task per category, in parallel, and
+# the orchestrator reconciles them. The categories are fixed and broad — not
+# chosen per run, and not the project's own stages — so every split run asks
+# the same questions and runs can be compared.
+BIOINFORMATICS_MODES = ('single', 'by_analysis', 'by_process')
 DEFAULT_BIOINFORMATICS_MODE = 'single'
-# Each specialism: its label, the dataset modalities it owns (the manifest's
-# enum), the analysis types it plans, and what it brings that the others do not.
-BIO_SPECIALISTS = {
-    'transcriptomics': {
-        'label': 'Transcriptomics (bulk RNA-seq, microarray)',
-        'modalities': ('bulk_rna',),
-        'analyses': ('bulk_expression_comparison', 'gene_set_score', 'pathway_enrichment'),
-        'focus': 'which genes and programmes respond to each lever: differential expression, '
-                 'gene-set scores and pathway enrichment on GEO series, and combining series '
-                 'that ask the same question'},
-    'single_cell': {
-        'label': 'Single-cell RNA-seq',
-        'modalities': ('single_cell_rna',),
-        'analyses': ('identity_purity', 'cell_composition_comparison', 'pseudobulk_comparison'),
-        'focus': 'which cell states a lever produces: identity and purity per sample, '
-                 'composition shifts, off-target populations, and pseudobulk comparisons '
-                 'within one cell type'},
-    'cytometry': {
-        'label': 'Flow cytometry / FACS',
+# By analysis: what kind of data answers it. `modalities` are the manifest's
+# enum, so a dataset belongs to exactly one category.
+BIO_ANALYSIS_AREAS = {
+    'expression': {
+        'label': 'Gene expression (bulk and single-cell RNA)',
+        'modalities': ('bulk_rna', 'single_cell_rna'),
+        'focus': 'which genes, programmes and cell states respond to each lever: differential '
+                 'expression, gene-set scores and pathway enrichment on GEO series, combining '
+                 'series that ask the same question, and single-cell composition and pseudobulk'},
+    'phenotype': {
+        'label': 'Cell phenotype (flow cytometry / FACS, identity and purity)',
         'modalities': ('flow_cytometry', 'cytometry_summary'),
-        'analyses': ('population_comparison', 'marker_intensity_comparison',
-                     'viability_comparison', 'longitudinal_population'),
-        'focus': 'the surface-marker panel that defines the target and its impurities, the '
-                 'gating a release assay would use, and gated population tables: percent '
-                 'positive, marker intensity, viability over time'},
-    'proteomics': {
-        'label': 'Proteomics and secretome',
+        'focus': 'whether the cells are what they should be: the surface-marker panel for the '
+                 'target and its impurities, the gating a release assay would use, gated '
+                 'populations, viability, and identity and purity per sample from single-cell data'},
+    'proteome': {
+        'label': 'Proteins and secretome',
         'modalities': ('proteomics', 'secretome'),
-        'analyses': ('protein_abundance_comparison',),
-        'focus': 'what the cells make and secrete: protein abundance, secreted factors that '
-                 'act back on the culture (autocrine and paracrine), receptors for the '
-                 'factors the protocol adds, and where protein disagrees with transcript'},
-    'epigenomics': {
-        'label': 'Epigenomics (ATAC-seq, ChIP-seq)',
+        'focus': 'what the cells make and secrete: protein abundance, secreted factors that act '
+                 'back on the culture, receptors for the factors the protocol adds, and where '
+                 'protein disagrees with transcript'},
+    'regulation': {
+        'label': 'Gene regulation (ATAC-seq, ChIP-seq)',
         'modalities': ('atac_seq', 'chip_seq'),
-        'analyses': ('peak_overlap_comparison',),
-        'focus': 'whether the lineage gates are open: chromatin accessibility and transcription '
+        'focus': 'whether the lineage gates are open: chromatin accessibility and transcription-'
                  'factor binding at the genes each lever acts through, from called peaks'},
 }
-DEFAULT_BIO_SPECIALISTS = ('transcriptomics', 'single_cell', 'cytometry', 'proteomics')
+# By process: where in making the cell the question sits, whatever the
+# project calls its stages.
+BIO_PROCESS_AREAS = {
+    'expansion': {
+        'label': 'iPSC expansion and pluripotency',
+        'focus': 'growth, survival and pluripotency of the starting cells: the genes and pathways '
+                 'behind seeding, passaging, aggregate size, oxygen and medium, and public data '
+                 'from undifferentiated iPSC'},
+    'commitment': {
+        'label': 'Lineage commitment',
+        'focus': 'leaving pluripotency for the right germ layer and progenitor: aggregation or '
+                 'embryoid bodies, the induction factors and their timing, and the markers of '
+                 'early mesoderm, endoderm or ectoderm and of the target\'s progenitor'},
+    'differentiation': {
+        'label': 'Differentiation and maturation',
+        'focus': 'specifying and maturing the target cell: the factors, receptors and '
+                 'transcription factors that drive it, the timing of their effect, and public '
+                 'data from the target lineage at late time points'},
+    'product': {
+        'label': 'Product quality at harvest',
+        'focus': 'what is harvested: identity and purity, off-target populations, viability and '
+                 'stress, and function — the markers and assays a release test would use'},
+}
 
 
 def build(*, project_id, objective, runtime_mode, research_context=None, dataset_ids=(),
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
           projects_dir=None, effort=None, literature_mode=None, purpose=None,
-          public_data=None, continued_from=None, bioinformatics_mode=None,
-          bioinformatics_specialists=None):
+          public_data=None, continued_from=None, bioinformatics_mode=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -185,7 +193,6 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
     if bio_mode not in BIOINFORMATICS_MODES:
         raise K.ContractError(f'bioinformatics_mode must be one of {BIOINFORMATICS_MODES}; '
                               f'got {bio_mode!r}')
-    specialists = _specialists(bio_mode, bioinformatics_specialists, ds)
 
     # Public databases (Ensembl, UniProt, STRING, GEO) are on for a real run
     # unless the person turned them off; a synthetic demo never touches the
@@ -216,7 +223,6 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'effort': effort,
         'literature_mode': literature_mode,
         'bioinformatics_mode': bio_mode,
-        'bioinformatics_specialists': specialists,
         'purpose': purpose,
         'public_data': public_data,
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
@@ -246,35 +252,6 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
                                   f'got {kind!r}')
     K.require_valid('discovery_request', req)
     return req
-
-
-def _specialists(mode, chosen, dataset_ids):
-    """The specialisms a by-modality run dispatches; empty for any other mode.
-
-    The person's choice when they made one. Otherwise the four that cover most
-    questions, plus the specialism of any dataset they named, so a named ATAC
-    series is never left without the specialist who can read it.
-    """
-    if mode != 'by_modality':
-        if chosen:
-            raise K.ContractError('bioinformatics_specialists applies only when '
-                                  'bioinformatics_mode is by_modality')
-        return []
-    names = [str(c).strip().lower() for c in (chosen or []) if str(c).strip()]
-    unknown = [n for n in names if n not in BIO_SPECIALISTS]
-    if unknown:
-        raise K.ContractError(f'unknown bioinformatics specialist(s) {unknown}; '
-                              f'choose from {sorted(BIO_SPECIALISTS)}')
-    if not names:
-        names = list(DEFAULT_BIO_SPECIALISTS)
-        from ..data import registry as DREG
-        for did in dataset_ids:
-            try:
-                modality = (DREG.load(did) or {}).get('modality')
-            except (K.ContractError, OSError, ValueError):
-                continue
-            names += [k for k, v in BIO_SPECIALISTS.items() if modality in v['modalities']]
-    return [k for k in BIO_SPECIALISTS if k in names]
 
 
 def _uncertainty(u):
@@ -438,12 +415,12 @@ def summarise(req, *, projects_dir=None):
     if (req.get('literature_mode') or DEFAULT_LITERATURE_MODE) == 'by_stage':
         lines.append('Literature: one agent per process stage, in parallel, merged afterwards')
     bio_mode = req.get('bioinformatics_mode') or DEFAULT_BIOINFORMATICS_MODE
-    if bio_mode == 'by_modality':
-        lines.append('Bioinformatics: one specialist per kind of data, in parallel — '
-                     + ', '.join(BIO_SPECIALISTS[k]['label']
-                                 for k in req.get('bioinformatics_specialists') or []))
-    elif bio_mode == 'by_stage':
-        lines.append('Bioinformatics: one specialist per process stage, in parallel')
+    if bio_mode == 'by_analysis':
+        lines.append('Bioinformatics: one specialist per kind of analysis, in parallel — '
+                     + ', '.join(a['label'] for a in BIO_ANALYSIS_AREAS.values()))
+    elif bio_mode == 'by_process':
+        lines.append('Bioinformatics: one specialist per part of the process, in parallel — '
+                     + ', '.join(a['label'] for a in BIO_PROCESS_AREAS.values()))
     lines.append(f'Effort: {b["label"]} — about {b["searches"]} searches and {b["full_texts"]} '
                  f'full texts for literature, {b["bio_queries"]} queries for bioinformatics, '
                  f'about {b["minutes"]} minutes per specialist')
@@ -554,23 +531,18 @@ def _literature_plan(req, project, loop_dir, budget):
 def _bioinformatics_plan(req, project, loop_dir, budget):
     """The bioinformatics dispatch the brief asks for, and how to reconcile it.
 
-    One agent by default. By modality or by stage, the same agent is sent
-    several scoped tasks at once; each begins `SPECIALIST:` or `STAGE:` so the
-    agent's instructions for that scope apply, and each writes in its own folder.
+    One agent by default. By analysis or by process, the same agent is sent one
+    scoped task per fixed category at once; each begins `ANALYSIS:` or
+    `PROCESS:` so the agent's instructions for that scope apply, and each
+    writes in its own folder.
     """
     mode = req.get('bioinformatics_mode') or DEFAULT_BIOINFORMATICS_MODE
-    names = req.get('bioinformatics_specialists') or []
-    if mode == 'by_stage' and len(project.stages) >= 2:
-        shards = [(st['stage_id'], 'STAGE', st.get('label') or st['stage_id'],
-                   ('the genes, pathways and markers that govern this stage\'s levers and '
-                    'readouts, and public data from cells at this stage'
-                    + (f' ({st["purpose"]})' if st.get('purpose') else '')))
-                  for st in list(project.stages)[:MAX_STAGE_SHARDS]]
-        how = 'one specialist per process stage'
-    elif mode == 'by_modality' and names:
-        shards = [(k, 'SPECIALIST', BIO_SPECIALISTS[k]['label'], BIO_SPECIALISTS[k]['focus'])
-                  for k in names]
-        how = 'one specialist per kind of data'
+    if mode == 'by_analysis':
+        shards = [(k, 'ANALYSIS', a['label'], a['focus']) for k, a in BIO_ANALYSIS_AREAS.items()]
+        how = 'one specialist per kind of analysis'
+    elif mode == 'by_process':
+        shards = [(k, 'PROCESS', a['label'], a['focus']) for k, a in BIO_PROCESS_AREAS.items()]
+        how = 'one specialist per part of the process'
     else:
         return ('the bioinformatics agent its own (`agent: "bioinformatics"`, `title: '
                 '"bioinformatics-it1"`) in the same response, so they run in parallel.'), ''
@@ -591,7 +563,9 @@ def _bioinformatics_plan(req, project, loop_dir, budget):
         f'\n- **When the bioinformatics specialists have replied**, reconcile them '
         f'yourself; that is the point of asking several. Where two kinds of data agree on '
         f'a lever (a transcript and its protein, a marker and a cluster, an open promoter '
-        f'and its expression), say so: independent lines raise confidence. Where they '
+        f'and its expression), say so: independent lines raise confidence. Where one '
+        f'part of the process sets up another (a commitment marker that predicts purity '
+        f'at harvest), that is the finding no single specialist can see. Where they '
         f'disagree, record it with the context difference that may explain it, never an '
         f'average. Send each dataset any specialist registered to `analyst`. A '
         f'specialist that has not answered within its minutes is left out and recorded '

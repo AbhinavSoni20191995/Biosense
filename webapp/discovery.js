@@ -644,9 +644,6 @@ function buildRequest() {
     public_data: !($('#publicData') && $('#publicData').value === 'off'),
     dataset_ids: $$('#datasetPicks input:checked').map(i => i.value),
   };
-  if (body.bioinformatics_mode === 'by_modality') {
-    body.bioinformatics_specialists = $$('#bioSpecialists input:checked').map(i => i.value);
-  }
   if (anyCtx) {
     body.research_context = Object.assign({
       schema_version: '2.0', strictness: $('#ctxStrictness').value,
@@ -2319,10 +2316,6 @@ function wire() {
     });
   }
   $('#runBtn').addEventListener('click', start);
-  const bioMode = $('#bioMode');
-  if (bioMode) bioMode.addEventListener('change', () => {
-    $('#bioSpecialists').hidden = bioMode.value !== 'by_modality';
-  });
   $('#stopBtn').addEventListener('click', stopFromButton);
   const add = $('#candAdd');
   if (add) {

@@ -1,14 +1,15 @@
-"""Bioinformatics as one agent, one specialist per kind of data, or one per stage.
+"""Bioinformatics as one agent, or one specialist per fixed category.
 
-The same pattern as the literature search: the person chooses on the request,
-the brief dispatches scoped tasks to the same agent in parallel, each writes in
-its own folder, and the run page shows each specialist's notes under its name.
+The same pattern as the literature search: the person chooses the mode on the
+request — one agent, by analysis or by process — never the specialists. The
+brief dispatches one scoped task per fixed category to the same agent in
+parallel, each writes in its own folder, and the run page shows each
+specialist's notes under its name.
 """
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 from biosense import contracts as K
 from biosense import projects as PJ
@@ -20,47 +21,37 @@ class RequestTests(unittest.TestCase):
     def test_one_agent_is_the_default(self):
         req = a_request()
         self.assertEqual('single', req['bioinformatics_mode'])
-        self.assertEqual([], req['bioinformatics_specialists'])
         brief = DISC.render_brief(req, loop_dir='ai-x')
         self.assertIn('title: "bioinformatics-it1"', brief)
-        self.assertNotIn('SPECIALIST:', brief)
+        self.assertNotIn('ANALYSIS:', brief)
+        self.assertNotIn('PROCESS:', brief)
 
-    def test_by_modality_sends_the_four_common_specialists_unless_chosen(self):
-        req = a_request(bioinformatics_mode='by_modality')
-        self.assertEqual(list(DISC.DEFAULT_BIO_SPECIALISTS), req['bioinformatics_specialists'])
+    def test_by_analysis_sends_every_fixed_area(self):
+        req = a_request(bioinformatics_mode='by_analysis')
+        self.assertNotIn('bioinformatics_specialists', req, 'the person picks the mode only')
         brief = DISC.render_brief(req, loop_dir='ai-x')
-        for k in DISC.DEFAULT_BIO_SPECIALISTS:
+        for k in ('expression', 'phenotype', 'proteome', 'regulation'):
             self.assertIn(f'title: "bioinformatics-{k}"', brief)
-            self.assertIn(f'`SPECIALIST: {k}`', brief)
+            self.assertIn(f'`ANALYSIS: {k}`', brief)
             self.assertIn(f'ai-x/bioinformatics/{k}/', brief)
-        self.assertNotIn('bioinformatics-epigenomics', brief)
         self.assertIn('reconcile them', brief)
-        self.assertIn('Bioinformatics: one specialist per kind of data', DISC.summarise(req))
+        self.assertIn('one specialist per kind of analysis', DISC.summarise(req))
 
-        chosen = a_request(bioinformatics_mode='by_modality',
-                           bioinformatics_specialists=['proteomics', 'cytometry'])
-        self.assertEqual(['cytometry', 'proteomics'], chosen['bioinformatics_specialists'])
-
-    def test_a_named_dataset_brings_its_specialist(self):
-        with mock.patch('biosense.data.registry.load',
-                        return_value={'modality': 'atac_seq'}):
-            req = a_request(bioinformatics_mode='by_modality', dataset_ids=['GSE155719'])
-        self.assertIn('epigenomics', req['bioinformatics_specialists'])
-
-    def test_by_stage_sends_one_specialist_per_stage(self):
-        req = a_request(bioinformatics_mode='by_stage')
+    def test_by_process_uses_fixed_areas_not_the_project_s_stages(self):
+        req = a_request(bioinformatics_mode='by_process')
         brief = DISC.render_brief(req, loop_dir='ai-x')
-        for st in list(PJ.load('ipsc_macrophage').stages)[:DISC.MAX_STAGE_SHARDS]:
-            self.assertIn(f'title: "bioinformatics-{st["stage_id"]}"', brief)
-            self.assertIn(f'`STAGE: {st["stage_id"]}`', brief)
+        for k in ('expansion', 'commitment', 'differentiation', 'product'):
+            self.assertIn(f'title: "bioinformatics-{k}"', brief)
+            self.assertIn(f'`PROCESS: {k}`', brief)
+        for st in PJ.load('ipsc_macrophage').stages:
+            if st['stage_id'] not in DISC.BIO_PROCESS_AREAS:
+                self.assertNotIn(f'bioinformatics-{st["stage_id"]}"', brief)
 
     def test_bad_choices_are_refused(self):
         with self.assertRaisesRegex(K.ContractError, 'bioinformatics_mode'):
-            a_request(bioinformatics_mode='swarm')
-        with self.assertRaisesRegex(K.ContractError, 'unknown bioinformatics specialist'):
-            a_request(bioinformatics_mode='by_modality', bioinformatics_specialists=['metabolomics'])
-        with self.assertRaisesRegex(K.ContractError, 'only when'):
-            a_request(bioinformatics_specialists=['proteomics'])
+            a_request(bioinformatics_mode='by_modality')
+        with self.assertRaises(TypeError):
+            a_request(bioinformatics_specialists=['proteome'])
 
 
 class RunPageTests(unittest.TestCase):
@@ -70,27 +61,28 @@ class RunPageTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         run = APP.DiscoveryRun('b' * 16, {'request_id': 'r', 'project_id': 'p',
                                           'objective': 'o'}, d, 'local_real_ai')
-        (d / 'bioinformatics' / 'proteomics').mkdir(parents=True)
-        (d / 'bioinformatics' / 'proteomics' / 'insights.md').write_text('- CSF1R: receptor')
+        (d / 'bioinformatics' / 'proteome').mkdir(parents=True)
+        (d / 'bioinformatics' / 'proteome' / 'insights.md').write_text('- CSF1R: receptor')
         run.scan_artifacts(force=True)
         sp = run.bioinformatics['specialists']
-        self.assertEqual(['proteomics'], [s['name'] for s in sp])
-        self.assertEqual('Proteomics and secretome', sp[0]['label'])
+        self.assertEqual(['proteome'], [s['name'] for s in sp])
+        self.assertEqual('Proteins and secretome', sp[0]['label'])
         self.assertIn('CSF1R', sp[0]['text'])
 
 
 class AgentAndFormTests(unittest.TestCase):
-    def test_the_agent_knows_each_scope_and_the_form_offers_the_choice(self):
+    def test_the_agent_knows_each_area_and_the_form_offers_only_the_mode(self):
         prompt = (K.ROOT / 'discovery_loop' / 'agents' / 'bioinformatics' / 'prompt.md').read_text()
-        self.assertIn('SPECIALIST: <name>', prompt)
-        for k in DISC.BIO_SPECIALISTS:
+        self.assertIn('ANALYSIS: <area>', prompt)
+        for k in list(DISC.BIO_ANALYSIS_AREAS) + list(DISC.BIO_PROCESS_AREAS):
             self.assertIn(f'**{k}**', prompt)
         html = (K.ROOT / 'webapp' / 'console.html').read_text()
         self.assertIn('id="bioMode"', html)
-        for k in DISC.BIO_SPECIALISTS:
-            self.assertIn(f'value="{k}"', html)
+        for m in DISC.BIOINFORMATICS_MODES:
+            self.assertIn(f'value="{m}"', html)
+        self.assertNotIn('bioSpecialists', html)
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
-        self.assertIn('bioinformatics_specialists', js)
+        self.assertIn('bioinformatics_mode:', js)
 
 
 if __name__ == '__main__':

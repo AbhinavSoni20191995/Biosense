@@ -209,25 +209,10 @@
     "bioinformatics_mode": {
       "enum": [
         "single",
-        "by_modality",
-        "by_stage"
+        "by_analysis",
+        "by_process"
       ],
-      "description": "single: one bioinformatics agent (the default). by_modality: one specialist per kind of data (transcriptomics, single-cell, flow cytometry, proteomics, epigenomics), in parallel. by_stage: one specialist per process stage, in parallel. The specialists share the dataset registry; the orchestrator reconciles them."
-    },
-    "bioinformatics_specialists": {
-      "type": "array",
-      "uniqueItems": true,
-      "maxItems": 5,
-      "items": {
-        "enum": [
-          "transcriptomics",
-          "single_cell",
-          "cytometry",
-          "proteomics",
-          "epigenomics"
-        ]
-      },
-      "description": "The specialisms a by_modality run dispatches; empty for any other mode."
+      "description": "single: one bioinformatics agent (the default). by_analysis: one specialist per fixed kind of analysis (gene expression, cell phenotype, proteins and secretome, gene regulation), in parallel. by_process: one specialist per fixed part of the process (iPSC expansion, lineage commitment, differentiation and maturation, product quality at harvest), in parallel. The categories are fixed, not chosen per run; the orchestrator reconciles the specialists."
     },
     "purpose": {
       "enum": [

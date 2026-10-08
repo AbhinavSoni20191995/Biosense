@@ -514,7 +514,7 @@ class DiscoveryRun:
                                       or bio.get('notes') or bio.get('specialists')) else None
 
     def _bio_specialist_dirs(self):
-        """The folders a by-modality or by-stage bioinformatics run writes in."""
+        """The folders a by-analysis or by-process bioinformatics run writes in."""
         try:
             return sorted(d for d in (self.out_dir / 'bioinformatics').iterdir()
                           if d.is_dir() and d.name not in ('scratch', 'cache'))
@@ -543,7 +543,8 @@ class DiscoveryRun:
                 continue
             if len(text) > INSIGHTS_MAX_CHARS:
                 text = '…' + text[-INSIGHTS_MAX_CHARS:]
-            label = (DISC.BIO_SPECIALISTS.get(name) or {}).get('label') or name
+            area = DISC.BIO_ANALYSIS_AREAS.get(name) or DISC.BIO_PROCESS_AREAS.get(name) or {}
+            label = area.get('label') or name
             out.append({'name': name, 'label': label, 'text': text, 'updated_at': mtime})
         bio = dict(self.bioinformatics or {})
         bio['specialists'] = out
@@ -1999,7 +2000,6 @@ class Handler(BaseHTTPRequestHandler):
             literature_mode=body.get('literature_mode'), purpose=body.get('purpose'),
             public_data=body.get('public_data'),
             bioinformatics_mode=body.get('bioinformatics_mode'),
-            bioinformatics_specialists=body.get('bioinformatics_specialists'),
             requested_by=identity.owner if identity.authenticated else None,
             projects_dir=self._projects_dir(identity))
 
