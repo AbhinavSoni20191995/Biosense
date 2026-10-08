@@ -547,6 +547,15 @@ def _effect_line(e):
     et = (e.get('estimate_type') or '').upper()
     if not e.get('magnitude_estimated', True):
         return f'{label}: direction {e.get("direction", "unknown")}, magnitude not estimated [{et}]'
+    if e.get('estimate_type') == 'judgement':
+        # A best guess has no baseline or candidate: it is a range of change
+        # with a confidence, and is stated as exactly that.
+        iv, j = e.get('interval') or {}, e.get('judgement') or {}
+        return (f'{label}: {e.get("direction") or "unknown"}, best guess '
+                f'{_fmt(iv.get("lower"))}–{_fmt(iv.get("upper"))} {e.get("change_unit") or ""}'
+                + (f' (central {_fmt(e["absolute_change"])})'
+                   if e.get('absolute_change') is not None else '')
+                + f', {j.get("confidence") or "unstated"} confidence [{et}]')
     sign = '+' if (e.get('absolute_change') or 0) > 0 else ''
     rel = (f' ({"+" if e.get("relative_change_pct", 0) > 0 else ""}'
            f'{e["relative_change_pct"]}%)' if e.get('relative_change_pct') is not None else '')
@@ -554,8 +563,8 @@ def _effect_line(e):
     if e.get('model_basis'):
         basis = (' — through a response nobody fitted ('
                  + ', '.join(RM.BADGE.get(b, b) for b in e['model_basis']) + ')')
-    return (f'{label}: {_fmt(e.get("baseline", {}).get("value"))} → '
-            f'{_fmt(e.get("candidate", {}).get("value"))} '
+    return (f'{label}: {_fmt((e.get("baseline") or {}).get("value"))} → '
+            f'{_fmt((e.get("candidate") or {}).get("value"))} '
             f'{sign}{_fmt(e.get("absolute_change"))} {e.get("change_unit") or ""}'
             f'{rel} [{et}]{basis}')
 

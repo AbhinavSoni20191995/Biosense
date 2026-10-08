@@ -72,6 +72,32 @@ class FinishTests(unittest.TestCase):
         self.assertIn('TypeError: boom', (self.tmp / 'finish_errors.log').read_text())
 
 
+    def test_a_best_guess_effect_renders_and_the_run_finishes(self):
+        # Run 66f06fdfa3f84d4c: the lead hypothesis carried a best guess, whose
+        # baseline and candidate are null, and the report line read
+        # e.get('baseline', {}).get('value') -> AttributeError on None.
+        effect = dict(EVCLI.TEMPLATE['effects'][0], best_guess={
+            'low': 5, 'high': 20, 'central': 10, 'confidence': 'low',
+            'rationale': 'adjacent practice in stirred iPSC culture'},
+            evidence_refs=['PMID:0'])
+        draft = dict(EVCLI.TEMPLATE, effects=[effect], candidate_value=50)
+        K.write_json_atomic(self.tmp / 'quantified_hypothesis.json',
+                            EVCLI.build_hypothesis(draft, project_id='ipsc_macrophage'))
+        final = DR.finish(self.req, self.tmp, runtime_mode='synthetic_demo')
+        self.assertIsNotNone(final['protocol'])
+        md = (self.tmp / 'protocol_summary.md').read_text()
+        self.assertIn('best guess 5–20', md)
+        self.assertIn('[JUDGEMENT]', md)
+
+    def test_rendering_that_fails_keeps_the_protocol(self):
+        from biosense.production import protocol_summary as PS
+        with mock.patch.object(PS, 'markdown', side_effect=AttributeError('boom')):
+            final = DR.finish(self.req, self.tmp, runtime_mode='synthetic_demo')
+        self.assertIsNotNone(final['protocol'])
+        self.assertTrue((self.tmp / 'protocol_summary.json').is_file())
+        self.assertIn('AttributeError: boom', (self.tmp / 'finish_errors.log').read_text())
+
+
 class ErrorMessageTests(unittest.TestCase):
     def test_an_unexpected_error_names_itself(self):
         from biosense.production import app as APP

@@ -39,9 +39,13 @@ def _effect_line(e):
     if not e['magnitude_estimated']:
         return (f'| {label} | direction {e["direction"]} | magnitude not yet estimated | '
                 f'{tag} |')
+    unit = '%' if E.is_percent(e['unit']) else f' {e["unit"]}'
+    if e['estimate_type'] == 'judgement':
+        iv = e.get('interval') or {}
+        return (f'| {label} | {e["direction"]} | best guess {iv.get("lower", 0):+.4g} to '
+                f'{iv.get("upper", 0):+.4g}{unit} | {tag} |')
     a = (e.get('baseline') or {}).get('value')
     b = (e.get('candidate') or {}).get('value')
-    unit = '%' if E.is_percent(e['unit']) else f' {e["unit"]}'
     chg = (f'{e["absolute_change"]:+.4g} pp' if e['change_unit'] == E.PP
            else f'{e["absolute_change"]:+.4g}{unit}')
     rel = f' ({e["relative_change_pct"]:+.4g}%)' if e['relative_change_pct'] is not None else ''

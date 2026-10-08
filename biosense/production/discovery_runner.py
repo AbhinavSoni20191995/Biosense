@@ -386,8 +386,11 @@ def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
             protocol = build(design_choices={})
     if protocol is not None:
         K.write_json_atomic(Path(out_dir) / 'protocol_summary.json', protocol)
-        (Path(out_dir) / 'protocol_summary.md').write_text(
-            PS.markdown(protocol), encoding='utf-8')
+        # The readable report is a rendering of the protocol, written after it:
+        # one that fails is logged and the protocol stays the run's answer.
+        _guarded(out_dir, [], 'the readable protocol report', None,
+                 lambda: (Path(out_dir) / 'protocol_summary.md').write_text(
+                     PS.markdown(protocol), encoding='utf-8'))
 
     library = None
     if request.get('purpose') == 'landscape' and runtime_mode != 'synthetic_demo':
