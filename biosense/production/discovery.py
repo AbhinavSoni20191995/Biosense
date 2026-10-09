@@ -106,8 +106,15 @@ ADDONS = {
                    'regulators, knockout and knockdown phenotypes, and levers development '
                    'suggests that no protocol searched uses',
     },
+    'state_of_the_art': {
+        'label': 'State of the art comparison',
+        'summary': 'the recommended protocol lined up against the leading published ways '
+                   'this cell type is made (directed differentiation and other routes): '
+                   'where it matches them, where it differs, and what a difference is '
+                   'expected to change',
+    },
 }
-DEFAULT_ADDONS = ('developmental_biology',)
+DEFAULT_ADDONS = ('developmental_biology', 'state_of_the_art')
 
 BIO_ANALYSIS_AREAS = {
     'expression': {
@@ -671,6 +678,61 @@ and the dish does not, or has at the wrong time.
     return lit, bio, section
 
 
+def _sota_plan(req, project, loop_dir, budget, python, pdir):
+    """The state-of-the-art add-on: (literature task, section).
+
+    Empty strings when the person turned it off or the run is not a discovery
+    run. It adds one literature task and the steps that line the recommended
+    protocol up against the leading published ways the cell is made.
+    """
+    if 'state_of_the_art' not in (req.get('addons') or ()) \
+            or (req.get('purpose') or 'discovery') != 'discovery':
+        return '', ''
+    per_s = max(3, round(budget['searches'] * 0.4))
+    per_t = max(2, round(budget['full_texts'] * 0.4))
+    lit = (f'; and, for the **state-of-the-art comparison** the person turned on, a '
+           f'literature task in the same response: `title: "literature-sota"`, `args:` '
+           f'starting `STATE OF THE ART:`, naming the target cell and the folder '
+           f'`{loop_dir}/literature/sota/`, about {per_s} searches and {per_t} full texts. '
+           f'It brings back the leading published protocols for making this cell — by route '
+           f'(directed differentiation, transcription-factor forward programming, '
+           f'transdifferentiation, or primary/adult isolation) — each with its reported '
+           f'yield, purity and timeline quoted from the source, and says which is the closest '
+           f'comparator to this process')
+    section = f"""## Add-on: state of the art comparison (on for this run)
+
+The person wants to know how the recommended protocol compares to how the field
+already makes this cell — the same route and the alternatives — and where it
+matches, differs, or does something none of them does. Do this **after** the
+protocol is assembled, so there is a protocol to compare.
+
+1. From the `literature-sota` reply, write the leading protocols and the
+   comparison to `{loop_dir}/sota_comparison.draft.json` in the shape
+   `{python} -m biosense.evidence.cli template sota` prints, then check it into
+   `{python} -m biosense.evidence.cli sota --project {project.project_id}{pdir} \
+       --draft {loop_dir}/sota_comparison.draft.json --out {loop_dir}/sota_comparison.json`
+   Each reference names its route and cites its source; one is the benchmark
+   (same cell, same route, closest readouts).
+2. Line the recommended protocol up against them, dimension by dimension (the
+   levers that differ, the timeline, the format, the reported purity and yield).
+   Each comparison is `same`, `differs`, `novel` or `not_comparable`. A
+   difference states what is different in one line.
+3. Where a difference is expected to change an outcome, add an `expected_effect`:
+   the readout, the direction, a basis, and refs. It is a **hypothesis**, never a
+   measured result — this system's model is uncalibrated and claims no real gain.
+   The command caps its confidence at low without a reference and refuses any
+   wording that asserts the protocol is better, best or outperforms the field.
+   Where an expected effect is worth testing, write it as a candidate hypothesis
+   and put its id in `expected_effect.hypothesis_id`.
+4. Set the `standing`: `matches_sota` (the same approach), `variant_of_sota` (the
+   same lineage logic, different levers, dose or format) or `departs_from_sota`
+   (a genuinely different route), with a one-line summary and the benchmark it is
+   read against. Never "better": say what is the same and what differs.
+
+"""
+    return lit, section
+
+
 def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None, workspace=None):
     """The message an Omnigent session receives, with the request embedded as JSON.
 
@@ -834,6 +896,7 @@ survives a restart.
         pdir = f' --projects-dir {projects_dir}'
     dev_lit, dev_bio, dev_section = _developmental_plan(req, project, loop_dir, budget,
                                                         python, pdir)
+    sota_lit, sota_section = _sota_plan(req, project, loop_dir, budget, python, pdir)
     wanted = '\n'.join(
         f'- `{loop_dir}/{name}` — a `{kind}`: {why}' for name, kind, why in ARTIFACTS)
     # With no dataset named, the only tables in reach are the committed demo
@@ -910,7 +973,7 @@ on a question ends the run with nothing to show. So:
 - Where you would have asked, decide what you can from the request, write the
   question down as an **open question** with the assumption you made instead,
   and carry on. Missing context is a limitation to report, never a reason to stop.
-- **Your first substantive action is a dispatch.** {lit_dispatch}{dev_lit} — and
+- **Your first substantive action is a dispatch.** {lit_dispatch}{dev_lit}{sota_lit} — and
   {bio_dispatch}{dev_bio} Then end
   your turn; the inbox wakes you with their answers.
 - Only end the run once the files below are written, or once you have written
@@ -989,7 +1052,7 @@ usable as design and evidence variables, and produce no prediction unless this
 run proposes a term for one from cited claims (step 5). Do not invent a term
 without them, and do not drop the parameter.
 
-{dev_section}## What to do
+{dev_section}{sota_section}## What to do
 
 1. Name the **decision-blocking uncertainty**, if the request did not. One
    sentence: what is not known, and what it would change.

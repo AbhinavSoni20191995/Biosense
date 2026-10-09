@@ -217,8 +217,8 @@
     "addons": {
       "type": "array",
       "uniqueItems": true,
-      "items": {"enum": ["developmental_biology"]},
-      "description": "Optional lenses every agent applies in this run. developmental_biology: the literature agent maps each process stage to its in vivo counterpart (timing, signals and their windows, regulators, knockout and knockdown phenotypes); bioinformatics checks receptor-expression windows in developmental time courses and looks for public perturbation datasets; the analyst matches stages and reads perturbations; the orchestrator writes a checked developmental map and turns the levers development suggests, which the protocol searches did not find in use, into low-confidence candidate hypotheses. On by default for a discovery run."
+      "items": {"enum": ["developmental_biology", "state_of_the_art"]},
+      "description": "Optional lenses every agent applies in this run, each on by default for a discovery run. developmental_biology: the literature agent maps each process stage to its in vivo counterpart (timing, signals and their windows, regulators, knockout and knockdown phenotypes); bioinformatics checks receptor-expression windows in developmental time courses and looks for public perturbation datasets; the analyst matches stages and reads perturbations; the orchestrator writes a checked developmental map and turns the levers development suggests, which the protocol searches did not find in use, into low-confidence candidate hypotheses. state_of_the_art: the literature agent finds the leading published protocols for making this cell, by route (directed differentiation, forward programming, transdifferentiation, primary isolation), each with its reported yield, purity and timeline; the orchestrator writes a checked comparison of the recommended protocol against them -- where it matches, differs or does something novel, with any difference carrying only an expected effect (a capped hypothesis, never a measured gain) and a standing of matches / variant / departs."
     },
     "purpose": {
       "enum": [

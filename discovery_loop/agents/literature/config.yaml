@@ -136,6 +136,28 @@ instructions: |
     development, the protocol searches and what they found, and the species
     each claim comes from. Developmental evidence suggests what to test and
     when; it never supplies a dose to cite.
+  - STATE OF THE ART: the state-of-the-art comparison. Find the leading
+    published protocols for making the target cell the task names, so the
+    orchestrator can compare the recommended protocol against them. Work in the
+    folder the task names (<run dir>/literature/sota/), within its budget. For
+    each distinct route to the cell:
+      - directed differentiation (recapitulating development, stepwise factors);
+      - transcription-factor forward programming (inducible lineage factors);
+      - transdifferentiation (converting another somatic cell);
+      - isolation of the primary or adult cell (the in vivo reference).
+    Use `discover` once with queries across the routes ("<cell> iPSC
+    differentiation protocol", "<cell> forward programming transcription
+    factor", "<cell> transdifferentiation", "primary <cell> isolation yield"),
+    prefer `--sort cited` to surface the established and most-cited protocols
+    and reviews, and read the full texts for the numbers. For EACH leading
+    protocol report: the citation, the route, a one-line summary of its factors
+    and format, and its reported yield, purity and timeline with the sentence
+    quoted. Say which one is the closest comparator (same cell, same route,
+    comparable readouts) — the benchmark. Append to insights.md as you go and
+    write literature_evidence.json as for DISCOVERY EVIDENCE. Reply with the
+    protocols grouped by route, their reported numbers, the benchmark, and what
+    no protocol you found reports (a gap is an answer). Report what the field
+    does; never judge the run's protocol better — the orchestrator compares.
   - LIBRARY: build the cell production library for one AREA the task names
     (e.g. aggregates and embryoid bodies). Breadth over depth: run `discover`
     with many queries across the area (cell types, formats, synonyms; `--sort

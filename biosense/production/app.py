@@ -245,6 +245,7 @@ class Run:
         self.proposed_terms = None
         self.round_plan = None
         self.developmental_map = None
+        self.sota_comparison = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -361,6 +362,7 @@ class DiscoveryRun:
         self.proposed_terms = None
         self.round_plan = None
         self.developmental_map = None
+        self.sota_comparison = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -419,6 +421,7 @@ class DiscoveryRun:
         self._read_proposed_terms()
         self._read_round_plan()
         self._read_developmental_map()
+        self._read_sota_comparison()
         self._read_stage_shards()
         self._read_bio_specialists()
         self._read_reference_draft()
@@ -715,6 +718,23 @@ class DiscoveryRun:
             return
         self.developmental_map = {k: doc.get(k) for k in (
             'cell_type', 'species_basis', 'stages', 'ideas', 'limitations', 'note')}
+
+    def _read_sota_comparison(self):
+        """The state-of-the-art add-on: the protocol against the field.
+
+        Read from the file the sota CLI validated; one that overclaimed a gain
+        or failed its rules never reaches it.
+        """
+        f = self.out_dir / 'sota_comparison.json'
+        try:
+            doc = K.read_json(f) if f.is_file() else None
+        except (OSError, ValueError):
+            doc = None
+        if not isinstance(doc, dict) or doc.get('kind') != 'sota_comparison':
+            self.sota_comparison = None
+            return
+        self.sota_comparison = {k: doc.get(k) for k in (
+            'cell_type', 'references', 'comparisons', 'standing', 'limitations', 'note')}
 
     def _read_proposed_terms(self):
         """The response terms this run proposed for levers the base reactor lacks.
@@ -1015,6 +1035,7 @@ class DiscoveryRun:
                 'genotype_simulation': self.genotype_sim,
                 'proposed_terms': self.proposed_terms,
                 'developmental_map': self.developmental_map,
+                'sota_comparison': self.sota_comparison,
                 'literature_stages': list(self.literature_stages),
                 'reference_draft': self.reference_draft,
                 'stage_counts': ST.stage_counts(self.stages_reached,

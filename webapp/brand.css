@@ -777,3 +777,10 @@ button{font-family:inherit}
 .ask-a{font-size:13.5px;line-height:1.55;border-left:3px solid var(--brand);padding-left:10px}
 .ask-form textarea{width:100%;min-height:76px;font-size:14px;box-sizing:border-box}
 .ask-form .row{display:flex;align-items:center;gap:10px;margin-top:8px}
+
+/* ── State-of-the-art comparison ── */
+.sota-standing{border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:var(--r-s);
+  padding:10px 12px;margin:0 0 10px;font-size:14px}
+.sota-standing.departs_from_sota{border-left-color:var(--s3)}
+.sota-standing.matches_sota{border-left-color:var(--neutral)}
+.sota-standing > div{font-size:13px;color:var(--ink-2);margin-top:4px}

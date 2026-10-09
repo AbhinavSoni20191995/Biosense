@@ -90,7 +90,7 @@ class RequestTests(unittest.TestCase):
     def test_the_lens_is_on_by_default_for_a_discovery_run_and_can_be_turned_off(self):
         req = DISC.build(project_id='ipsc_macrophage', objective='more macrophages per iPSC cell',
                          runtime_mode='synthetic_demo')
-        self.assertEqual(['developmental_biology'], req['addons'])
+        self.assertIn('developmental_biology', req['addons'])
         off = DISC.build(project_id='ipsc_macrophage', objective='more macrophages per iPSC cell',
                          runtime_mode='synthetic_demo', addons=[])
         self.assertEqual([], off['addons'])

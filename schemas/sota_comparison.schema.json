@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/sota-comparison-v1.0",
+  "title": "SotaComparison 1.0: the recommended protocol against the state of the art",
+  "description": "A recommended protocol is only interesting next to how the field already makes this cell. This document gathers the leading published protocols for the target cell -- by route (directed differentiation that recapitulates development, forward programming by transcription factors, transdifferentiation, or isolation of the primary/adult cell) -- each with its reported yield, purity and timeline and its citation. It then lines the recommended protocol up against them, lever by lever and overall: where it matches the state of the art, where it differs, and where it does something none of them does. A difference carries only an EXPECTED effect -- a hypothesis with cited support and capped confidence, never a measured improvement: this system's model is uncalibrated and claims no real gain. The standing is one of matches / variant / departs, never 'better' or 'best'.",
+  "type": "object",
+  "required": ["kind", "schema_version", "project_id", "cell_type", "references", "comparisons", "standing", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "sota_comparison"},
+    "schema_version": {"type": "string"},
+    "project_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "created_at": {"type": ["string", "null"]},
+    "created_by": {"type": ["string", "null"]},
+    "cell_type": {"type": "string", "minLength": 2},
+    "references": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["ref_id", "citation", "route", "summary", "refs"],
+        "additionalProperties": false,
+        "properties": {
+          "ref_id": {"type": "string"},
+          "citation": {"type": "string", "minLength": 4},
+          "route": {"enum": ["directed_differentiation", "forward_programming", "transdifferentiation", "primary_isolation", "other"]},
+          "summary": {"type": "string", "minLength": 10},
+          "key_factors": {"type": "array", "items": {"type": "string"}},
+          "reported": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "yield": {"type": ["string", "null"]},
+              "purity": {"type": ["string", "null"]},
+              "timeline": {"type": ["string", "null"]},
+              "scale": {"type": ["string", "null"]},
+              "format": {"type": ["string", "null"]}
+            }
+          },
+          "is_benchmark": {"type": "boolean", "description": "Whether this is the closest comparator to the recommended protocol -- same cell, same route, most comparable readouts."},
+          "refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+        }
+      }
+    },
+    "comparisons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dimension", "this_protocol", "state_of_the_art", "verdict"],
+        "additionalProperties": false,
+        "properties": {
+          "dimension": {"type": "string", "description": "A lever or an overall readout: 'M-CSF dose at myeloid', 'differentiation timeline', 'purity at harvest'."},
+          "stage_id": {"type": ["string", "null"]},
+          "this_protocol": {"type": "string"},
+          "state_of_the_art": {"type": "string", "description": "What the leading protocols do here, with the ref_ids they come from."},
+          "ref_ids": {"type": "array", "items": {"type": "string"}},
+          "verdict": {"enum": ["same", "differs", "novel", "not_comparable"]},
+          "difference": {"type": ["string", "null"], "description": "For differs/novel: what is different, in one line."},
+          "expected_effect": {
+            "type": ["object", "null"],
+            "description": "A hypothesis about what the difference changes -- never a measured result. Absent when the difference is not expected to change an outcome, or when nothing supports a direction.",
+            "required": ["direction", "readout", "confidence", "basis"],
+            "additionalProperties": false,
+            "properties": {
+              "readout": {"type": "string"},
+              "direction": {"enum": ["increase", "decrease", "no_change", "unknown"]},
+              "confidence": {"enum": ["low", "moderate"]},
+              "basis": {"type": "string", "minLength": 10},
+              "refs": {"type": "array", "items": {"type": "string"}},
+              "hypothesis_id": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "standing": {
+      "type": "object",
+      "required": ["verdict", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {"enum": ["matches_sota", "variant_of_sota", "departs_from_sota"]},
+        "benchmark_ref_id": {"type": ["string", "null"]},
+        "summary": {"type": "string", "minLength": 10}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "note": {"type": "string"}
+  }
+}

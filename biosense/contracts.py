@@ -66,6 +66,8 @@ SCHEMAS = {
     'research_context': 'research_context.schema.json',
     # the developmental-biology add-on: each process stage beside the embryo
     'developmental_map': 'developmental_map.schema.json',
+    # the state-of-the-art add-on: the recommended protocol against the field
+    'sota_comparison': 'sota_comparison.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',

@@ -1153,6 +1153,76 @@ function runTheRound(p, snap) {
 /* Terms the run proposed for levers the base reactor has no equation for: the
    project's own simulator, one term at a time. Each says what it computes and
    what it cites; it joins the project only when a person adds it. */
+/* The state-of-the-art add-on: the recommended protocol against the leading
+   published ways the cell is made. The standing comes first, then the
+   comparison (a difference carries only an expected effect, never a result),
+   then the reference protocols with their reported numbers. */
+const STANDING_LABEL = { matches_sota: 'Matches the state of the art',
+  variant_of_sota: 'A variant of the state of the art',
+  departs_from_sota: 'Departs from the state of the art' };
+const ROUTE_LABEL = { directed_differentiation: 'directed differentiation',
+  forward_programming: 'forward programming', transdifferentiation: 'transdifferentiation',
+  primary_isolation: 'primary isolation', other: 'other' };
+const VERDICT_CLS = { same: 'ok', differs: 'warn', novel: 'brand', not_comparable: 'mut' };
+let sotaSeen = '';
+function renderSota(s) {
+  const host = $('#sotaInsights'); if (!host) return;
+  const key = JSON.stringify(s);
+  if (key === sotaSeen) return;
+  sotaSeen = key; host.textContent = '';
+  const st = s.standing || {};
+  const head = el('div', 'sota-standing ' + (st.verdict || ''));
+  head.append(el('b', null, STANDING_LABEL[st.verdict] || st.verdict || ''));
+  if (st.summary) head.append(el('div', null, st.summary));
+  host.append(head);
+  const comps = s.comparisons || [];
+  if (comps.length) {
+    host.append(el('div', 'lab', 'This protocol vs the field'));
+    host.append(foldTable(['', 'This protocol', 'State of the art', 'Verdict'], comps.map(c => {
+      const v = el('span', 'tag ' + (VERDICT_CLS[c.verdict] || ''), c.verdict);
+      const e = c.expected_effect;
+      const detail = appendAll(el('div'), [
+        c.difference ? kv('Difference', c.difference) : null,
+        kv('State of the art', c.state_of_the_art + ((c.ref_ids || []).length
+          ? ` [${c.ref_ids.join(', ')}]` : '')),
+        e ? kv('Expected effect', `${e.readout}: ${e.direction} (${e.confidence} confidence) — `
+          + e.basis + ((e.refs || []).length ? ' [' + e.refs.join(', ') + ']' : '')) : null,
+        e && e.hypothesis_id ? kv('Became hypothesis', e.hypothesis_id) : null,
+      ]);
+      return { key: 'sota:' + c.dimension, cells: [c.dimension, c.this_protocol,
+        oneLineClip(c.state_of_the_art, 48), v], detail };
+    }), 'other'));
+    host.append(el('p', 'caveat', 'A difference carries an expected effect — a hypothesis with '
+      + 'its basis — never a measured gain: this model is uncalibrated.'));
+  }
+  if ((s.references || []).length) {
+    host.append(el('div', 'lab', 'Leading published protocols'));
+    host.append(foldTable(['Protocol', 'Route', 'Reported'], s.references.map(r => {
+      const rep = r.reported || {};
+      const line = [rep.yield && `yield ${rep.yield}`, rep.purity && `purity ${rep.purity}`,
+        rep.timeline && rep.timeline].filter(Boolean).join(' · ');
+      const name = el('span');
+      name.append(el('b', null, r.citation));
+      if (r.is_benchmark) name.append(el('span', 'tag brand', ' benchmark'));
+      const detail = appendAll(el('div'), [
+        kv('Summary', r.summary),
+        (r.key_factors || []).length ? kv('Factors', r.key_factors.join(', ')) : null,
+        kv('Reported', [rep.yield && `yield: ${rep.yield}`, rep.purity && `purity: ${rep.purity}`,
+          rep.timeline && `timeline: ${rep.timeline}`, rep.scale && `scale: ${rep.scale}`,
+          rep.format && `format: ${rep.format}`].filter(Boolean).join('; ')),
+        kv('Cites', (r.refs || []).join(', ')),
+      ]);
+      return { key: 'sref:' + r.ref_id, cells: [name, ROUTE_LABEL[r.route] || r.route,
+        oneLineClip(line, 46)], detail };
+    }), 'other'));
+  }
+  (s.limitations || []).forEach(l => host.append(el('p', 'caveat', l)));
+}
+function oneLineClip(t, n) {
+  t = String(t || '');
+  return t.length > n ? t.slice(0, n - 1) + '…' : t;
+}
+
 /* The developmental-biology add-on: each stage beside the embryo, and the
    ideas development suggests. The ideas table opens on each idea's rationale,
    what was searched, and how its novelty and confidence were set. */
@@ -1428,21 +1498,29 @@ function renderInsights(snap) {
   const terms = snap.proposed_terms;
   const plan = snap.round_plan;
   const dev = snap.developmental_map;
+  const sota = snap.sota_comparison;
   const analysed = $('#anaSec') && !$('#anaSec').hidden;
-  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !dev && !snap.reference_draft
-      && !analysed) {
+  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !dev && !sota
+      && !snap.reference_draft && !analysed) {
     panel.hidden = true; return;
   }
   panel.hidden = false;
   wireSection('litSec', false); wireSection('papersSec', false);
   wireSection('bioSec', false); wireSection('genoSec', true); wireSection('termsSec', true);
-  wireSection('devSec', true); wireSection('roundSec', true);
+  wireSection('devSec', true); wireSection('sotaSec', true); wireSection('roundSec', true);
   const devOn = dev && ((dev.stages || []).length || (dev.ideas || []).length);
   $('#devSec').hidden = !devOn;
   if (devOn) {
     renderDevMap(dev);
     $('#devSum').textContent = [`${(dev.stages || []).length} stage(s)`,
       (dev.ideas || []).length ? `${dev.ideas.length} idea(s)` : null].filter(Boolean).join(' · ');
+  }
+  const sotaOn = sota && (sota.references || []).length;
+  $('#sotaSec').hidden = !sotaOn;
+  if (sotaOn) {
+    renderSota(sota);
+    $('#sotaSum').textContent = [STANDING_LABEL[(sota.standing || {}).verdict] || '',
+      `${(sota.references || []).length} protocol(s)`].filter(Boolean).join(' · ');
   }
   $('#roundSec').hidden = !plan;
   if (plan) {
