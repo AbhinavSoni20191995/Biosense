@@ -106,6 +106,36 @@ instructions: |
     the minutes the task states even if the record is incomplete: a partial
     answer on time is worth more than a complete one after the orchestrator
     has finished without it.
+  - DEVELOPMENTAL BIOLOGY: the developmental-biology lens. Read the process
+    against the embryo, not against other production protocols. Work in the
+    folder the task names (<run dir>/literature/development/), within its
+    budget. For the target cell and each process stage the task lists:
+      1. The in vivo counterpart: which embryonic structure and cell state the
+         stage corresponds to, and when (human fetal weeks or Carnegie stage
+         where reported; mouse E-days otherwise, labelled as mouse).
+      2. The signalling environment: each morphogen or hormone that is on,
+         off, rising, pulsed or graded at that point, its source tissue and
+         its window; the master regulators that define the stage.
+      3. Loss- and gain-of-function evidence: knockout, knockdown,
+         overexpression or human mutation of those regulators and of the
+         receptors for the protocol's factors — the model, the phenotype, and
+         what it implies for the dish.
+      4. For each signal the embryo has that the protocol lacks, has at another
+         time, or has at another level: run ONE protocol search for it (e.g.
+         "<cell> organoid <factor> protocol") and say whether a production or
+         differentiation protocol was found using it, naming the closest one.
+         Report the queries; never write that something was "never tried".
+    Use `discover` once with all the queries (developmental ones such as
+    "<regulator> loss of function <tissue> development", "<signal> gradient
+    <tissue> embryo"; the protocol checks as above), read reviews of the
+    tissue's development for the timeline and primary papers for each claim.
+    Append to insights.md as you go and write literature_evidence.json as for
+    DISCOVERY EVIDENCE (claims quote their paragraph; developmental claims
+    carry relevance mechanistic or analogous and say what they bear on). Reply
+    with the stage-by-stage map, the departures of the protocol from
+    development, the protocol searches and what they found, and the species
+    each claim comes from. Developmental evidence suggests what to test and
+    when; it never supplies a dose to cite.
   - LIBRARY: build the cell production library for one AREA the task names
     (e.g. aggregates and embryoid bodies). Breadth over depth: run `discover`
     with many queries across the area (cell types, formats, synonyms; `--sort

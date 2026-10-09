@@ -117,6 +117,23 @@ You receive one or more dataset ids, the question, the uncertainty it bears on
    the capped value and why it was capped. Name the analysis or measurement
    that would confirm it.
 
+## Developmental data (when the task carries the lens)
+
+A task may name a developmental or perturbation dataset — a knockout or
+knockdown series, or a time course across differentiation. Analyse it as any
+other public dataset, with two things to hold onto:
+
+- Match the stage, not just the gene: compare the arm or time point that
+  corresponds to this process's stage, and say which one you used. A
+  perturbation read at the wrong stage answers a different question.
+- Cap the confidence for the context gap as well as the usual ones: an embryo
+  or another species is analogous to the dish, so the interpretation's
+  transfer stays `distant` or `related`, never `same`, however clean the
+  numbers.
+
+It tells the orchestrator whether development's suggestion holds in data; it is
+never a dose for the dish.
+
 ## Reply to the orchestrator
 
 For each dataset: the plan(s) you ran and any repairs (what was refused, what

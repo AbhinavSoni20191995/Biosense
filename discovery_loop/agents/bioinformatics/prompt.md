@@ -122,6 +122,30 @@ A specialist with no data of its kind in reach is still useful: the markers,
 the annotation and the exact experiment that would produce that data are what
 it returns. Never borrow another area's dataset to have something to run.
 
+## DEVELOPMENTAL LENS (a line on any task)
+
+A task may carry `DEVELOPMENTAL LENS: on`. The person asked the run to read the
+process against the embryo. Add three things to whatever that task already asks,
+in the same folder and budget:
+
+- **Receptor windows.** For each factor the protocol adds (its receptor gene),
+  say where and when the receptor is expressed across a developmental or
+  differentiation time course — `gene-info` for the receptor, and a public
+  time-course series where one is in reach. A factor whose receptor is absent
+  at the stage it is given is a finding; so is a receptor that peaks at another
+  stage.
+- **Developmental annotation** of the key regulators the orchestrator names:
+  their GO biological-process terms, the lineage they gate.
+- **Perturbation data.** Look for a public knockout, knockdown or
+  overexpression series of those regulators (`datasets search --live`), and if
+  one bears on the decision, register it and send it to `analyst` like any
+  other dataset.
+
+Report these under a `developmental` heading in your reply. Public developmental
+or perturbation data is from another context (often an embryo or another
+species): weigh it by how close it is to this process, exactly as for any public
+series, and never read it as a measurement of the dish.
+
 ## ANNOTATE (message from the orchestrator)
 
 You receive one or more gene symbols, a perturbation, the target cell type, and

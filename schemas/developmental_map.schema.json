@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/developmental-map-v1.0",
+  "title": "DevelopmentalMap 1.0: the process read against the embryo",
+  "description": "A production process recapitulates development in a dish, usually faster and with fewer signals. This document lays each process stage beside its in vivo counterpart: when it happens, which signals are on and when, which regulators define it and what losing or gaining them does. Where the protocol departs from development is stated stage by stage, and the levers development suggests that no protocol searched was found to use are listed as ideas. An idea is a hypothesis to test, never a finding: it rests on mechanism and analogy, its confidence is capped, and its novelty is stated as the scope of a search ('not found in the protocols searched'), never as 'never tried'.",
+  "type": "object",
+  "required": ["kind", "schema_version", "project_id", "cell_type", "stages", "ideas", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "developmental_map"},
+    "schema_version": {"type": "string"},
+    "project_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "created_at": {"type": ["string", "null"]},
+    "created_by": {"type": ["string", "null"]},
+    "cell_type": {"type": "string", "minLength": 2},
+    "species_basis": {"type": ["string", "null"], "description": "Which organisms the developmental evidence comes from (human fetal, mouse, chick, organoid), so transfer to a human iPSC process is read with that in mind."},
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stage_id", "in_vivo_counterpart", "signals", "regulators", "perturbations", "protocol_vs_development"],
+        "additionalProperties": false,
+        "properties": {
+          "stage_id": {"type": "string"},
+          "in_vivo_counterpart": {"type": "string", "minLength": 2},
+          "timing": {"type": ["string", "null"]},
+          "signals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "state", "refs"],
+              "additionalProperties": false,
+              "properties": {
+                "name": {"type": "string"},
+                "pathway": {"type": ["string", "null"]},
+                "state": {"enum": ["on", "off", "rising", "falling", "pulse", "gradient", "inhibited"]},
+                "window": {"type": ["string", "null"]},
+                "source": {"type": ["string", "null"]},
+                "refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+              }
+            }
+          },
+          "regulators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["gene", "role", "refs"],
+              "additionalProperties": false,
+              "properties": {
+                "gene": {"type": "string"},
+                "role": {"type": "string"},
+                "refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+              }
+            }
+          },
+          "perturbations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["gene", "type", "model", "phenotype", "refs"],
+              "additionalProperties": false,
+              "properties": {
+                "gene": {"type": "string"},
+                "type": {"enum": ["knockout", "knockdown", "overexpression", "mutation", "inhibitor", "agonist"]},
+                "model": {"type": "string"},
+                "phenotype": {"type": "string"},
+                "implication": {"type": ["string", "null"]},
+                "refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+              }
+            }
+          },
+          "protocol_vs_development": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "ideas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["idea_id", "lever", "stage_id", "action", "rationale", "developmental_refs", "protocol_search", "novelty", "confidence"],
+        "additionalProperties": false,
+        "properties": {
+          "idea_id": {"type": "string"},
+          "lever": {"type": "string"},
+          "stage_id": {"type": "string"},
+          "action": {"enum": ["add", "remove", "retime", "change_dose", "sequence", "inhibit"]},
+          "rationale": {"type": "string", "minLength": 10},
+          "developmental_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "protocol_search": {
+            "type": "object",
+            "required": ["queries", "found_in_protocols"],
+            "additionalProperties": false,
+            "properties": {
+              "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+              "found_in_protocols": {"type": "boolean"},
+              "closest_protocol_ref": {"type": ["string", "null"]}
+            }
+          },
+          "novelty": {"type": "string"},
+          "confidence": {"enum": ["low", "moderate"]},
+          "confidence_note": {"type": ["string", "null"]},
+          "test": {"type": ["string", "null"]},
+          "hypothesis_id": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "note": {"type": "string"}
+  }
+}

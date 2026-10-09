@@ -295,6 +295,9 @@ def restore(runs_dir, run_id, *, after=-1):
     snap['events'] = read_events(d, after=after)
     snap['event_count'] = len(read_events(d, after=-1))
     snap['recovered'] = True
+    # Questions are answered after the state was last written; read them live.
+    from . import ask as ASK
+    snap['questions'] = ASK.load(d)['items'] or None
     live = snap.get('status') in LIVE_STATUSES
     if live:
         age = time.time() - (snap.get('written_at') or 0)

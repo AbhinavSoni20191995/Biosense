@@ -630,6 +630,23 @@ def cmd_design(a):
     return 0
 
 
+def cmd_devmap(a):
+    """The developmental-biology add-on: each process stage read against the embryo."""
+    from . import devmap as DM
+    doc = DM.build(K.read_json(a.draft), project=PJ.load(a.project, a.projects_dir),
+                   run_id=a.run_id, created_by=a.created_by or 'orchestrator')
+    K.write_json_atomic(a.out, doc)
+    print(json.dumps({'written': a.out, 'stages': [s['stage_id'] for s in doc['stages']],
+                      'ideas': [{'idea_id': i['idea_id'], 'lever': i['lever'],
+                                 'novelty': i['novelty'], 'confidence': i['confidence'],
+                                 'confidence_note': i['confidence_note']}
+                                for i in doc['ideas']],
+                      'next': 'Write each idea worth testing as a candidate hypothesis (evidence '
+                              'relevance mechanistic or analogous; a best guess at most low) and '
+                              'put its id in the idea\'s hypothesis_id.'}, indent=1))
+    return 0
+
+
 def cmd_check(a):
     """Validate a file an agent wrote itself. The errors are the answer, in full.
 
@@ -658,8 +675,9 @@ def cmd_check(a):
 
 def cmd_template(a):
     from . import round_plan as RP
+    from . import devmap as DM
     shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
-             'round-plan': RP.TEMPLATE}.get(a.what, TEMPLATE)
+             'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE}.get(a.what, TEMPLATE)
     print(json.dumps(shape, indent=2))
     return 0
 
@@ -726,11 +744,18 @@ def main(argv=None):
     p.add_argument('--draft', required=True); p.add_argument('--out')
     p.add_argument('--run-id'); p.add_argument('--created-by')
     p.set_defaults(fn=cmd_design)
+    p = sub.add_parser('devmap', help='the developmental-biology add-on: each process stage '
+                                      'beside the embryo, and the ideas development suggests')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--run-id'); p.add_argument('--created-by')
+    p.set_defaults(fn=cmd_devmap)
     p = sub.add_parser('check', help='validate a BioSense artifact file and list every error')
     p.add_argument('file'); p.add_argument('--kind', choices=sorted(KINDS_BY_NAME))
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser('template', help='print an example draft')
-    p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan'])
+    p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
+                                    'devmap'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

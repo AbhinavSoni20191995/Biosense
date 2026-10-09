@@ -97,6 +97,18 @@ BIOINFORMATICS_MODES = ('single', 'by_analysis', 'by_process')
 DEFAULT_BIOINFORMATICS_MODE = 'single'
 # By analysis: what kind of data answers it. `modalities` are the manifest's
 # enum, so a dataset belongs to exactly one category.
+# Lenses a person can turn on for every agent in a run. Each adds tasks and
+# steps to the brief; none changes what counts as evidence.
+ADDONS = {
+    'developmental_biology': {
+        'label': 'Developmental biology lens',
+        'summary': 'each stage read against the embryo: signals and their windows, '
+                   'regulators, knockout and knockdown phenotypes, and levers development '
+                   'suggests that no protocol searched uses',
+    },
+}
+DEFAULT_ADDONS = ('developmental_biology',)
+
 BIO_ANALYSIS_AREAS = {
     'expression': {
         'label': 'Gene expression (bulk and single-cell RNA)',
@@ -151,7 +163,7 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
           projects_dir=None, effort=None, literature_mode=None, purpose=None,
-          public_data=None, continued_from=None, bioinformatics_mode=None):
+          public_data=None, continued_from=None, bioinformatics_mode=None, addons=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -194,6 +206,17 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         raise K.ContractError(f'bioinformatics_mode must be one of {BIOINFORMATICS_MODES}; '
                               f'got {bio_mode!r}')
 
+    # Lenses every agent applies. The developmental-biology one is on for a
+    # discovery run unless the person turned it off (an empty list); a library
+    # or reference run reads the field, not one process, and has none.
+    if addons is None:
+        addons = list(DEFAULT_ADDONS) if purpose == 'discovery' else []
+    addons = [str(a).strip().lower() for a in addons if str(a).strip()]
+    bad = [a for a in addons if a not in ADDONS]
+    if bad:
+        raise K.ContractError(f'unknown add-on {bad[0]!r}; the add-ons are {", ".join(ADDONS)}')
+    addons = list(dict.fromkeys(addons))
+
     # Public databases (Ensembl, UniProt, STRING, GEO) are on for a real run
     # unless the person turned them off; a synthetic demo never touches the
     # network.
@@ -223,6 +246,7 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'effort': effort,
         'literature_mode': literature_mode,
         'bioinformatics_mode': bio_mode,
+        'addons': addons,
         'purpose': purpose,
         'public_data': public_data,
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
@@ -421,6 +445,9 @@ def summarise(req, *, projects_dir=None):
     elif bio_mode == 'by_process':
         lines.append('Bioinformatics: one specialist per part of the process, in parallel — '
                      + ', '.join(a['label'] for a in BIO_PROCESS_AREAS.values()))
+    for a in req.get('addons') or []:
+        if a in ADDONS:
+            lines.append(f'Add-on: {ADDONS[a]["label"]} — {ADDONS[a]["summary"]}')
     lines.append(f'Effort: {b["label"]} — about {b["searches"]} searches and {b["full_texts"]} '
                  f'full texts for literature, {b["bio_queries"]} queries for bioinformatics, '
                  f'about {b["minutes"]} minutes per specialist')
@@ -573,6 +600,75 @@ def _bioinformatics_plan(req, project, loop_dir, budget):
         f'specialist that has not answered within its minutes is left out and recorded '
         f'as a limitation.')
     return dispatch, after
+
+
+def _developmental_plan(req, project, loop_dir, budget, python, pdir):
+    """The developmental-biology add-on: (literature task, bioinformatics line, section).
+
+    Empty strings when the person turned it off or the run is not a discovery
+    run. It adds one literature task, one line to every bioinformatics task,
+    and the steps that turn what development says into a checked map and into
+    candidate hypotheses.
+    """
+    if 'developmental_biology' not in (req.get('addons') or ()) \
+            or (req.get('purpose') or 'discovery') != 'discovery':
+        return '', '', ''
+    stages = ', '.join(f'{s["stage_id"]} ({s.get("label") or s["stage_id"]})'
+                       for s in project.stages)
+    per_s = max(3, round(budget['searches'] * 0.5))
+    per_t = max(2, round(budget['full_texts'] * 0.5))
+    lit = (f'; and, for the **developmental-biology lens** the person turned on, a second '
+           f'literature task in the same response: `title: "literature-development"`, '
+           f'`args:` starting `DEVELOPMENTAL BIOLOGY:`, naming the target cell, the process '
+           f'stages ({stages}), the factors the protocol uses, the folder '
+           f'`{loop_dir}/literature/development/` and about {per_s} searches and {per_t} full '
+           f'texts. It maps each stage to its in vivo counterpart and reports the signals, '
+           f'their windows, the regulators and their knockout / knockdown phenotypes, each '
+           f'cited')
+    bio = (' Every bioinformatics task also says `DEVELOPMENTAL LENS: on` and asks for the '
+           'receptor-expression windows of the protocol\'s factors in a developmental or '
+           'differentiation time course, the developmental annotation of the key '
+           'regulators, and any public knockout / knockdown series of them (registered and '
+           'sent to `analyst`).')
+    section = f"""## Add-on: developmental biology lens (on for this run)
+
+The person asked every agent to read this process against the embryo, not only
+against other production protocols. A protocol is development compressed into a
+dish: the levers worth testing are often the signals the embryo has at that point
+and the dish does not, or has at the wrong time.
+
+1. **Map each stage to development.** From the `literature-development` reply and
+   the bioinformatics replies, write
+   `{loop_dir}/developmental_map.draft.json` in the shape
+   `{python} -m biosense.evidence.cli template devmap` prints, then check it into
+   `{python} -m biosense.evidence.cli devmap --project {project.project_id}{pdir} \
+       --draft {loop_dir}/developmental_map.draft.json --out {loop_dir}/developmental_map.json`
+   For each stage: its in vivo counterpart and timing, the signals that are on,
+   off, rising or pulsed and when, the regulators that define it, what knocking
+   them out or down does (model, phenotype, what it implies here), and — the
+   point — where this protocol departs from development (`protocol_vs_development`).
+   Every signal, regulator and perturbation cites its source; the command refuses
+   one that does not.
+2. **Propose what development suggests and the protocols do not use.** For each
+   departure that could matter, write an idea: the lever, its stage, the action
+   (add, remove, retime, change_dose, sequence, inhibit), the developmental
+   rationale and refs, and the protocol searches the literature agent ran for it
+   (`protocol_search`). BioSense writes its novelty as the scope of those
+   searches — "not found in the N protocol searches listed" — never "never tried",
+   and caps its confidence at low (moderate when a protocol was found to use it).
+   Prefer ideas with a clear test and a short path to the bench.
+3. **Turn the best one to three ideas into hypotheses** (`hypothesis` CLI, claim
+   level candidate): evidence rows from development carry relevance
+   `mechanistic` or `analogous` with a `bearing` saying how the embryo informs
+   this dish; a magnitude, if any, is a best guess at low confidence. Put each
+   hypothesis id into its idea's `hypothesis_id`, and give the strongest idea an
+   arm in the round plan when it can be tested beside the main lever.
+4. Developmental evidence is from another context (embryo, often mouse): it
+   suggests what to test and when, never a dose to cite. A dose for an idea comes
+   from the production literature (an adapted value) or is a design choice.
+
+"""
+    return lit, bio, section
 
 
 def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None, workspace=None):
@@ -736,6 +832,8 @@ survives a restart.
     pdir = ''
     if projects_dir and (Path(projects_dir) / f'{project.project_id}.json').is_file():
         pdir = f' --projects-dir {projects_dir}'
+    dev_lit, dev_bio, dev_section = _developmental_plan(req, project, loop_dir, budget,
+                                                        python, pdir)
     wanted = '\n'.join(
         f'- `{loop_dir}/{name}` — a `{kind}`: {why}' for name, kind, why in ARTIFACTS)
     # With no dataset named, the only tables in reach are the committed demo
@@ -812,8 +910,8 @@ on a question ends the run with nothing to show. So:
 - Where you would have asked, decide what you can from the request, write the
   question down as an **open question** with the assumption you made instead,
   and carry on. Missing context is a limitation to report, never a reason to stop.
-- **Your first substantive action is a dispatch.** {lit_dispatch} — and
-  {bio_dispatch} Then end
+- **Your first substantive action is a dispatch.** {lit_dispatch}{dev_lit} — and
+  {bio_dispatch}{dev_bio} Then end
   your turn; the inbox wakes you with their answers.
 - Only end the run once the files below are written, or once you have written
   down why they could not be.
@@ -891,7 +989,7 @@ usable as design and evidence variables, and produce no prediction unless this
 run proposes a term for one from cited claims (step 5). Do not invent a term
 without them, and do not drop the parameter.
 
-## What to do
+{dev_section}## What to do
 
 1. Name the **decision-blocking uncertainty**, if the request did not. One
    sentence: what is not known, and what it would change.

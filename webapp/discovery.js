@@ -688,7 +688,7 @@ async function start() {
   }
   $('#runBtn').disabled = true;
   $('#runState').hidden = true;
-  ['resultPanel', 'protocolPanel', 'otherPanel', 'evidencePanel', 'anaSec', 'benchPanel']
+  ['resultPanel', 'protocolPanel', 'otherPanel', 'askPanel', 'evidencePanel', 'anaSec', 'benchPanel']
     .forEach(i => { const n = $('#' + i); if (n) n.hidden = true; });
   try {
     const run = await post('/api/discovery', body);
@@ -723,6 +723,7 @@ function watchRun(runId) {
       RV.timeline($('#rvTimeline'), snap);
       RV.limitations($('#rvLims'), snap);
       renderInsights(snap);
+      renderQuestions(snap);
       renderStages(snap.progress);
       (snap.events || []).forEach(seedEvent);
       $('#runBtn').disabled = RV.isLive(snap);
@@ -1152,6 +1153,61 @@ function runTheRound(p, snap) {
 /* Terms the run proposed for levers the base reactor has no equation for: the
    project's own simulator, one term at a time. Each says what it computes and
    what it cites; it joins the project only when a person adds it. */
+/* The developmental-biology add-on: each stage beside the embryo, and the
+   ideas development suggests. The ideas table opens on each idea's rationale,
+   what was searched, and how its novelty and confidence were set. */
+let devSeen = '';
+const DEV_STATE = { on: '●', off: '○', rising: '↑', falling: '↓', pulse: '⇡',
+  gradient: '▱', inhibited: '⊘' };
+function renderDevMap(dev) {
+  const host = $('#devInsights'); if (!host) return;
+  const key = JSON.stringify(dev);
+  if (key === devSeen) return;
+  devSeen = key; host.textContent = '';
+  const head = el('p', 'dim');
+  head.append(el('b', null, dev.cell_type || ''));
+  if (dev.species_basis) head.append(document.createTextNode(` · from ${dev.species_basis}`));
+  host.append(head);
+  if ((dev.stages || []).length) {
+    host.append(el('div', 'lab', 'Each stage against development'));
+    host.append(foldTable(['Stage', 'In vivo counterpart', 'Signals'], dev.stages.map(s => {
+      const sig = (s.signals || []).map(x => `${DEV_STATE[x.state] || ''} ${x.name}`).join(', ');
+      const detail = appendAll(el('div'), [
+        kv('When', s.timing),
+        (s.signals || []).length ? kv('Signals', (s.signals || []).map(x =>
+          `${x.name} ${x.state}${x.window ? ' (' + x.window + ')' : ''} — ${(x.refs || []).join(', ')}`
+        ).join('; ')) : null,
+        (s.regulators || []).length ? kv('Regulators', (s.regulators || []).map(x =>
+          `${x.gene}: ${x.role}`).join('; ')) : null,
+        (s.perturbations || []).length ? kv('Loss / gain of function', (s.perturbations || []).map(x =>
+          `${x.gene} ${x.type} (${x.model}): ${x.phenotype}`).join('; ')) : null,
+        (s.protocol_vs_development || []).length ? kv('Protocol departs',
+          s.protocol_vs_development.join(' ')) : null,
+      ]);
+      return { key: 'dev:' + s.stage_id, cells: [s.stage_id, s.in_vivo_counterpart, sig], detail };
+    })));
+  }
+  if ((dev.ideas || []).length) {
+    host.append(el('div', 'lab', 'Ideas development suggests'));
+    host.append(el('p', 'caveat', 'Hypotheses to test, not findings: each rests on the embryo '
+      + 'by mechanism or analogy, with its novelty stated as what was searched.'));
+    host.append(foldTable(['Lever', 'Stage', 'Do', 'Confidence'], dev.ideas.map(i => {
+      const nov = el('span'); nov.append(el('b', null, i.lever + ' '),
+        el('span', 'tag', i.novelty || ''));
+      const detail = appendAll(el('div'), [
+        kv('Why', i.rationale),
+        kv('Development cites', (i.developmental_refs || []).join(', ')),
+        kv('Searched the protocols for', ((i.protocol_search || {}).queries || []).join('; ')),
+        i.confidence_note ? kv('Confidence', i.confidence + ' — ' + i.confidence_note) : null,
+        kv('Test', i.test),
+        i.hypothesis_id ? kv('Became hypothesis', i.hypothesis_id) : null,
+      ]);
+      return { key: 'idea:' + i.idea_id, cells: [nov, i.stage_id, i.action, i.confidence], detail };
+    }), 'other'));
+  }
+  (dev.limitations || []).forEach(l => host.append(el('p', 'caveat', l)));
+}
+
 let termsSeen = '';
 function renderProposedTerms(t, runId) {
   const host = $('#termsInsights'); if (!host) return;
@@ -1371,15 +1427,23 @@ function renderInsights(snap) {
   const geno = snap.genotype_simulation;
   const terms = snap.proposed_terms;
   const plan = snap.round_plan;
+  const dev = snap.developmental_map;
   const analysed = $('#anaSec') && !$('#anaSec').hidden;
-  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !snap.reference_draft
+  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !dev && !snap.reference_draft
       && !analysed) {
     panel.hidden = true; return;
   }
   panel.hidden = false;
   wireSection('litSec', false); wireSection('papersSec', false);
   wireSection('bioSec', false); wireSection('genoSec', true); wireSection('termsSec', true);
-  wireSection('roundSec', true);
+  wireSection('devSec', true); wireSection('roundSec', true);
+  const devOn = dev && ((dev.stages || []).length || (dev.ideas || []).length);
+  $('#devSec').hidden = !devOn;
+  if (devOn) {
+    renderDevMap(dev);
+    $('#devSum').textContent = [`${(dev.stages || []).length} stage(s)`,
+      (dev.ideas || []).length ? `${dev.ideas.length} idea(s)` : null].filter(Boolean).join(' · ');
+  }
   $('#roundSec').hidden = !plan;
   if (plan) {
     renderRoundPlan(plan, snap);
@@ -1893,6 +1957,61 @@ function recommendationCard(h, protocol) {
     card.append(el('p', 'rec-test', clip(nx, 220)));
   }
   return card;
+}
+
+/* Questions to the orchestrator about an ended real run, and its answers.
+   While one is being answered the page re-reads the run every few seconds. */
+let askTimer = null;
+function renderQuestions(snap) {
+  const panel = $('#askPanel'); if (!panel) return;
+  const ended = !RV.isLive(snap) && snap.is_real;
+  panel.hidden = !ended;
+  if (!ended) return;
+  const items = snap.questions || [];
+  const host = $('#askList'); host.textContent = '';
+  items.forEach(q => {
+    const box = el('div', 'ask-item ' + q.status);
+    box.append(el('div', 'ask-q', q.question));
+    box.append(el('div', 'dim ask-who', [q.asked_by, BS.fmt.ago(Date.parse(q.asked_at) / 1000)]
+      .filter(Boolean).join(' · ')));
+    if (q.status === 'answering') {
+      box.append(el('p', 'dim', 'The orchestrator is reading its run and answering…'));
+    } else if (q.answer) {
+      const a = el('div', 'ask-a'); mdBlock(q.answer, a); box.append(a);
+    } else {
+      box.append(el('p', 'caveat', 'No answer: ' + (q.error || 'the orchestrator said nothing')));
+    }
+    if ((q.files_changed || []).length) {
+      box.append(el('p', 'caveat', 'While answering, these files changed (it was asked not '
+        + 'to change anything): ' + q.files_changed.join(', ')));
+    }
+    if (q.session && q.session.fresh) {
+      box.append(el('p', 'dim ask-who', 'Answered by a fresh session reading the run\'s files '
+        + '(the run\'s own session had ended).'));
+    }
+    host.append(box);
+  });
+  const busy = items.some(q => q.status === 'answering');
+  $('#askBtn').disabled = busy;
+  clearTimeout(askTimer);
+  if (busy) {
+    askTimer = setTimeout(() => get(`/api/discovery/${snap.run_id}`)
+      .then(s => { state.run = s; renderQuestions(s); }).catch(() => {}), 4000);
+  }
+}
+async function askQuestion(ev) {
+  ev.preventDefault();
+  const snap = state.run; const text = $('#askText').value.trim();
+  if (!snap || text.length < 3) return;
+  $('#askBtn').disabled = true; $('#askMsg').textContent = '';
+  try {
+    await post(`/api/discovery/${snap.run_id}/ask`, { question: text });
+    $('#askText').value = '';
+    const s = await get(`/api/discovery/${snap.run_id}`); state.run = s; renderQuestions(s);
+  } catch (e) {
+    $('#askMsg').textContent = e.message || String(e);
+    $('#askBtn').disabled = false;
+  }
 }
 
 /* Every hypothesis but the recommended one, one line each; a row opens on its
@@ -2534,6 +2653,8 @@ async function loadProjectTemplates() {
 
 /* ── wiring ──────────────────────────────────────────────────────────────── */
 function wire() {
+  const af = $('#askForm');
+  if (af) af.addEventListener('submit', askQuestion);
   const np = $('#newProjectBtn');
   if (np) {
     np.addEventListener('click', () => {

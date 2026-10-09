@@ -51,6 +51,8 @@ Endpoints
                                   run's round plan (arm, replicate, readout, value)
     POST /api/discovery/<id>/follow-up   the next round: an ended run's artifacts, plus the
                                   results a person measured, read against its round plan
+    POST /api/discovery/<id>/ask  a question to the orchestrator about an ended run; it
+                                  answers from the run's files, read-only (GET the run for it)
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
     POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
@@ -135,6 +137,10 @@ SIM_GATE = threading.BoundedSemaphore(MAX_CONCURRENT_SIM)
 # A real-AI run costs money and lasts minutes rather than a second, so it gets a
 # tighter cap than the synthetic loop and its own queue.
 MAX_CONCURRENT_REAL = 1
+# Questions about ended runs answering at once in this process. Each is one turn
+# of one session, so they do not hold the run gate; they have their own.
+MAX_CONCURRENT_QUESTIONS = 2
+QUESTION_GATE = threading.BoundedSemaphore(MAX_CONCURRENT_QUESTIONS)
 # The time limit is a bill cap, not a verdict: a run cut off mid-hypothesis
 # throws away everything the specialists found. So the orchestrator is told
 # WRAP_UP_S before the deadline to write what it has, and the person watching
@@ -238,6 +244,7 @@ class Run:
         self.genotype_sim = None
         self.proposed_terms = None
         self.round_plan = None
+        self.developmental_map = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -353,6 +360,7 @@ class DiscoveryRun:
         self.genotype_sim = None
         self.proposed_terms = None
         self.round_plan = None
+        self.developmental_map = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -410,6 +418,7 @@ class DiscoveryRun:
         self._read_genotype_sim()
         self._read_proposed_terms()
         self._read_round_plan()
+        self._read_developmental_map()
         self._read_stage_shards()
         self._read_bio_specialists()
         self._read_reference_draft()
@@ -664,6 +673,13 @@ class DiscoveryRun:
                     'stand_in', 'stand_in_note', 'used', 'not_represented', 'control_label')}
                 return
 
+    def _questions(self):
+        """What the person asked the orchestrator after the run, and its answers."""
+        if self.finished_at is None:
+            return None
+        from . import ask as ASK
+        return ASK.load(self.out_dir)['items'] or None
+
     def _measurements(self):
         """What came back from the round this run planned. Only once the run has ended."""
         if self.finished_at is None:
@@ -682,6 +698,23 @@ class DiscoveryRun:
             'round', 'purpose', 'unknowns', 'arms', 'readouts', 'replicates',
             'decision_rules', 'limitations', 'status', 'commitment_sha256', 'created_at')}
             if isinstance(doc, dict) and doc.get('kind') == 'round_plan' else None)
+
+    def _read_developmental_map(self):
+        """The developmental-biology add-on: each stage read against the embryo.
+
+        Read from the file the devmap CLI validated; a map that failed its
+        rules (an uncited signal, an overclaimed novelty) never reaches it.
+        """
+        f = self.out_dir / 'developmental_map.json'
+        try:
+            doc = K.read_json(f) if f.is_file() else None
+        except (OSError, ValueError):
+            doc = None
+        if not isinstance(doc, dict) or doc.get('kind') != 'developmental_map':
+            self.developmental_map = None
+            return
+        self.developmental_map = {k: doc.get(k) for k in (
+            'cell_type', 'species_basis', 'stages', 'ideas', 'limitations', 'note')}
 
     def _read_proposed_terms(self):
         """The response terms this run proposed for levers the base reactor lacks.
@@ -981,6 +1014,7 @@ class DiscoveryRun:
                 'bioinformatics': self.bioinformatics,
                 'genotype_simulation': self.genotype_sim,
                 'proposed_terms': self.proposed_terms,
+                'developmental_map': self.developmental_map,
                 'literature_stages': list(self.literature_stages),
                 'reference_draft': self.reference_draft,
                 'stage_counts': ST.stage_counts(self.stages_reached,
@@ -1012,6 +1046,7 @@ class DiscoveryRun:
                                and self.runtime_mode in RT.REAL_MODES),
                 'round_plan': self.round_plan,
                 'measurements': self._measurements(),
+                'questions': self._questions(),
                 'continued_from': self.request.get('continued_from'),
                 'extensions_left': self.extensions_left,
                 'extension_s': EXTENSION_S,
@@ -1705,6 +1740,9 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 return self._continue_ended(m.group(1), self._identity(),
                                             follow_up=self._body(MAX_BODY_DISCOVERY))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/ask', path)
+            if m:
+                return self._ask(m.group(1), self._body())
             m = re.fullmatch(r'/api/discovery/([^/]+)/extend', path)
             if m:
                 return self._extend_discovery(m.group(1))
@@ -2009,6 +2047,7 @@ class Handler(BaseHTTPRequestHandler):
             literature_mode=body.get('literature_mode'), purpose=body.get('purpose'),
             public_data=body.get('public_data'),
             bioinformatics_mode=body.get('bioinformatics_mode'),
+            addons=body.get('addons'),
             requested_by=identity.owner if identity.authenticated else None,
             projects_dir=self._projects_dir(identity))
 
@@ -2297,6 +2336,83 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {'run_id': rid, 'measurements': RR.summary(d),
                                 'recorded': len(body.get('entries') or []),
                                 'note': doc['note']})
+
+    def _ask(self, rid, body):
+        """A question to the orchestrator about a run that has ended.
+
+        Answered by the run's own orchestrator session when it still exists (it
+        holds the run's reasoning), otherwise by a fresh one pointed at the run's
+        files. Read-only by instruction, and checked: a file the agent changed
+        while answering is named on the answer. One turn, so it does not count
+        as a run against the allowance; it is bounded per run and per process.
+        """
+        from . import ask as ASK
+        identity = self._identity()
+        d, status = self._ended_run_dir(rid, identity)
+        if d is None:
+            return self._send(*status)
+        live = self.discovery.get(rid, owner=identity.owner)
+        if live is not None:
+            mode, session = live.runtime_mode, (live.session or {}).get('omnigent_session_id')
+        else:
+            state = RS._read_state(RS.state_path(d)) or {}
+            mode, session = state.get('runtime_mode'), state.get('omnigent_session_id')
+        target = self.discovery.cfg.for_mode(mode) if mode else None
+        if target is None or not target.is_real:
+            return self._send(409, {'error': 'this run used the synthetic demonstration path, '
+                                             'so there is no orchestrator to ask. Questions '
+                                             'go to the AI that ran a real discovery run.'})
+        try:
+            from . import omnigent_runtime as OMNI
+            OMNI.ensure_available(target)
+        except RT.RuntimeUnavailable as e:
+            return self._send(503, {'error': str(e), 'reason': e.reason,
+                                    'next_step': e.next_step})
+        if not QUESTION_GATE.acquire(blocking=False):
+            return self._send(429, {'error': f'{MAX_CONCURRENT_QUESTIONS} questions are being '
+                                             f'answered on this server; ask again in a minute'})
+        try:
+            who = str(getattr(identity, 'display', None) or identity.owner or 'local user')[:80]
+            item = ASK.start(d, body.get('question'), asked_by=who)
+        except K.ContractError as e:
+            QUESTION_GATE.release()
+            return self._send(400, {'error': str(e)})
+        earlier = [(i['question'], i.get('answer')) for i in ASK.load(d)['items']
+                   if i['id'] != item['id'] and i.get('answer')][-5:]
+        loop_dir = DRUN.run_dir_for_agents(target, d)
+        threading.Thread(target=self._answer_question,
+                         args=(target, d, item, session, loop_dir, earlier), daemon=True,
+                         name=f'ask-{rid[:6]}').start()
+        return self._send(202, {'run_id': rid, 'question': item,
+                                'note': 'The orchestrator is answering; the run page shows the '
+                                        'answer when it arrives.'})
+
+    @staticmethod
+    def _answer_question(target, d, item, session, loop_dir, earlier):
+        from . import ask as ASK
+        from . import omnigent_runtime as OMNI
+        try:
+            before = ASK.fingerprint(d)
+            res = None
+            for sid in ([session, None] if session else [None]):
+                res = OMNI.answer(target, ASK.framed(item['question'], loop_dir=loop_dir,
+                                                     fresh=sid is None, earlier=earlier),
+                                  session_id=sid, title=f'Question: {item["question"][:60]}')
+                if res.get('answer') or res.get('timed_out'):
+                    break
+            moved = ASK.changed(before, ASK.fingerprint(d))
+            ASK.finish(d, item['id'],
+                       status='answered' if res.get('answer') else 'failed',
+                       answer=res.get('answer'), files_changed=moved,
+                       session={'omnigent_session_id': res.get('session_id'),
+                                'fresh': res.get('fresh')},
+                       error=(res.get('error') or ('no answer within the time allowed'
+                                                   if res.get('timed_out') else None)
+                              or (None if res.get('answer') else 'the orchestrator said nothing')))
+        except Exception as e:  # noqa: BLE001 - a failed answer is recorded, never lost
+            ASK.finish(d, item['id'], status='failed', error=f'{type(e).__name__}: {str(e)[:300]}')
+        finally:
+            QUESTION_GATE.release()
 
     def _continue_ended(self, rid, identity, follow_up=None):
         """A fresh run that picks up where an ended one left off.

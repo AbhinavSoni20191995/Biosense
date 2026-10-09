@@ -578,6 +578,111 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop, inbox=
         await client.close()
 
 
+# A question after the run is one turn, not a run: bounded on its own.
+ANSWER_TIMEOUT_S = 600
+
+
+def answer(cfg, text, *, session_id=None, title=None, timeout_s=None):
+    """Put one message to an orchestrator and return what it says back.
+
+    For a question about a finished run. The run's own session is used when it
+    still exists, because it holds everything the orchestrator reasoned; when it
+    is gone, a fresh session is started and *text* must then tell it where the
+    run's files are. Returns {answer, session_id, fresh, error, timed_out}. One
+    turn is waited for, within *timeout_s*: a reply is the assistant's messages
+    in that turn, and a turn that dispatches specialists is not followed.
+    """
+    if not cfg.is_real:
+        raise K.ContractError('answer() is for a real runtime; a synthetic run has no '
+                              'orchestrator to ask')
+    RT.check_workspace(cfg)
+    RT.check_sandbox(cfg)
+    try:
+        return _run_async(_answer(cfg, text, session_id=session_id,
+                                  title=title or 'BioSense question',
+                                  timeout_s=timeout_s or ANSWER_TIMEOUT_S))
+    except RT.RuntimeUnavailable:
+        raise
+    except Exception as e:  # noqa: BLE001
+        code, detail = _classify(e)
+        raise RT.RuntimeUnavailable(code, detail,
+                                    hosted=bool(getattr(cfg, 'hosted', False))) from None
+
+
+async def _answer(cfg, text, *, session_id, title, timeout_s):
+    client = _client(cfg)
+    try:
+        fresh = False
+        if session_id:
+            try:
+                live = await client.sessions.get(session_id)
+                if (getattr(live, 'status', None) or '').lower() == 'failed':
+                    session_id = None
+            except Exception:  # noqa: BLE001 - a session the server lost is a fresh start
+                session_id = None
+        if not session_id:
+            agent = await client.sessions.resolve_agent(cfg.agent)
+            where = await _find_executor(client, agent.harness)
+            if where['kind'] == 'none':
+                raise RT.RuntimeUnavailable(where['reason'], where['detail'],
+                                            hosted=bool(getattr(cfg, 'hosted', False)))
+            created, _runner = await _create_session(client, cfg, agent, where,
+                                                     title[:SESSION_TITLE_LIMIT])
+            session_id, fresh = str(created['id']), True
+        # Opened before the question is posted, so the reply cannot slip past.
+        stream = client.sessions.stream(session_id).__aiter__()
+        await _post_user(client, session_id, text)
+        said, error, done, timed_out = [], None, False, False
+        deadline = time.monotonic() + timeout_s
+        while not done:
+            if time.monotonic() > deadline:
+                timed_out = True
+                try:
+                    await client.sessions.interrupt(session_id)
+                except Exception:  # noqa: BLE001 - stopping is advisory
+                    pass
+                break
+            raw = None
+            if stream is None:
+                await asyncio.sleep(IDLE_RECHECK_S)
+            else:
+                try:
+                    raw = await asyncio.wait_for(stream.__anext__(), timeout=STREAM_POLL_S)
+                except asyncio.TimeoutError:
+                    pass
+                except StopAsyncIteration:
+                    stream = None
+                except Exception:  # noqa: BLE001 - a dropped tail is reopened
+                    stream = None
+            if raw is None:
+                if stream is None and said:
+                    try:
+                        live = await client.sessions.get(session_id)
+                        if (getattr(live, 'status', None) or '').lower() not in SESSION_LIVE:
+                            done = True
+                    except Exception:  # noqa: BLE001
+                        done = True
+                elif stream is None:
+                    stream = await _reopen(client, session_id)
+                    if stream is None:
+                        await asyncio.sleep(IDLE_RECHECK_S)
+                continue
+            mapped = ST.map_event(raw)
+            if mapped is None:
+                continue
+            if mapped['kind'] == 'message' and mapped.get('role') == 'assistant':
+                said.append(mapped.get('technical') or '')
+            elif mapped['kind'] in ('terminal', 'error') and mapped.get('stage') in ST.TERMINAL:
+                if mapped['stage'] == 'failed':
+                    error = mapped.get('technical') or 'the session failed'
+                done = True
+        return {'answer': '\n\n'.join(t for t in said if t.strip()) or None,
+                'session_id': session_id, 'fresh': fresh, 'error': error,
+                'timed_out': timed_out}
+    finally:
+        await client.close()
+
+
 def _child_busy(row):
     """Omnigent's own "is this sub-agent still working" predicate, or a copy of it."""
     try:
