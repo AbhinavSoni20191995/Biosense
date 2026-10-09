@@ -30,6 +30,7 @@ from .. import parameters as PR
 from .. import projects as PJ
 from ..evidence import limitations as LIM
 from ..evidence import process_reference as PREF
+from . import first_pass as FP
 from . import response_model as RM
 from . import runtime as RT
 
@@ -465,6 +466,7 @@ def markdown(doc):
         L += ['> **This protocol has gaps and cannot be run.** Each one needs evidence or a '
               'named design choice.', '']
     L += PRP.glance(doc)
+    L += FP.markdown(FP.plan(doc))
     L += PRP.hypotheses_glance(doc)
     L += PRP.comparison(doc, _is_factor)
     L += PRP.protocol(doc, _timeline_markdown(doc), _effect_line)
@@ -573,6 +575,8 @@ def display(doc):
     """The payload the interface renders: the document plus a few derived counts."""
     changed = [p for st in doc['stages'] for p in st['parameters'] if p['changed']]
     ledger = doc['hypothesis_ledger']
+    labels = {s['stage_id']: s.get('label') or s['stage_id']
+              for s in (doc.get('timeline') or {}).get('stages') or []}
     return {
         **doc,
         'summary_counts': {
@@ -585,6 +589,11 @@ def display(doc):
         },
         'changed_parameters': changed,
         'badge': RT.LABELS[doc['runtime_mode']],
+        # The same protocol laid out stage by stage for the bench, and each
+        # hypothesis as the one action it asks for.
+        'first_pass': FP.plan(doc),
+        'actions': {r['hypothesis_id']: FP.lever_action(r.get('lever'), labels)
+                    for r in ledger},
     }
 
 

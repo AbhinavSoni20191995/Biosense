@@ -681,7 +681,7 @@ class AppServerTests(unittest.TestCase):
         cols = text.index('class="cols"')
         first = text.index('<div class="stack">', cols)
         second = text.index('<div class="stack">', first + 1)
-        for panel in ('id="resultPanel"', 'id="protocolPanel"', 'id="analysisPanel"'):
+        for panel in ('id="resultPanel"', 'id="protocolPanel"', 'id="otherPanel"'):
             self.assertLess(text.index(panel), second,
                             f'{panel} is in the sidebar, not the wide column')
 

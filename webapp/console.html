@@ -381,22 +381,30 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
           <span class="dim" id="roundSum"></span></summary>
         <div id="roundInsights"></div>
       </details>
+      <details class="ins-sec" id="anaSec" data-key="ana" hidden>
+        <summary><span class="ins-t">Analysis details</span>
+          <span class="dim" id="anaSum"></span></summary>
+        <div id="analyses"></div>
+      </details>
     </section>
 
+    <!-- The answer, in the order a person acts on it: the one recommendation,
+         the plan stage by stage, then every other hypothesis. -->
     <section class="glass card" id="resultPanel" hidden>
-      <div class="head"><h3>Current hypothesis</h3><span class="hint" id="resultHead"></span></div>
+      <div class="head"><h3>Recommendation</h3><span class="hint" id="resultHead"></span></div>
       <div id="hypothesis"></div>
     </section>
 
     <section class="glass card" id="protocolPanel" hidden>
-      <div class="head"><h3>Recommended protocol</h3>
-        <span class="hint">one page, and what did not make it</span></div>
+      <div class="head"><h3>Plan</h3>
+        <span class="hint">the recommended protocol, stage by stage</span></div>
       <div id="protocol"></div>
     </section>
 
-    <section class="glass card" id="analysisPanel" hidden>
-      <div class="head"><h3>Analyses</h3><span class="hint">evidence, not decisions</span></div>
-      <div id="analyses"></div>
+    <section class="glass card" id="otherPanel" hidden>
+      <div class="head"><h3>Other hypotheses</h3>
+        <span class="hint">every one, and what became of it</span></div>
+      <div id="otherHyps"></div>
     </section>
 
     <section class="glass card" id="benchPanel" hidden>

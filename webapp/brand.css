@@ -728,3 +728,43 @@ button{font-family:inherit}
   .ft-kv{grid-template-columns:1fr;gap:2px}
   .ft-an th:nth-child(5),.ft-an td:nth-child(5){display:none}
 }
+
+/* ── The answer: one recommendation, the plan by stage, then the rest ── */
+.rec{border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:var(--r-s);
+  padding:14px 16px;background:var(--glass-2)}
+.rec-act{font-size:19px;font-weight:650;line-height:1.35;color:var(--ink)}
+.rec-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:8px 0 2px;font-size:12.5px}
+.rec-meta .chip.warn{border-color:var(--warn);color:var(--warn)}
+.rec-lab,.plan-lab{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);margin:12px 0 4px}
+.rec-list{margin:0;padding-left:18px;font-size:13.5px;line-height:1.5}
+.rec-test{margin:0;font-size:13.5px;color:var(--ink-2)}
+.rec-why{margin-top:10px}
+.rec-why > summary,.proto-rows > summary{cursor:pointer;font-size:13px;color:var(--ink-2)}
+.plan{margin:6px 0 14px}
+.plan-stages{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.plan-stage{border:1px solid var(--line);border-top:3px solid var(--s1);border-radius:var(--r-s);
+  padding:10px 12px;background:var(--glass-2);min-width:0}
+.plan-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.plan-head .days{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.plan-stage .plan-lab{margin-top:8px}
+.plan-none{font-size:12.5px;margin:2px 0}
+.plan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px}
+.plan-item{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 8px;margin:4px 0;
+  border:1px solid var(--line);border-radius:9px;font-size:13px;min-width:0}
+.plan-grid .plan-item{margin:0}
+.plan-item .plan-body{min-width:0;overflow-wrap:anywhere}
+.plan-item .v{font-family:var(--mono);font-size:12.5px}
+.plan-item .was{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:6px}
+.plan-item .meta{display:inline-flex;align-items:center;gap:5px;margin-left:auto;font-size:11px}
+.plan-verb{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  padding:1px 6px;border-radius:6px;border:1px solid currentColor;color:var(--brand)}
+.plan-item.act-keep{color:var(--ink-2)}
+.plan-item.act-lower .plan-verb{color:var(--s2)}
+.plan-item.act-gap .plan-verb{color:var(--bad)}
+.plan-item.new{border-style:dashed}
+.plan-note{margin-top:10px}
+.pl.candidate{color:var(--s3)}
+.plan-item .plan-body{flex:1 1 auto}
+.ft.other td:nth-child(2),.ft.other th:nth-child(2){width:58%}
+#protocol details ul.tight{font-size:13px;line-height:1.5}

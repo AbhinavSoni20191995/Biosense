@@ -688,7 +688,7 @@ async function start() {
   }
   $('#runBtn').disabled = true;
   $('#runState').hidden = true;
-  ['resultPanel', 'protocolPanel', 'evidencePanel', 'analysisPanel', 'benchPanel']
+  ['resultPanel', 'protocolPanel', 'otherPanel', 'evidencePanel', 'anaSec', 'benchPanel']
     .forEach(i => { const n = $('#' + i); if (n) n.hidden = true; });
   try {
     const run = await post('/api/discovery', body);
@@ -1371,7 +1371,9 @@ function renderInsights(snap) {
   const geno = snap.genotype_simulation;
   const terms = snap.proposed_terms;
   const plan = snap.round_plan;
-  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !snap.reference_draft) {
+  const analysed = $('#anaSec') && !$('#anaSec').hidden;
+  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !snap.reference_draft
+      && !analysed) {
     panel.hidden = true; return;
   }
   panel.hidden = false;
@@ -1503,9 +1505,10 @@ function renderResult(snap) {
   const r = snap.result;
   renderEvidence(r.bundle.evidence);
   renderAnalyses(r.bundle.analyses);
-  renderHypothesis(r.bundle.selected_hypothesis, r.bundle.hypotheses);
+  renderHypothesis(r.bundle.selected_hypothesis, r.bundle.hypotheses, r.protocol);
   renderCandidates(r.bundle.candidate_parameters);
   if (r.protocol) renderProtocol(r.protocol);
+  renderOtherHypotheses(r.protocol, r.bundle.selected_hypothesis);
   renderExports(snap);
   const panel = $('#resultPanel'); panel.hidden = false;
   const head = $('#resultHead'); head.textContent = '';
@@ -1560,7 +1563,7 @@ function renderEvidence(groups) {
 function renderAnalyses(cards) {
   const host = $('#analyses'); if (!host) return;
   host.textContent = '';
-  if (!cards.length) { $('#analysisPanel').hidden = true; return; }
+  if (!cards.length) { $('#anaSec').hidden = true; return; }
   cards.forEach(a => {
     const w = el('div', 'hyp');
     w.append(el('h4', null, a.question));
@@ -1597,7 +1600,11 @@ function renderAnalyses(cards) {
     w.append(det);
     host.append(w);
   });
-  $('#analysisPanel').hidden = false;
+  /* The analyses are insights, read before the recommendation they feed. */
+  $('#anaSec').hidden = false;
+  $('#insightsPanel').hidden = false;
+  wireSection('anaSec', false);
+  $('#anaSum').textContent = `${cards.length} analysis${cards.length === 1 ? '' : 'es'}`;
 }
 
 function effectRow(e) {
@@ -1659,7 +1666,7 @@ function effectRowGuess(e, r) {
   const amt = el('div', 'amt');
   const sgn = v => (v > 0 ? '+' : '') + num(v, 4);
   amt.append(document.createTextNode(
-    `best guess ${sgn(iv.lower)} to ${sgn(iv.upper)} ${e.change_unit || ''}`));
+    `best guess ${sgn(iv.lower)} to ${sgn(iv.upper)} ${UNIT_SHORT[e.change_unit] || e.change_unit || ''}`));
   if (e.absolute_change != null) amt.append(el('span', 'rel', `  (central ${sgn(e.absolute_change)})`));
   amt.append(el('span', 'conf ' + (j.confidence || 'low'), (j.confidence || 'low') + ' confidence'));
   amt.append(term('estimate_type', e.estimate_type, null, 'et ' + e.estimate_type));
@@ -1725,7 +1732,7 @@ function confidenceBar(h) {
   return box;
 }
 
-function renderHypothesis(selected, all) {
+function renderHypothesis(selected, all, protocol) {
   const host = $('#hypothesis'); if (!host) return;
   host.textContent = '';
   if (!selected) {
@@ -1767,7 +1774,11 @@ function renderHypothesis(selected, all) {
     host.append(el('p', 'dim', why || 'No hypothesis was formed by this run.'));
     return;
   }
+  host.append(recommendationCard(selected, protocol));
+  const why = el('details', 'rec-why');
+  why.append(el('summary', null, 'Why — the full hypothesis, its effects and evidence'));
   const w = el('div', 'hyp');
+  why.append(w);
   /* The claim level comes first, because it is what tells a reader how much
      weight the sentence under it can carry. A CANDIDATE is a real output —
      most useful hypotheses start there — and not a degraded QUANTIFIED one. */
@@ -1820,12 +1831,92 @@ function renderHypothesis(selected, all) {
     w.append(el('div', 'lab', 'Recommended next experiment'));
     w.append(Object.assign(el('div'), { style: 'font-size:13.5px', textContent: nx.summary }));
   }
-  host.append(w);
+  host.append(why);
   if ((all || []).length > 1) {
     host.append(el('p', 'caveat',
-      `${all.length} hypotheses were formed. All of them, and what became of each, are in the `
-      + 'protocol below.'));
+      `${all.length} hypotheses were formed; the other ${all.length - 1}, and what became of `
+      + 'each, are under Other hypotheses.'));
   }
+}
+
+/* One line per expected effect: which way, how far if anyone knows, and how
+   that number was reached. The full rows are in the fold under the card. */
+const UNIT_SHORT = { percentage_points: 'pp' };
+function effectLine(e) {
+  const label = String(e.label || e.metric || '').replace(/_/g, ' ');
+  e = Object.assign({}, e, { change_unit: UNIT_SHORT[e.change_unit] || e.change_unit });
+  const arrow = { increase: '↑', decrease: '↓', no_change: '→' }[e.direction] || '?';
+  const sgn = v => (v > 0 ? '+' : '') + num(v, 4);
+  if (e.estimate_type === 'judgement') {
+    const iv = e.interval || {}, j = e.judgement || {};
+    return `${label}: best guess ${sgn(iv.lower)} to ${sgn(iv.upper)} ${e.change_unit || ''}`
+      + ` (${j.confidence || 'low'} confidence)`;
+  }
+  if (e.magnitude_estimated === false || e.absolute_change == null) {
+    return `${label}: ${arrow} expected, size not established`;
+  }
+  return `${label}: ${arrow} ${sgn(e.absolute_change)} ${e.change_unit || ''}`
+    + (e.relative_change_pct != null ? ` (${sgn(e.relative_change_pct)}%)` : '')
+    + ` · ${String(e.estimate_type || '').toUpperCase()}`;
+}
+function clip(text, n) {
+  const t = String(text || '').trim();
+  return t.length > n ? t.slice(0, n - 1).replace(/\s+\S*$/, '') + '…' : t;
+}
+/* The recommendation as the action it asks for, then what to expect and how
+   sure it is — short enough to read in one look. */
+function recommendationCard(h, protocol) {
+  const p = h.parameter || {};
+  const card = el('div', 'rec');
+  const action = ((protocol || {}).actions || {})[h.hypothesis_id]
+    || `${p.direction === 'decrease' ? 'Lower' : 'Raise'} ${p.label || p.parameter_id}`
+      + (p.candidate_value != null ? ` to ${num(p.candidate_value)} ${p.unit || ''}` : '');
+  card.append(el('div', 'rec-act', action));
+  const meta = el('div', 'rec-meta');
+  meta.append(el('span', 'chip', h.hypothesis_id));
+  meta.append(el('span', 'chip', (h.claim_level || 'candidate') + ' hypothesis'));
+  meta.append(miniBar(h.confidence), el('span', 'dim', (h.confidence || 'unstated') + ' confidence'));
+  if (p.in_project === false || p.registered === false) {
+    meta.append(el('span', 'chip warn', 'not yet a parameter of this project'));
+  }
+  card.append(meta);
+  const effects = h.effects || [];
+  if (effects.length) {
+    card.append(el('div', 'rec-lab', 'Expect'));
+    const ul = el('ul', 'rec-list');
+    effects.forEach(e => ul.append(el('li', null, effectLine(e))));
+    card.append(ul);
+  }
+  const nx = (h.next_experiment || {}).summary;
+  if (nx) {
+    card.append(el('div', 'rec-lab', 'Test it'));
+    card.append(el('p', 'rec-test', clip(nx, 220)));
+  }
+  return card;
+}
+
+/* Every hypothesis but the recommended one, one line each; a row opens on its
+   full statement and the reason it is, or is not, in the protocol. */
+function renderOtherHypotheses(p, selected) {
+  const panel = $('#otherPanel'), host = $('#otherHyps');
+  if (!panel || !host) return;
+  host.textContent = '';
+  const rows = ((p || {}).hypothesis_ledger || [])
+    .filter(r => !selected || r.hypothesis_id !== selected.hypothesis_id);
+  panel.hidden = !rows.length;
+  if (!rows.length) return;
+  const actions = (p || {}).actions || {};
+  host.append(foldTable(['Hypothesis', 'Status', 'In the plan', 'Confidence'], rows.map(r => {
+    const name = el('span');
+    name.append(el('b', null, r.hypothesis_id + ' '), actions[r.hypothesis_id] || clip(r.statement, 120));
+    const st = term('hypothesis_status', r.status, null, 'st');
+    return {
+      key: 'other:' + r.hypothesis_id,
+      cells: [name, st, r.adopted ? 'yes' : 'no', r.confidence || '—'],
+      detail: appendAll(el('div'), [kv('Statement', r.statement), kv('Why', r.reason),
+        kv('Evidence', (r.evidence_sources || []).join(', ').replace(/_/g, ' '))]),
+    };
+  }), 'other'));
 }
 
 function renderCandidates(rows) {
@@ -2202,7 +2293,13 @@ function renderProtocol(p) {
       + `${c.hypotheses_adopted} of ${c.hypotheses_total} hypotheses are in the protocol; `
       + `${c.hypotheses_discarded} are not.` }));
 
-  if (p.timeline && (p.timeline.stages || []).length) host.append(renderTimeline(p));
+  if (p.first_pass && (p.first_pass.stages || []).length) host.append(renderPlan(p.first_pass));
+  if (p.timeline && (p.timeline.stages || []).length) {
+    const tlBox = el('details', 'proto-rows');
+    tlBox.append(el('summary', null, 'Production timeline — every value with its basis'));
+    tlBox.append(renderTimeline(p));
+    host.append(tlBox);
+  }
   const rowsBox = el('details', 'proto-rows');
   rowsBox.append(el('summary', null, 'Every value, row by row'));
   host.append(rowsBox);
@@ -2247,25 +2344,6 @@ function renderProtocol(p) {
     rowsBox.append(w);
   });
 
-  host.append(el('div', 'lab', 'Hypotheses this run formed'));
-  host.append(el('p', 'caveat',
-    'Every one, including the ones that did not make it. A discarded hypothesis is part of the '
-    + 'result, not a mistake to hide.'));
-  const tbl = el('table', 'ledger');
-  const thead = el('thead'); const hr = el('tr');
-  ['Hypothesis', 'Status', 'In protocol', 'Why'].forEach(h => hr.append(el('th', null, h)));
-  thead.append(hr); tbl.append(thead);
-  const tb = el('tbody');
-  p.hypothesis_ledger.forEach(r => {
-    const tr = el('tr', r.adopted ? 'kept' : 'dropped');
-    tr.append(el('td', null, r.statement));
-    const st = el('td'); st.append(term('hypothesis_status', r.status, null, 'st')); tr.append(st);
-    tr.append(el('td', null, r.adopted ? 'yes' : 'no'));
-    tr.append(el('td', null, r.reason || ''));
-    tb.append(tr);
-  });
-  tbl.append(tb); host.append(tbl);
-
   if ((p.gaps || []).length) {
     host.append(el('div', 'lab', 'Gaps — these block the wet lab'));
     const ul = el('ul', 'tight');
@@ -2293,6 +2371,60 @@ function renderProtocol(p) {
     p.limitations.forEach(x => ul.append(el('li', null, x)));
     det.append(ul); host.append(det);
   }
+}
+
+/* The plan a person takes to the bench: one box per stage with the inducers
+   given in it, then the physical settings. Built by the server from the
+   protocol (first_pass.py); a NEW lever is a live hypothesis's, not yet the
+   project's, and says so. */
+const PLAN_VERB = { add: 'ADD', raise: 'RAISE', lower: 'LOWER', set: 'SET', gap: 'NO VALUE' };
+function planItem(i, withStage) {
+  const row = el('div', `plan-item act-${i.action}${i.registered ? '' : ' new'}`);
+  row.title = i.text + (i.hypothesis_id ? ` — from ${i.hypothesis_id}` : '');
+  if (PLAN_VERB[i.action]) row.append(el('span', 'plan-verb', PLAN_VERB[i.action]));
+  const body = el('span', 'plan-body');
+  body.append(el('b', null, i.label));
+  body.append(el('span', 'v', i.value == null
+    ? (i.registered ? '—' : 'dose not set') : ` ${num(i.value)}${i.unit ? ' ' + i.unit : ''}`));
+  if (i.was != null) body.append(el('span', 'was', `was ${num(i.was)}`));
+  if (withStage && i.stage_id !== 'all' && i.stage_label) body.append(el('span', 'dim', ` · ${i.stage_label}`));
+  row.append(body);
+  const meta = el('span', 'meta');
+  meta.append(el('span', 'pl ' + i.provenance, i.letter));
+  if (i.confidence) meta.append(miniBar(i.confidence));
+  if (i.hypothesis_id) meta.append(el('span', 'dim', i.hypothesis_id));
+  row.append(meta);
+  return row;
+}
+function renderPlan(fp) {
+  const wrap = el('div', 'plan');
+  const boxes = el('div', 'plan-stages');
+  fp.stages.forEach(s => {
+    const b = el('div', 'plan-stage');
+    const h = el('div', 'plan-head');
+    h.append(el('strong', null, s.label));
+    h.append(el('span', 'days', s.days == null ? 'days not set'
+      : `d${num(s.day_start)}–${num(s.day_start + s.days)}`));
+    b.append(h, el('div', 'plan-lab', 'Inducers'));
+    if (!s.inducers.length) b.append(el('p', 'dim plan-none', 'None set for this stage in this run.'));
+    s.inducers.forEach(i => b.append(planItem(i)));
+    boxes.append(b);
+  });
+  wrap.append(boxes);
+  if ((fp.unstaged || []).length) {
+    wrap.append(el('div', 'plan-lab', 'Inducers — stage not stated by the hypothesis'));
+    const g = el('div', 'plan-grid');
+    fp.unstaged.forEach(i => g.append(planItem(i)));
+    wrap.append(g);
+  }
+  if ((fp.physical || []).length) {
+    wrap.append(el('div', 'plan-lab', 'Physical parameters'));
+    const g = el('div', 'plan-grid');
+    fp.physical.forEach(i => g.append(planItem(i, true)));
+    wrap.append(g);
+  }
+  wrap.append(el('p', 'caveat plan-note', fp.note + ' R reported · A adapted · D design choice.'));
+  return wrap;
 }
 
 function renderBenchmark(b) {
