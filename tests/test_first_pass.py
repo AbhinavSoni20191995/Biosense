@@ -86,7 +86,7 @@ class PageTests(unittest.TestCase):
         self.assertEqual(sorted(order), order)
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
         self.assertIn('host.append(recommendationCard(selected, protocol))', js)
-        self.assertIn('host.append(renderPlan(p.first_pass))', js)
+        self.assertIn('host.append(renderPlan(p.first_pass, p))', js)
         self.assertIn("'Why — the full hypothesis, its effects and evidence'", js)
         proto = js[js.index('function renderProtocol'):js.index('function planItem')]
         self.assertNotIn("el('table', 'ledger')", proto, 'the ledger moved to Other hypotheses')

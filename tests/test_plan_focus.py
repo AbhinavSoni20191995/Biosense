@@ -36,21 +36,23 @@ class FlowTests(unittest.TestCase):
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
         self.assertIn('function renderFlow', js)
         self.assertIn('host.append(renderFlow(p.first_pass));', js)
-        self.assertIn('host.append(renderPlan(p.first_pass));', js)
-        flow = js[js.index('function renderFlow'):js.index('/* The plan on its own')]
+        self.assertIn('host.append(renderPlan(p.first_pass, p));', js)
+        flow = js[js.index('function renderFlow'):js.index('/* A lever this run named')]
         self.assertIn('fp.stages', flow)
         self.assertIn('s.inducers', flow)
         self.assertIn('vessel(', flow, 'a bioreactor, not a box')
         self.assertNotIn('innerHTML', flow)
 
-    def test_the_plan_can_fill_the_screen_and_escape_leaves(self):
+    def test_the_plan_can_take_the_page_s_width_without_hiding_it(self):
+        """Widened in place. An overlay made the plan the only thing on screen;
+        what was wanted was the plan at full width with the rest still there."""
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
         self.assertIn('function toggleFocus', js)
         self.assertIn("e.key === 'Escape'", js[js.index('function toggleFocus'):])
-        self.assertIn("'Full screen'", js)
+        self.assertIn("'Widen'", js)
         css = (K.ROOT / 'webapp' / 'brand.css').read_text()
-        self.assertIn('#protocolPanel.focus', css)
-        self.assertIn('position:fixed', css[css.index('#protocolPanel.focus'):][:200])
+        self.assertIn('body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}', css)
+        self.assertNotIn('#protocolPanel.focus', css)
         self.assertIn('.fl-tank', css)
 
 

@@ -809,11 +809,11 @@ button{font-family:inherit}
 .fl-item.act-lower .fl-pill{stroke:var(--s2)} .fl-item.act-lower .fl-pill-t{fill:var(--s2);font-weight:600}
 .fl-item.act-gap .fl-pill{stroke:var(--bad)}
 .fl-item.new .fl-pill{stroke-dasharray:4 3;stroke:var(--s3)} .fl-item.new .fl-pill-t{fill:var(--s3)}
-#protocolPanel.focus{position:fixed;inset:0;z-index:60;overflow:auto;border-radius:0;margin:0;
-  padding:28px clamp(16px,5vw,72px);background:var(--surface-solid)}
-#protocolPanel.focus .flow-wrap{margin:14px 0 18px}
-#protocolPanel.focus .flow{min-height:38vh}
-body.has-focus{overflow:hidden}
+/* Widened in place: one column, so the plan has the page's width and the rest
+   of the page is still there under it. */
+body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
+#protocolPanel.wide .flow-wrap{margin:14px 0 18px}
+#protocolPanel.wide .plan-stages{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 
 /* ── Which route the run researched ── */
 .route-chosen{border:1px solid var(--line);border-left:4px solid var(--brand);
@@ -857,3 +857,6 @@ body.has-focus{overflow:hidden}
 .prun .pobj.named{font-weight:600;color:var(--ink)}
 .prunlist .prun .btn.del{padding:3px 9px}
 .run .run-obj{font-size:12.5px;line-height:1.45;margin-top:3px}
+.plan-add{margin-top:8px;width:100%;justify-content:center}
+.plan-stage .regform{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:9px}
+.plan-item .btn.sm{margin-left:auto;flex:0 0 auto}

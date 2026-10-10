@@ -1900,8 +1900,15 @@ function renderStages(progress) {
 }
 
 /* ── results ─────────────────────────────────────────────────────────────── */
+/* Built once per result. The run page re-snapshots while it is open, and
+   rebuilding this DOM threw away whatever the reader had opened — the "Why"
+   fold shut itself a second after they clicked it. */
+let resultSeen = '';
 function renderResult(snap) {
   const r = snap.result;
+  const key = snap.run_id + ':' + JSON.stringify(r);
+  if (key === resultSeen) { $('#resultPanel').hidden = false; return; }
+  resultSeen = key;
   renderEvidence(r.bundle.evidence);
   renderAnalyses(r.bundle.analyses);
   renderHypothesis(r.bundle.selected_hypothesis, r.bundle.hypotheses, r.protocol);
@@ -2624,6 +2631,10 @@ function effectFields(holder, hint) {
 function registerForm(p, cand, stages) {
   const f = el('form', 'regform');
   const field = (label, input) => { const l = el('label', null, label); l.append(input); f.append(l); return input; };
+  /* With no candidate behind it the person names the lever themselves, so the
+     same form adds what the run proposed and what they know it needs. */
+  const name = cand.label ? null : field('Name', Object.assign(el('input'),
+    { required: true, maxLength: 120, placeholder: 'e.g. M-CSF' }));
   const unit = field('Unit', Object.assign(el('input'), { value: cand.unit || '', required: true,
     maxLength: 30, placeholder: 'ng/mL' }));
   const stage = field('Given during', el('select'));
@@ -2646,7 +2657,8 @@ function registerForm(p, cand, stages) {
     try {
       const runId = state.run && state.run.run_id;
       const d = await post(`/api/projects/${encodeURIComponent(p.project.project_id)}/parameters`, {
-        label: cand.label, parameter_id: cand.parameter_id, hypothesis_id: cand.hypothesis_id,
+        label: cand.label || (name && name.value.trim()),
+        parameter_id: cand.parameter_id, hypothesis_id: cand.hypothesis_id,
         unit: unit.value.trim(), stage: stage.value, minimum: +lo.value, maximum: +hi.value,
         bound_basis: why.value.trim(), meaning: cand.statement || null, run_id: runId,
         response_model: model(),
@@ -2725,9 +2737,9 @@ function renderProtocol(p) {
   const sim = el('button', 'btn go', 'Simulate this protocol');
   sim.title = 'Open the Simulator with every recommended setpoint as the candidate';
   sim.addEventListener('click', () => simulateProtocol(p));
-  const fs = el('button', 'btn sm', 'Full screen');
+  const fs = el('button', 'btn sm', 'Widen');
   fs.type = 'button';
-  fs.title = 'Show the plan on its own, filling the screen (Esc to leave)';
+  fs.title = 'Give the plan the full width of the page; everything else stays, below it';
   fs.addEventListener('click', () => toggleFocus());
   host.append(el('div', 'rv-actions', null));
   host.lastChild.append(sim, fs);
@@ -2753,7 +2765,7 @@ function renderProtocol(p) {
 
   if (p.first_pass && (p.first_pass.stages || []).length) {
     host.append(renderFlow(p.first_pass));
-    host.append(renderPlan(p.first_pass));
+    host.append(renderPlan(p.first_pass, p));
   }
   if (p.timeline && (p.timeline.stages || []).length) {
     const tlBox = el('details', 'proto-rows');
@@ -2927,14 +2939,59 @@ function renderFlow(fp) {
   wrap.append(root);
   return wrap;
 }
-/* The plan on its own, filling the screen: the one thing to look at. */
+/* A lever this run named that the project does not have. Shown in its stage
+   with what it proposed, and one click from being registered — which is what
+   turns a blank stage into a protocol a person can run. */
+function proposedItem(c, p, stages) {
+  const row = el('div', 'plan-item new act-add');
+  row.append(el('span', 'plan-verb', 'NEW'));
+  const body = el('span', 'plan-body');
+  body.append(el('b', null, c.label));
+  body.append(el('span', 'v', c.candidate_value != null
+    ? ` ${num(c.candidate_value)}${c.unit ? ' ' + c.unit : ''}`
+    : ` ${c.direction || 'direction only'}`));
+  row.append(body);
+  const add = el('button', 'btn sm', 'Add');
+  add.type = 'button';
+  add.title = 'Register this lever in your project so the protocol can carry its dose';
+  add.addEventListener('click', () => {
+    const open = row.parentNode.querySelector('.regform[data-for="' + c.parameter_id + '"]');
+    if (open) { open.remove(); return; }
+    const f = registerForm(p, c, stages);
+    f.dataset.for = c.parameter_id;
+    row.after(f);
+  });
+  row.append(add);
+  if (c.hypothesis_id) row.append(el('span', 'meta', c.hypothesis_id));
+  return row;
+}
+/* Nothing proposed for a stage does not mean nothing belongs there. */
+function addInducer(p, stageId, stages) {
+  const b = el('button', 'btn sm plan-add', '+ Add an inducer');
+  b.type = 'button';
+  b.title = 'Add a factor you know this stage needs, and its dose range';
+  b.addEventListener('click', () => {
+    const open = b.parentNode.querySelector('.regform[data-for="new"]');
+    if (open) { open.remove(); return; }
+    const f = registerForm(p, { stage_id: stageId }, stages);
+    f.dataset.for = 'new';
+    b.after(f);
+  });
+  return b;
+}
+
+/* The plan across the full width of the page. Not an overlay: the two-column
+   layout becomes one column, so the plan gets the whole width and everything
+   else is still there, below it. */
 function toggleFocus(on) {
   const panel = $('#protocolPanel'); if (!panel) return;
-  const want = on == null ? !panel.classList.contains('focus') : !!on;
-  panel.classList.toggle('focus', want);
-  document.body.classList.toggle('has-focus', want);
+  const want = on == null ? !panel.classList.contains('wide') : !!on;
+  panel.classList.toggle('wide', want);
+  document.body.classList.toggle('plan-wide', want);
   const btn = panel.querySelector('.rv-actions .btn.sm');
-  if (btn) btn.textContent = want ? 'Leave full screen' : 'Full screen';
+  if (btn) btn.textContent = want ? 'Narrow' : 'Widen';
+  try { localStorage.setItem('bs-plan-wide', want ? '1' : '0'); } catch (_) {}
+  if (want) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleFocus(false); });
 
@@ -2943,7 +3000,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleFocus(
    protocol (first_pass.py); a NEW lever is a live hypothesis's, not yet the
    project's, and says so. */
 const PLAN_VERB = { add: 'ADD', raise: 'RAISE', lower: 'LOWER', set: 'SET', gap: 'NO VALUE' };
-function planItem(i, withStage) {
+function planItem(i, withStage, p, stages) {
   const row = el('div', `plan-item act-${i.action}${i.registered ? '' : ' new'}`);
   row.title = i.text + (i.hypothesis_id ? ` — from ${i.hypothesis_id}` : '');
   if (PLAN_VERB[i.action]) row.append(el('span', 'plan-verb', PLAN_VERB[i.action]));
@@ -2959,11 +3016,30 @@ function planItem(i, withStage) {
   if (i.confidence) meta.append(miniBar(i.confidence));
   if (i.hypothesis_id) meta.append(el('span', 'dim', i.hypothesis_id));
   row.append(meta);
+  /* An unregistered lever is one click from being carried: the protocol can
+     hold its dose as soon as the project has the parameter. */
+  if (!i.registered && p) {
+    const add = el('button', 'btn sm', 'Add');
+    add.type = 'button';
+    add.title = 'Register this lever in your project so the protocol can carry its dose';
+    add.addEventListener('click', () => {
+      const open = row.parentNode.querySelector('.regform[data-for="' + i.parameter_id + '"]');
+      if (open) { open.remove(); return; }
+      const f = registerForm(p, { parameter_id: i.parameter_id, label: i.label, unit: i.unit,
+                                  stage_id: i.stage_id, candidate_value: i.value,
+                                  hypothesis_id: i.hypothesis_id }, stages || []);
+      f.dataset.for = i.parameter_id;
+      row.after(f);
+    });
+    row.append(add);
+  }
   return row;
 }
-function renderPlan(fp) {
+function renderPlan(fp, p) {
   const wrap = el('div', 'plan');
   const boxes = el('div', 'plan-stages');
+  const stages = ((p || {}).timeline || {}).stages || [];
+  const proposed = ((p || {}).timeline || {}).candidates || [];
   fp.stages.forEach(s => {
     const b = el('div', 'plan-stage');
     const h = el('div', 'plan-head');
@@ -2971,21 +3047,38 @@ function renderPlan(fp) {
     h.append(el('span', 'days', s.days == null ? 'days not set'
       : `d${num(s.day_start)}–${num(s.day_start + s.days)}`));
     b.append(h, el('div', 'plan-lab', 'Inducers'));
-    if (!s.inducers.length) b.append(el('p', 'dim plan-none', 'None set for this stage in this run.'));
-    s.inducers.forEach(i => b.append(planItem(i)));
+    /* An empty stage means one thing only: this project has no factor
+       parameter for it, so no dose can be carried here however much the
+       literature says. Saying that — and offering what the run proposed —
+       is the difference between a blank box and a next step. */
+    if (!s.inducers.length) {
+      b.append(el('p', 'dim plan-none', 'This project has no inducer registered for this '
+        + 'stage, so the protocol cannot carry a dose here yet.'));
+    }
+    s.inducers.forEach(i => b.append(planItem(i, false, p, stages)));
+    // Only what this stage does not already show: a lever placed in the stage
+    // above is the same lever, and listing it twice reads as two things.
+    const here = new Set(s.inducers.map(i => i.parameter_id));
+    const mine = proposed.filter(c => (c.stage_id || null) === s.stage_id
+                                      && !here.has(c.parameter_id));
+    if (mine.length) {
+      b.append(el('div', 'plan-lab', 'This run proposed'));
+      mine.forEach(c => b.append(proposedItem(c, p, stages)));
+    }
+    if (p) b.append(addInducer(p, s.stage_id, stages));
     boxes.append(b);
   });
   wrap.append(boxes);
   if ((fp.unstaged || []).length) {
     wrap.append(el('div', 'plan-lab', 'Inducers — stage not stated by the hypothesis'));
     const g = el('div', 'plan-grid');
-    fp.unstaged.forEach(i => g.append(planItem(i)));
+    fp.unstaged.forEach(i => g.append(planItem(i, false, p, stages)));
     wrap.append(g);
   }
   if ((fp.physical || []).length) {
     wrap.append(el('div', 'plan-lab', 'Physical parameters'));
     const g = el('div', 'plan-grid');
-    fp.physical.forEach(i => g.append(planItem(i, true)));
+    fp.physical.forEach(i => g.append(planItem(i, true, p, stages)));
     wrap.append(g);
   }
   wrap.append(el('p', 'caveat plan-note', fp.note + ' R reported · A adapted · D design choice.'));
