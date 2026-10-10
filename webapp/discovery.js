@@ -728,6 +728,7 @@ function watchRun(runId) {
       (snap.events || []).forEach(seedEvent);
       $('#runBtn').disabled = RV.isLive(snap);
       showStop(snap);
+      focusTheAnswer(snap);
       if (snap.status === 'done' && snap.result) {
         state.result = snap.result; renderResult(snap);
         note(snap.recovered ? 'Reopened from the server: this is the run you were last '
@@ -753,6 +754,24 @@ function watchRun(runId) {
       $('#progressPanel').hidden = true;
     },
   });
+}
+
+/* Once a run has ended the tracking folds itself and the page goes to the
+   answer — once per run, so a person who opens the Live fold again keeps it. */
+function focusTheAnswer(snap) {
+  const live = RV.isLive(snap);
+  const panel = $('#progressPanel');
+  if (!panel) return;
+  if (live) { panel.dataset.open = '1'; return; }
+  if (state.focusedRun === snap.run_id) return;
+  state.focusedRun = snap.run_id;
+  panel.dataset.open = '0';
+  const head = panel.querySelector('.head');
+  if (head) head.setAttribute('aria-expanded', 'false');
+  setTimeout(() => {
+    const target = $('#resultPanel');
+    if (target && !target.hidden) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 350);
 }
 
 async function stopRun(runId) {
@@ -1153,6 +1172,95 @@ function runTheRound(p, snap) {
 /* Terms the run proposed for levers the base reactor has no equation for: the
    project's own simulator, one term at a time. Each says what it computes and
    what it cites; it joins the project only when a person adds it. */
+/* The specialist mode's phase 2: which way of making the cell this run chose.
+   The choice and its reasons first, then every candidate scored against each
+   criterion — a row opens on its outline, numbers and why it was not chosen. */
+const FIT_CLS = { meets: 'ok', partial: 'warn', fails: 'bad', unknown: 'mut' };
+const FIT_MARK = { meets: '✓', partial: '~', fails: '✕', unknown: '?' };
+const ROUTE_KIND = { directed_differentiation: 'directed differentiation',
+  forward_programming: 'forward programming', transdifferentiation: 'transdifferentiation',
+  primary_expansion: 'primary expansion', cell_line: 'cell line',
+  organoid_derived: 'organoid-derived', other: 'other' };
+let routeSeen = '';
+function renderRoute(r) {
+  const host = $('#routeInsights'); if (!host) return;
+  const key = JSON.stringify(r);
+  if (key === routeSeen) return;
+  routeSeen = key; host.textContent = '';
+  const crits = ((r.need || {}).criteria) || [];
+  const byId = {}; crits.forEach(c => { byId[c.criterion_id] = c; });
+  const chosen = (r.candidates || []).find(c => c.route_id === (r.chosen || {}).route_id);
+  const why = {}; (r.alternatives || []).forEach(a => { why[a.route_id] = a; });
+
+  const head = el('div', 'route-chosen');
+  head.append(el('div', 'route-lab', 'This run researched'));
+  head.append(el('b', null, chosen ? chosen.label : (r.chosen || {}).route_id || ''));
+  if (chosen) head.append(el('span', 'chip', ROUTE_KIND[chosen.kind] || chosen.kind));
+  if ((r.chosen || {}).why) head.append(el('div', null, r.chosen.why));
+  if (r.chosen && r.chosen.fits_project === false) {
+    head.append(el('p', 'caveat', 'This route is not one the project can run as it stands: '
+      + (r.chosen.project_note || '') + ' The protocol still uses the project\'s own '
+      + 'parameters; changing the system is a person\'s decision.'));
+  }
+  host.append(head);
+
+  if (crits.length) {
+    host.append(el('div', 'lab', 'What the route had to satisfy'));
+    const ul = el('ul', 'tight');
+    crits.forEach(c => {
+      const li = el('li');
+      li.append(document.createTextNode(c.criterion + ' '));
+      if (c.must) li.append(el('span', 'tag warn', 'must'));
+      li.append(el('div', 'dim', 'from: ' + c.source));
+      ul.append(li);
+    });
+    host.append(ul);
+  }
+
+  if ((r.candidates || []).length) {
+    host.append(el('div', 'lab', 'Every route considered'));
+    const heads = ['Route', 'Starting from'].concat(crits.map(c => c.criterion_id));
+    host.append(foldTable(heads, r.candidates.map(c => {
+      const scores = {}; (c.fit || []).forEach(f => { scores[f.criterion_id] = f; });
+      const name = el('span');
+      name.append(el('b', null, c.label));
+      name.append(el('span', 'chip ' + c.maturity, c.maturity));
+      if (c.route_id === (r.chosen || {}).route_id) name.append(el('span', 'tag brand', ' chosen'));
+      else if ((why[c.route_id] || {}).worth_a_parallel_arm) {
+        name.append(el('span', 'tag', ' worth an arm'));
+      }
+      const cells = [name, clipText(c.starting_material, 22)].concat(crits.map(cr => {
+        const f = scores[cr.criterion_id] || { verdict: 'unknown' };
+        const m = el('span', 'fit ' + (FIT_CLS[f.verdict] || ''), FIT_MARK[f.verdict] || '?');
+        m.title = `${cr.criterion}: ${f.verdict}` + (f.note ? ' — ' + f.note : '');
+        return m;
+      }));
+      const rep = c.reported || {};
+      const detail = appendAll(el('div'), [
+        kv('How it works', c.summary),
+        kv('Reported', [rep.yield && `yield: ${rep.yield}`, rep.purity && `purity: ${rep.purity}`,
+          rep.timeline && `timeline: ${rep.timeline}`, rep.scale && `scale: ${rep.scale}`,
+          rep.format && `format: ${rep.format}`].filter(Boolean).join('; ')),
+        (c.fit || []).some(f => f.note)
+          ? kv('Fit', (c.fit || []).filter(f => f.note).map(f =>
+            `${(byId[f.criterion_id] || {}).criterion || f.criterion_id}: ${f.verdict} — ${f.note}`)
+            .join('; ')) : null,
+        (c.limits || []).length ? kv('Limits', c.limits.join('; ')) : null,
+        why[c.route_id] ? kv('Not chosen because', why[c.route_id].why_not) : null,
+        kv('Cites', (c.refs || []).join(', ')),
+      ]);
+      return { key: 'route:' + c.route_id, cells, detail };
+    }), 'routes'));
+  }
+  const rv = r.review || {};
+  if (rv.reviewed_by || (rv.disagreements || []).length) {
+    host.append(el('p', 'caveat', `Fit reviewed by ${rv.reviewed_by || 'nobody'}`
+      + (rv.note ? ': ' + rv.note : '')
+      + ((rv.disagreements || []).length ? ' Open: ' + rv.disagreements.join('; ') : '')));
+  }
+  (r.limitations || []).forEach(l => host.append(el('p', 'caveat', l)));
+}
+
 /* The state-of-the-art add-on: the recommended protocol against the leading
    published ways the cell is made. The standing comes first, then the
    comparison (a difference carries only an expected effect, never a result),
@@ -1499,8 +1607,9 @@ function renderInsights(snap) {
   const plan = snap.round_plan;
   const dev = snap.developmental_map;
   const sota = snap.sota_comparison;
+  const route = snap.route_selection;
   const analysed = $('#anaSec') && !$('#anaSec').hidden;
-  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !dev && !sota
+  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !dev && !sota && !route
       && !snap.reference_draft && !analysed) {
     panel.hidden = true; return;
   }
@@ -1508,6 +1617,15 @@ function renderInsights(snap) {
   wireSection('litSec', false); wireSection('papersSec', false);
   wireSection('bioSec', false); wireSection('genoSec', true); wireSection('termsSec', true);
   wireSection('devSec', true); wireSection('sotaSec', true); wireSection('roundSec', true);
+  wireSection('routeSec', true);
+  const routeOn = route && (route.candidates || []).length;
+  $('#routeSec').hidden = !routeOn;
+  if (routeOn) {
+    renderRoute(route);
+    const ch = (route.candidates || []).find(c => c.route_id === (route.chosen || {}).route_id);
+    $('#routeSum').textContent = [ch && ch.label,
+      `${route.candidates.length} considered`].filter(Boolean).join(' · ');
+  }
   const devOn = dev && ((dev.stages || []).length || (dev.ideas || []).length);
   $('#devSec').hidden = !devOn;
   if (devOn) {
@@ -2468,8 +2586,12 @@ function renderProtocol(p) {
   const sim = el('button', 'btn go', 'Simulate this protocol');
   sim.title = 'Open the Simulator with every recommended setpoint as the candidate';
   sim.addEventListener('click', () => simulateProtocol(p));
+  const fs = el('button', 'btn sm', 'Full screen');
+  fs.type = 'button';
+  fs.title = 'Show the plan on its own, filling the screen (Esc to leave)';
+  fs.addEventListener('click', () => toggleFocus());
   host.append(el('div', 'rv-actions', null));
-  host.lastChild.append(sim);
+  host.lastChild.append(sim, fs);
 
   const head = el('div', 'ev-row');
   head.append(el('span', 'rt-badge ' + p.runtime_mode, p.badge));
@@ -2490,7 +2612,10 @@ function renderProtocol(p) {
       + `${c.hypotheses_adopted} of ${c.hypotheses_total} hypotheses are in the protocol; `
       + `${c.hypotheses_discarded} are not.` }));
 
-  if (p.first_pass && (p.first_pass.stages || []).length) host.append(renderPlan(p.first_pass));
+  if (p.first_pass && (p.first_pass.stages || []).length) {
+    host.append(renderFlow(p.first_pass));
+    host.append(renderPlan(p.first_pass));
+  }
   if (p.timeline && (p.timeline.stages || []).length) {
     const tlBox = el('details', 'proto-rows');
     tlBox.append(el('summary', null, 'Production timeline — every value with its basis'));
@@ -2569,6 +2694,110 @@ function renderProtocol(p) {
     det.append(ul); host.append(det);
   }
 }
+
+/* The plan as a picture: one vessel per stage, in order, with what goes into
+   it, and the whole-process settings as the line under them. Drawn from the
+   same first_pass the boxes use, so the two never disagree. A changed lever is
+   lit; a lever the project does not have yet is dashed. */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svg(tag, attrs, text) {
+  const n = document.createElementNS(SVG_NS, tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => { if (v != null) n.setAttribute(k, String(v)); });
+  if (text != null) n.textContent = text;
+  return n;
+}
+function clipText(t, n) { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; }
+function vessel(x, y, w, h, cls) {
+  /* A stirred vessel: a rounded tank, a liquid level, the shaft and impeller. */
+  const g = svg('g', { class: 'fl-vessel ' + (cls || ''), transform: `translate(${x} ${y})` });
+  g.append(svg('rect', { x: 0, y: 0, width: w, height: h, rx: 12, class: 'fl-tank' }));
+  g.append(svg('rect', { x: 3, y: h * 0.42, width: w - 6, height: h * 0.58 - 3, rx: 9, class: 'fl-liquid' }));
+  g.append(svg('line', { x1: w / 2, y1: -6, x2: w / 2, y2: h * 0.78, class: 'fl-shaft' }));
+  g.append(svg('path', { d: `M ${w / 2 - 14} ${h * 0.78} l 14 -6 l 14 6 l -14 6 z`, class: 'fl-impeller' }));
+  g.append(svg('rect', { x: w / 2 - 10, y: -12, width: 20, height: 8, rx: 2, class: 'fl-motor' }));
+  return g;
+}
+function renderFlow(fp) {
+  const stages = fp.stages || [];
+  const phys = (fp.physical || []).filter(i => i.stage_id === 'all');
+  const colW = 236, gap = 36, left = 24, top = 44, vW = 92, vH = 104;
+  const rowsMax = Math.max(1, ...stages.map(s => s.inducers.length));
+  const W = left * 2 + stages.length * colW + (stages.length - 1) * gap;
+  const listTop = top + vH + 28;
+  const listH = Math.min(6, rowsMax) * 22 + 12;
+  const physTop = listTop + listH + 26;
+  const H = physTop + (phys.length ? 58 : 10);
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'flow', role: 'img',
+    'aria-label': 'The recommended process as a line of vessels, with what goes into each' });
+  root.style.minWidth = Math.min(W, 980) + 'px';
+  stages.forEach((s, i) => {
+    const x = left + i * (colW + gap);
+    const g = svg('g', { class: 'fl-stage' });
+    g.append(svg('text', { x: x, y: 18, class: 'fl-title' }, clipText(s.label, 22)));
+    g.append(svg('text', { x: x + colW, y: 18, class: 'fl-days', 'text-anchor': 'end' },
+      s.days == null ? '' : `d${num(s.day_start)}–${num(s.day_start + s.days)}`));
+    const changed = s.inducers.some(it => it.action !== 'keep');
+    g.append(vessel(x + (colW - vW) / 2, top, vW, vH, changed ? 'changed' : ''));
+    const ins = s.inducers.slice(0, 6);
+    if (!ins.length) {
+      g.append(svg('text', { x: x + colW / 2, y: listTop + 16, class: 'fl-none', 'text-anchor': 'middle' },
+        'no inducer set'));
+    }
+    ins.forEach((it, j) => {
+      const y = listTop + j * 22;
+      const row = svg('g', { class: `fl-item act-${it.action}` + (it.registered ? '' : ' new') });
+      row.append(svg('rect', { x: x, y: y, width: colW, height: 19, rx: 6, class: 'fl-pill' }));
+      const verb = it.action === 'keep' ? '' : PLAN_VERB[it.action] + ' ';
+      row.append(svg('text', { x: x + 8, y: y + 13, class: 'fl-pill-t' },
+        clipText(`${verb}${it.label}`, 24)));
+      row.append(svg('text', { x: x + colW - 8, y: y + 13, class: 'fl-pill-v', 'text-anchor': 'end' },
+        it.value == null ? (it.registered ? '—' : 'dose?') : `${num(it.value)}${it.unit ? ' ' + it.unit : ''}`));
+      const t = svg('title');
+      t.textContent = it.text + (it.hypothesis_id ? ` — ${it.hypothesis_id}` : '');
+      row.append(t);
+      g.append(row);
+    });
+    if (s.inducers.length > 6) {
+      g.append(svg('text', { x: x, y: listTop + 6 * 22 + 12, class: 'fl-none' },
+        `+${s.inducers.length - 6} more below`));
+    }
+    if (i < stages.length - 1) {
+      const ax = x + colW + 4, ay = top + vH / 2;
+      g.append(svg('path', { d: `M ${ax} ${ay} h ${gap - 14} m -6 -5 l 6 5 l -6 5`, class: 'fl-arrow' }));
+    }
+    root.append(g);
+  });
+  if (phys.length) {
+    const y = physTop;
+    root.append(svg('line', { x1: left, y1: y, x2: W - left, y2: y, class: 'fl-rail' }));
+    root.append(svg('text', { x: left, y: y + 18, class: 'fl-days' }, 'WHOLE PROCESS'));
+    let cx = left + 118;
+    phys.slice(0, 7).forEach(it => {
+      const label = `${clipText(it.label, 16)} ${it.value == null ? '—' : num(it.value)}${it.unit ? ' ' + it.unit : ''}`;
+      const w = Math.min(240, 14 + label.length * 7.3);
+      if (cx + w > W - left) return;
+      const g = svg('g', { class: `fl-item act-${it.action}` });
+      g.append(svg('rect', { x: cx, y: y + 8, width: w, height: 19, rx: 9, class: 'fl-pill' }));
+      g.append(svg('text', { x: cx + w / 2, y: y + 21, class: 'fl-pill-t', 'text-anchor': 'middle' }, label));
+      const t = svg('title'); t.textContent = it.text; g.append(t);
+      root.append(g);
+      cx += w + 8;
+    });
+  }
+  const wrap = el('div', 'flow-wrap');
+  wrap.append(root);
+  return wrap;
+}
+/* The plan on its own, filling the screen: the one thing to look at. */
+function toggleFocus(on) {
+  const panel = $('#protocolPanel'); if (!panel) return;
+  const want = on == null ? !panel.classList.contains('focus') : !!on;
+  panel.classList.toggle('focus', want);
+  document.body.classList.toggle('has-focus', want);
+  const btn = panel.querySelector('.rv-actions .btn.sm');
+  if (btn) btn.textContent = want ? 'Leave full screen' : 'Full screen';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleFocus(false); });
 
 /* The plan a person takes to the bench: one box per stage with the inducers
    given in it, then the physical settings. Built by the server from the

@@ -122,6 +122,24 @@ A specialist with no data of its kind in reach is still useful: the markers,
 the annotation and the exact experiment that would produce that data are what
 it returns. Never borrow another area's dataset to have something to run.
 
+## LANDSCAPE (a line on a phase-1 task)
+
+A task may carry `LANDSCAPE: on`. The run is working out which way of making
+the cell it should pursue, before any parameter. Add to whatever the task asks:
+
+- **The product's definition.** The surface and transcriptional markers that
+  distinguish the mature target cell from its precursors and from the nearest
+  off-target cell, with `gene-info` behind each. This is what every route has
+  to be judged against, whatever its starting material.
+- **Per route, is there data?** For each production route the task names, say
+  whether a public series exists for its product (`datasets search --live`),
+  and register the one closest to this run's question. A route with no public
+  data is not a worse route — it is one whose claims rest on its papers alone,
+  and the orchestrator needs to know that.
+- **The regulators** the development task names: annotation and lineage.
+
+Report these under a `landscape` heading. Do not rank the routes.
+
 ## DEVELOPMENTAL LENS (a line on any task)
 
 A task may carry `DEVELOPMENTAL LENS: on`. The person asked the run to read the

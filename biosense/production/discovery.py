@@ -85,7 +85,10 @@ DEFAULT_EFFORT = 'standard'
 # process stage in parallel and the results are merged: the literature phase
 # takes as long as its slowest stage instead of all of them, each agent reads a
 # narrower question, and the cost is more model calls and a reconciliation step.
-LITERATURE_MODES = ('single', 'by_stage')
+# How the literature is searched. `specialist` works in steps rather than in
+# one sweep: learn how the cell develops and every known way of producing it,
+# choose the route that fits the need, then research that route's parameters.
+LITERATURE_MODES = ('single', 'by_stage', 'specialist')
 DEFAULT_LITERATURE_MODE = 'single'
 MAX_STAGE_SHARDS = 4
 # How bioinformatics is gathered, by the same pattern. One agent is the default.
@@ -443,8 +446,13 @@ def summarise(req, *, projects_dir=None):
             f'missing rather than redoing finished searches or analyses.')
     lines.append(f'Runtime: {RT.LABELS[req["runtime_mode"]]}')
     b = EFFORT[req.get('effort') or DEFAULT_EFFORT]
-    if (req.get('literature_mode') or DEFAULT_LITERATURE_MODE) == 'by_stage':
+    lit_mode = req.get('literature_mode') or DEFAULT_LITERATURE_MODE
+    if lit_mode == 'by_stage':
         lines.append('Literature: one agent per process stage, in parallel, merged afterwards')
+    elif lit_mode == 'specialist':
+        lines.append('Literature: specialist (staged) — how the cell develops and every known '
+                     'way of producing it first, the route chosen against the need and reviewed '
+                     'by the analyst, then that route\'s parameters per stage')
     bio_mode = req.get('bioinformatics_mode') or DEFAULT_BIOINFORMATICS_MODE
     if bio_mode == 'by_analysis':
         lines.append('Bioinformatics: one specialist per kind of analysis, in parallel — '
@@ -515,6 +523,92 @@ def _landscape_plan(loop_dir, python):
 
 
 # ── the brief handed to the orchestrator ────────────────────────────────
+def _specialist_plan(req, project, loop_dir, budget, python, pdir):
+    """The staged literature mode: (dispatch, section).
+
+    Phase 1 asks two questions at once — how does this cell arise, and how is
+    it made in any system — because neither depends on the other. Phase 2 picks
+    the route against the stated need, checked by the route-select CLI. Phase 3
+    is the loop that already exists, aimed at the chosen route.
+    """
+    stages = ', '.join(f'{st["stage_id"]} ({st.get("label") or st["stage_id"]})'
+                       for st in project.stages)
+    per_s = max(3, round(budget['searches'] * 0.5))
+    per_t = max(2, round(budget['full_texts'] * 0.4))
+    dispatch = (
+        f'The person chose the **specialist (staged) literature mode**, so this run does not '
+        f'start by searching for setpoints: it starts by working out which way of making this '
+        f'cell it should be researching at all. In one response send `agent: "literature"` '
+        f'TWO tasks with `sys_session_send` — they answer different questions and neither waits '
+        f'on the other:\n'
+        f'    - `title: "literature-development"`, `args:` starting `DEVELOPMENTAL BIOLOGY:` → '
+        f'`{loop_dir}/literature/development/` — how this cell arises in the embryo or the '
+        f'adult: the lineage it comes from, the signals and their windows, the master '
+        f'regulators, and the loss- and gain-of-function evidence.\n'
+        f'    - `title: "literature-landscape"`, `args:` starting `PRODUCTION LANDSCAPE:` → '
+        f'`{loop_dir}/literature/landscape/` — every known way this cell is produced, in ANY '
+        f'system: iPSC or ESC directed differentiation, transcription-factor forward '
+        f'programming, transdifferentiation from another somatic cell, expansion of the primary '
+        f'or adult cell, immortalised lines, organoid-derived. For each: the starting material, '
+        f'the outline, the reported yield, purity and timeline with the sentence quoted, and '
+        f'how mature it is.\n'
+        f'  Each gets about {per_s} searches and {per_t} full texts and names the workspace '
+        f'sentence, its folder and the objective. Do NOT ask either for setpoints yet — the '
+        f'parameters come in phase 3, once the route is chosen')
+    section = f"""## The specialist mode: three phases, in this order
+
+The person chose the staged mode. The run works out *what to make this cell
+from* before it researches *how to set the knobs*. Do not skip to the
+parameters: a dose for the wrong route is a wasted run.
+
+**Phase 1 — understand the system.** The two literature tasks above (development
+and production landscape), and in the same response `bioinformatics` with
+`LANDSCAPE: on`: the markers that define the mature cell, the annotation of the
+master regulators, and whether public data exists for each route's product.
+
+**Phase 2 — choose the route, with the analyst's review.**
+
+1. When phase 1 replies, write the need as **criteria** taken from the request:
+   the objective, each process constraint, the project's own system (its
+   stages {stages}, its vessel and starting material), and the scope. Mark the
+   ones that are hard requirements. A criterion the request never states is a
+   design choice and says so in its `source`.
+2. Send `analyst` a task `title: "analyst-routes"`, `args:` starting
+   `ROUTE REVIEW:`, giving it the landscape reply, the development reply and
+   your criteria. It scores each route against each criterion
+   (meets / partial / fails / unknown), says which scores it cannot support
+   from the evidence given, and names any public dataset that would settle one.
+   It does not choose — it reviews.
+3. Write `{loop_dir}/route_selection.draft.json` in the shape
+   `{python} -m biosense.evidence.cli template route-select` prints and check it:
+   `{python} -m biosense.evidence.cli route-select --project {project.project_id}{pdir} \
+       --draft {loop_dir}/route_selection.draft.json --out {loop_dir}/route_selection.json`
+   Every candidate cites its sources and carries the analyst's fit scores; the
+   chosen route is one of them; every other candidate is an alternative with a
+   reason. The command refuses a route that fails a hard criterion, and refuses
+   "best" or "superior" — the literature cannot prove one route beats another
+   here, so the wording is "chosen because".
+4. If the chosen route is not one the project's system can run as it stands,
+   set `fits_project` false and say in `project_note` what the project would
+   need (a parameter to register, a different starting material, a construct).
+   The protocol still runs on the project's own parameters, and that change is
+   a person's to make — never assumed in the setpoints.
+
+**Phase 3 — research the chosen route's parameters.** This is the ordinary
+loop, aimed. In one response send one `literature` task per stage of the
+chosen route (`title: "literature-<stage>"` → `{loop_dir}/literature/<stage>/`,
+each passing `--cache-dir {loop_dir}/literature/cache`) and the
+`bioinformatics` task(s) for the genes and datasets that route turns on. Say
+in every task which route was chosen, so nobody researches a different one.
+Then continue with the hypothesis, the protocol and the round plan as usual.
+
+An alternative route the selection marked `worth_a_parallel_arm` belongs in the
+**round plan** as an arm to test, never in the recommended protocol.
+
+"""
+    return dispatch, section
+
+
 def _literature_plan(req, project, loop_dir, budget):
     """The literature dispatch the brief asks for, and what to do once it returns."""
     common = ('`args:` starting `DISCOVERY EVIDENCE:`, then the objective, the project, the '
@@ -897,6 +991,15 @@ survives a restart.
     dev_lit, dev_bio, dev_section = _developmental_plan(req, project, loop_dir, budget,
                                                         python, pdir)
     sota_lit, sota_section = _sota_plan(req, project, loop_dir, budget, python, pdir)
+    spec_section = ''
+    if (req.get('literature_mode') or DEFAULT_LITERATURE_MODE) == 'specialist' \
+            and (req.get('purpose') or 'discovery') == 'discovery':
+        # The staged mode replaces the one-sweep dispatch: the parameters are
+        # phase 3, after the route is chosen. The developmental lens is part of
+        # phase 1 here, so its own dispatch line would duplicate the task.
+        lit_dispatch, lit_after = _specialist_plan(req, project, loop_dir, budget, python, pdir)
+        dev_lit = ''
+        spec_section, lit_after = lit_after, ''
     wanted = '\n'.join(
         f'- `{loop_dir}/{name}` — a `{kind}`: {why}' for name, kind, why in ARTIFACTS)
     # With no dataset named, the only tables in reach are the committed demo
@@ -1052,7 +1155,7 @@ usable as design and evidence variables, and produce no prediction unless this
 run proposes a term for one from cited claims (step 5). Do not invent a term
 without them, and do not drop the parameter.
 
-{dev_section}{sota_section}## What to do
+{spec_section}{dev_section}{sota_section}## What to do
 
 1. Name the **decision-blocking uncertainty**, if the request did not. One
    sentence: what is not known, and what it would change.

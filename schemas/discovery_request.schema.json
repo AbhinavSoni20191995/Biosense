@@ -202,9 +202,10 @@
     "literature_mode": {
       "enum": [
         "single",
-        "by_stage"
+        "by_stage",
+        "specialist"
       ],
-      "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards — faster on the literature phase, more of the model allowance, and the orchestrator must reconcile the stages."
+      "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards — faster on the literature phase, more of the model allowance, and  the orchestrator must reconcile the stages. specialist: the staged mode — one agent maps how the cell develops and another maps every known way of producing it (not only from iPSC), the analyst reviews how each route fits the stated need, the orchestrator records a checked route selection, and only then are per-stage agents sent to research that route's parameters. It replaces single and by_stage for a run where the production route itself is in question; it costs more of the model allowance than either."
     },
     "bioinformatics_mode": {
       "enum": [

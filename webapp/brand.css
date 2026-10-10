@@ -784,3 +784,51 @@ button{font-family:inherit}
 .sota-standing.departs_from_sota{border-left-color:var(--s3)}
 .sota-standing.matches_sota{border-left-color:var(--neutral)}
 .sota-standing > div{font-size:13px;color:var(--ink-2);margin-top:4px}
+
+/* ── The plan as a picture, and on its own ── */
+.flow-wrap{overflow-x:auto;margin:6px 0 4px;padding-bottom:4px}
+.flow{width:100%;height:auto;display:block;font-family:var(--sans)}
+.fl-title{font-size:14px;font-weight:650;fill:var(--ink)}
+.fl-days{font-family:var(--mono);font-size:11px;fill:var(--ink-3);letter-spacing:.06em}
+.fl-none{font-size:12px;fill:var(--ink-3);font-style:italic}
+.fl-tank{fill:var(--glass-2);stroke:var(--line);stroke-width:1.5}
+.fl-liquid{fill:color-mix(in srgb,var(--s1) 22%,transparent)}
+.fl-vessel.changed .fl-tank{stroke:var(--brand);stroke-width:2}
+.fl-vessel.changed .fl-liquid{fill:color-mix(in srgb,var(--brand) 28%,transparent)}
+.fl-shaft{stroke:var(--ink-3);stroke-width:2}
+.fl-impeller{fill:var(--ink-3)}
+.fl-motor{fill:var(--ink-3)}
+.fl-arrow{fill:none;stroke:var(--ink-3);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.fl-rail{stroke:var(--line);stroke-width:1.5}
+.fl-pill{fill:var(--glass-2);stroke:var(--line)}
+.fl-pill-t{font-size:12px;fill:var(--ink)}
+.fl-pill-v{font-family:var(--mono);font-size:11.5px;fill:var(--ink-2)}
+.fl-item.act-keep .fl-pill-t{fill:var(--ink-2)}
+.fl-item.act-add .fl-pill,.fl-item.act-raise .fl-pill{stroke:var(--brand);stroke-width:1.5}
+.fl-item.act-add .fl-pill-t,.fl-item.act-raise .fl-pill-t{fill:var(--brand);font-weight:600}
+.fl-item.act-lower .fl-pill{stroke:var(--s2)} .fl-item.act-lower .fl-pill-t{fill:var(--s2);font-weight:600}
+.fl-item.act-gap .fl-pill{stroke:var(--bad)}
+.fl-item.new .fl-pill{stroke-dasharray:4 3;stroke:var(--s3)} .fl-item.new .fl-pill-t{fill:var(--s3)}
+#protocolPanel.focus{position:fixed;inset:0;z-index:60;overflow:auto;border-radius:0;margin:0;
+  padding:28px clamp(16px,5vw,72px);background:var(--surface-solid)}
+#protocolPanel.focus .flow-wrap{margin:14px 0 18px}
+#protocolPanel.focus .flow{min-height:38vh}
+body.has-focus{overflow:hidden}
+
+/* ── Which route the run researched ── */
+.route-chosen{border:1px solid var(--line);border-left:4px solid var(--brand);
+  border-radius:var(--r-s);padding:10px 12px;margin:0 0 10px;font-size:14px}
+.route-lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:3px}
+.route-chosen > div:not(.route-lab){font-size:13px;color:var(--ink-2);margin-top:5px}
+.route-chosen .chip{margin-left:8px}
+.fit{font-family:var(--mono);font-size:13px;font-weight:700}
+.fit.ok{color:var(--ok)} .fit.warn{color:var(--warn)} .fit.bad{color:var(--bad)}
+.fit.mut{color:var(--ink-3)}
+.ft.routes td:first-child + td,.ft.routes th:first-child + th{width:34%}
+.ft.routes td:nth-child(3),.ft.routes th:nth-child(3){width:20%}
+.ft.routes td:nth-child(n+4),.ft.routes th:nth-child(n+4){width:42px;text-align:center}
+.ft.routes .chip{margin-left:7px;font-size:10px;padding:1px 6px}
+.chip.established{border-color:color-mix(in srgb,var(--ok) 50%,transparent);color:var(--ok)}
+.chip.emerging{border-color:color-mix(in srgb,var(--warn) 50%,transparent);color:var(--warn)}
+.chip.exploratory{border-color:color-mix(in srgb,var(--s3) 50%,transparent);color:var(--s3)}

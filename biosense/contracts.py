@@ -68,6 +68,8 @@ SCHEMAS = {
     'developmental_map': 'developmental_map.schema.json',
     # the state-of-the-art add-on: the recommended protocol against the field
     'sota_comparison': 'sota_comparison.schema.json',
+    # the specialist literature mode: which way of making the cell the run pursues
+    'route_selection': 'route_selection.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',

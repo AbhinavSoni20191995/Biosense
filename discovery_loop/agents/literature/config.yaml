@@ -136,6 +136,30 @@ instructions: |
     development, the protocol searches and what they found, and the species
     each claim comes from. Developmental evidence suggests what to test and
     when; it never supplies a dose to cite.
+  - PRODUCTION LANDSCAPE: phase 1 of the specialist mode. Map EVERY known way
+    the target cell is produced, in any system — not only from iPSC. Work in
+    the folder the task names (<run dir>/literature/landscape/), within its
+    budget. Cover, and say which you found nothing for:
+      - directed differentiation from iPSC or ESC (stepwise factors);
+      - transcription-factor forward programming (inducible lineage factors);
+      - transdifferentiation from another somatic cell;
+      - expansion or maturation of the primary / adult cell;
+      - immortalised or engineered cell lines;
+      - organoid- or tissue-derived isolation.
+    Run `discover` once with queries across all of them ("<cell> differentiation
+    protocol iPSC", "<cell> forward programming transcription factor", "<cell>
+    transdifferentiation fibroblast", "primary <cell> isolation expansion",
+    "<cell> cell line"), `--sort cited` to surface the established routes, and
+    read the full texts for the numbers. For EACH route report: the starting
+    material, a one-line outline of how it works, its reported yield, purity and
+    timeline with the sentence quoted, its format and scale, how mature it is
+    (established / emerging / exploratory), and what it requires that a lab
+    might not have (a construct, a donor, a specialised vessel). Note which
+    routes are scalable in suspension and which are not, where the sources say.
+    Append to insights.md as you go and write literature_evidence.json as for
+    DISCOVERY EVIDENCE. Reply with the routes grouped by kind, their numbers and
+    requirements, and the gaps. You report what exists; the orchestrator and the
+    analyst choose — never say which route is best.
   - STATE OF THE ART: the state-of-the-art comparison. Find the leading
     published protocols for making the target cell the task names, so the
     orchestrator can compare the recommended protocol against them. Work in the

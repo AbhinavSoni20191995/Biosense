@@ -246,6 +246,7 @@ class Run:
         self.round_plan = None
         self.developmental_map = None
         self.sota_comparison = None
+        self.route_selection = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -363,6 +364,7 @@ class DiscoveryRun:
         self.round_plan = None
         self.developmental_map = None
         self.sota_comparison = None
+        self.route_selection = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -422,6 +424,7 @@ class DiscoveryRun:
         self._read_round_plan()
         self._read_developmental_map()
         self._read_sota_comparison()
+        self._read_route_selection()
         self._read_stage_shards()
         self._read_bio_specialists()
         self._read_reference_draft()
@@ -736,6 +739,25 @@ class DiscoveryRun:
         self.sota_comparison = {k: doc.get(k) for k in (
             'cell_type', 'references', 'comparisons', 'standing', 'limitations', 'note')}
 
+    def _read_route_selection(self):
+        """The specialist mode's phase 2: which way of making the cell this run pursued.
+
+        Read from the file the route-select CLI validated; one that chose a
+        route failing a hard criterion, or dropped a candidate without a
+        reason, never reaches it.
+        """
+        f = self.out_dir / 'route_selection.json'
+        try:
+            doc = K.read_json(f) if f.is_file() else None
+        except (OSError, ValueError):
+            doc = None
+        if not isinstance(doc, dict) or doc.get('kind') != 'route_selection':
+            self.route_selection = None
+            return
+        self.route_selection = {k: doc.get(k) for k in (
+            'cell_type', 'need', 'candidates', 'chosen', 'alternatives', 'review',
+            'limitations', 'note')}
+
     def _read_proposed_terms(self):
         """The response terms this run proposed for levers the base reactor lacks.
 
@@ -1036,6 +1058,7 @@ class DiscoveryRun:
                 'proposed_terms': self.proposed_terms,
                 'developmental_map': self.developmental_map,
                 'sota_comparison': self.sota_comparison,
+                'route_selection': self.route_selection,
                 'literature_stages': list(self.literature_stages),
                 'reference_draft': self.reference_draft,
                 'stage_counts': ST.stage_counts(self.stages_reached,

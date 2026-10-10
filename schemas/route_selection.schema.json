@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/route-selection-v1.0",
+  "title": "RouteSelection 1.0: which way of making the cell this run pursues, and why",
+  "description": "In the specialist literature mode the run first learns every known way of producing the target cell -- iPSC or ESC directed differentiation, transcription-factor forward programming, transdifferentiation, expansion of primary or adult cells, cell lines, organoid-derived -- and only then chooses the route whose parameters it will research. This document is that choice: the need as criteria taken from the request, every candidate route with its maturity, reported numbers, citations and fit against each criterion (reviewed by the analyst), the route chosen with its reasons, and every other candidate with why not. It is a reasoned choice a person can overturn, never a proof that the chosen route is best: the words are 'chosen because', not 'superior'. When the chosen route does not fit the project's own system (its parameters, vessel, starting material), the document says what the project would need, and the recommendation stays a design-level change for a person.",
+  "type": "object",
+  "required": ["kind", "schema_version", "project_id", "cell_type", "need", "candidates", "chosen", "alternatives", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "route_selection"},
+    "schema_version": {"type": "string"},
+    "project_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "created_at": {"type": ["string", "null"]},
+    "created_by": {"type": ["string", "null"]},
+    "cell_type": {"type": "string", "minLength": 2},
+    "need": {
+      "type": "object",
+      "required": ["criteria"],
+      "additionalProperties": false,
+      "properties": {
+        "summary": {"type": ["string", "null"]},
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["criterion_id", "criterion", "source"],
+            "additionalProperties": false,
+            "properties": {
+              "criterion_id": {"type": "string"},
+              "criterion": {"type": "string", "minLength": 3},
+              "source": {"type": "string", "description": "Where the criterion comes from: the objective, a constraint, the project's system, a scope field. A criterion the request does not state is a design choice and says so."},
+              "must": {"type": "boolean", "description": "A hard requirement (a route that fails it is out) rather than a preference."}
+            }
+          }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["route_id", "label", "kind", "starting_material", "maturity", "summary", "fit", "refs"],
+        "additionalProperties": false,
+        "properties": {
+          "route_id": {"type": "string"},
+          "label": {"type": "string", "minLength": 2},
+          "kind": {"enum": ["directed_differentiation", "forward_programming", "transdifferentiation", "primary_expansion", "cell_line", "organoid_derived", "other"]},
+          "starting_material": {"type": "string"},
+          "maturity": {"enum": ["established", "emerging", "exploratory"]},
+          "summary": {"type": "string", "minLength": 10},
+          "reported": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "yield": {"type": ["string", "null"]},
+              "purity": {"type": ["string", "null"]},
+              "timeline": {"type": ["string", "null"]},
+              "scale": {"type": ["string", "null"]},
+              "format": {"type": ["string", "null"]}
+            }
+          },
+          "fit": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["criterion_id", "verdict"],
+              "additionalProperties": false,
+              "properties": {
+                "criterion_id": {"type": "string"},
+                "verdict": {"enum": ["meets", "partial", "fails", "unknown"]},
+                "note": {"type": ["string", "null"]}
+              }
+            }
+          },
+          "limits": {"type": "array", "items": {"type": "string"}},
+          "refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+        }
+      }
+    },
+    "chosen": {
+      "type": "object",
+      "required": ["route_id", "why", "fits_project"],
+      "additionalProperties": false,
+      "properties": {
+        "route_id": {"type": "string"},
+        "why": {"type": "string", "minLength": 10},
+        "fits_project": {"type": "boolean", "description": "Whether the project's own system (its stages, parameters, vessel and starting material) can run this route as it stands."},
+        "project_note": {"type": ["string", "null"], "description": "When it does not fit: what the project would need (parameters to register, a different starting material, a construct), for a person to decide."}
+      }
+    },
+    "alternatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["route_id", "why_not"],
+        "additionalProperties": false,
+        "properties": {
+          "route_id": {"type": "string"},
+          "why_not": {"type": "string", "minLength": 5},
+          "worth_a_parallel_arm": {"type": "boolean"}
+        }
+      }
+    },
+    "review": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "reviewed_by": {"type": ["string", "null"], "description": "Which agent reviewed the fit (analyst), or null when none did."},
+        "note": {"type": ["string", "null"]},
+        "disagreements": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "note": {"type": "string"}
+  }
+}
