@@ -32,6 +32,8 @@ KINDS = ('directed_differentiation', 'forward_programming', 'transdifferentiatio
          'primary_expansion', 'cell_line', 'organoid_derived', 'other')
 MATURITY = ('established', 'emerging', 'exploratory')
 FIT = ('meets', 'partial', 'fails', 'unknown')
+# Whether the need, as written, lets the run reach what the person is after.
+VERDICTS = ('well_matched', 'constrained', 'suboptimal')
 OVERCLAIM = re.compile(r'\b(best|superior|outperform\w*|proven|optimal|beats?|'
                        r'the only (?:viable|possible) (?:route|way|option))\b', re.I)
 
@@ -96,6 +98,32 @@ TEMPLATE = {
         {'route_id': 'R2', 'why_not': 'fails the no-construct constraint', 'worth_a_parallel_arm': False},
         {'route_id': 'R3', 'why_not': 'not a renewable, scalable source', 'worth_a_parallel_arm': False},
     ],
+    'need_assessment': {
+        'verdict': 'constrained',
+        'summary': 'The no-construct constraint rules out forward programming, which reports a '
+                   'shorter timeline and higher purity. The chosen route is the closest fit to '
+                   'the need as written, and this run optimises inside it.',
+        'limiting_criteria': ['C2'],
+        'trade_offs': [{'criterion_id': 'C2', 'route_id': 'R2',
+                        'would_gain': 'first harvest in about two weeks rather than about four, '
+                                      'at a reported purity above 95%',
+                        'would_cost': 'an integrating construct in the line, and the regulatory '
+                                      'and characterisation work that comes with it',
+                        'refs': ['PMID:<id>']}],
+    },
+    'headroom': {
+        'summary': 'Within the aggregate route, the myeloid stage is where the reported spread '
+                   'between protocols is widest.',
+        'levers': [{'lever': 'M-CSF concentration at the myeloid stage',
+                    'parameter_id': 'mcsf_ng_ml', 'stage_id': 'myeloid',
+                    'why': 'reported working values span a wide range and the sources disagree '
+                           'on where output saturates',
+                    'bounded_by': 'the project maximum for this parameter',
+                    'refs': ['PMID:<id>']},
+                   {'lever': 'aggregate size at induction', 'stage_id': 'mesoderm',
+                    'why': 'sets how evenly the induction signal reaches the cells',
+                    'bounded_by': 'the vessel: this project has no aggregate-size parameter yet'}],
+    },
     'review': {'reviewed_by': 'analyst', 'note': 'fit scores checked against the landscape reply',
                'disagreements': []},
     'limitations': ['Time-to-harvest preference is a design choice, not stated in the request.'],
@@ -134,6 +162,7 @@ def build(draft, *, project, run_id=None, created_by=None):
     if not isinstance(draft, dict):
         raise K.ContractError('a route selection draft is a JSON object; see '
                               '`python -m biosense.evidence.cli template route-select`')
+    stages = {st['stage_id'] for st in project.stages} | {'all'}
     need = draft.get('need') or {}
     crits, cids = [], set()
     for i, c in enumerate(need.get('criteria') or []):
@@ -226,6 +255,66 @@ def build(draft, *, project, run_id=None, created_by=None):
         raise K.ContractError(f'every candidate but the chosen one is an alternative with a '
                               f'reason; missing: {", ".join(sorted(missing))}')
 
+    # Does the need, as the person wrote it, let this run reach what they are
+    # after? A request can be consistent and still box the run into a route the
+    # evidence reports worse numbers for. Saying so is the job; so is still
+    # optimising inside what was asked, which is what the protocol does anyway.
+    na = draft.get('need_assessment') or {}
+    verdict = _enum(na.get('verdict') or 'well_matched', VERDICTS, 'need_assessment.verdict')
+    limiting = []
+    for cid in na.get('limiting_criteria') or []:
+        cid = str(cid).strip()
+        if cid not in cids:
+            raise K.ContractError(f'need_assessment.limiting_criteria names {cid!r}, which is '
+                                  f'not a criterion')
+        limiting.append(cid)
+    trades = []
+    for i, t in enumerate(na.get('trade_offs') or []):
+        w = f'need_assessment.trade_offs[{i}]'
+        cid, rid = str(t.get('criterion_id') or '').strip(), str(t.get('route_id') or '').strip()
+        if cid not in cids:
+            raise K.ContractError(f'{w}.criterion_id {cid!r} is not a criterion')
+        if rid not in route_ids:
+            raise K.ContractError(f'{w}.route_id {rid!r} is not a candidate route')
+        trades.append({'criterion_id': cid, 'route_id': rid,
+                       'would_gain': _text(t.get('would_gain'), f'{w}.would_gain', minimum=5),
+                       'would_cost': _text(t.get('would_cost'), f'{w}.would_cost', minimum=5),
+                       'refs': [str(r).strip() for r in t.get('refs') or [] if str(r).strip()]})
+    if verdict in ('constrained', 'suboptimal') and not trades:
+        raise K.ContractError(
+            f'need_assessment.verdict is {verdict!r}, so name what relaxing a criterion would '
+            f'open up and what it would cost (trade_offs). Telling a person their request is '
+            f'worse without saying what better looks like, and its price, is not something they '
+            f'can act on')
+    assessment = {'verdict': verdict,
+                  'summary': _text(na.get('summary') or
+                                   'The need as stated and what the evidence reports agree; no '
+                                   'criterion rules out a route with stronger reported numbers.',
+                                   'need_assessment.summary', minimum=10),
+                  'limiting_criteria': limiting, 'trade_offs': trades}
+
+    # Inside the chosen route and this project's vessel, where the gain still is.
+    headroom = None
+    hr = draft.get('headroom')
+    if isinstance(hr, dict):
+        levers = []
+        for i, lv in enumerate(hr.get('levers') or []):
+            w = f'headroom.levers[{i}]'
+            sid = str(lv.get('stage_id') or '').strip() or None
+            if sid and sid not in stages:
+                raise K.ContractError(f'{w}.stage_id is {sid!r}; project stages are '
+                                      f'{", ".join(sorted(stages))}')
+            levers.append({'lever': _text(lv.get('lever'), f'{w}.lever'),
+                           'parameter_id': str(lv.get('parameter_id')).strip()
+                                           if lv.get('parameter_id') else None,
+                           'stage_id': sid,
+                           'why': _text(lv.get('why'), f'{w}.why', minimum=5),
+                           'bounded_by': _text(lv.get('bounded_by'), f'{w}.bounded_by',
+                                               required=False),
+                           'refs': [str(r).strip() for r in lv.get('refs') or [] if str(r).strip()]})
+        headroom = {'summary': _text(hr.get('summary'), 'headroom.summary', required=False),
+                    'levers': levers}
+
     review = None
     rv = draft.get('review')
     if isinstance(rv, dict):
@@ -243,7 +332,8 @@ def build(draft, *, project, run_id=None, created_by=None):
         'cell_type': _text(draft.get('cell_type'), 'cell_type', minimum=2),
         'need': {'summary': _text(need.get('summary'), 'need.summary', required=False),
                  'criteria': crits},
-        'candidates': cands, 'chosen': chosen_doc, 'alternatives': alts, 'review': review,
+        'candidates': cands, 'chosen': chosen_doc, 'need_assessment': assessment,
+        'headroom': headroom, 'alternatives': alts, 'review': review,
         'limitations': [_text(x, 'limitations', minimum=1) for x in draft.get('limitations') or []],
         'note': NOTE,
     }

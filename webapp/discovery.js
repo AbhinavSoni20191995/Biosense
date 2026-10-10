@@ -1204,6 +1204,46 @@ function renderRoute(r) {
   }
   host.append(head);
 
+  /* Whether the need as written is what is limiting the answer. Said beside
+     the answer, never instead of it: the protocol still serves what was asked. */
+  const na = r.need_assessment || {};
+  if (na.verdict && na.verdict !== 'well_matched') {
+    const box = el('div', 'need-note ' + na.verdict);
+    box.append(el('div', 'route-lab', na.verdict === 'suboptimal'
+      ? 'What you asked for is not the strongest route the evidence reports'
+      : 'Something in the request rules out a stronger-reported route'));
+    box.append(el('div', null, na.summary || ''));
+    (na.trade_offs || []).forEach(t => {
+      const c = (byId[t.criterion_id] || {}).criterion || t.criterion_id;
+      const cand = (r.candidates || []).find(x => x.route_id === t.route_id) || {};
+      const row = el('div', 'trade');
+      row.append(el('b', null, `Relax "${c}"`));
+      row.append(el('div', null, `→ ${cand.label || t.route_id}: ${t.would_gain}`));
+      row.append(el('div', 'dim', `Costs: ${t.would_cost}`
+        + ((t.refs || []).length ? ' [' + t.refs.join(', ') + ']' : '')));
+      box.append(row);
+    });
+    box.append(el('p', 'caveat', 'The plan below still answers the need as you wrote it, '
+      + 'optimised as far as the evidence allows inside it. This is a note, not a substitution.'));
+    host.append(box);
+  }
+
+  const hr = r.headroom || {};
+  if ((hr.levers || []).length) {
+    host.append(el('div', 'lab', 'Where the gain is inside this route'));
+    if (hr.summary) host.append(el('p', 'dim', hr.summary));
+    const ul = el('ul', 'tight');
+    (hr.levers || []).forEach(l => {
+      const li = el('li');
+      li.append(el('b', null, l.lever));
+      if (l.stage_id) li.append(el('span', 'chip', l.stage_id));
+      li.append(el('div', null, l.why));
+      if (l.bounded_by) li.append(el('div', 'dim', 'Bounded by: ' + l.bounded_by));
+      ul.append(li);
+    });
+    host.append(ul);
+  }
+
   if (crits.length) {
     host.append(el('div', 'lab', 'What the route had to satisfy'));
     const ul = el('ul', 'tight');
@@ -1623,8 +1663,10 @@ function renderInsights(snap) {
   if (routeOn) {
     renderRoute(route);
     const ch = (route.candidates || []).find(c => c.route_id === (route.chosen || {}).route_id);
+    const v = (route.need_assessment || {}).verdict;
     $('#routeSum').textContent = [ch && ch.label,
-      `${route.candidates.length} considered`].filter(Boolean).join(' · ');
+      `${route.candidates.length} considered`,
+      v && v !== 'well_matched' ? v.replace(/_/g, ' ') : null].filter(Boolean).join(' · ');
   }
   const devOn = dev && ((dev.stages || []).length || (dev.ideas || []).length);
   $('#devSec').hidden = !devOn;

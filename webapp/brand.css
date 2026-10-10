@@ -832,3 +832,9 @@ body.has-focus{overflow:hidden}
 .chip.established{border-color:color-mix(in srgb,var(--ok) 50%,transparent);color:var(--ok)}
 .chip.emerging{border-color:color-mix(in srgb,var(--warn) 50%,transparent);color:var(--warn)}
 .chip.exploratory{border-color:color-mix(in srgb,var(--s3) 50%,transparent);color:var(--s3)}
+.need-note{border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:var(--r-s);
+  padding:10px 12px;margin:0 0 12px;font-size:13.5px}
+.need-note.suboptimal{border-left-color:var(--bad)}
+.need-note .trade{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:13px}
+.need-note .trade div{margin-top:2px}
+.need-note .caveat{margin-top:9px}

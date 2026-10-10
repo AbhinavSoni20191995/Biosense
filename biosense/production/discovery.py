@@ -588,14 +588,40 @@ master regulators, and whether public data exists for each route's product.
    reason. The command refuses a route that fails a hard criterion, and refuses
    "best" or "superior" — the literature cannot prove one route beats another
    here, so the wording is "chosen because".
-4. If the chosen route is not one the project's system can run as it stands,
+4. **Say whether the need itself is what is limiting the answer.** Set
+   `need_assessment`. `well_matched` when nothing in the request rules out a
+   route with stronger reported numbers. `constrained` when a hard criterion
+   does — usually a constraint or the project's own system — and the person may
+   not have meant it to. `suboptimal` when the request as written points at a
+   route the evidence reports clearly worse numbers for, for this objective.
+   For either of the last two, give a `trade_off` per limiting criterion: the
+   route relaxing it would allow, what its sources report that would gain, and
+   what it would cost (a construct, a donor, a vessel, regulatory work). The
+   command refuses `constrained` or `suboptimal` with no trade-off, because
+   telling a person their request is worse without saying what better looks
+   like and what it costs is not something they can act on. **This never
+   changes the route**: the run still delivers the need as asked. It is a note
+   beside the answer, for them to decide on.
+5. **Say where the remaining gain is inside the chosen route.** Set `headroom`:
+   the two or three levers of THIS route, in THIS project's vessel, where the
+   evidence says the process is furthest from what it could reach — and for
+   each, what bounds it (a project bound, a constraint, the vessel, or the
+   evidence simply running out). This is what phase 3 aims at, and what the
+   round plan should test first. A lever with plenty of reported headroom and
+   no measurement here is worth more than one already near its bound.
+6. If the chosen route is not one the project's system can run as it stands,
    set `fits_project` false and say in `project_note` what the project would
    need (a parameter to register, a different starting material, a construct).
    The protocol still runs on the project's own parameters, and that change is
    a person's to make — never assumed in the setpoints.
 
-**Phase 3 — research the chosen route's parameters.** This is the ordinary
-loop, aimed. In one response send one `literature` task per stage of the
+**Phase 3 — research the chosen route's parameters, aiming at the headroom.**
+This is the ordinary loop, pointed at something. The job is not to find a
+number for every knob: it is to get this process as close as the evidence can
+take it to the objective, **inside the chosen route and inside the project's
+own bioreactor and bounds**. Spend the budget on the `headroom` levers first;
+a knob already near its bound, or one no source disagrees about, needs one
+value and no more. In one response send one `literature` task per stage of the
 chosen route (`title: "literature-<stage>"` → `{loop_dir}/literature/<stage>/`,
 each passing `--cache-dir {loop_dir}/literature/cache`) and the
 `bioinformatics` task(s) for the genes and datasets that route turns on. Say
@@ -604,6 +630,12 @@ Then continue with the hypothesis, the protocol and the round plan as usual.
 
 An alternative route the selection marked `worth_a_parallel_arm` belongs in the
 **round plan** as an arm to test, never in the recommended protocol.
+
+Whatever the `need_assessment` says, the protocol you recommend answers the
+need as the person wrote it, optimised as far as the evidence allows within it.
+A constrained or suboptimal verdict is reported beside that answer — never a
+reason to hand back a protocol for a route they did not ask for, and never a
+reason to deliver less for the one they did.
 
 """
     return dispatch, section

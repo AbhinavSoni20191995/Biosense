@@ -78,6 +78,56 @@ class ChoiceTests(unittest.TestCase):
             build(need={'criteria': []})
 
 
+class NeedAssessmentTests(unittest.TestCase):
+    """The run has to satisfy the need. When the need itself is what limits the
+    answer, it says so — and still delivers the need, optimised inside it."""
+
+    def test_a_constrained_request_names_what_relaxing_it_would_buy(self):
+        doc = build()
+        na = doc['need_assessment']
+        self.assertEqual('constrained', na['verdict'])
+        self.assertEqual(['C2'], na['limiting_criteria'])
+        t = na['trade_offs'][0]
+        self.assertEqual(('C2', 'R2'), (t['criterion_id'], t['route_id']))
+        self.assertTrue(t['would_gain'] and t['would_cost'])
+        # The route is unchanged: the verdict is a note beside the answer.
+        self.assertEqual('R1', doc['chosen']['route_id'])
+
+    def test_calling_a_request_worse_without_a_trade_off_is_refused(self):
+        for verdict in ('constrained', 'suboptimal'):
+            with self.assertRaisesRegex(K.ContractError, 'what relaxing a criterion would'):
+                build(need_assessment={'verdict': verdict,
+                                       'summary': 'the request points at a weaker route'})
+
+    def test_a_trade_off_names_a_real_criterion_and_a_real_route(self):
+        with self.assertRaisesRegex(K.ContractError, 'not a criterion'):
+            build(need_assessment={'verdict': 'constrained', 'summary': 'something limits this',
+                                   'trade_offs': [{'criterion_id': 'C9', 'route_id': 'R2',
+                                                   'would_gain': 'faster harvest',
+                                                   'would_cost': 'a construct'}]})
+        with self.assertRaisesRegex(K.ContractError, 'not a candidate route'):
+            build(need_assessment={'verdict': 'constrained', 'summary': 'something limits this',
+                                   'trade_offs': [{'criterion_id': 'C2', 'route_id': 'R9',
+                                                   'would_gain': 'faster harvest',
+                                                   'would_cost': 'a construct'}]})
+
+    def test_a_run_that_says_nothing_is_well_matched_not_silent(self):
+        d = copy.deepcopy(RS.TEMPLATE)
+        del d['need_assessment']
+        got = RS.build(d, project=PJ.load('ipsc_macrophage'))['need_assessment']
+        self.assertEqual('well_matched', got['verdict'])
+        self.assertTrue(got['summary'])
+
+    def test_the_headroom_aims_the_rest_of_the_run_and_stays_in_the_project(self):
+        levers = build()['headroom']['levers']
+        self.assertEqual('mcsf_ng_ml', levers[0]['parameter_id'])
+        self.assertTrue(all(l['why'] for l in levers))
+        self.assertIn('project maximum', levers[0]['bounded_by'])
+        with self.assertRaisesRegex(K.ContractError, 'project stages are'):
+            build(headroom={'levers': [{'lever': 'x', 'why': 'because of this',
+                                        'stage_id': 'gastrulation'}]})
+
+
 class ModeTests(unittest.TestCase):
     def _req(self, **kw):
         return DISC.build(project_id='ipsc_macrophage', runtime_mode='synthetic_demo',
@@ -97,6 +147,12 @@ class ModeTests(unittest.TestCase):
             self.assertIn(part, brief)
         self.assertLess(brief.index('PRODUCTION LANDSCAPE:'), brief.index('ROUTE REVIEW:'))
         self.assertLess(brief.index('ROUTE REVIEW:'), brief.index('Phase 3'))
+        # The need itself is assessed, the rest of the run is aimed, and the
+        # answer still serves what was asked.
+        self.assertIn('need_assessment', brief)
+        self.assertIn('headroom', brief)
+        self.assertIn('This never\n   changes the route', brief)
+        self.assertIn('answers the\nneed as the person wrote it', brief)
         self.assertIn('specialist (staged)', DISC.summarise(self._req(literature_mode='specialist')))
 
     def test_the_ordinary_modes_do_not_carry_the_staged_brief(self):
@@ -125,6 +181,9 @@ class AgentAndPageTests(unittest.TestCase):
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
         self.assertIn('function renderRoute', js)
         self.assertIn('snap.route_selection', js)
+        self.assertIn("na.verdict !== 'well_matched'", js)
+        self.assertIn('not a substitution', js)
+        self.assertIn("'Where the gain is inside this route'", js)
 
 
 if __name__ == '__main__':

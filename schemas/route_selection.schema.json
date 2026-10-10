@@ -4,7 +4,7 @@
   "title": "RouteSelection 1.0: which way of making the cell this run pursues, and why",
   "description": "In the specialist literature mode the run first learns every known way of producing the target cell -- iPSC or ESC directed differentiation, transcription-factor forward programming, transdifferentiation, expansion of primary or adult cells, cell lines, organoid-derived -- and only then chooses the route whose parameters it will research. This document is that choice: the need as criteria taken from the request, every candidate route with its maturity, reported numbers, citations and fit against each criterion (reviewed by the analyst), the route chosen with its reasons, and every other candidate with why not. It is a reasoned choice a person can overturn, never a proof that the chosen route is best: the words are 'chosen because', not 'superior'. When the chosen route does not fit the project's own system (its parameters, vessel, starting material), the document says what the project would need, and the recommendation stays a design-level change for a person.",
   "type": "object",
-  "required": ["kind", "schema_version", "project_id", "cell_type", "need", "candidates", "chosen", "alternatives", "note"],
+  "required": ["kind", "schema_version", "project_id", "cell_type", "need", "candidates", "chosen", "need_assessment", "alternatives", "note"],
   "additionalProperties": false,
   "properties": {
     "kind": {"const": "route_selection"},
@@ -89,6 +89,60 @@
         "why": {"type": "string", "minLength": 10},
         "fits_project": {"type": "boolean", "description": "Whether the project's own system (its stages, parameters, vessel and starting material) can run this route as it stands."},
         "project_note": {"type": ["string", "null"], "description": "When it does not fit: what the project would need (parameters to register, a different starting material, a construct), for a person to decide."}
+      }
+    },
+    "need_assessment": {
+      "type": "object",
+      "description": "Whether the need as stated lets this run reach what the person is actually after. A request can be internally consistent and still box the run into a route the evidence reports worse numbers for -- usually because a hard criterion (a constraint, the project's own system) rules out a better-reported route. Saying so is the point: the run still optimises hard inside what was asked, and separately names what relaxing a criterion would open up and what it would cost. It never silently switches route.",
+      "required": ["verdict", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {
+          "enum": ["well_matched", "constrained", "suboptimal"],
+          "description": "well_matched: the need and the best-reported route agree. constrained: a hard criterion rules out a route with better reported numbers, and the person may not have meant it to. suboptimal: the need as written points at a route the evidence reports clearly worse numbers for, for this objective."
+        },
+        "summary": {"type": "string", "minLength": 10},
+        "limiting_criteria": {"type": "array", "items": {"type": "string"}, "description": "The criterion_ids that ruled out a better-reported route."},
+        "trade_offs": {
+          "type": "array",
+          "description": "What relaxing a criterion would open up: the route it would allow, what its sources report it would gain, and what it would cost. A verdict of constrained or suboptimal needs at least one -- naming a request worse without saying what better looks like, and what it costs, is not a finding a person can act on.",
+          "items": {
+            "type": "object",
+            "required": ["criterion_id", "route_id", "would_gain", "would_cost"],
+            "additionalProperties": false,
+            "properties": {
+              "criterion_id": {"type": "string"},
+              "route_id": {"type": "string"},
+              "would_gain": {"type": "string", "minLength": 5},
+              "would_cost": {"type": "string", "minLength": 5},
+              "refs": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
+    "headroom": {
+      "type": ["object", "null"],
+      "description": "Inside the chosen route and the project's own bioreactor, where the remaining gain is: which setpoints the evidence says are furthest from what this process could reach, so the protocol and the round plan aim at those rather than at whatever was easiest to find a number for.",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {"type": ["string", "null"]},
+        "levers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["lever", "why"],
+            "additionalProperties": false,
+            "properties": {
+              "lever": {"type": "string"},
+              "parameter_id": {"type": ["string", "null"]},
+              "stage_id": {"type": ["string", "null"]},
+              "why": {"type": "string", "minLength": 5},
+              "bounded_by": {"type": ["string", "null"], "description": "What stops it going further: a project bound, a constraint, the vessel, or the evidence running out."},
+              "refs": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
       }
     },
     "alternatives": {

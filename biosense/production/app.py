@@ -755,8 +755,8 @@ class DiscoveryRun:
             self.route_selection = None
             return
         self.route_selection = {k: doc.get(k) for k in (
-            'cell_type', 'need', 'candidates', 'chosen', 'alternatives', 'review',
-            'limitations', 'note')}
+            'cell_type', 'need', 'candidates', 'chosen', 'need_assessment', 'headroom',
+            'alternatives', 'review', 'limitations', 'note')}
 
     def _read_proposed_terms(self):
         """The response terms this run proposed for levers the base reactor lacks.
