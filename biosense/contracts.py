@@ -70,6 +70,8 @@ SCHEMAS = {
     'sota_comparison': 'sota_comparison.schema.json',
     # the specialist literature mode: which way of making the cell the run pursues
     'route_selection': 'route_selection.schema.json',
+    # how close the product is expected to come to the real cell
+    'cell_fidelity': 'cell_fidelity.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',

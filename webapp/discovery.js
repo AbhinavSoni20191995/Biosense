@@ -1172,6 +1172,61 @@ function runTheRound(p, snap) {
 /* Terms the run proposed for levers the base reactor has no equation for: the
    project's own simulator, one term at a time. Each says what it computes and
    what it cites; it joins the project only when a person adds it. */
+/* How close the product is expected to come to the real cell, axis by axis.
+   Every axis is shown, including the ones nobody addressed: an unknown is the
+   finding. A row opens on what development does, what the protocol does, the
+   reasons, and the assay that would settle it. */
+const SIM_CLS = { high: 'ok', moderate: 'warn', low: 'bad', unknown: 'mut' };
+const MATCH_LABEL = { close: 'Expected close to the real cell',
+  partial: 'Expected a partial match', distant: 'Expected distant from the real cell',
+  unknown: 'How close it would be is not established' };
+let fidSeen = '';
+function renderFidelity(f) {
+  const host = $('#fidInsights'); if (!host) return;
+  const key = JSON.stringify(f);
+  if (key === fidSeen) return;
+  fidSeen = key; host.textContent = '';
+  const ov = f.overall || {}, ref = f.in_vivo_reference || {};
+  const head = el('div', 'fid-head ' + (ov.expected_match || ''));
+  head.append(el('div', 'route-lab', MATCH_LABEL[ov.expected_match] || ''));
+  head.append(el('div', null, ov.summary || ''));
+  const judged = el('div', 'dim fid-ref');
+  judged.append(document.createTextNode('Judged against: '));
+  judged.append(el('b', null, ref.cell || '—'));
+  if (ref.stage_of_life) judged.append(el('span', 'chip', ref.stage_of_life));
+  if (ref.why_this_one) judged.append(el('div', null, ref.why_this_one));
+  head.append(judged);
+  host.append(head);
+
+  host.append(foldTable(['Axis', 'Expected', 'Settled by'], (f.criteria || []).map(c => {
+    const sim = el('span', 'tag ' + (SIM_CLS[c.expected_similarity] || ''),
+      c.expected_similarity);
+    const settle = el('span');
+    settle.append(document.createTextNode(clipText(c.measured_by, 34)));
+    if (c.in_round_plan) settle.append(el('span', 'tag brand', ' in this round'));
+    const detail = appendAll(el('div'), [
+      kv('In vivo', c.in_vivo),
+      kv('This protocol', c.protocol),
+      c.departure ? kv('Departure', c.departure) : null,
+      kv('Why', (c.reasons || []).join(' ')),
+      kv('Settled by', c.measured_by + (c.in_round_plan ? ' — in this round\'s plan'
+        : ' — not measured by this run')),
+      kv('Confidence', c.confidence),
+      (c.refs || []).length ? kv('Cites', c.refs.join(', ')) : null,
+    ]);
+    const nm = el('span');
+    nm.append(el('b', null, c.label || c.axis));
+    if (c.axis === ov.dominant_gap) nm.append(el('span', 'tag bad', ' biggest gap'));
+    return { key: 'fid:' + c.axis, cells: [nm, sim, settle], detail };
+  }), 'fid'));
+  if (ov.what_would_settle_it) {
+    host.append(el('p', 'caveat', 'What would settle it: ' + ov.what_would_settle_it));
+  }
+  host.append(el('p', 'caveat', 'Expectations about cells that have not been made yet — not '
+    + 'measurements. An axis marked unknown is one this run could not speak to.'));
+  (f.limitations || []).forEach(l => host.append(el('p', 'caveat', l)));
+}
+
 /* The specialist mode's phase 2: which way of making the cell this run chose.
    The choice and its reasons first, then every candidate scored against each
    criterion — a row opens on its outline, numbers and why it was not chosen. */
@@ -1648,16 +1703,26 @@ function renderInsights(snap) {
   const dev = snap.developmental_map;
   const sota = snap.sota_comparison;
   const route = snap.route_selection;
+  const fid = snap.cell_fidelity;
   const analysed = $('#anaSec') && !$('#anaSec').hidden;
   if (!ins && !papers.length && !bio && !geno && !terms && !plan && !dev && !sota && !route
-      && !snap.reference_draft && !analysed) {
+      && !fid && !snap.reference_draft && !analysed) {
     panel.hidden = true; return;
   }
   panel.hidden = false;
   wireSection('litSec', false); wireSection('papersSec', false);
   wireSection('bioSec', false); wireSection('genoSec', true); wireSection('termsSec', true);
   wireSection('devSec', true); wireSection('sotaSec', true); wireSection('roundSec', true);
-  wireSection('routeSec', true);
+  wireSection('routeSec', true); wireSection('fidSec', true);
+  const fidOn = fid && (fid.criteria || []).length;
+  $('#fidSec').hidden = !fidOn;
+  if (fidOn) {
+    renderFidelity(fid);
+    const ov = fid.overall || {};
+    $('#fidSum').textContent = [ov.expected_match,
+      ov.dominant_gap ? 'gap: ' + ov.dominant_gap.replace(/_/g, ' ') : null]
+      .filter(Boolean).join(' · ');
+  }
   const routeOn = route && (route.candidates || []).length;
   $('#routeSec').hidden = !routeOn;
   if (routeOn) {

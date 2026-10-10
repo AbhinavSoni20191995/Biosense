@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/cell-fidelity-v1.0",
+  "title": "CellFidelity 1.0: how close the cells this protocol makes should come to the real ones",
+  "description": "A protocol that hits its yield and purity targets can still make a cell that is not the cell. This document judges, axis by axis, how similar the product is expected to be to its in vivo counterpart -- each axis setting what development does, what the recommended protocol does instead, the departure between them, the expected similarity and why, and the assay that would actually settle it. The axes are a fixed list, so an axis nobody addressed comes back 'unknown' with a reason rather than being quietly dropped. Every judgement here is an EXPECTATION about cells that have not been made yet: confidence is capped at moderate, 'high' similarity needs a citation behind it, and no wording may call the product identical, equivalent or indistinguishable from the primary cell.",
+  "type": "object",
+  "required": ["kind", "schema_version", "project_id", "cell_type", "in_vivo_reference", "criteria", "overall", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "cell_fidelity"},
+    "schema_version": {"type": "string"},
+    "project_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "created_at": {"type": ["string", "null"]},
+    "created_by": {"type": ["string", "null"]},
+    "cell_type": {"type": "string", "minLength": 2},
+    "in_vivo_reference": {
+      "type": "object",
+      "description": "Which real cell the product is being judged against. It matters which: a yolk-sac-derived tissue macrophage and an adult monocyte-derived macrophage are different cells, and a protocol can be a faithful copy of one and a poor copy of the other.",
+      "required": ["cell", "why_this_one"],
+      "additionalProperties": false,
+      "properties": {
+        "cell": {"type": "string", "minLength": 3},
+        "stage_of_life": {"type": ["string", "null"], "description": "embryonic / fetal / neonatal / adult, where the sources say."},
+        "tissue": {"type": ["string", "null"]},
+        "why_this_one": {"type": "string", "minLength": 10},
+        "refs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["axis", "in_vivo", "protocol", "expected_similarity", "confidence", "reasons", "measured_by"],
+        "additionalProperties": false,
+        "properties": {
+          "axis": {
+            "enum": ["identity_markers", "transcriptome", "maturation_state", "ontogeny_route", "function", "epigenome", "metabolism", "purity", "niche_context", "stability"],
+            "description": "identity_markers: the surface and transcription-factor markers that define the cell. transcriptome: genome-wide expression against the primary cell. maturation_state: developmental age -- fetal-like versus adult. ontogeny_route: whether the product arrived through the same developmental intermediates as the real cell. function: whether it does the cell's job in an assay. epigenome: methylation and chromatin at the lineage loci, and residual memory of the starting cell. metabolism: the metabolic programme the mature cell runs. purity: what fraction of the harvest is the target rather than an off-target lineage. niche_context: the in vivo cues -- neighbouring cells, matrix, mechanics, oxygen -- the vessel does not provide. stability: whether the identity holds once the factors are withdrawn."
+          },
+          "label": {"type": ["string", "null"]},
+          "in_vivo": {"type": "string", "minLength": 10, "description": "What development or the mature tissue does on this axis."},
+          "protocol": {"type": "string", "minLength": 10, "description": "What the recommended protocol does instead, in its own terms (stage, factor, duration, vessel)."},
+          "departure": {"type": ["string", "null"], "description": "Where the two differ, in one line. Null when they do not."},
+          "expected_similarity": {
+            "enum": ["high", "moderate", "low", "unknown"],
+            "description": "high needs a citation behind it: a source reporting this axis measured for a comparable protocol. unknown is the honest answer where nothing in this run addressed the axis, and is used rather than omitting it."
+          },
+          "confidence": {"enum": ["low", "moderate"], "description": "How much weight the similarity judgement carries. Capped at moderate throughout: the cells do not exist yet."},
+          "reasons": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 5}},
+          "measured_by": {"type": "string", "minLength": 5, "description": "The assay or readout that would settle this axis on the real harvest -- the point at which the expectation stops being an expectation."},
+          "in_round_plan": {"type": "boolean", "description": "Whether that measurement is in this run's round plan."},
+          "refs": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "overall": {
+      "type": "object",
+      "required": ["expected_match", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "expected_match": {"enum": ["close", "partial", "distant", "unknown"]},
+        "summary": {"type": "string", "minLength": 10},
+        "dominant_gap": {"type": ["string", "null"], "description": "The axis that most limits the match, named so the next round can aim at it."},
+        "what_would_settle_it": {"type": ["string", "null"]}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "note": {"type": "string"}
+  }
+}

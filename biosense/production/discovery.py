@@ -796,7 +796,29 @@ and the dish does not, or has at the wrong time.
    this dish; a magnitude, if any, is a best guess at low confidence. Put each
    hypothesis id into its idea's `hypothesis_id`, and give the strongest idea an
    arm in the round plan when it can be tested beside the main lever.
-4. Developmental evidence is from another context (embryo, often mouse): it
+4. **Judge how close the product will actually be to the cell.** Once the
+   protocol and the round plan exist, write
+   `{loop_dir}/cell_fidelity.draft.json` and check it into
+   `{python} -m biosense.evidence.cli fidelity --project {project.project_id}{pdir} \
+       --draft {loop_dir}/cell_fidelity.draft.json --round-plan {loop_dir}/round_plan.json \
+       --out {loop_dir}/cell_fidelity.json`
+   Name first WHICH real cell you are judging against and why — a yolk-sac-derived
+   tissue macrophage and an adult monocyte-derived one are different cells, and a
+   protocol can be a fair copy of one and a poor copy of the other; the route and
+   the intermediates in the developmental map tell you which this protocol is
+   aiming at. Then, for each axis you can speak to: what development or the mature
+   tissue does, what this protocol does instead, the departure, the expected
+   similarity, the reasons, and the assay that would settle it. The axes are fixed
+   (identity markers, transcriptome, maturation state, ontogeny, function,
+   epigenome, metabolism, purity, niche, stability) and any you do not address
+   come back `unknown` — which is the honest answer, and is why the list is fixed:
+   a fidelity report that quietly omits maturation state is how an iPSC product
+   gets called the adult cell. `high` needs a source that measured that axis for a
+   comparable protocol; confidence is capped at moderate throughout, because these
+   cells do not exist yet. Name the axis that most limits the match as
+   `dominant_gap`, and put any axis a readout could settle into the round plan —
+   an expectation nobody measures stays an expectation.
+5. Developmental evidence is from another context (embryo, often mouse): it
    suggests what to test and when, never a dose to cite. A dose for an idea comes
    from the production literature (an adapted value) or is a design choice.
 

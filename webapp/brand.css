@@ -838,3 +838,14 @@ body.has-focus{overflow:hidden}
 .need-note .trade{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:13px}
 .need-note .trade div{margin-top:2px}
 .need-note .caveat{margin-top:9px}
+
+/* ── How close to the real cell ── */
+.fid-head{border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:var(--r-s);
+  padding:10px 12px;margin:0 0 10px;font-size:13.5px}
+.fid-head.close{border-left-color:var(--ok)} .fid-head.distant{border-left-color:var(--bad)}
+.fid-head.unknown{border-left-color:var(--neutral)}
+.fid-head > div:not(.route-lab){margin-top:5px}
+.fid-ref{font-size:12.5px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)}
+.fid-ref > div{margin-top:3px}
+.ft.fid td:first-child + td,.ft.fid th:first-child + th{width:34%}
+.ft.fid td:nth-child(3),.ft.fid th:nth-child(3){width:16%}

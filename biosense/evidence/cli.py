@@ -688,6 +688,28 @@ def cmd_route_select(a):
     return 0
 
 
+def cmd_fidelity(a):
+    """How close the cells this protocol makes are expected to come to the real ones."""
+    from . import fidelity as FD
+    plan = None
+    if a.round_plan:
+        try:
+            plan = K.read_json(a.round_plan)
+        except (OSError, ValueError):
+            plan = None
+    doc = FD.build(K.read_json(a.draft), project=PJ.load(a.project, a.projects_dir),
+                   run_id=a.run_id, created_by=a.created_by or 'orchestrator', round_plan=plan)
+    K.write_json_atomic(a.out, doc)
+    print(json.dumps({'written': a.out, 'overall': doc['overall'],
+                      'axes': [{'axis': c['axis'], 'expected': c['expected_similarity'],
+                                'confidence': c['confidence'],
+                                'in_round_plan': c['in_round_plan']} for c in doc['criteria']],
+                      'next': 'Every axis expected low or unknown that a readout could settle '
+                              'belongs in the round plan. An expectation nobody measures stays '
+                              'an expectation.'}, indent=1))
+    return 0
+
+
 def cmd_check(a):
     """Validate a file an agent wrote itself. The errors are the answer, in full.
 
@@ -719,9 +741,11 @@ def cmd_template(a):
     from . import devmap as DM
     from . import sota as SO
     from . import routes as RS
+    from . import fidelity as FD
     shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
              'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE,
-             'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE}.get(a.what, TEMPLATE)
+             'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE,
+             'fidelity': FD.TEMPLATE}.get(a.what, TEMPLATE)
     print(json.dumps(shape, indent=2))
     return 0
 
@@ -806,12 +830,20 @@ def main(argv=None):
     p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
     p.add_argument('--run-id'); p.add_argument('--created-by')
     p.set_defaults(fn=cmd_route_select)
+    p = sub.add_parser('fidelity', help='how close the cells this protocol makes are expected '
+                                        'to come to the real ones, axis by axis')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--round-plan', help='this run\'s round_plan.json, so axes it already '
+                                        'measures are marked')
+    p.add_argument('--run-id'); p.add_argument('--created-by')
+    p.set_defaults(fn=cmd_fidelity)
     p = sub.add_parser('check', help='validate a BioSense artifact file and list every error')
     p.add_argument('file'); p.add_argument('--kind', choices=sorted(KINDS_BY_NAME))
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser('template', help='print an example draft')
     p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
-                                    'devmap', 'sota', 'route-select'])
+                                    'devmap', 'sota', 'route-select', 'fidelity'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:
