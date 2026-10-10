@@ -1115,6 +1115,66 @@ function renderRoundPlan(p, snap) {
    yet: the panel shows how the experiment would be assembled and sends
    nothing), or a scientist entering what they measured against the plan's own
    arms and readouts. Either way each value keeps its source. */
+/* The conditions this run surfaced, as a menu to design a round from. The
+   list is evidence, not a recommendation to act on: a dose shows only where a
+   source gave one, and registering a condition is what lets a protocol carry
+   its value. */
+const CLASS_LABEL = { necessary: 'Necessary', potential: 'Potential',
+  experimental: 'Experimental' };
+function conditionPicker(cat) {
+  const wrap = el('div', 'cond');
+  wrap.append(el('div', 'plan-lab', `Conditions this run surfaced (${cat.count})`));
+  const row = el('div', 'cond-row');
+  const sel = el('select', 'select cond-sel');
+  const first = el('option', null, 'Choose a condition to see what stands behind it…');
+  first.value = ''; sel.append(first);
+  const byKey = {};
+  cat.groups.forEach(g => {
+    const grp = el('optgroup');
+    grp.label = `${CLASS_LABEL[g.class] || g.class} — ${g.options.length}`;
+    g.options.forEach(o => {
+      byKey[o.key] = o;
+      const dose = o.value != null ? ` · ${num(o.value)}${o.unit ? ' ' + o.unit : ''}`
+        : ' · no dose established';
+      const opt = el('option', null, `${o.label}${dose}`);
+      opt.value = o.key; grp.append(opt);
+    });
+    sel.append(grp);
+  });
+  row.append(sel);
+  wrap.append(row);
+  const detail = el('div', 'cond-detail'); detail.hidden = true;
+  wrap.append(detail);
+  sel.addEventListener('change', () => {
+    const o = byKey[sel.value];
+    detail.textContent = '';
+    detail.hidden = !o;
+    if (!o) return;
+    const head = el('div', 'cond-head');
+    head.append(el('b', null, o.label));
+    head.append(el('span', 'tag ' + o.class, CLASS_LABEL[o.class] || o.class));
+    if (o.stage_id) head.append(el('span', 'chip', o.stage_id));
+    if (o.registered) head.append(el('span', 'tag ok', 'in the protocol'));
+    detail.append(head);
+    appendAll(detail, [
+      kv('Dose', o.value != null ? `${num(o.value)}${o.unit ? ' ' + o.unit : ''}`
+        + (o.value_from ? ` (${o.value_from})` : '')
+        : 'no source in this run gives one — it would be a design choice'),
+      kv('Stands on', o.source),
+      kv('Detail', o.detail),
+      kv('Cites', (o.refs || []).join(', ')),
+    ]);
+    const why = (cat.groups.find(g => g.class === o.class) || {}).why;
+    if (why) detail.append(el('p', 'caveat', why));
+    if (!o.registered) {
+      detail.append(el('p', 'caveat', 'This project has no parameter for it, so the protocol '
+        + 'cannot carry its dose yet. Add it from the stage boxes in the Plan to change that.'));
+    }
+  });
+  wrap.append(el('p', 'caveat', cat.note));
+  return wrap;
+}
+
 function runTheRound(p, snap) {
   const box = el('div', 'm round-run');
   box.append(el('b', null, `Run round ${p.round || 1}`));
@@ -3081,6 +3141,11 @@ function renderPlan(fp, p) {
     fp.physical.forEach(i => g.append(planItem(i, true, p, stages)));
     wrap.append(g);
   }
+  /* What else this run surfaced that could go in the vessel, sorted by what
+     stands behind each. Designing a round means choosing conditions, and an
+     empty stage is not the same as nothing being available. */
+  const cat = (p || {}).options;
+  if (cat && cat.count) wrap.append(conditionPicker(cat));
   wrap.append(el('p', 'caveat plan-note', fp.note + ' R reported · A adapted · D design choice.'));
   return wrap;
 }

@@ -31,6 +31,7 @@ from .. import projects as PJ
 from ..evidence import limitations as LIM
 from ..evidence import process_reference as PREF
 from . import first_pass as FP
+from ..evidence import options as OPT
 from . import response_model as RM
 from . import runtime as RT
 
@@ -571,7 +572,7 @@ def _effect_line(e):
             f'{rel} [{et}]{basis}')
 
 
-def display(doc):
+def display(doc, *, devmap=None, sota=None):
     """The payload the interface renders: the document plus a few derived counts."""
     changed = [p for st in doc['stages'] for p in st['parameters'] if p['changed']]
     ledger = doc['hypothesis_ledger']
@@ -592,6 +593,10 @@ def display(doc):
         # The same protocol laid out stage by stage for the bench, and each
         # hypothesis as the one action it asks for.
         'first_pass': FP.plan(doc),
+        # Every condition this run surfaced, sorted by what stands behind it,
+        # so a person designing a run can see the options rather than an
+        # empty stage.
+        'options': OPT.build(doc, devmap=devmap, sota=sota),
         'actions': {r['hypothesis_id']: FP.lever_action(r.get('lever'), labels)
                     for r in ledger},
     }

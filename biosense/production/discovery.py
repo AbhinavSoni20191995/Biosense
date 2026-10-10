@@ -1390,6 +1390,18 @@ without them, and do not drop the parameter.
    validates it. The person runs it and comes back with the results as a
    follow-up run; nothing here approves or actuates anything.
 
+   **Round 1 is a complete design, not a list of unknowns.** Somebody has to
+   put something in a vessel on the first day, so every arm — the control
+   included — carries a full set of conditions: for each factor the arm needs,
+   a value with its provenance (reported, adapted, or a design choice with its
+   basis), the stage it is given in, and the readouts that settle the arm. A
+   factor this process needs and no source gives a value for here is a design
+   choice you make and label as one, from the closest reported practice; it is
+   never left blank and never invented silently. Where the project has no
+   parameter for a factor the route needs, say so in the plan's limitations and
+   name the factor, so the person can register it before the run — a plan that
+   quietly omits it reads as a protocol that does not need it.
+
 **Always end with a recommendation.** However thin the evidence, the person
 gets your best-supported proposal; how far to trust it is shown beside it as a
 confidence bar, with the reasons BioSense computes from your evidence rows and

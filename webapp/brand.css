@@ -860,3 +860,14 @@ body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
 .plan-add{margin-top:8px;width:100%;justify-content:center}
 .plan-stage .regform{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:9px}
 .plan-item .btn.sm{margin-left:auto;flex:0 0 auto}
+
+/* ── Conditions this run surfaced, as a menu to design a round from ── */
+.cond{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.cond-row{display:flex;gap:8px;align-items:center}
+.cond-sel{flex:1 1 auto;min-width:0}
+.cond-detail{margin-top:10px;padding:10px 12px;border:1px solid var(--line);
+  border-left:3px solid var(--brand);border-radius:var(--r-s);font-size:13px}
+.cond-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-bottom:6px}
+.tag.necessary{border-color:var(--ok);color:var(--ok)}
+.tag.potential{border-color:var(--s1);color:var(--s1)}
+.tag.experimental{border-color:var(--s3);color:var(--s3)}

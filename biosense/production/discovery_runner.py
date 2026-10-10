@@ -322,6 +322,21 @@ def _design(out_dir, project, why_not):
     return choices
 
 
+def _lenses(out_dir):
+    """The developmental map and state-of-the-art comparison, when this run wrote
+    them: the option catalogue reads both, and a missing one simply contributes
+    nothing."""
+    out = {}
+    for key, name, kind in (('devmap', 'developmental_map.json', 'developmental_map'),
+                            ('sota', 'sota_comparison.json', 'sota_comparison')):
+        try:
+            doc = K.read_json(Path(out_dir) / name)
+        except (OSError, ValueError):
+            doc = None
+        out[key] = doc if isinstance(doc, dict) and doc.get('kind') == kind else None
+    return out
+
+
 def _guarded(out_dir, why_not, what, fallback, fn):
     """fn(), or `fallback` with the failure recorded as a limitation and its
     traceback kept in the run directory (finish_errors.log) for whoever fixes it."""
@@ -406,7 +421,7 @@ def finish(request, out_dir, *, runtime_mode, projects_dir=None, benchmark=None,
         'runtime_mode': runtime_mode,
         'runtime_label': RT.LABELS[runtime_mode],
         'bundle': bundle,
-        'protocol': PS.display(protocol) if protocol else None,
+        'protocol': (PS.display(protocol, **_lenses(out_dir)) if protocol else None),
         'benchmark': benchmark,
         'privacy': priv,
         'session': session,
