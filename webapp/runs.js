@@ -89,7 +89,10 @@ function render() {
 
 function runRow(r) {
   const card = el('div', 'run');
-  card.append(el('div', 'obj', r.objective || '(no objective recorded)'));
+  /* The name the person gave it, with the objective underneath; without a
+     name, the objective is the heading. */
+  card.append(el('div', 'obj', r.title || r.objective || '(no objective recorded)'));
+  if (r.title && r.objective) card.append(el('div', 'dim run-obj', r.objective));
   const right = el('div', 'right');
   right.append(el('span', 'rv-status ' + (r.group === 'active' ? 'go'
     : r.group === 'complete' ? 'ok' : r.group === 'cancelled' ? 'warn' : 'bad'),
@@ -128,7 +131,7 @@ function openRun(runId) {
   history.replaceState(null, '', url);
   page.detach = RV.attach(runId, {
     snapshot(snap) {
-      $('#detailTitle').textContent = snap.objective || 'Run';
+      $('#detailTitle').textContent = snap.title || snap.objective || 'Run';
       $('#detailHint').textContent = `${snap.project_id || ''} · ${snap.run_id}`;
       RV.header(head, snap, { onStop: stop, onExtend: extend,
                               onPause: pause, onContinue: cont, onFollowUp: followUp });

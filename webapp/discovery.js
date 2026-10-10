@@ -372,6 +372,19 @@ function currentProject() { const s = $('#project'); return s ? s.value : null; 
 
 /* Deleting moves the run to the server's trash: no longer listed or served,
    recoverable by whoever runs the server. Asked once, by name. */
+/* A name a person can change at any time. It is a label on the run, never a
+   change to what the agents were asked. */
+async function renameRun(r) {
+  const now = r.title || '';
+  const next = prompt('Name this run — what you will call it in the list:', now);
+  if (next === null) return;
+  try {
+    await post(`/api/discovery/${encodeURIComponent(r.run_id)}/rename`,
+               { title: next.trim() });
+    await BS.runs(currentProject());
+  } catch (e) { fail(e); }
+}
+
 async function deleteRun(r) {
   const what = (r.objective || r.run_id).slice(0, 120);
   if (!confirm(`Delete this run?\n\n"${what}"\n\nIt disappears from your lists. Whoever runs `
@@ -407,17 +420,35 @@ function renderProjectRunList(snapshot) {
   const runs = ((snapshot && snapshot.runs) || []).filter(r => !id || r.project_id === id);
   host.textContent = '';
   if (!runs.length) return;
-  host.append(el('div', 'lab', `Runs in this project (${runs.length})`));
+  /* Folded by default once there are more than a couple: the list is for
+     finding a run, not for filling the page. */
+  const box = el('details', 'prun-list');
+  box.dataset.key = 'prunlist';
+  box.open = rememberedOpen('prunlist', runs.length <= 3);
+  box.addEventListener('toggle', () => rememberOpen('prunlist', box.open));
+  box.append(el('summary', null, `Runs in this project (${runs.length})`));
+  host.append(box);
   runs.slice(0, RUN_LIST_MAX).forEach(r => {
     const row = el('div', 'prun');
     const when = r.started_at ? new Date(r.started_at * 1000).toLocaleString([], {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
     row.append(el('span', 'dim mono', when));
     row.append(el('span', 'rv-status ' + (r.live ? 'go' : r.group || ''), BS.fmt.status(r)));
-    const what = el('span', 'pobj', r.hypothesis || r.objective || r.run_id);
-    what.title = r.objective || '';
+    /* The name the person gave it, else what they asked. Never the hypothesis
+       the run produced: six runs on one objective then read as six different
+       things, none of them what was typed. */
+    const named = !!r.title;
+    const what = el('span', 'pobj' + (named ? ' named' : ''),
+      r.title || r.objective || r.run_id);
+    what.title = [r.objective, r.hypothesis && 'Found: ' + r.hypothesis]
+      .filter(Boolean).join('\n\n');
     row.append(what);
-    if (r.hypothesis_count > 1) row.append(el('span', 'dim', `+${r.hypothesis_count - 1}`));
+    row.append(el('span', 'dim', r.hypothesis_count > 1 ? `+${r.hypothesis_count - 1}` : ''));
+    const ren = el('button', 'btn del', '✎');
+    ren.title = named ? 'Rename this run' : 'Give this run a name';
+    ren.setAttribute('aria-label', ren.title);
+    ren.addEventListener('click', () => renameRun(r));
+    row.append(ren);
     const open = el('button', 'btn', r.live ? 'Watch' : 'Open');
     open.addEventListener('click', () => watchRun(r.run_id));
     row.append(open);
@@ -428,12 +459,12 @@ function renderProjectRunList(snapshot) {
       del.addEventListener('click', () => deleteRun(r));
       row.append(del);
     }
-    host.append(row);
+    box.append(row);
   });
   if (runs.length > RUN_LIST_MAX) {
     const a = el('a', 'dim', `All ${runs.length} runs of this project →`);
     a.href = `runs.html?project=${encodeURIComponent(id)}`;
-    host.append(a);
+    box.append(a);
   }
 }
 
@@ -638,6 +669,7 @@ function buildRequest() {
     objective: $('#objective').value.trim(),
     runtime_mode: chosenRuntime(),
     effort: ($('#effort') && $('#effort').value) || 'standard',
+    title: (($('#runName') && $('#runName').value) || '').trim() || null,
     literature_mode: ($('#litMode') && $('#litMode').value) || 'single',
     bioinformatics_mode: ($('#bioMode') && $('#bioMode').value) || 'single',
     purpose: ($('#purpose') && $('#purpose').value) || 'discovery',

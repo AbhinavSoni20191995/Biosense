@@ -220,6 +220,15 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
         </section>
 
         <div class="fld">
+          <label for="runName">Name this run <span class="dim">(optional)</span></label>
+          <input id="runName" type="text" maxlength="120" autocomplete="off"
+            placeholder="GM-CSF swap, round 1">
+          <p class="hint">What you will call it in the run list. Runs on one objective look
+            alike there; a name is how you tell them apart. You can rename it later, and it
+            never changes what the agents were asked.</p>
+        </div>
+
+        <div class="fld">
           <label for="objective">Scientific objective</label>
           <textarea id="objective" spellcheck="false"
             placeholder="Increase viable macrophage production while maintaining macrophage identity and viability."></textarea>

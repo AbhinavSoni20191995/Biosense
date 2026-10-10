@@ -173,7 +173,7 @@ button{font-family:inherit}
    to nothing: a long objective is cut with an ellipsis (the full text is the
    tooltip) instead of widening the card under the live panel beside it. */
 .prunlist{margin-top:12px;min-width:0;max-width:100%;overflow:hidden}
-.prunlist .prun{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto auto;
+.prunlist .prun{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto auto auto;
   align-items:center;gap:10px;padding:6px 0;min-width:0;
   border-top:1px solid color-mix(in srgb,var(--ink-3) 18%,transparent)}
 .prunlist .prun > *{min-width:0}
@@ -181,7 +181,7 @@ button{font-family:inherit}
 .prunlist .mono{font-size:12px;white-space:nowrap}
 .prunlist .rv-status{white-space:nowrap}
 .prunlist a{display:inline-block;margin-top:6px}
-@media (max-width:40rem){.prunlist .prun{grid-template-columns:minmax(0,1fr) auto}
+@media (max-width:40rem){.prunlist .prun{grid-template-columns:minmax(0,1fr) auto auto auto}
   .prunlist .prun .mono,.prunlist .prun .rv-status{display:none}}
 .rv-pause{margin:10px 0;padding:12px 14px;border-radius:10px;
   border:1px solid color-mix(in srgb,var(--warn) 55%,transparent);
@@ -849,3 +849,11 @@ body.has-focus{overflow:hidden}
 .fid-ref > div{margin-top:3px}
 .ft.fid td:first-child + td,.ft.fid th:first-child + th{width:34%}
 .ft.fid td:nth-child(3),.ft.fid th:nth-child(3){width:16%}
+
+/* ── Naming a run, and folding the list ── */
+.prun-list > summary{font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);padding:3px 0}
+.prun-list[open] > summary{margin-bottom:5px}
+.prun .pobj.named{font-weight:600;color:var(--ink)}
+.prunlist .prun .btn.del{padding:3px 9px}
+.run .run-obj{font-size:12.5px;line-height:1.45;margin-top:3px}

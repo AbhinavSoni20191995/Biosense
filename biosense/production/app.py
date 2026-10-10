@@ -53,6 +53,8 @@ Endpoints
                                   results a person measured, read against its round plan
     POST /api/discovery/<id>/ask  a question to the orchestrator about an ended run; it
                                   answers from the run's files, read-only (GET the run for it)
+    POST /api/discovery/<id>/rename   give a run your own name, so a list of six runs on the
+                                  same objective can be told apart
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
     POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
@@ -139,6 +141,7 @@ SIM_GATE = threading.BoundedSemaphore(MAX_CONCURRENT_SIM)
 MAX_CONCURRENT_REAL = 1
 # Questions about ended runs answering at once in this process. Each is one turn
 # of one session, so they do not hold the run gate; they have their own.
+MAX_RUN_NAME = 120           # what a person may call a run, in a list row
 MAX_CONCURRENT_QUESTIONS = 2
 QUESTION_GATE = threading.BoundedSemaphore(MAX_CONCURRENT_QUESTIONS)
 # The time limit is a bill cap, not a verdict: a run cut off mid-hypothesis
@@ -224,6 +227,9 @@ class Run:
         self.id = run_id
         self.prompt = prompt_text
         self.request = request
+        # What the person calls this run. Seeded from the request's title and
+        # renameable afterwards; the request itself is never rewritten.
+        self.title = (request.get('title') or '').strip() or None
         self.provenance = provenance
         self.loop_dir = Path(loop_dir)
         self.standin = standin
@@ -312,6 +318,9 @@ class DiscoveryRun:
                  started_by_admin=False, projects_dir=None):
         self.id = run_id
         self.request = request
+        # What the person calls this run. Seeded from the request's title and
+        # renameable afterwards; the request itself is never rewritten.
+        self.title = (request.get('title') or '').strip() or None
         self.out_dir = Path(out_dir)
         self.runtime_mode = runtime_mode
         # Who this run belongs to. Every route that can show a run checks it
@@ -1053,6 +1062,7 @@ class DiscoveryRun:
                 'request_id': self.request['request_id'],
                 'project_id': self.request['project_id'],
                 'objective': self.request['objective'],
+                'title': self.title,
                 'run_dir': self.out_dir.name,
                 'progress': self.progress(),
                 'events': [e for e in self.events if e['seq'] > after],
@@ -1806,6 +1816,9 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 return self._continue_ended(m.group(1), self._identity(),
                                             follow_up=self._body(MAX_BODY_DISCOVERY))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/rename', path)
+            if m:
+                return self._rename_discovery(m.group(1), self._body())
             m = re.fullmatch(r'/api/discovery/([^/]+)/ask', path)
             if m:
                 return self._ask(m.group(1), self._body())
@@ -2402,6 +2415,35 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {'run_id': rid, 'measurements': RR.summary(d),
                                 'recorded': len(body.get('entries') or []),
                                 'note': doc['note']})
+
+    def _rename_discovery(self, rid, body):
+        """Give a run a name of your own.
+
+        Six runs on one objective read identically in a list; a name is how a
+        person tells them apart. The name lives on the run, not in the request:
+        the request records what was asked and is never rewritten, so renaming
+        can never change what the run was told to do.
+        """
+        name = str(body.get('title') or '').strip()
+        if len(name) > MAX_RUN_NAME:
+            return self._send(400, {'error': f'a run name is at most {MAX_RUN_NAME} characters'})
+        name = name or None
+        identity = self._identity()
+        run = self.discovery.get(rid, owner=identity.owner)
+        if run is not None:
+            run.title = name
+            run.persist()
+            return self._send(200, {'run_id': rid, 'title': name})
+        # Not in memory: patch the record on disk, leaving everything else as it is.
+        d = RS.find(self.discovery.runs_dir, rid) if DISCOVERY_ID.match(rid or '') else None
+        state = RS._read_state(RS.state_path(d)) if d else None
+        if not state or (state.get('owner') is not None
+                         and state.get('owner') != identity.owner):
+            return self._send(404, {'error': 'no such discovery run'})
+        state['title'] = name
+        if not RS.write_state(d, state):
+            return self._send(500, {'error': 'the run record could not be written'})
+        return self._send(200, {'run_id': rid, 'title': name})
 
     def _ask(self, rid, body):
         """A question to the orchestrator about a run that has ended.

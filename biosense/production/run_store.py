@@ -152,6 +152,7 @@ def summarise(state, *, live_ids=()):
         'project_id': state.get('project_id'),
         'owner': state.get('owner'),
         'objective': state.get('objective'),
+        'title': state.get('title'),
         'status': status,
         'group': group_for(status),
         'live': status in LIVE_STATUSES,
