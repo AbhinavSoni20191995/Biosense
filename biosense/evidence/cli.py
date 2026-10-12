@@ -765,6 +765,33 @@ def cmd_bench(a):
     return 0
 
 
+def cmd_alternates(a):
+    """The other leads, worked up as experiments at a person's request."""
+    from . import alternates as AL
+    project = PJ.load(a.project, a.projects_dir)
+    main = []
+    for path in sorted(Path(a.out).parent.glob('quantified_hypothesis*.json')):
+        try:
+            h = K.read_json(path)
+        except (OSError, ValueError):
+            continue
+        par = (h or {}).get('parameter') or {}
+        if par.get('parameter_id') or par.get('label'):
+            main.append((par.get('parameter_id') or par.get('label'), par.get('direction')))
+    doc = AL.build(K.read_json(a.draft), project=project, request=a.request, run_id=a.run_id,
+                   created_by=a.created_by or 'orchestrator', requested_by=a.requested_by,
+                   main_levers=main)
+    K.write_json_atomic(a.out, doc)
+    print(json.dumps({'written': a.out,
+                      'items': [{'alt_id': i['alt_id'], 'relation': i['relation'],
+                                 'confidence': i['confidence'],
+                                 'arms': len(i['arms'])} for i in doc['items']],
+                      'not_pursued': len(doc['not_pursued']),
+                      'next': 'These sit beside round 1, which is unchanged. The person '
+                              'chooses which to run; nothing here is approved.'}, indent=1))
+    return 0
+
+
 def cmd_data_request(a):
     """What this run could not get, asked of the person who can supply it."""
     from . import datareq as DR
@@ -815,10 +842,12 @@ def cmd_template(a):
     from . import datareq as DRQ
     from . import baseline as BL
     from . import bench as BN
+    from . import alternates as AL
     shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
              'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE,
              'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE,
              'fidelity': FD.TEMPLATE, 'baseline': BL.TEMPLATE, 'bench': BN.TEMPLATE,
+             'alternates': AL.TEMPLATE,
              'data-request': DRQ.TEMPLATE}.get(a.what, TEMPLATE)
     print(json.dumps(shape, indent=2))
     return 0
@@ -931,6 +960,13 @@ def main(argv=None):
     p.add_argument('--culture-format', dest='culture_format',
                    choices=['six_well', 'cero', 'stirred_tank'])
     p.set_defaults(fn=cmd_bench)
+    p = sub.add_parser('alternates', help='the other leads this run surfaced, worked up as '
+                                          'experiments beside the main plan')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--request', help="what the person asked for, in their words")
+    p.add_argument('--run-id'); p.add_argument('--created-by'); p.add_argument('--requested-by')
+    p.set_defaults(fn=cmd_alternates)
     p = sub.add_parser('data-request', help='ask the person for what this run could not '
                                            'fetch, so the next round can use it')
     p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
@@ -942,7 +978,7 @@ def main(argv=None):
     p = sub.add_parser('template', help='print an example draft')
     p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
                                     'devmap', 'sota', 'route-select', 'fidelity',
-                                    'baseline', 'bench', 'data-request'])
+                                    'baseline', 'bench', 'alternates', 'data-request'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

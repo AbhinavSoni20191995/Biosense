@@ -260,6 +260,7 @@ class Run:
         self.cell_fidelity = None
         self.baseline_protocol = None
         self.bench_setup = None
+        self.alternate_plans = None
         self.data_requests = None
         self.literature_stages = []
         self.reference_draft = None
@@ -388,6 +389,7 @@ class DiscoveryRun:
         self.cell_fidelity = None
         self.baseline_protocol = None
         self.bench_setup = None
+        self.alternate_plans = None
         self.data_requests = None
         self.literature_stages = []
         self.reference_draft = None
@@ -452,6 +454,7 @@ class DiscoveryRun:
         self._read_cell_fidelity()
         self._read_baseline_protocol()
         self._read_bench_setup()
+        self._read_alternates()
         self._read_data_requests()
         self._read_stage_shards()
         self._read_bio_specialists()
@@ -836,6 +839,14 @@ class DiscoveryRun:
             'culture_format', 'vessel', 'media', 'reagents', 'handling', 'do', 'dont',
             'safety', 'consumables', 'coverage', 'limitations', 'note')}
 
+    def _read_alternates(self):
+        """The other leads, worked up as plans at a person's request."""
+        from ..evidence import alternates as AL
+        doc = AL.load(self.out_dir)
+        self.alternate_plans = ({k: doc.get(k) for k in (
+            'request', 'requested_by', 'items', 'not_pursued', 'does_not_change', 'note')}
+            if doc else None)
+
     def _read_data_requests(self):
         """What this run could not get, and whatever a person has handed over."""
         from ..evidence import datareq as DRQ
@@ -1186,6 +1197,7 @@ class DiscoveryRun:
                 'cell_fidelity': self.cell_fidelity,
                 'baseline_protocol': self.baseline_protocol,
                 'bench_setup': self.bench_setup,
+                'alternate_plans': self.alternate_plans,
                 'data_requests': self.data_requests,
                 'literature_stages': list(self.literature_stages),
                 'reference_draft': self.reference_draft,
@@ -2705,9 +2717,10 @@ class Handler(BaseHTTPRequestHandler):
         if not QUESTION_GATE.acquire(blocking=False):
             return self._send(429, {'error': f'{MAX_CONCURRENT_QUESTIONS} questions are being '
                                              f'answered on this server; ask again in a minute'})
+        kind = (body.get('kind') or 'question').strip()
         try:
             who = str(getattr(identity, 'display', None) or identity.owner or 'local user')[:80]
-            item = ASK.start(d, body.get('question'), asked_by=who)
+            item = ASK.start(d, body.get('question'), asked_by=who, kind=kind)
         except K.ContractError as e:
             QUESTION_GATE.release()
             return self._send(400, {'error': str(e)})
@@ -2715,34 +2728,72 @@ class Handler(BaseHTTPRequestHandler):
                    if i['id'] != item['id'] and i.get('answer')][-5:]
         loop_dir = DRUN.run_dir_for_agents(target, d)
         threading.Thread(target=self._answer_question,
-                         args=(target, d, item, session, loop_dir, earlier), daemon=True,
+                         args=(target, d, item, session, loop_dir, earlier,
+                               self._projects_dir(identity), who), daemon=True,
                          name=f'ask-{rid[:6]}').start()
         return self._send(202, {'run_id': rid, 'question': item,
-                                'note': 'The orchestrator is answering; the run page shows the '
-                                        'answer when it arrives.'})
+                                'note': ('The orchestrator is working the plans up; the run '
+                                         'page shows them when they arrive.'
+                                         if kind == 'alternate' else
+                                         'The orchestrator is answering; the run page shows '
+                                         'the answer when it arrives.')})
 
     @staticmethod
-    def _answer_question(target, d, item, session, loop_dir, earlier):
+    def _answer_question(target, d, item, session, loop_dir, earlier, projects_dir=None,
+                         who=None):
+        """One turn with the orchestrator about a run that has ended.
+
+        A question changes nothing and the fingerprint proves it. A request for
+        alternate plans writes exactly one file, so the same fingerprint is read
+        the other way round: it is how we see whether anything *else* moved.
+        """
+        from ..evidence import alternates as AL
         from . import ask as ASK
         from . import omnigent_runtime as OMNI
+        alt = item.get('kind') == 'alternate'
         try:
             before = ASK.fingerprint(d)
+            prior = AL.load(d) if alt else None
             res = None
             for sid in ([session, None] if session else [None]):
-                res = OMNI.answer(target, ASK.framed(item['question'], loop_dir=loop_dir,
-                                                     fresh=sid is None, earlier=earlier),
-                                  session_id=sid, title=f'Question: {item["question"][:60]}')
+                if alt:
+                    state = RS._read_state(RS.state_path(d)) or {}
+                    text = AL.framed(
+                        item['question'], loop_dir=loop_dir,
+                        project_id=state.get('project_id') or '',
+                        projects_dir=(f' --projects-dir {projects_dir}' if projects_dir else ''),
+                        python=DRUN.agent_python(target), fresh=sid is None,
+                        main=AL.main_levers(d),
+                        existing=[(x['alt_id'], x['title'])
+                                  for x in (prior or {}).get('items') or []])
+                    title = f'Alternate plans: {item["question"][:50]}'
+                else:
+                    text = ASK.framed(item['question'], loop_dir=loop_dir, fresh=sid is None,
+                                      earlier=earlier)
+                    title = f'Question: {item["question"][:60]}'
+                res = OMNI.answer(target, text, session_id=sid, title=title)
                 if res.get('answer') or res.get('timed_out'):
                     break
             moved = ASK.changed(before, ASK.fingerprint(d))
+            wrote = None
+            if alt:
+                doc = AL.load(d)
+                ids = [x['alt_id'] for x in (doc or {}).get('items') or []]
+                was = {x['alt_id'] for x in (prior or {}).get('items') or []}
+                wrote = {'alt_ids': ids, 'new': [i for i in ids if i not in was]}
+                # The file it was asked to write is not a broken promise.
+                moved = [f for f in moved if f not in (AL.NAME, AL.DRAFT)]
+            ok = bool(res.get('answer')) and (not alt or (wrote and wrote['alt_ids']))
             ASK.finish(d, item['id'],
-                       status='answered' if res.get('answer') else 'failed',
-                       answer=res.get('answer'), files_changed=moved,
+                       status='answered' if ok else 'failed',
+                       answer=res.get('answer'), files_changed=moved, wrote=wrote,
                        session={'omnigent_session_id': res.get('session_id'),
                                 'fresh': res.get('fresh')},
                        error=(res.get('error') or ('no answer within the time allowed'
                                                    if res.get('timed_out') else None)
-                              or (None if res.get('answer') else 'the orchestrator said nothing')))
+                              or (None if ok else
+                                  ('it wrote no alternate plan that passed its contract'
+                                   if alt else 'the orchestrator said nothing'))))
         except Exception as e:  # noqa: BLE001 - a failed answer is recorded, never lost
             ASK.finish(d, item['id'], status='failed', error=f'{type(e).__name__}: {str(e)[:300]}')
         finally:
@@ -3161,8 +3212,16 @@ class Handler(BaseHTTPRequestHandler):
                 # The bench copy: the same protocol, in the order the work
                 # happens, as a file somebody can print and sign. `as` lays it
                 # out for the vessel it is actually going into.
+                from ..evidence import alternates as AL
                 from .. import formats as FMT
                 from . import lab_protocol as LP
+                # Alternate plans are written after the run ended, so the
+                # stored payload never has them: read them now, or the
+                # appendix would be missing from every document that has one.
+                here = run.out_dir if run else RS.find(self.discovery.runs_dir, m.group(1))
+                alts = AL.load(here) if here else None
+                if alts:
+                    protocol = dict(protocol, alternate_plans=alts)
                 as_fmt = (q.get('as') or [''])[0].strip()
                 translation = None
                 if as_fmt:

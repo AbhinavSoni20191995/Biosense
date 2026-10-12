@@ -769,8 +769,9 @@ button{font-family:inherit}
    says at a glance which rows the run set and which the literature did. */
 .plan-item.pub{border-left:3px solid var(--s1);border-style:solid}
 .plan-item.pub .plan-verb{color:var(--s1)}
-.plan-item .ref{font-family:var(--mono);font-size:10px;color:var(--ink-3);
-  border:1px solid var(--line);border-radius:5px;padding:0 4px}
+/* A citation chip, wherever one appears: the plan, an alternate, a baseline. */
+.ref{font-family:var(--mono);font-size:10px;color:var(--ink-3);
+  border:1px solid var(--line);border-radius:5px;padding:0 4px;white-space:nowrap}
 .plan-item .plan-body{flex:1 1 auto}
 .ft.other td:nth-child(2),.ft.other th:nth-child(2){width:58%}
 #protocol details ul.tight{font-size:13px;line-height:1.5}
@@ -802,6 +803,10 @@ button{font-family:inherit}
 .bench{margin-top:10px}
 .fmtrow.dont{border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}
 .fmtrow.do{border-color:color-mix(in srgb,var(--ok) 35%,var(--line))}
+
+.alt-item{border:1px solid var(--line);border-radius:var(--r-s);padding:12px 14px;margin:0 0 12px}
+.alt-item h4{margin:6px 0 4px}
+.alt-item .rp-arms{margin-top:8px}
 
 /* ── Questions to the orchestrator after a run ── */
 .ask-item{border:1px solid var(--line);border-radius:var(--r-s);padding:10px 12px;margin:0 0 10px}
@@ -847,16 +852,10 @@ button{font-family:inherit}
    of the page is still there under it. */
 body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
 
-/* Once a run has an answer, the answer is the page: it gets the width, and
-   the panels that fit beside each other do. A long page of half-empty cards
-   is a page nobody scrolls to the end of. */
-body.answered .wrap{max-width:1680px}
-@media (min-width:82rem){
-  body.answered .cols > .stack:first-child{display:grid;align-content:start;
-    align-items:start;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
-  body.answered .cols > .stack:first-child > .span2,
-  body.answered .cols > .stack:first-child > section:first-child{grid-column:1 / -1}
-}
+/* The answer panels stay one per row. Side by side was tried and the columns
+   came out too narrow to read: a hypothesis paragraph at 350px is a column of
+   two words, which is worse than scrolling.
+   The page keeps the two columns it always had. */
 #protocolPanel.wide .flow-wrap{margin:14px 0 18px}
 #protocolPanel.wide .plan-stages{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 

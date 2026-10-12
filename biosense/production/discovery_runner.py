@@ -165,6 +165,19 @@ def run_synthetic(request, out_dir, *, on_event=None, projects_dir=None, dirs=No
     return {'benchmark': result, 'config': cfg, 'out_dir': str(out)}
 
 
+def agent_python(cfg_runtime):
+    """The interpreter an agent's shell command should use.
+
+    The run brief and the later one-turn requests (a question, a request for
+    alternate plans) hand out commands into the same workspace, so they have to
+    name the same python or half of them fail in a way nobody can see.
+    """
+    ws = Path(cfg_runtime.workspace) if getattr(cfg_runtime, 'workspace', None) else None
+    if ws and (ws / '.venv' / 'bin' / 'python').exists():
+        return str(ws / '.venv' / 'bin' / 'python')
+    return '.venv/bin/python'
+
+
 def run_dir_for_agents(cfg_runtime, out_dir):
     """The run directory as the runner will see it, relative to its workspace.
 
@@ -208,8 +221,7 @@ def run_real(cfg_runtime, request, out_dir, *, on_event=None, on_session=None,
     # `check_workspace` already computes.
     ws = Path(cfg_runtime.workspace).resolve() if cfg_runtime.workspace else None
     python = '.venv/bin/python'
-    if ws and (ws / '.venv' / 'bin' / 'python').exists():
-        python = str(ws / '.venv' / 'bin' / 'python')
+    python = agent_python(cfg_runtime)
     brief = DISC.render_brief(request, loop_dir=run_dir_for_agents(cfg_runtime, out),
                               projects_dir=projects_dir, python=python,
                               workspace=str(ws) if ws else None)
@@ -333,7 +345,8 @@ def _lenses(out_dir):
     for key, name, kind in (('devmap', 'developmental_map.json', 'developmental_map'),
                             ('sota', 'sota_comparison.json', 'sota_comparison'),
                             ('baseline', 'baseline_protocol.json', 'baseline_protocol'),
-                            ('bench', 'bench_setup.json', 'bench_setup')):
+                            ('bench', 'bench_setup.json', 'bench_setup'),
+                            ('alternates', 'alternate_plans.json', 'alternate_plans')):
         try:
             doc = K.read_json(Path(out_dir) / name)
         except (OSError, ValueError):

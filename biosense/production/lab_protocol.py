@@ -237,6 +237,10 @@ def build(protocol, *, title=None, run_id=None, project_name=None, translation=N
             doc.bullet(f'{u.get("question") or u.get("unknown_id", "")}'
                        + (f' — {u.get("why_unresolved")}' if u.get('why_unresolved') else ''))
 
+    alts = p.get('alternate_plans')
+    if alts and alts.get('items'):
+        _alternates_section(doc, alts)
+
     doc.heading('What the letters mean', 1)
     keys = ['reported', 'adapted', 'design_choice', 'candidate', 'gap']
     if any(i.get('from_baseline') for s in fp.get('stages') or [] for i in s['inducers'] or []):
@@ -257,6 +261,40 @@ def build(protocol, *, title=None, run_id=None, project_name=None, translation=N
                          ['Changes made at the bench', '']], widths=[1, 3])
     doc.caveat(NOT_APPROVED)
     return doc
+
+
+def _alternates_section(doc, a):
+    """The other plans somebody asked for, as an appendix.
+
+    They are in the document because whoever runs round 1 is the person who
+    decides whether any of them is worth the next vessel — but they are after
+    it, and they say plainly that round 1 is unchanged.
+    """
+    doc.heading('Alternate and extended plans', 1)
+    doc.para(f'Asked for: \u201c{a.get("request", "")}\u201d')
+    doc.caveat(a.get('does_not_change') or '')
+    for it in a['items']:
+        doc.heading(f'{it["alt_id"]} — {it["title"]}', 2)
+        doc.para(it['claim'])
+        doc.bullet(f'Why it is worth a vessel: {it["rationale"]}')
+        doc.bullet(f'How it differs from the main plan: {it["differs_from_main"]}')
+        doc.bullet(f'Confidence: {it["confidence"]} ({it["evidence_basis"]}'
+                   + (f'; {", ".join(it["refs"])}' if it.get('refs') else '') + ')')
+        doc.bullet(f'What it costs: {it["cost"]}')
+        doc.table(['Arm', 'What differs', 'Basis'],
+                  [[x.get('arm_id', ''),
+                    x.get('label', '')
+                    + (f' (on top of {x["on_top_of"]})' if x.get('on_top_of') else '')
+                    + ('; ' + ', '.join(f'{k} {v}' for k, v in (x.get('setpoints') or {}).items())
+                       if x.get('setpoints') else ''),
+                    x.get('basis') or '—'] for x in it.get('arms') or []],
+                  widths=[1, 4, 3])
+        doc.para('Measure: ' + '; '.join(
+            ' '.join(str(y) for y in (r.get('name'), r.get('unit'), r.get('when')) if y)
+            for r in it.get('readouts') or []))
+        doc.para(f'If {it["decision_rule"]["if"]} — then {it["decision_rule"]["then"]}')
+    for x in a.get('not_pursued') or []:
+        doc.caveat(f'Asked for, not worked up — {x["what"]}: {x["why"]}')
 
 
 def _bench_section(doc, b):

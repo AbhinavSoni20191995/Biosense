@@ -304,6 +304,13 @@ def restore(runs_dir, run_id, *, after=-1):
     doc = DRQ.load(d)
     snap['data_requests'] = ({'items': doc['items'], 'note': doc['note'],
                               'handover': DRQ.handover(doc)} if doc else None)
+    # And so are alternate plans: the orchestrator writes them when a person
+    # asks, which is always after the state file was last written.
+    from ..evidence import alternates as AL
+    alt = AL.load(d)
+    snap['alternate_plans'] = ({k: alt.get(k) for k in (
+        'request', 'requested_by', 'items', 'not_pursued', 'does_not_change', 'note')}
+        if alt else None)
     live = snap.get('status') in LIVE_STATUSES
     if live:
         age = time.time() - (snap.get('written_at') or 0)

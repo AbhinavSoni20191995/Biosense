@@ -575,6 +575,15 @@ and the page rebuilds its event stream on waking instead of showing a frozen
 run. Nothing executes while a machine is suspended, so a run that has to carry
 on unattended belongs on a server that does not sleep.
 
+**You can ask the orchestrator to work other leads up as experiments.** A run
+surfaces more good ideas than one round can test, and they usually end as prose
+nobody puts a vessel on. In the same conversation you ask questions in, name
+the ones you want: each comes back as a claim, the arms that would settle it,
+what it costs to run, and what to do with either outcome — beside the main
+hypothesis, never inside round 1, whose rules were fixed before any result
+existed. Confidence is capped by what it rests on, and an alternate that
+restates the main plan is refused rather than written.
+
 **The answer reads in the order you act in**: the hypothesis first — the claim,
 with the one-line action it implies inside it — then **round 1 at the bench**,
 then the current estimated parameters. Round 1 carries what an arms table never
@@ -910,7 +919,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1496 tests
+uv run --frozen python -m unittest     # 1515 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

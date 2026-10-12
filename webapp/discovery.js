@@ -1007,6 +1007,7 @@ function watchRun(runId) {
       renderInsights(snap);
       renderRound(snap);
       renderQuestions(snap);
+      renderAlternates(snap);
       renderDataRequests(snap);
       renderStages(snap.progress);
       (snap.events || []).forEach(seedEvent);
@@ -2385,11 +2386,7 @@ let resultSeen = '';
 function renderResult(snap) {
   const r = snap.result;
   const key = snap.run_id + ':' + JSON.stringify(r);
-  if (key === resultSeen) {
-    $('#resultPanel').hidden = false;
-    document.body.classList.add('answered');
-    return;
-  }
+  if (key === resultSeen) { $('#resultPanel').hidden = false; return; }
   resultSeen = key;
   renderEvidence(r.bundle.evidence);
   renderAnalyses(r.bundle.analyses);
@@ -2399,9 +2396,6 @@ function renderResult(snap) {
   renderOtherHypotheses(r.protocol, r.bundle.selected_hypothesis);
   renderExports(snap);
   const panel = $('#resultPanel'); panel.hidden = false;
-  /* With an answer on the page, the answer is the page: it gets the width,
-     and the panels that fit beside each other do. */
-  document.body.classList.add('answered');
   const head = $('#resultHead'); head.textContent = '';
   head.append(el('span', 'mut', `${r.bundle.artifacts_ingested} artifact(s) read`));
   if ((r.bundle.artifacts_rejected || []).length) {
@@ -2918,7 +2912,10 @@ function renderQuestions(snap) {
   const host = $('#askList'); host.textContent = '';
   items.forEach(q => {
     const box = el('div', 'ask-item ' + q.status);
-    box.append(el('div', 'ask-q', q.question));
+    const qline = el('div', 'ask-q');
+    if (q.kind === 'alternate') qline.append(el('span', 'chip', 'alternate plan'));
+    qline.append(document.createTextNode(q.question));
+    box.append(qline);
     box.append(el('div', 'dim ask-who', [q.asked_by, BS.fmt.ago(Date.parse(q.asked_at) / 1000)]
       .filter(Boolean).join(' · ')));
     if (q.status === 'answering') {
@@ -2933,9 +2930,15 @@ function renderQuestions(snap) {
     } else {
       box.append(el('p', 'caveat', 'No answer: ' + (q.error || 'the orchestrator said nothing')));
     }
+    if (q.wrote && (q.wrote.new || []).length) {
+      box.append(el('p', 'dim', 'Wrote ' + q.wrote.new.join(', ')
+        + ' — under Alternate and extended plans.'));
+    }
     if ((q.files_changed || []).length) {
-      box.append(el('p', 'caveat', 'While answering, these files changed (it was asked not '
-        + 'to change anything): ' + q.files_changed.join(', ')));
+      box.append(el('p', 'caveat', (q.kind === 'alternate'
+        ? 'It also changed these, and it was asked to write only the plans: '
+        : 'While answering, these files changed (it was asked not to change anything): ')
+        + q.files_changed.join(', ')));
     }
     if (q.session && q.session.fresh) {
       box.append(el('p', 'dim ask-who', 'Answered by a fresh session reading the run\'s files '
@@ -2945,24 +2948,97 @@ function renderQuestions(snap) {
   });
   const busy = items.some(q => q.status === 'answering');
   $('#askBtn').disabled = busy;
+  if ($('#altBtn')) $('#altBtn').disabled = busy;
   clearTimeout(askTimer);
   if (busy) {
     askTimer = setTimeout(() => get(`/api/discovery/${snap.run_id}`)
       .then(s => { state.run = s; renderQuestions(s); }).catch(() => {}), 4000);
   }
 }
-async function askQuestion(ev) {
-  ev.preventDefault();
+/* The other leads, worked up as experiments at a person's request: a claim,
+   the arms that would settle it, what it costs to run, and what either outcome
+   means. Beside round 1, never inside it — round 1's rules were fixed before
+   any result existed and its digest records that. */
+const REL_LABEL = { alternate: 'a different way', extension: 'on top of the main plan' };
+const BASIS_LABEL = { cited: 'sources test this', mechanistic: 'mechanism, untested here',
+  judgement: 'the orchestrator\u2019s own reasoning' };
+function renderAlternates(snap) {
+  const panel = $('#altPanel'); if (!panel) return;
+  const a = snap.alternate_plans;
+  const items = (a && a.items) || [];
+  panel.hidden = !items.length;
+  if (!items.length) return;
+  $('#altHead').textContent = `${items.length} proposed · beside round 1, not in it`;
+  const host = $('#altList'); host.textContent = '';
+  host.append(el('p', 'dim', 'Asked for: \u201c' + (a.request || '') + '\u201d'));
+  items.forEach(it => {
+    const box = el('div', 'alt-item');
+    const head = el('div', 'ev-row');
+    head.append(el('span', 'chip', it.alt_id));
+    head.append(el('span', 'chip', REL_LABEL[it.relation] || it.relation));
+    head.append(miniBar(it.confidence));
+    head.append(el('span', 'dim', `${it.confidence} · ${BASIS_LABEL[it.evidence_basis]
+      || it.evidence_basis}`));
+    (it.refs || []).slice(0, 3).forEach(r => head.append(el('span', 'ref', r)));
+    box.append(head);
+    box.append(el('h4', null, it.title));
+    box.append(el('p', null, it.claim));
+    box.append(appendAll(el('div'), [
+      kv('Why it is worth a vessel', it.rationale),
+      kv('How it differs from the main plan', it.differs_from_main),
+      kv('What it costs', it.cost),
+      it.would_change ? kv('What it would change', it.would_change) : null,
+    ]));
+    const t = el('table', 'rp-arms');
+    const hr = el('tr');
+    ['Arm', 'What differs', 'Basis'].forEach(x => hr.append(el('th', null, x)));
+    t.append(hr);
+    (it.arms || []).forEach(arm => {
+      const tr = el('tr');
+      const sp = Object.entries(arm.setpoints || {}).map(([k, v]) => `${k} ${v}`).join(', ');
+      const what = el('span');
+      what.append(document.createTextNode(arm.label));
+      if (arm.on_top_of) what.append(el('span', 'dim', ` · on top of ${arm.on_top_of}`));
+      if (sp) what.append(el('div', 'dim mono', sp));
+      [el('span', null, arm.arm_id), what, el('span', 'dim', arm.basis || '—')]
+        .forEach(c => { const td = el('td'); td.append(c); tr.append(td); });
+      t.append(tr);
+    });
+    box.append(t);
+    box.append(el('div', 'lab', 'Measure'));
+    (it.readouts || []).forEach(r => box.append(el('div', 'chip', [r.name, r.unit, r.when]
+      .filter(Boolean).join(' · '))));
+    box.append(el('p', 'rec-test', `If ${it.decision_rule.if} → ${it.decision_rule.then}`));
+    host.append(box);
+  });
+  (a.not_pursued || []).forEach(x => {
+    host.append(el('p', 'caveat', `Asked for, not worked up — ${x.what}: ${x.why}`));
+  });
+  host.append(el('p', 'caveat', a.does_not_change));
+  host.append(el('p', 'caveat', a.note));
+}
+
+async function askQuestion(ev, kind) {
+  if (ev) ev.preventDefault();
   const snap = state.run; const text = $('#askText').value.trim();
-  if (!snap || text.length < 3) return;
-  $('#askBtn').disabled = true; $('#askMsg').textContent = '';
+  if (!snap || text.length < 3) {
+    if (kind === 'alternate') {
+      $('#askMsg').textContent = 'Say which of the run\u2019s leads to work up.';
+    }
+    return;
+  }
+  $('#askBtn').disabled = true;
+  if ($('#altBtn')) $('#altBtn').disabled = true;
+  $('#askMsg').textContent = '';
   try {
-    await post(`/api/discovery/${snap.run_id}/ask`, { question: text });
+    await post(`/api/discovery/${snap.run_id}/ask`,
+      { question: text, kind: kind || 'question' });
     $('#askText').value = '';
     const s = await get(`/api/discovery/${snap.run_id}`); state.run = s; renderQuestions(s);
   } catch (e) {
     $('#askMsg').textContent = e.message || String(e);
     $('#askBtn').disabled = false;
+    if ($('#altBtn')) $('#altBtn').disabled = false;
   }
 }
 
@@ -3885,6 +3961,8 @@ async function loadProjectTemplates() {
 function wire() {
   const af = $('#askForm');
   if (af) af.addEventListener('submit', askQuestion);
+  const alt = $('#altBtn');
+  if (alt) alt.addEventListener('click', () => askQuestion(null, 'alternate'));
   const np = $('#newProjectBtn');
   if (np) {
     np.addEventListener('click', () => {

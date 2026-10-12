@@ -86,8 +86,20 @@ def clean_question(text):
     return q
 
 
-def start(run_dir, question, *, asked_by=None):
-    """Record a question as pending and return it. One at a time per run."""
+KINDS = ('question', 'alternate')
+
+
+def start(run_dir, question, *, asked_by=None, kind='question'):
+    """Record a turn as pending and return it. One at a time per run.
+
+    Two kinds share the thread, because a person asking "why CNTF?" and a
+    person saying "work the Notch lead up as a plan too" are the same
+    conversation. They differ in what the orchestrator is allowed to do: a
+    question changes nothing, an alternate writes one new file and nothing
+    else.
+    """
+    if kind not in KINDS:
+        raise K.ContractError(f'kind must be one of {", ".join(KINDS)}; got {kind!r}')
     doc = load(run_dir)
     if any(i.get('status') == 'answering' for i in doc['items']):
         raise K.ContractError('the orchestrator is still answering the last question; ask '
@@ -96,9 +108,10 @@ def start(run_dir, question, *, asked_by=None):
         raise K.ContractError(f'this run has {MAX_QUESTIONS} questions already; start a '
                               f'follow-up run to take it further')
     item = {'id': f'q{len(doc["items"]) + 1}-{uuid.uuid4().hex[:6]}',
-            'question': clean_question(question), 'asked_by': asked_by,
+            'question': clean_question(question), 'asked_by': asked_by, 'kind': kind,
             'asked_at': K.now_iso(), 'status': 'answering', 'answer': None,
-            'answered_at': None, 'files_changed': [], 'session': None, 'error': None}
+            'answered_at': None, 'files_changed': [], 'session': None, 'error': None,
+            'wrote': None}
     doc['items'].append(item)
     _save(run_dir, doc)
     return item

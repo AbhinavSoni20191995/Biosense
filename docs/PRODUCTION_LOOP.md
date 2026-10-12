@@ -38,6 +38,7 @@ bioreactor; nothing here touches an actuator.
 | `bioinformatics_report` | bioinformatics tools | per gene: found or not, annotated effects with direction, conditions, confidence and source; implicated protocol levers; assays that cannot run here; limitations |
 | `analysis_report` | `analyze` | verdict, per-arm target and QC, genotype comparison, diagnosis hypotheses, data integrity |
 | `human_consult` | orchestrator | question, why it matters, the assay that cannot run here, expected gain, options, **blocking**, and **what happens if nobody answers** |
+| `alternate_plans` | orchestrator, at a person's request | the other leads as experiments: each a claim, its arms, what it costs to run and what either outcome means; confidence capped by cited / mechanistic / judgement; never changes round 1 |
 | `bench_setup` | literature agent | media per stage, reagents, handling, consumables, safety, do's and don'ts with their reasons; a supplier or catalogue number only where a source states it, everything else "use your own qualified stock" |
 | `baseline_protocol` | literature agent | the published route stage by stage: every stage of the project, what goes in the medium, the dose where a source gives one with the sentence quoted; `reported` / `adapted` / `design_choice` / `gap` per factor, and a stage nobody addressed stated rather than missing |
 | `loop_decision` | orchestrator agent, or the policy | type, `authored_by`, `reasoning`, `considered` alternatives, `hypotheses` with their basis, `tool_calls`, `consult_ids`, the `allowed_actions` it was validated against, the `policy_advice` it may have overridden, `advances_iteration`, `status` |
@@ -107,6 +108,38 @@ Stage lengths are the project's own and **editable**: `d0–7` was a fixed
 property of the profile, so every plan drew the same ranges whatever the real
 process does. `POST /api/projects/<id>/stages/<stage>/days` sets it inside the
 bounds the profile declares, in the person's own copy, and the plan redraws.
+
+## The other leads, as experiments
+
+A run surfaces more than one round can hold. The developmental map alone comes
+back with a Notch ligand from the pulmonary endothelium, a surfactant lipid
+load, GM-CSF as a timed surge rather than a constant, and a list of what must
+not be in the medium — each with its source. One becomes the hypothesis; the
+rest become prose, and nobody puts a vessel on prose.
+
+So the Ask conversation has a second kind of turn. A **question** answers from
+the run's files and changes nothing, and the fingerprint proves it. **"Work
+this up as an alternate plan"** writes exactly one file: `alternate_plans`
+(`biosense/evidence/alternates.py`), each item a claim, the arms that would
+settle it, what to measure, what it costs to run — vessels, a construct, a
+reagent nobody has — and what to do with either outcome. The same fingerprint
+is then read the other way round: anything *else* that moved is named on the
+turn.
+
+Two rules make it safe to offer:
+
+* **round 1 is never touched.** Its arms and decision rules were fixed before
+  any result existed and its commitment digest records that, so an alternate
+  that could rewrite it would make the promise worthless. These live in their
+  own file, labelled proposed, beside it;
+* **an alternate that restates the main hypothesis is refused.** One that moves
+  the same lever the same way without saying properly how it differs costs a
+  vessel to learn nothing.
+
+Confidence is capped by what it rests on: `judgement` — the orchestrator's own
+reasoning — is low, a mechanism nobody tested here is moderate at best, and
+`cited` needs refs from the run's own evidence. A judgement is a real answer
+and says so, rather than acquiring a citation that does not test the change.
 
 ## Plate, tube, tank: the vessel the protocol is for
 

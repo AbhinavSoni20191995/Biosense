@@ -441,13 +441,13 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
     <!-- Round 1 is the next thing that happens, so it is a section rather than
          a fold: the arms, and everything somebody needs to actually run them. -->
-    <section class="glass card span2" id="roundPanel" hidden>
+    <section class="glass card" id="roundPanel" hidden>
       <div class="head"><h3 id="roundTitle">Round 1 at the bench</h3>
         <span class="hint" id="roundSum"></span></div>
       <div id="roundInsights"></div>
     </section>
 
-    <section class="glass card span2" id="protocolPanel" hidden>
+    <section class="glass card" id="protocolPanel" hidden>
       <div class="head"><h3>Current estimated parameters</h3>
         <span class="hint" id="protocolHint">the protocol this run recommends, stage by stage</span></div>
       <div id="protocol"></div>
@@ -477,10 +477,24 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
         <textarea id="askText" maxlength="2000" spellcheck="true"
           placeholder="Why this inducer and not another? What would change your recommendation? Is the purity estimate from the same cell type?"></textarea>
         <div class="row"><button class="btn go" id="askBtn" type="submit">Ask</button>
+          <!-- The same conversation, a different kind of turn: this one writes
+               one file. A person picks the leads the run surfaced and gets them
+               back as plans with arms, beside the main hypothesis. -->
+          <button class="btn" id="altBtn" type="button">Work this up as an alternate plan</button>
           <span class="dim" id="askMsg"></span></div>
-        <p class="caveat">It answers from this run's files and its own reasoning. It does not
-          search again or change the plan; a follow-up run gathers new evidence.</p>
+        <p class="caveat">A question answers from this run's files and changes nothing. An
+          alternate plan is written into the run beside the main hypothesis — it never changes
+          the main hypothesis, the protocol or round 1, whose rules were fixed before any
+          result existed. Neither searches again; a follow-up run gathers new evidence.</p>
       </form>
+    </section>
+
+    <!-- The other leads, worked up as experiments at a person's request. Beside
+         round 1, never inside it: round 1's rules were fixed before any result. -->
+    <section class="glass card" id="altPanel" hidden>
+      <div class="head"><h3>Alternate and extended plans</h3>
+        <span class="hint" id="altHead"></span></div>
+      <div id="altList"></div>
     </section>
 
     <section class="glass card" id="benchPanel" hidden>

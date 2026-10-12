@@ -337,7 +337,7 @@ class PageTests(unittest.TestCase):
         html = (K.ROOT / 'webapp' / 'console.html').read_text()
         self.assertLess(html.index('id="otherPanel"'), html.index('id="askPanel"'))
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
-        self.assertIn('/ask`, { question: text }', js)
+        self.assertIn("/ask`,\n      { question: text, kind: kind || 'question' })", js)
         self.assertIn('renderQuestions(snap)', js)
 
 
