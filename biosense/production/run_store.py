@@ -311,6 +311,12 @@ def restore(runs_dir, run_id, *, after=-1):
     snap['alternate_plans'] = ({k: alt.get(k) for k in (
         'request', 'requested_by', 'items', 'not_pursued', 'does_not_change', 'note')}
         if alt else None)
+    # And the person's edits to the written protocol, for the same reason.
+    from ..evidence import protocol_edits as PE
+    pe = PE.load(d)
+    snap['protocol_edits'] = ({k: pe.get(k) for k in (
+        'request', 'requested_by', 'created_at', 'culture_format', 'working_volume_ml',
+        'title', 'values', 'notes', 'omit', 'does_not_change', 'note')} if pe else None)
     live = snap.get('status') in LIVE_STATUSES
     if live:
         age = time.time() - (snap.get('written_at') or 0)

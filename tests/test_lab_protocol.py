@@ -277,9 +277,121 @@ class DownloadTests(unittest.TestCase):
     def test_the_page_offers_the_download(self):
         from biosense import contracts as K
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
-        self.assertIn('protocol?format=docx', js)
+        self.assertIn('protocol?format=${fmt}', js)
         self.assertIn('Protocol for the bench (Word)', js)
+        self.assertIn('Protocol for the bench (PDF)', js)
 
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BenchLayoutTests(unittest.TestCase):
+    """The order a scientist reads it in: the whole process on one page, then
+    materials, then each stage as lines to tick off with the dose in bold."""
+
+    def setUp(self):
+        self.text = text_of(LP.tobytes(PROTOCOL, run_id='ai-20261012-abc123'))
+        self.joined = '\n'.join(self.text)
+
+    def test_the_whole_process_is_one_table_before_the_steps(self):
+        glance = self.text.index('At a glance')
+        steps = self.text.index('The protocol, stage by stage')
+        self.assertLess(glance, steps)
+        self.assertIn('M-CSF & GM-CSF <mix> 100 ng/mL (was 50) [A]', self.text)
+        self.assertIn('Agitation 50 rpm [D]', self.text)
+        self.assertIn('nothing set by this run', self.text)
+
+    def test_materials_come_before_the_procedure_and_carry_provenance(self):
+        self.assertLess(self.text.index('Materials'), self.text.index('The protocol, stage by stage'))
+        self.assertIn('Factors this plan adds to the medium', self.text)
+        self.assertIn('record the lot', self.joined)
+
+    def test_each_stage_is_lines_to_tick_with_the_dose_in_bold(self):
+        """A tick box, the verb, the dose as its own run, the letter."""
+        i = self.text.index('Raise M-CSF & GM-CSF <mix>')
+        self.assertEqual('☐  ', self.text[i - 1])
+        self.assertEqual(' to ', self.text[i + 1])
+        self.assertEqual('100 ng/mL (was 50)', self.text[i + 2])
+        self.assertEqual('  [A]', self.text[i + 3])
+        self.assertIn('Set Agitation', self.text)
+
+    def test_the_reasoning_comes_after_the_procedure(self):
+        self.assertLess(self.text.index('The protocol, stage by stage'),
+                        self.text.index('What this run is testing'))
+        self.assertLess(self.text.index('What this run is testing'),
+                        self.text.index('Approval'))
+
+
+class PdfTests(unittest.TestCase):
+    """The same document as a PDF: valid enough for a real reader, same words."""
+
+    def test_it_is_a_pdf_with_the_same_content(self):
+        from biosense.production import pdf as PDF
+        data = LP.tobytes_pdf(PROTOCOL, run_id='ai-20261012-abc123')
+        self.assertTrue(data.startswith(b'%PDF-1.4'))
+        self.assertTrue(data.rstrip().endswith(b'%%EOF'))
+        t = '\n'.join(PDF.text_of(data))
+        self.assertEqual(2, t.count('PROPOSED — NOT APPROVED.'), 'top and bottom')
+        self.assertIn('Before you run this: what is not decided', t)
+        self.assertIn('At a glance', t)
+        self.assertIn('Raise M-CSF & GM-CSF <mix> to 100 ng/mL (was 50)', t.replace('\n', ' '))
+        self.assertIn('page 1 of', t)
+        self.assertIn('Reviewed by', t)
+        self.assertEqual(data, LP.tobytes_pdf(PROTOCOL, run_id='ai-20261012-abc123'),
+                         'deterministic')
+
+    def test_the_cross_reference_table_is_right(self):
+        """A reader finds each object by the offsets in the xref table; a wrong
+        one is a file that opens blank."""
+        import re
+        data = LP.tobytes_pdf(PROTOCOL)
+        start = int(re.search(rb'startxref\n(\d+)', data).group(1))
+        self.assertTrue(data[start:].startswith(b'xref'))
+        offsets = [int(x) for x in re.findall(rb'(\d{10}) 00000 n', data)]
+        for i, off in enumerate(offsets, 1):
+            self.assertTrue(data[off:].startswith(f'{i} 0 obj'.encode()), i)
+        n = int(re.search(rb'/Size (\d+)', data).group(1))
+        self.assertEqual(n - 1, len(offsets))
+
+    def test_characters_outside_the_encoding_are_spelled_not_dropped(self):
+        from biosense.production import pdf as PDF
+        d = PDF.Document(title='t')
+        d.para('seed ≥ 0.3 → harvest ☐ µM 37 °C (a) \\ b')
+        t = PDF.text_of(d.tobytes())[0]
+        self.assertEqual('seed >= 0.3 -> harvest [ ] µM 37 °C (a) \\ b', t)
+
+    def test_a_long_table_breaks_across_pages_with_its_header(self):
+        from biosense.production import pdf as PDF
+        d = PDF.Document(title='t')
+        d.table(['Vessel', 'Arm'], [[f'V{i}', 'control'] for i in range(120)])
+        t = PDF.text_of(d.tobytes())
+        self.assertGreaterEqual(t.count('Vessel'), 2, 'the header repeats on the next page')
+        self.assertIn('page 2 of', '\n'.join(t))
+
+    def test_a_real_reader_opens_it(self):
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        if not shutil.which('pdfinfo'):
+            self.skipTest('poppler is not installed; the structural checks above still ran')
+        p = Path(tempfile.mkdtemp()) / 'p.pdf'
+        p.write_bytes(LP.tobytes_pdf(PROTOCOL))
+        out = subprocess.run(['pdfinfo', str(p)], capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, out.returncode, out.stderr)
+        self.assertIn('Pages:', out.stdout)
+        self.assertEqual('', out.stderr.strip(), 'a syntax warning is a reader that gave up')
+
+
+class PdfDownloadTests(DownloadTests):
+    def test_the_link_returns_a_pdf_named_after_the_run(self):
+        import urllib.request
+        from biosense.production import pdf as PDF
+        url = f'http://127.0.0.1:{self.port}/api/discovery/{self.rid}/protocol?format=pdf'
+        with urllib.request.urlopen(url, timeout=30) as r:
+            body = r.read()
+            self.assertEqual('application/pdf', r.headers['Content-Type'])
+            self.assertIn('.pdf', r.headers['Content-Disposition'])
+        self.assertTrue(body.startswith(b'%PDF'))
+        self.assertIn('NOT APPROVED', '\n'.join(PDF.text_of(body)))

@@ -619,11 +619,28 @@ only. A lever one run of two found is a candidate for the round plan, not a
 finding. Neither run is called the better one: agreement says the pipeline is
 stable, not that the biology is right.
 
-**The protocol exports as a Word document for the bench** — what is still
-undecided first, each stage with what goes in and when, the vessel settings an
-operator enters, what to measure, one row per vessel for the round, and an
-approval block for a named person to sign. "PROPOSED — NOT APPROVED" is on it
-twice, and every number keeps the letter that says what stands behind it.
+**The protocol exports as a Word document or a PDF for the bench**, in the
+order a scientist reads it: what is still undecided first, then the whole
+process on one page (each stage, its days, what goes into the medium, the
+vessel settings, what to measure), the materials with working concentrations,
+then each stage as lines to tick off with every dose in bold and the letter
+that says what stands behind it, the settings an operator enters, the round
+one row per vessel, and — after the procedure — the reasoning, the letters and
+an approval block for a named person to sign. "PROPOSED — NOT APPROVED" is on
+it twice. The PDF is written on the standard library like the Word file and
+opens the same everywhere.
+
+**You can change the bench copy in the same conversation.** "Change the
+protocol document" tells the orchestrator what you want in the copy you take
+to the bench — the vessel it is laid out for and its working volume, a value
+of your own, a note in your words, a section left out — and it writes exactly
+one file (`protocol_edits`), which every export then carries. A value is
+checked like any design choice (a parameter the project has, in its unit,
+inside the project's bounds, with a rationale and what it was reasoned from)
+and is marked **D** with your name; a note is marked **P** as your own
+instruction; nothing is converted silently and nothing becomes evidence. The
+run's own protocol, hypotheses and round 1 are untouched, and the same edits
+can be given directly on the run page without an orchestrator.
 
 Full design, including what happens on a backend restart →
 **[docs/PRODUCT_STATE.md](docs/PRODUCT_STATE.md)**
@@ -922,7 +939,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1515 tests
+uv run --frozen python -m unittest     # 1560 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

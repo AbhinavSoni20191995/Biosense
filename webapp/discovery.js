@@ -566,15 +566,15 @@ function renderTranslation(host, t, snap) {
   host.append(el('p', 'caveat', t.simulator_note));
   host.append(el('p', 'caveat', t.note));
   const vq = t.working_volume_ml ? `&working_volume_ml=${t.working_volume_ml}` : '';
-  const word = el('a', 'btn', `Bench protocol for the ${to.label} (Word)`);
-  word.href = `/api/discovery/${snap.run_id}/protocol?format=docx`
-    + `&as=${encodeURIComponent(to.format_id)}${vq}`;
-  word.target = '_blank'; word.rel = 'noopener';
+  const word = exportLink(snap.run_id, 'docx', `Bench protocol for the ${to.label} (Word)`,
+    `&as=${encodeURIComponent(to.format_id)}${vq}`);
+  const pdf = exportLink(snap.run_id, 'pdf', `Bench protocol for the ${to.label} (PDF)`,
+    `&as=${encodeURIComponent(to.format_id)}${vq}`);
   const dl = el('a', 'btn', 'This layout as text');
   dl.href = `/api/discovery/${snap.run_id}/translate?to=${encodeURIComponent(to.format_id)}`
     + `${vq}&format=md`;
   dl.target = '_blank'; dl.rel = 'noopener';
-  host.append(word, dl);
+  host.append(word, pdf, dl);
 }
 
 function translationRow(r) {
@@ -2914,6 +2914,7 @@ function renderQuestions(snap) {
     const box = el('div', 'ask-item ' + q.status);
     const qline = el('div', 'ask-q');
     if (q.kind === 'alternate') qline.append(el('span', 'chip', 'alternate plan'));
+    if (q.kind === 'protocol') qline.append(el('span', 'chip', 'protocol change'));
     qline.append(document.createTextNode(q.question));
     box.append(qline);
     box.append(el('div', 'dim ask-who', [q.asked_by, BS.fmt.ago(Date.parse(q.asked_at) / 1000)]
@@ -2923,7 +2924,9 @@ function renderQuestions(snap) {
          means something is wrong, and a person should not have to guess at
          what a spinner is doing. */
       const since = Date.parse(q.asked_at) / 1000;
-      box.append(el('p', 'dim', 'The orchestrator is reading its run and answering… '
+      box.append(el('p', 'dim', (q.kind === 'protocol'
+        ? 'The orchestrator is writing the changes… '
+        : 'The orchestrator is reading its run and answering… ')
         + `(${BS.fmt.elapsed(since)} so far; a long answer is a few minutes)`));
     } else if (q.answer) {
       const a = el('div', 'ask-a'); mdBlock(q.answer, a); box.append(a);
@@ -2934,10 +2937,27 @@ function renderQuestions(snap) {
       box.append(el('p', 'dim', 'Wrote ' + q.wrote.new.join(', ')
         + ' — under Alternate and extended plans.'));
     }
+    if (q.kind === 'protocol' && q.wrote && q.wrote.edits) {
+      const e = q.wrote.edits;
+      const bits = [];
+      if (e.culture_format) bits.push(`laid out for ${e.culture_format.replace('_', ' ')}`
+        + (e.working_volume_ml ? ` at ${e.working_volume_ml} mL` : ''));
+      (e.values || []).forEach(v => bits.push(v));
+      if (e.notes) bits.push(`${e.notes} note${e.notes === 1 ? '' : 's'}`);
+      if ((e.omit || []).length) bits.push('without ' + e.omit.join(', '));
+      box.append(el('p', 'dim', 'Changed the document: ' + (bits.join(' · ') || 'nothing')
+        + '. Export it below (Word or PDF).'));
+      const row = el('div', 'row');
+      row.append(exportLink(snap.run_id, 'docx', 'Word with these changes'),
+        exportLink(snap.run_id, 'pdf', 'PDF with these changes'));
+      box.append(row);
+    }
     if ((q.files_changed || []).length) {
       box.append(el('p', 'caveat', (q.kind === 'alternate'
         ? 'It also changed these, and it was asked to write only the plans: '
-        : 'While answering, these files changed (it was asked not to change anything): ')
+        : q.kind === 'protocol'
+          ? 'It also changed these, and it was asked to write only the protocol edits: '
+          : 'While answering, these files changed (it was asked not to change anything): ')
         + q.files_changed.join(', ')));
     }
     if (q.session && q.session.fresh) {
@@ -2949,6 +2969,7 @@ function renderQuestions(snap) {
   const busy = items.some(q => q.status === 'answering');
   $('#askBtn').disabled = busy;
   if ($('#altBtn')) $('#altBtn').disabled = busy;
+  if ($('#editBtn')) $('#editBtn').disabled = busy;
   clearTimeout(askTimer);
   if (busy) {
     askTimer = setTimeout(() => get(`/api/discovery/${snap.run_id}`)
@@ -3024,11 +3045,14 @@ async function askQuestion(ev, kind) {
   if (!snap || text.length < 3) {
     if (kind === 'alternate') {
       $('#askMsg').textContent = 'Say which of the run\u2019s leads to work up.';
+    } else if (kind === 'protocol') {
+      $('#askMsg').textContent = 'Say what to change: the vessel, a value, a note, a section to leave out.';
     }
     return;
   }
   $('#askBtn').disabled = true;
   if ($('#altBtn')) $('#altBtn').disabled = true;
+  if ($('#editBtn')) $('#editBtn').disabled = true;
   $('#askMsg').textContent = '';
   try {
     await post(`/api/discovery/${snap.run_id}/ask`,
@@ -3039,6 +3063,7 @@ async function askQuestion(ev, kind) {
     $('#askMsg').textContent = e.message || String(e);
     $('#askBtn').disabled = false;
     if ($('#altBtn')) $('#altBtn').disabled = false;
+    if ($('#editBtn')) $('#editBtn').disabled = false;
   }
 }
 
@@ -3872,6 +3897,83 @@ function renderBenchmark(b) {
   $('#benchPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function exportLink(id, fmt, label, extra) {
+  const a = el('a', 'btn', label);
+  a.href = `/api/discovery/${id}/protocol?format=${fmt}${extra || ''}`;
+  a.target = '_blank'; a.rel = 'noopener';
+  return a;
+}
+
+/* What the person asked to change in the bench copy — in chat, or here —
+   and that every export now carries. The run's own protocol is untouched. */
+function renderProtocolEdits(host, snap) {
+  const e = snap.protocol_edits;
+  const box = el('div', 'pe-box');
+  if (e) {
+    box.append(el('div', 'lab', 'Changes you asked for, carried by every export'));
+    const ul = el('ul', 'tight');
+    if (e.culture_format) ul.append(el('li', null, `Laid out for ${e.culture_format.replace('_', ' ')}`
+      + (e.working_volume_ml ? ` at ${num(e.working_volume_ml)} mL` : '')));
+    if (e.title) ul.append(el('li', null, `Title: ${e.title}`));
+    (e.values || []).forEach(v => ul.append(el('li', null,
+      `${v.label || v.parameter_id} = ${num(v.value)} ${v.unit || ''} in ${v.stage_label || v.stage_id}`
+      + ` — D, asked for by ${v.requested_by || 'you'}`)));
+    (e.notes || []).forEach(n => ul.append(el('li', null,
+      `${n.stage_label || 'whole run'}: ${n.text} — P`)));
+    if ((e.omit || []).length) ul.append(el('li', null, 'Left out: ' + e.omit.join(', ')));
+    box.append(ul);
+    box.append(el('p', 'caveat', e.does_not_change || ''));
+    const row = el('div', 'row');
+    row.append(exportLink(snap.run_id, 'docx', 'Word without these changes', '&edits=none'),
+      exportLink(snap.run_id, 'pdf', 'PDF without these changes', '&edits=none'));
+    const clear = el('button', 'btn', 'Remove the changes');
+    clear.addEventListener('click', async () => {
+      clear.disabled = true;
+      try {
+        await post(`/api/discovery/${snap.run_id}/protocol-edits`, { clear: true });
+        const s = await get(`/api/discovery/${snap.run_id}`); state.run = s; renderExports(s);
+      } catch (err) { fail(err); clear.disabled = false; }
+    });
+    row.append(clear);
+    box.append(row);
+  } else {
+    box.append(el('p', 'note', 'To change the bench copy — the vessel, a value of yours, a note, '
+      + 'a section left out — ask the orchestrator under "Ask the orchestrator" with "Change '
+      + 'the protocol document", or give it directly here.'));
+  }
+  /* The direct way: no orchestrator, the same checks. For a demo run, which
+     has no orchestrator to ask, it is the only way. */
+  const form = el('details', 'pe-form');
+  form.append(el('summary', null, e ? 'Edit the changes directly' : 'Give the changes directly'));
+  const ta = el('textarea');
+  ta.rows = 6; ta.spellcheck = false;
+  ta.value = JSON.stringify(e ? {
+    culture_format: e.culture_format, working_volume_ml: e.working_volume_ml, title: e.title,
+    values: (e.values || []).map(v => ({ parameter_id: v.parameter_id, stage_id: v.stage_id,
+      value: v.value, unit: v.unit, timing: v.timing, rationale: v.rationale,
+      derived_from: v.derived_from, confidence: v.confidence })),
+    notes: (e.notes || []).map(n => ({ stage_id: n.stage_id, text: n.text })), omit: e.omit || [],
+  } : { culture_format: 'six_well', working_volume_ml: 2, values: [], notes: [], omit: [] }, null, 1);
+  const go = el('button', 'btn go', 'Apply to the exports');
+  const msg = el('span', 'dim');
+  go.addEventListener('click', async () => {
+    go.disabled = true; msg.textContent = '';
+    try {
+      const body = JSON.parse(ta.value);
+      await post(`/api/discovery/${snap.run_id}/protocol-edits`, body);
+      const s = await get(`/api/discovery/${snap.run_id}`); state.run = s; renderExports(s);
+    } catch (err) { msg.textContent = err.message || String(err); go.disabled = false; }
+  });
+  const r = el('div', 'row'); r.append(go, msg);
+  form.append(el('p', 'note', 'A value names a parameter this project has, in its own unit, '
+    + 'with a stage, a rationale, what it was reasoned from and a confidence; it is refused '
+    + 'otherwise, with the reason. A note is your own instruction. Sections that can be left '
+    + 'out: glance, testing, materials, settings, bench, measure, round, alternates, letters, '
+    + 'limitations.'), ta, r);
+  box.append(form);
+  host.append(box);
+}
+
 function renderExports(snap) {
   const host = $('#exports'); if (!host) return;
   host.textContent = '';
@@ -3883,12 +3985,18 @@ function renderExports(snap) {
     if (note) host.append(el('div', 'note', note));
   };
   if (snap.result && snap.result.protocol) {
-    /* The bench copy first: a Word file is what gets printed, signed and
-       emailed to whoever actually runs it. Markdown is for the repository. */
-    mk('Protocol for the bench (Word)', `/api/discovery/${id}/protocol?format=docx`,
-      'The same protocol in the order the work happens: what is still undecided, each '
-      + 'stage with what goes in and when, the vessel settings, what to measure, and an '
-      + 'approval block for a named person to sign. Nothing in it is approved.');
+    /* The bench copy first: a Word file or a PDF is what gets printed, signed
+       and emailed to whoever actually runs it. Markdown is for the repository. */
+    const row = el('div', 'row');
+    row.append(exportLink(id, 'docx', 'Protocol for the bench (Word)'),
+      exportLink(id, 'pdf', 'Protocol for the bench (PDF)'));
+    host.append(row);
+    host.append(el('div', 'note',
+      'The same protocol in the order the work happens: what is still undecided, the whole '
+      + 'process on one page, materials, each stage as lines to tick off with every dose and '
+      + 'its letter, the vessel settings, what to measure, the round one vessel per row, and '
+      + 'an approval block for a named person to sign. Nothing in it is approved.'));
+    renderProtocolEdits(host, snap);
     mk('Export protocol (Markdown)', `/api/discovery/${id}/protocol?format=md`,
       'The recommended protocol, its provenance tags and the hypothesis ledger.');
   }
@@ -3963,6 +4071,8 @@ function wire() {
   if (af) af.addEventListener('submit', askQuestion);
   const alt = $('#altBtn');
   if (alt) alt.addEventListener('click', () => askQuestion(null, 'alternate'));
+  const edit = $('#editBtn');
+  if (edit) edit.addEventListener('click', () => askQuestion(null, 'protocol'));
   const np = $('#newProjectBtn');
   if (np) {
     np.addEventListener('click', () => {

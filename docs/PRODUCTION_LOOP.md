@@ -72,13 +72,22 @@ in it calls either run the better one; agreement means the pipeline is stable,
 not that the biology is right.
 
 **A copy somebody can sign** (`biosense/production/lab_protocol.py`,
-`?format=docx`). The same protocol as a Word document in the order the work
-happens: what is still undecided first, then each stage with what goes in and
-when, the vessel settings an operator enters, what to measure, the round as one
-row per vessel, and an empty approval block. "PROPOSED — NOT APPROVED" is at
-the top and the bottom, and every number keeps its letter. The writer
+`?format=docx` or `?format=pdf`). The same protocol as a Word document or a
+PDF in the order a scientist reads it: what is still undecided first; the
+whole process on one page — each stage, its days, what goes into the medium,
+the vessel settings, what to measure; the materials with their working
+concentrations and basis; each stage as lines to tick off, in the order they
+happen, the dose in bold and its letter after it; the settings an operator
+enters; what to measure; the round as one row per vessel; then the reasoning
+(what the run is testing), the letters, the limitations, and an empty approval
+block. "PROPOSED — NOT APPROVED" is at the top and the bottom, and every
+number keeps its letter. One `build` writes to either writer: the Word one
 (`biosense/production/docx.py`) is about two hundred lines of OOXML on the
-standard library rather than a fourth dependency.
+standard library, the PDF one (`biosense/production/pdf.py`) lays the same
+blocks onto A4 with the built-in fonts, so neither is a dependency.
+
+**The bench copy can be changed from the Ask conversation**
+(`biosense/evidence/protocol_edits.py`, the third kind of turn, below).
 
 ## From a recommendation to something somebody can run
 
@@ -117,9 +126,10 @@ load, GM-CSF as a timed surge rather than a constant, and a list of what must
 not be in the medium — each with its source. One becomes the hypothesis; the
 rest become prose, and nobody puts a vessel on prose.
 
-So the Ask conversation has a second kind of turn. A **question** answers from
-the run's files and changes nothing, and the fingerprint proves it. **"Work
-this up as an alternate plan"** writes exactly one file: `alternate_plans`
+So the Ask conversation has a second kind of turn (and a third, below). A
+**question** answers from the run's files and changes nothing, and the
+fingerprint proves it. **"Work this up as an alternate plan"** writes exactly
+one file: `alternate_plans`
 (`biosense/evidence/alternates.py`), each item a claim, the arms that would
 settle it, what to measure, what it costs to run — vessels, a construct, a
 reagent nobody has — and what to do with either outcome. The same fingerprint
@@ -140,6 +150,37 @@ Confidence is capped by what it rests on: `judgement` — the orchestrator's own
 reasoning — is low, a mechanism nobody tested here is moderate at best, and
 `cited` needs refs from the run's own evidence. A judgement is a real answer
 and says so, rather than acquiring a citation that does not test the change.
+
+
+## The bench copy, changed in the same conversation
+
+The run wrote one protocol for one vessel. The person reading it will run it in
+a 6-well plate at 2 mL, seeds at the density their lab uses, wants a line
+saying which medium lot to record, and does not want the alternates appendix in
+the copy that goes to the hood. None of that is science, and none of it should
+cost a run — so the Ask conversation has a third kind of turn. **"Change the
+protocol document"** writes exactly one file, `protocol_edits`
+(`biosense/evidence/protocol_edits.py`), which every export of that run then
+carries: the Word file, the PDF and the vessel layout. The same file can be
+given directly on the run page (`POST /api/discovery/<id>/protocol-edits`),
+which is also the only way for a demonstration run, which has no orchestrator.
+
+What it may hold, and the rule for each:
+
+| | checked how | on the page as |
+|---|---|---|
+| `culture_format`, `working_volume_ml` | a format this system knows; a volume in range | the vessel section, amounts per vessel |
+| a value (`values[]`) | `design.choice`: a parameter the project exposes, in its unit, inside the project's bounds, a rationale, `derived_from`, a confidence — the same refusals a run's own design choice gets, including the per-cm² hint | **D**, with who asked; the run's value travels as "was" |
+| a note (`notes[]`) | the person's words, on a stage or the whole run; may not claim approval | **P** — the person's instruction, never a value |
+| `omit[]` | a named section; the open values, the steps and the approval block cannot be left out | absent |
+
+The run's protocol summary, hypotheses and round plan are not rewritten — the
+edits are a layer `protocol_edits.apply` lays over the display payload at
+export time, named as the person's request on the first page and listed in
+full under "Changes requested after the run" — and the fingerprint names
+anything *else* the orchestrator touched. Nothing here is approved; the
+approver reads the edits as the person's, and `?edits=none` exports the
+protocol as the run wrote it.
 
 ## Plate, tube, tank: the vessel the protocol is for
 

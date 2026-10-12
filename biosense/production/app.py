@@ -51,6 +51,9 @@ Endpoints
                                   run's round plan (arm, replicate, readout, value)
     POST /api/discovery/<id>/follow-up   the next round: an ended run's artifacts, plus the
                                   results a person measured, read against its round plan
+    POST /api/discovery/<id>/protocol-edits   what you want changed in the written
+                                  protocol (vessel, values, notes, sections), checked
+                                  against the project and applied to every export
     POST /api/discovery/<id>/ask  a question to the orchestrator about an ended run; it
                                   answers from the run's files, read-only (GET the run for it)
     POST /api/discovery/<id>/rename   give a run your own name, so a list of six runs on the
@@ -261,6 +264,7 @@ class Run:
         self.baseline_protocol = None
         self.bench_setup = None
         self.alternate_plans = None
+        self.protocol_edits = None
         self.data_requests = None
         self.literature_stages = []
         self.reference_draft = None
@@ -390,6 +394,7 @@ class DiscoveryRun:
         self.baseline_protocol = None
         self.bench_setup = None
         self.alternate_plans = None
+        self.protocol_edits = None
         self.data_requests = None
         self.literature_stages = []
         self.reference_draft = None
@@ -455,6 +460,7 @@ class DiscoveryRun:
         self._read_baseline_protocol()
         self._read_bench_setup()
         self._read_alternates()
+        self._read_protocol_edits()
         self._read_data_requests()
         self._read_stage_shards()
         self._read_bio_specialists()
@@ -847,6 +853,15 @@ class DiscoveryRun:
             'request', 'requested_by', 'items', 'not_pursued', 'does_not_change', 'note')}
             if doc else None)
 
+    def _read_protocol_edits(self):
+        """What a person asked to change in the written protocol, after the run."""
+        from ..evidence import protocol_edits as PE
+        doc = PE.load(self.out_dir)
+        self.protocol_edits = ({k: doc.get(k) for k in (
+            'request', 'requested_by', 'created_at', 'culture_format', 'working_volume_ml',
+            'title', 'values', 'notes', 'omit', 'does_not_change', 'note')}
+            if doc else None)
+
     def _read_data_requests(self):
         """What this run could not get, and whatever a person has handed over."""
         from ..evidence import datareq as DRQ
@@ -1198,6 +1213,7 @@ class DiscoveryRun:
                 'baseline_protocol': self.baseline_protocol,
                 'bench_setup': self.bench_setup,
                 'alternate_plans': self.alternate_plans,
+                'protocol_edits': self.protocol_edits,
                 'data_requests': self.data_requests,
                 'literature_stages': list(self.literature_stages),
                 'reference_draft': self.reference_draft,
@@ -1948,6 +1964,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/ask', path)
             if m:
                 return self._ask(m.group(1), self._body())
+            m = re.fullmatch(r'/api/discovery/([^/]+)/protocol-edits', path)
+            if m:
+                return self._protocol_edits(m.group(1), self._body())
             m = re.fullmatch(r'/api/discovery/([^/]+)/extend', path)
             if m:
                 return self._extend_discovery(m.group(1))
@@ -2568,6 +2587,13 @@ class Handler(BaseHTTPRequestHandler):
         protocol = (result or {}).get('protocol')
         if not protocol:
             return self._send(404, {'error': 'no protocol summary for that run'})
+        from ..evidence import protocol_edits as PE
+        here = run.out_dir if run else RS.find(self.discovery.runs_dir, rid)
+        edits = PE.load(here) if here else None
+        protocol = PE.apply(protocol, edits)
+        if not str(volume).strip() and (edits or {}).get('working_volume_ml') \
+                and to == (edits or {}).get('culture_format'):
+            volume = str(edits['working_volume_ml'])
         try:
             vol = float(volume) if str(volume).strip() else None
         except ValueError:
@@ -2683,6 +2709,46 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {'error': 'the run record could not be written'})
         return self._send(200, {'run_id': rid, 'title': name})
 
+    def _protocol_edits(self, rid, body):
+        """What the person wants changed in the written protocol, given directly.
+
+        The same file the orchestrator writes when asked in chat, checked by
+        the same builder: the vessel, values as design choices in the
+        parameter's unit, notes in the person's words, sections to leave out.
+        Applied to every export of this run; the run's own files are untouched.
+        `{"clear": true}` removes them.
+        """
+        from ..evidence import protocol_edits as PE
+        identity = self._identity()
+        d, status = self._ended_run_dir(rid, identity)
+        if d is None:
+            return self._send(*status)
+        who = str(getattr(identity, 'display', None) or identity.owner or 'local user')[:80]
+        if body.get('clear'):
+            try:
+                (d / PE.NAME).unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                return self._send(500, {'error': f'could not remove the edits: {e}'})
+            return self._send(200, {'run_id': rid, 'protocol_edits': None})
+        state = RS._read_state(RS.state_path(d)) or {}
+        try:
+            project = PB.load_for(identity, PB.check_project_id(state.get('project_id') or ''))
+            doc = PE.build(body.get('edits') if isinstance(body.get('edits'), dict) else body,
+                           project=project, request=body.get('request'),
+                           run_id=d.name, created_by=who, requested_by=who)
+        except K.ContractError as e:
+            return self._send(400, {'error': str(e)})
+        K.write_json_atomic(d / PE.NAME, doc)
+        live = self.discovery.get(rid, owner=identity.owner)
+        if live is not None:
+            live._read_protocol_edits()
+        return self._send(200, {'run_id': rid, 'protocol_edits': doc,
+                                'summary': PE.summary(doc),
+                                'note': 'Applied to the Word and PDF copies and the vessel '
+                                        'layout from now on; nothing here is approved.'})
+
     def _ask(self, rid, body):
         """A question to the orchestrator about a run that has ended.
 
@@ -2735,6 +2801,9 @@ class Handler(BaseHTTPRequestHandler):
                                 'note': ('The orchestrator is working the plans up; the run '
                                          'page shows them when they arrive.'
                                          if kind == 'alternate' else
+                                         'The orchestrator is writing the changes; export '
+                                         'the Word or PDF copy when it has replied.'
+                                         if kind == 'protocol' else
                                          'The orchestrator is answering; the run page shows '
                                          'the answer when it arrives.')})
 
@@ -2748,15 +2817,25 @@ class Handler(BaseHTTPRequestHandler):
         the other way round: it is how we see whether anything *else* moved.
         """
         from ..evidence import alternates as AL
+        from ..evidence import protocol_edits as PE
         from . import ask as ASK
         from . import omnigent_runtime as OMNI
         alt = item.get('kind') == 'alternate'
+        edit = item.get('kind') == 'protocol'
         try:
             before = ASK.fingerprint(d)
-            prior = AL.load(d) if alt else None
+            prior = AL.load(d) if alt else PE.load(d) if edit else None
             res = None
             for sid in ([session, None] if session else [None]):
-                if alt:
+                if edit:
+                    state = RS._read_state(RS.state_path(d)) or {}
+                    text = PE.framed(
+                        item['question'], loop_dir=loop_dir,
+                        project_id=state.get('project_id') or '',
+                        projects_dir=(f' --projects-dir {projects_dir}' if projects_dir else ''),
+                        python=DRUN.agent_python(target), fresh=sid is None, existing=prior)
+                    title = f'Protocol changes: {item["question"][:50]}'
+                elif alt:
                     state = RS._read_state(RS.state_path(d)) or {}
                     text = AL.framed(
                         item['question'], loop_dir=loop_dir,
@@ -2776,6 +2855,10 @@ class Handler(BaseHTTPRequestHandler):
                     break
             moved = ASK.changed(before, ASK.fingerprint(d))
             wrote = None
+            if edit:
+                doc = PE.load(d)
+                wrote = {'edits': PE.summary(doc)} if doc else None
+                moved = [f for f in moved if f not in (PE.NAME, PE.DRAFT)]
             if alt:
                 doc = AL.load(d)
                 ids = [x['alt_id'] for x in (doc or {}).get('items') or []]
@@ -2783,7 +2866,8 @@ class Handler(BaseHTTPRequestHandler):
                 wrote = {'alt_ids': ids, 'new': [i for i in ids if i not in was]}
                 # The file it was asked to write is not a broken promise.
                 moved = [f for f in moved if f not in (AL.NAME, AL.DRAFT)]
-            ok = bool(res.get('answer')) and (not alt or (wrote and wrote['alt_ids']))
+            ok = bool(res.get('answer')) and (not alt or (wrote and wrote['alt_ids'])) \
+                and (not edit or bool(wrote))
             ASK.finish(d, item['id'],
                        status='answered' if ok else 'failed',
                        answer=res.get('answer'), files_changed=moved, wrote=wrote,
@@ -2793,7 +2877,9 @@ class Handler(BaseHTTPRequestHandler):
                                                    if res.get('timed_out') else None)
                               or (None if ok else
                                   ('it wrote no alternate plan that passed its contract'
-                                   if alt else 'the orchestrator said nothing'))))
+                                   if alt else
+                                   'it wrote no protocol change that passed its contract'
+                                   if edit else 'the orchestrator said nothing'))))
         except Exception as e:  # noqa: BLE001 - a failed answer is recorded, never lost
             ASK.finish(d, item['id'], status='failed', error=f'{type(e).__name__}: {str(e)[:300]}')
         finally:
@@ -3208,32 +3294,54 @@ class Handler(BaseHTTPRequestHandler):
                 doc = {k: v for k, v in protocol.items()
                        if k not in ('summary_counts', 'changed_parameters', 'badge')}
                 return self._send(200, PSUM.markdown(doc), 'text/markdown; charset=utf-8')
-            if fmt == 'docx':
+            if fmt in ('docx', 'pdf'):
                 # The bench copy: the same protocol, in the order the work
                 # happens, as a file somebody can print and sign. `as` lays it
-                # out for the vessel it is actually going into.
+                # out for the vessel it is actually going into; the person's
+                # edits (chat or form) are laid over it unless `edits=none`.
                 from ..evidence import alternates as AL
+                from ..evidence import protocol_edits as PE
                 from .. import formats as FMT
                 from . import lab_protocol as LP
-                # Alternate plans are written after the run ended, so the
-                # stored payload never has them: read them now, or the
+                # Alternate plans and edits are written after the run ended,
+                # so the stored payload never has them: read them now, or the
                 # appendix would be missing from every document that has one.
                 here = run.out_dir if run else RS.find(self.discovery.runs_dir, m.group(1))
                 alts = AL.load(here) if here else None
                 if alts:
                     protocol = dict(protocol, alternate_plans=alts)
+                edits = None
+                if (q.get('edits') or [''])[0] != 'none':
+                    edits = PE.load(here) if here else None
+                    protocol = PE.apply(protocol, edits)
                 as_fmt = (q.get('as') or [''])[0].strip()
+                vol = (q.get('working_volume_ml') or [''])[0]
+                if not as_fmt and edits and edits.get('culture_format') \
+                        and edits['culture_format'] != (result or {}).get(
+                            'protocol', {}).get('culture_format'):
+                    # Asked for another vessel in chat: lay it out there.
+                    as_fmt = edits['culture_format']
+                if as_fmt and not vol.strip() and edits \
+                        and edits.get('working_volume_ml') \
+                        and as_fmt == edits.get('culture_format'):
+                    vol = str(edits['working_volume_ml'])
                 translation = None
                 if as_fmt:
                     try:
-                        vol = (q.get('working_volume_ml') or [''])[0]
                         translation = FMT.translate(
-                            protocol, as_fmt, from_=protocol.get('culture_format'),
+                            protocol, as_fmt,
+                            from_=(result or {}).get('protocol', {}).get('culture_format'),
                             working_volume_ml=float(vol) if vol.strip() else None)
                     except (K.ContractError, ValueError) as e:
                         return self._send(400, {'error': str(e)})
                 name = re.sub(r'[^A-Za-z0-9._-]+', '-',
                               (protocol.get('title') or 'protocol'))[:60].strip('-') or 'protocol'
+                if fmt == 'pdf':
+                    body = LP.tobytes_pdf(protocol, run_id=m.group(1), translation=translation)
+                    return self._send(
+                        200, body, 'application/pdf',
+                        extra=[('Content-Disposition',
+                                f'attachment; filename="{name}-{m.group(1)[:8]}.pdf"')])
                 body = LP.tobytes(protocol, run_id=m.group(1), translation=translation)
                 return self._send(
                     200, body,

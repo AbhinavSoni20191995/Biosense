@@ -86,17 +86,18 @@ def clean_question(text):
     return q
 
 
-KINDS = ('question', 'alternate')
+KINDS = ('question', 'alternate', 'protocol')
 
 
 def start(run_dir, question, *, asked_by=None, kind='question'):
     """Record a turn as pending and return it. One at a time per run.
 
-    Two kinds share the thread, because a person asking "why CNTF?" and a
-    person saying "work the Notch lead up as a plan too" are the same
+    Three kinds share the thread, because a person asking "why CNTF?", a
+    person saying "work the Notch lead up as a plan too" and a person saying
+    "lay it out for a 6-well plate and add my seeding density" are the same
     conversation. They differ in what the orchestrator is allowed to do: a
     question changes nothing, an alternate writes one new file and nothing
-    else.
+    else, a protocol edit writes one other file and nothing else.
     """
     if kind not in KINDS:
         raise K.ContractError(f'kind must be one of {", ".join(KINDS)}; got {kind!r}')

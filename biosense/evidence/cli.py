@@ -792,6 +792,20 @@ def cmd_alternates(a):
     return 0
 
 
+def cmd_protocol_edits(a):
+    """What a person asked to change in the written protocol, checked and written."""
+    from . import protocol_edits as PE
+    project = PJ.load(a.project, a.projects_dir)
+    doc = PE.build(K.read_json(a.draft), project=project, request=a.request, run_id=a.run_id,
+                   created_by=a.created_by or 'orchestrator', requested_by=a.requested_by)
+    K.write_json_atomic(a.out, doc)
+    print(json.dumps({'written': a.out, **(PE.summary(doc) or {}),
+                      'next': 'Applied when the protocol is exported (Word, PDF, the vessel '
+                              'layout). The run\'s own files are unchanged; nothing here is '
+                              'approved.'}, indent=1))
+    return 0
+
+
 def cmd_data_request(a):
     """What this run could not get, asked of the person who can supply it."""
     from . import datareq as DR
@@ -843,7 +857,9 @@ def cmd_template(a):
     from . import baseline as BL
     from . import bench as BN
     from . import alternates as AL
+    from . import protocol_edits as PE
     shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
+             'protocol-edits': PE.TEMPLATE,
              'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE,
              'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE,
              'fidelity': FD.TEMPLATE, 'baseline': BL.TEMPLATE, 'bench': BN.TEMPLATE,
@@ -967,6 +983,13 @@ def main(argv=None):
     p.add_argument('--request', help="what the person asked for, in their words")
     p.add_argument('--run-id'); p.add_argument('--created-by'); p.add_argument('--requested-by')
     p.set_defaults(fn=cmd_alternates)
+    p = sub.add_parser('protocol-edits', help='what a person asked to change in the written '
+                                              'protocol: the vessel, values, notes, sections')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--request', help="what the person asked for, in their words")
+    p.add_argument('--run-id'); p.add_argument('--created-by'); p.add_argument('--requested-by')
+    p.set_defaults(fn=cmd_protocol_edits)
     p = sub.add_parser('data-request', help='ask the person for what this run could not '
                                            'fetch, so the next round can use it')
     p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
@@ -978,7 +1001,8 @@ def main(argv=None):
     p = sub.add_parser('template', help='print an example draft')
     p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
                                     'devmap', 'sota', 'route-select', 'fidelity',
-                                    'baseline', 'bench', 'alternates', 'data-request'])
+                                    'baseline', 'bench', 'alternates', 'data-request',
+                                    'protocol-edits'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

@@ -324,6 +324,60 @@ class ApiTests(unittest.TestCase):
             snap = self._wait(rid)
         self.assertEqual(['protocol_summary.md'], snap['questions'][0]['files_changed'])
 
+    def test_a_protocol_change_is_written_by_the_orchestrator_and_carried_by_the_export(self):
+        """The third kind of turn: the person says what to change in the bench
+        copy, the orchestrator writes one file, the export carries it."""
+        from biosense.evidence import protocol_edits as PE
+        from biosense.evidence import cli as EVCLI
+        rid = 'dddd111122223333'
+        d = self._ended(rid)
+        seen = {}
+
+        def answer(cfg, text, session_id=None, title=None):
+            seen.update(text=text, title=title)
+            # The orchestrator does what the framing says: the draft, then the CLI.
+            (d / PE.DRAFT).write_text(json.dumps({
+                'culture_format': 'six_well', 'working_volume_ml': 2,
+                'notes': [{'stage_id': 'myeloid', 'text': 'Record the medium lot.'}]}))
+            EVCLI.main(['protocol-edits', '--project', 'ipsc_macrophage', '--draft',
+                        str(d / PE.DRAFT), '--out', str(d / PE.NAME), '--run-id', d.name,
+                        '--request', 'my plate', '--requested-by', 'Ana'])
+            return {'answer': 'Laid out for a 6-well plate at 2 mL, with your note.',
+                    'session_id': session_id, 'fresh': False, 'error': None,
+                    'timed_out': False}
+        with mock.patch.object(OMNI, 'ensure_available'), \
+                mock.patch.object(OMNI, 'answer', side_effect=answer):
+            code, body = self._req('POST', f'/api/discovery/{rid}/ask',
+                                   {'question': '6-well plate at 2 mL, note the medium lot',
+                                    'kind': 'protocol'})
+            self.assertEqual(202, code, body)
+            self.assertIn('writing the changes', body['note'])
+            snap = self._wait(rid)
+        q = snap['questions'][0]
+        self.assertEqual(('protocol', 'answered', []), (q['kind'], q['status'], q['files_changed']),
+                         'the file it was asked to write is not a broken promise')
+        self.assertEqual('six_well', q['wrote']['edits']['culture_format'])
+        self.assertEqual(1, q['wrote']['edits']['notes'])
+        self.assertEqual('six_well', snap['protocol_edits']['culture_format'])
+        self.assertIn('Protocol changes:', seen['title'])
+        self.assertIn(f'{PE.DRAFT}', seen['text'])
+        self.assertIn('do not change the protocol summary', seen['text'])
+
+    def test_a_protocol_change_that_wrote_nothing_is_a_failure(self):
+        rid = 'eeee111122223333'
+        self._ended(rid)
+
+        def answer(cfg, text, session_id=None, title=None):
+            return {'answer': 'I changed it.', 'session_id': session_id, 'fresh': False,
+                    'error': None, 'timed_out': False}
+        with mock.patch.object(OMNI, 'ensure_available'), \
+                mock.patch.object(OMNI, 'answer', side_effect=answer):
+            self._req('POST', f'/api/discovery/{rid}/ask', {'question': 'Add a note', 'kind': 'protocol'})
+            snap = self._wait(rid)
+        q = snap['questions'][0]
+        self.assertEqual('failed', q['status'])
+        self.assertIn('wrote no protocol change', q['error'])
+
     def test_a_demo_run_has_no_orchestrator_to_ask(self):
         rid = 'cccc111122223333'
         self._ended(rid, mode='synthetic_demo')

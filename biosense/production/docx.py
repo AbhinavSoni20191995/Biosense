@@ -170,6 +170,11 @@ class Document:
     def step(self, text=None, *, runs=None):
         return self.para(text or '', style='ListNumber', runs=runs)
 
+    def check(self, text=None, *, runs=None):
+        """A line to tick at the bench: a box, then the text."""
+        body = [('\u2610  ', {})] + (list(runs) if runs is not None else [(text or '', {})])
+        return self.para(runs=body)
+
     def caveat(self, text):
         return self.para(text, style='Caveat')
 
