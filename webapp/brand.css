@@ -775,6 +775,19 @@ button{font-family:inherit}
 .ft.other td:nth-child(2),.ft.other th:nth-child(2){width:58%}
 #protocol details ul.tight{font-size:13px;line-height:1.5}
 
+/* ── Two runs compared ── */
+.cmpbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 0;font-size:12.5px}
+.cmpsel{max-width:240px;flex:1 1 160px}
+.cmpout:not(:empty){margin-top:10px;border:1px solid var(--line);border-radius:var(--r-s);
+  padding:10px 12px}
+.cmphead{font-size:13px}
+.cmphead.same_inputs_same_answer{border-left:3px solid var(--ok);padding-left:8px}
+.cmphead.same_inputs_different_answer{border-left:3px solid var(--warn);padding-left:8px}
+.cmphead.different_inputs,.cmphead.not_comparable{border-left:3px solid var(--ink-3);
+  padding-left:8px}
+.cmpin,.cmpval{font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--line)}
+.cmpin:last-of-type,.cmpval:last-of-type{border-bottom:0}
+
 /* ── Questions to the orchestrator after a run ── */
 .ask-item{border:1px solid var(--line);border-radius:var(--r-s);padding:10px 12px;margin:0 0 10px}
 .ask-item.answering{border-style:dashed}

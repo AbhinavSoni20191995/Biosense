@@ -428,6 +428,7 @@ function renderProjectRunList(snapshot) {
   box.addEventListener('toggle', () => rememberOpen('prunlist', box.open));
   box.append(el('summary', null, `Runs in this project (${runs.length})`));
   host.append(box);
+  compareBar(box, runs.filter(r => !r.live));
   runs.slice(0, RUN_LIST_MAX).forEach(r => {
     const row = el('div', 'prun');
     const when = r.started_at ? new Date(r.started_at * 1000).toLocaleString([], {
@@ -466,6 +467,127 @@ function renderProjectRunList(snapshot) {
     a.href = `runs.html?project=${encodeURIComponent(id)}`;
     box.append(a);
   }
+}
+
+/* Two runs of the same question, side by side.
+ *
+ * A run of this system is a language model reading papers: ask it the same
+ * thing twice and the two answers are not the same file. Until a person can
+ * see how much moved, they have one answer and no idea whether it is the
+ * answer or one of several. The comparison is computed on the server from
+ * what each run wrote; nothing here decides anything, and neither run is ever
+ * called the better one.
+ */
+const AGREE_CLS = { agreed: 'ok', same_direction: 'warn', opposed: 'bad',
+  only_a: 'mut', only_b: 'mut', differs: 'warn' };
+const AGREE_WORD = { agreed: 'agreed', same_direction: 'same way, different dose',
+  opposed: 'opposite ways', only_a: 'run A only', only_b: 'run B only', differs: 'differs' };
+
+function compareBar(host, runs) {
+  if (runs.length < 2) return;
+  const bar = el('div', 'cmpbar');
+  bar.append(el('span', 'dim', 'Compare two runs'));
+  const pick = n => {
+    const sel = el('select', 'cmpsel');
+    sel.setAttribute('aria-label', `Run ${n}`);
+    runs.forEach((r, i) => {
+      const o = el('option', null, (r.title || r.objective || r.run_id).slice(0, 60));
+      o.value = r.run_id;
+      sel.append(o);
+    });
+    return sel;
+  };
+  const a = pick('A'), b = pick('B');
+  if (runs.length > 1) b.selectedIndex = 1;
+  const go = el('button', 'btn', 'Compare');
+  const out = el('div', 'cmpout');
+  go.addEventListener('click', async () => {
+    if (a.value === b.value) {
+      out.textContent = ''; out.append(el('p', 'dim', 'Pick two different runs.')); return;
+    }
+    go.disabled = true; out.textContent = '';
+    out.append(el('p', 'dim', 'Comparing…'));
+    try {
+      const d = await get(`/api/discovery/compare?a=${encodeURIComponent(a.value)}`
+        + `&b=${encodeURIComponent(b.value)}`);
+      out.textContent = '';
+      renderComparison(out, d);
+    } catch (e) {
+      out.textContent = '';
+      out.append(el('p', 'dim', e.message || 'Those two runs could not be compared.'));
+    } finally { go.disabled = false; }
+  });
+  bar.append(a, el('span', 'dim', 'and'), b, go);
+  host.append(bar, out);
+}
+
+function renderComparison(host, c) {
+  const s = c.summary || {};
+  const head = el('div', 'cmphead ' + (c.verdict || ''));
+  head.append(el('div', 'route-lab', (c.verdict || '').replace(/_/g, ' ')));
+  head.append(el('div', null, c.verdict_text));
+  head.append(el('div', 'dim', `A: ${c.a.title || c.a.run_dir} · B: ${c.b.title || c.b.run_dir}`));
+  host.append(head);
+
+  /* The inputs first: two runs asked different things did not measure
+     variability, they measured the difference in the questions. */
+  if ((c.input_differences || []).length) {
+    host.append(el('div', 'plan-lab', 'What was different going in'));
+    c.input_differences.forEach(d => {
+      const row = el('div', 'cmpin');
+      row.append(el('b', null, d.field.replace(/_/g, ' ')));
+      row.append(el('span', 'mono dim', ` A: ${fmtVal(d.a)} · B: ${fmtVal(d.b)}`));
+      row.append(el('div', null, d.means));
+      host.append(row);
+    });
+  }
+
+  host.append(el('div', 'plan-lab', 'Levers'));
+  host.append(el('p', 'dim', `${s.levers_agreed} of ${s.levers_total} agreed`
+    + (s.levers_opposed ? ` · ${s.levers_opposed} pushed opposite ways` : '')
+    + (s.levers_only_one ? ` · ${s.levers_only_one} raised by one run only` : '')));
+  if ((c.levers || []).length) {
+    host.append(foldTable(['Lever', 'Run A', 'Run B', ''], c.levers.map(l => {
+      const a = l.a || {}, b = l.b || {};
+      const tag = el('span', 'tag ' + (AGREE_CLS[l.agreement] || 'mut'),
+        AGREE_WORD[l.agreement] || l.agreement);
+      const side = x => x && x.direction
+        ? `${x.direction}${x.value == null ? '' : ' → ' + num(x.value)}` : '—';
+      return { key: 'cmp:' + l.parameter_id, cells: [l.label, side(a), side(b), tag],
+        detail: appendAll(el('div'), [
+          kv('Run A', a.hypothesis_id ? `${a.hypothesis_id} · ${a.confidence || '—'} confidence`
+            : 'did not raise this lever'),
+          kv('Run B', b.hypothesis_id ? `${b.hypothesis_id} · ${b.confidence || '—'} confidence`
+            : 'did not raise this lever'),
+        ]) };
+    }), 'cmp'));
+  }
+
+  const diff = (c.values || []).filter(v => v.agreement !== 'agreed');
+  if (diff.length) {
+    host.append(el('div', 'plan-lab', 'Recommended values that differ'));
+    diff.forEach(v => {
+      const row = el('div', 'cmpval');
+      row.append(el('b', null, v.label || v.parameter_id));
+      row.append(el('span', 'dim', ` ${v.stage_id}`));
+      row.append(el('span', 'mono', ` A ${fmtVal((v.a || {}).value)} · B ${fmtVal((v.b || {}).value)}`
+        + (v.unit ? ' ' + v.unit : '')));
+      host.append(row);
+    });
+  }
+
+  host.append(el('div', 'plan-lab', 'To make a rerun comparable'));
+  const ul = el('ul', 'tight');
+  (c.to_make_them_comparable || []).forEach(t => ul.append(el('li', null, t)));
+  host.append(ul);
+  host.append(el('p', 'caveat', c.note));
+}
+
+function fmtVal(v) {
+  if (v == null || v === '') return '—';
+  if (Array.isArray(v)) return v.length ? v.join(', ') : 'none';
+  if (typeof v === 'number') return num(v);
+  return String(v);
 }
 
 /* The project as a workspace: what the process is, what is running in it, and

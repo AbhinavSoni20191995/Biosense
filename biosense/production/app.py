@@ -2495,6 +2495,29 @@ class Handler(BaseHTTPRequestHandler):
             return None, (404, {'error': 'no such discovery run'})
         return d, state.get('status')
 
+    def _compare_runs(self, a, b, *, fmt='json'):
+        """Two of this person's ended runs, compared by code.
+
+        Both have to be theirs and both have to have ended: a run still
+        writing its files would be compared against a moving target, which is
+        a different and more confusing kind of difference.
+        """
+        from . import compare_runs as CMP
+        identity = self._identity()
+        dirs = []
+        for rid in (a, b):
+            d, status = self._ended_run_dir(rid, identity)
+            if d is None:
+                return self._send(*status)
+            dirs.append(d)
+        try:
+            doc = CMP.compare(*dirs)
+        except K.ContractError as e:
+            return self._send(400, {'error': str(e)})
+        if fmt == 'md':
+            return self._send(200, CMP.markdown(doc), 'text/markdown; charset=utf-8')
+        return self._send(200, doc)
+
     def _record_results(self, rid, body):
         """A scientist's measurements of a round, entered against that round's plan.
 
@@ -3003,6 +3026,9 @@ class Handler(BaseHTTPRequestHandler):
                 'note': 'Every run you have started, live or finished, from this process and '
                         'from its records on disk. A run keeps going whether or not this page '
                         'is open: closing the browser observes less, it does not stop work.'})
+        if path == '/api/discovery/compare':
+            return self._compare_runs((q.get('a') or [''])[0], (q.get('b') or [''])[0],
+                                      fmt=(q.get('format') or ['json'])[0])
         m = re.fullmatch(r'/api/discovery/([^/]+)', path)
         if m:
             after = int((q.get('after') or ['-1'])[0] or -1)
