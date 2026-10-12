@@ -3067,6 +3067,18 @@ class Handler(BaseHTTPRequestHandler):
                 doc = {k: v for k, v in protocol.items()
                        if k not in ('summary_counts', 'changed_parameters', 'badge')}
                 return self._send(200, PSUM.markdown(doc), 'text/markdown; charset=utf-8')
+            if fmt == 'docx':
+                # The bench copy: the same protocol, in the order the work
+                # happens, as a file somebody can print and sign.
+                from . import lab_protocol as LP
+                name = re.sub(r'[^A-Za-z0-9._-]+', '-',
+                              (protocol.get('title') or 'protocol'))[:60].strip('-') or 'protocol'
+                body = LP.tobytes(protocol, run_id=m.group(1))
+                return self._send(
+                    200, body,
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    extra=[('Content-Disposition',
+                            f'attachment; filename="{name}-{m.group(1)[:8]}.docx"')])
             return self._send(200, protocol)
         if path == '/api/runs':
             return self._send(200, self.registry.recent())

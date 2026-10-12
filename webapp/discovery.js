@@ -3502,6 +3502,12 @@ function renderExports(snap) {
     if (note) host.append(el('div', 'note', note));
   };
   if (snap.result && snap.result.protocol) {
+    /* The bench copy first: a Word file is what gets printed, signed and
+       emailed to whoever actually runs it. Markdown is for the repository. */
+    mk('Protocol for the bench (Word)', `/api/discovery/${id}/protocol?format=docx`,
+      'The same protocol in the order the work happens: what is still undecided, each '
+      + 'stage with what goes in and when, the vessel settings, what to measure, and an '
+      + 'approval block for a named person to sign. Nothing in it is approved.');
     mk('Export protocol (Markdown)', `/api/discovery/${id}/protocol?format=md`,
       'The recommended protocol, its provenance tags and the hypothesis ledger.');
   }

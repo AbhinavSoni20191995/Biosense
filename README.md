@@ -565,6 +565,31 @@ indeterminate on purpose — it means *the system is active*, and no percentage 
 invented. A header indicator says when AI is working somewhere else:
 `● 2 AI RUNS ACTIVE`.
 
+A run also survives the **computer going to sleep**. While one is working the
+process asks the machine to stay awake (`caffeinate` on macOS, `systemd-inhibit`
+on Linux, `SetThreadExecutionState` on Windows); when it sleeps anyway, the time
+it was away is measured — the wall clock counts the sun, the monotonic clock
+counts this machine running — and given back, because a suspended run spends no
+model credit and a time limit is a bill cap. The run says so in its timeline,
+and the page rebuilds its event stream on waking instead of showing a frozen
+run. Nothing executes while a machine is suspended, so a run that has to carry
+on unattended belongs on a server that does not sleep.
+
+**Two runs of the same question can be compared.** Ask the same thing twice and
+a language model does not write the same file twice, so the run list offers a
+comparison: the inputs that differed first (model, objective, effort, datasets
+— each explains anything that follows), then lever by lever — agreed, same
+direction with a different dose, pushed opposite ways, or raised by one run
+only. A lever one run of two found is a candidate for the round plan, not a
+finding. Neither run is called the better one: agreement says the pipeline is
+stable, not that the biology is right.
+
+**The protocol exports as a Word document for the bench** — what is still
+undecided first, each stage with what goes in and when, the vessel settings an
+operator enters, what to measure, one row per vessel for the round, and an
+approval block for a named person to sign. "PROPOSED — NOT APPROVED" is on it
+twice, and every number keeps the letter that says what stands behind it.
+
 Full design, including what happens on a backend restart →
 **[docs/PRODUCT_STATE.md](docs/PRODUCT_STATE.md)**
 
@@ -862,7 +887,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1415 tests
+uv run --frozen python -m unittest     # 1434 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

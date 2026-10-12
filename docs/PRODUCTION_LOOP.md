@@ -38,7 +38,68 @@ bioreactor; nothing here touches an actuator.
 | `bioinformatics_report` | bioinformatics tools | per gene: found or not, annotated effects with direction, conditions, confidence and source; implicated protocol levers; assays that cannot run here; limitations |
 | `analysis_report` | `analyze` | verdict, per-arm target and QC, genotype comparison, diagnosis hypotheses, data integrity |
 | `human_consult` | orchestrator | question, why it matters, the assay that cannot run here, expected gain, options, **blocking**, and **what happens if nobody answers** |
+| `baseline_protocol` | literature agent | the published route stage by stage: every stage of the project, what goes in the medium, the dose where a source gives one with the sentence quoted; `reported` / `adapted` / `design_choice` / `gap` per factor, and a stage nobody addressed stated rather than missing |
 | `loop_decision` | orchestrator agent, or the policy | type, `authored_by`, `reasoning`, `considered` alternatives, `hypotheses` with their basis, `tool_calls`, `consult_ids`, the `allowed_actions` it was validated against, the `policy_advice` it may have overridden, `advances_iteration`, `status` |
+
+## The whole route, two runs compared, and a copy for the bench
+
+Three things a protocol document cannot do on its own, and where each lives:
+
+**Every stage, not only the one that changed** (`baseline_protocol`,
+`biosense/evidence/baseline.py`). A protocol carries a dose only for a
+parameter the project registered. A project made from the quick form has the
+vessel controls and no biology, so a run that researched all four stages still
+renders three of them as "no inducer set". The literature specialist writes the
+established route instead — every stage of the project, what goes into the
+medium, the dose where a source gives one and the sentence it rests on. A
+`reported` factor cites a source; `adapted` says which context it came from;
+`design_choice` carries a rationale and no citation; `gap` carries **no value**
+and says what to search. A stage nobody addressed comes back stated, not
+missing. These rows reach the plan marked **PUB**, never as protocol values:
+registering one as a parameter is still a person's act.
+
+**Two runs of the same question** (`biosense/production/compare_runs.py`,
+`/api/discovery/compare?a=…&b=…`). A run is a language model reading papers, so
+two runs of one question are two samples, not one answer repeated. The
+comparison reads what each run wrote: the inputs first (a different model,
+objective, effort or dataset explains everything that follows, so it is
+reported before any output is), then lever by lever — agreed, same direction
+with a different dose, pushed opposite ways, or raised by one run only. A lever
+one run of two found is a candidate for the round plan, not a finding. Nothing
+in it calls either run the better one; agreement means the pipeline is stable,
+not that the biology is right.
+
+**A copy somebody can sign** (`biosense/production/lab_protocol.py`,
+`?format=docx`). The same protocol as a Word document in the order the work
+happens: what is still undecided first, then each stage with what goes in and
+when, the vessel settings an operator enters, what to measure, the round as one
+row per vessel, and an empty approval block. "PROPOSED — NOT APPROVED" is at
+the top and the bottom, and every number keeps its letter. The writer
+(`biosense/production/docx.py`) is about two hundred lines of OOXML on the
+standard library rather than a fourth dependency.
+
+## A sleeping computer
+
+A run's time limit is a bill cap, and a suspended process buys nothing: no turn
+runs, no token is spent. So a laptop that sleeps must not cost a run.
+
+- While a real run is working the process holds a wake lock (`awake.py`):
+  `caffeinate -i -w <pid>` on macOS, `systemd-inhibit` on Linux,
+  `SetThreadExecutionState` on Windows. It is a request, not a guarantee — a
+  closed lid or a flat battery wins — and a machine that cannot hold one says
+  so in the run's timeline instead of implying it can.
+- When the machine sleeps anyway, `clock.py` measures it: the wall clock counts
+  the sun and the monotonic clock counts this machine running, so their drift
+  is the time it was away. The deadline, the wrap-up warning and the pause hold
+  all move by exactly that, and the run says so in its timeline. Windows counts
+  suspended time in its monotonic clock, so no gap is visible there and the cap
+  stays wall-clock — a weaker promise, stated rather than implied.
+- The page notices a tick that arrives late, rebuilds its event stream and
+  re-reads the run, so waking up does not show a frozen run.
+
+For a run that must continue while you walk away from the machine entirely,
+run the server somewhere that does not sleep; nothing in a suspended process
+executes, whatever this does for its bookkeeping.
 
 ## How much the person stays in the loop
 
@@ -236,6 +297,10 @@ $C propose-decision --decision my_decision.json --analysis runs/loop1/it0/analys
    --protocol runs/loop1/it0/protocol.approved.json --request $X/request.cart_d10.json \
    --loop-dir runs/loop1 --check-only
 $C loop-status --loop-dir runs/loop1
+
+# two runs of the same question, compared by code
+uv run --frozen python -m biosense.production.compare_runs \
+   data/runs/ai-20261012-aaa111 data/runs/ai-20261012-bbb222 --markdown
 ```
 
 Live: `omnigent run discovery_loop`, then for example:
