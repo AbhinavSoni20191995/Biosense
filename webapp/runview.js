@@ -29,6 +29,14 @@ const RV = (() => {
 
   function isLive(snap) { return LIVE.has(snap && snap.status); }
 
+  function fmtGap(s) {
+    s = Math.round(s || 0);
+    if (s < 90) return `${s} seconds`;
+    const m = Math.round(s / 60);
+    if (m < 90) return `${m} minutes`;
+    return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
+  }
+
   /* A results box survives the header being redrawn on the next snapshot:
      what a person typed is theirs until they send it. */
   const followDrafts = {};
@@ -195,6 +203,18 @@ const RV = (() => {
         : `${Math.round(left / 60)} min`));
     }
     host.append(stats);
+
+    /* A run that came back from a sleeping computer says so, with what it cost
+       (nothing) and what moved (the limit). Without this the elapsed time
+       reads as hours of work that never happened. */
+    const sus = snap.suspension || {};
+    if (sus.suspended_s > 0) {
+      host.append(el('p', 'rv-note', `This computer was asleep for about `
+        + `${fmtGap(sus.suspended_s)} during this run`
+        + (sus.suspensions > 1 ? ` (${sus.suspensions} times)` : '') + '. '
+        + 'The run was suspended with it and spent nothing, so its time limit was moved by '
+        + 'the same amount rather than counting the time it was away.'));
+    }
 
     /* The time limit is a bill cap, not a verdict. Near it the orchestrator is
        told to write what it has, and the person may buy it more time — a
@@ -425,8 +445,34 @@ const RV = (() => {
       };
     }
     snapshot().then(s => { if (isLive(s)) stream(); }).catch(e => on.error && on.error(e));
-    const poll = setInterval(() => { if (!stopped) snapshot().catch(() => {}); }, 10000);
-    return () => { stopped = true; clearInterval(poll); if (es) es.close(); };
+
+    /* A laptop that sleeps takes the event stream with it. The timer that was
+       meant to fire every 10 s fires once, late, on wake; the EventSource is
+       dead and its own retry is a few seconds behind. Both are survivable —
+       the run never depended on this connection — but the page shows a frozen
+       run for as long as it takes to notice. So waking is detected rather than
+       waited out: a tick that arrives far later than it was due means the
+       machine was away, and the stream is rebuilt immediately. */
+    const EVERY = 10000;
+    let due = Date.now() + EVERY;
+    function resync(why) {
+      if (stopped) return;
+      if (es) { es.close(); es = null; }
+      snapshot().then(s => { if (isLive(s)) stream(); }).catch(() => {});
+      if (on.resumed && why) on.resumed(why);
+    }
+    const poll = setInterval(() => {
+      if (stopped) return;
+      const late = Date.now() - due;
+      due = Date.now() + EVERY;
+      if (late > 30000) { resync('slept'); return; }
+      snapshot().catch(() => {});
+    }, EVERY);
+    const onWake = () => { if (document.visibilityState === 'visible') resync(null); };
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener('online', () => resync('reconnected'));
+    return () => { stopped = true; clearInterval(poll); if (es) es.close();
+      document.removeEventListener('visibilitychange', onWake); };
   }
 
   return { header, stages, agents, timeline, limitations, attach, isLive, statusText, el,

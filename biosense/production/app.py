@@ -107,7 +107,9 @@ from .. import glossary as GL
 from .. import workspace as WS
 from . import activity as ACT
 from . import authz as AZ
+from . import awake as AW
 from . import budget as BU
+from . import clock as CL
 from . import discovery as DISC
 from . import discovery_runner as DRUN
 from . import engine as EN
@@ -351,6 +353,9 @@ class DiscoveryRun:
         self.pause_reason = None        # 'deadline': the clock ran out. 'person': they chose.
         self.pause_remaining_s = None   # a person pause gives its remaining time back
         self.wrap_up_sent = False
+        # A sleeping laptop spends nothing, so it must not spend the time limit
+        # either. This watches for the gap and the deadline is moved by it.
+        self.suspend = CL.SuspendWatch()
         self._inbox = []            # messages for the orchestrator, delivered by the adapter
         self.cancelled = None       # the reason it was stopped, once it is
         self.events = []
@@ -883,6 +888,7 @@ class DiscoveryRun:
         """
         if self.cancelled:
             return True
+        self._credit_suspension()
         if self.paused:
             if time.time() - self.paused_at > PAUSE_HOLD_S:
                 self.cancelled = 'pause_unanswered'
@@ -907,6 +913,43 @@ class DiscoveryRun:
                               'hypothesis with what it already has.',
                        technical='wrap-up sent %d s before the deadline' % WRAP_UP_S)
         return False
+
+    def _credit_suspension(self):
+        """Give back time the machine was asleep for, before any clock is read.
+
+        The time limit is a bill cap, and a suspended process buys nothing: no
+        turn runs, no token is spent. Charging a run for the hours a laptop
+        spent closed would stop it for a cost it never incurred, which is the
+        one way this limit can be unfair rather than merely strict. So the
+        deadline, the wrap-up warning and the pause hold all move by exactly
+        the measured gap.
+
+        It is said out loud in the timeline, because a run whose limit silently
+        moves is a run whose limit nobody can predict.
+        """
+        gap = self.suspend.check()
+        if not gap:
+            return 0.0
+        with self.cv:
+            if self.deadline:
+                self.deadline += gap
+            if self.paused_at:
+                self.paused_at += gap
+            # The warning was for a deadline that has moved; it is given again
+            # as the new one approaches.
+            if self.wrap_up_sent and self.deadline and time.time() < self.deadline - WRAP_UP_S:
+                self.wrap_up_sent = False
+        self.add({'kind': 'note', 'stage': None,
+                  'simple': f'This computer was asleep for about {CL.describe(gap)}. The run was '
+                            f'suspended with it and spent nothing, so its time limit was moved '
+                            f'by the same amount rather than counting the time it was away.',
+                  'technical': f'suspend credited: {gap:.0f} s (wall advanced, monotonic did not)'})
+        # The state file has not been written for as long as the machine was
+        # away, which is how a reader decides a run is stale. Written now, so a
+        # run that slept for longer than that is not called interrupted while
+        # it is working.
+        self.persist()
+        return gap
 
     def _tell(self, text, *, simple, technical=None):
         with self.cv:
@@ -1140,6 +1183,7 @@ class DiscoveryRun:
                 'extensions_left': self.extensions_left,
                 'extension_s': EXTENSION_S,
                 'wrap_up_sent': self.wrap_up_sent,
+                'suspension': self.suspend.snapshot(),
                 'recovered': False,
             }
 
@@ -1158,6 +1202,10 @@ class DiscoveryRegistry:
         self.lock = threading.Lock()
         self.active_real = 0
         self.active_synthetic = 0
+        # While a real run is working, ask this machine not to idle-sleep. A
+        # hosted deployment holds nothing (the server is not the laptop being
+        # closed) and says so rather than implying a guarantee.
+        self.keeper = AW.Keeper()
 
     def _evict(self):
         now = time.time()
@@ -1293,6 +1341,14 @@ class DiscoveryRegistry:
             time.sleep(0.75)
 
     def _work(self, run, target):
+        awake_hold = self.keeper.acquire() if target.is_real else None
+        if awake_hold is not None and not awake_hold.held and run.deadline:
+            run.add({'kind': 'note', 'stage': None,
+                     'simple': 'This machine could not be asked to stay awake, so it may sleep '
+                               'while the run works. If it does, the run is suspended and picks '
+                               'up where it left off when the machine wakes; its time limit is '
+                               'moved by however long it was away, not spent.',
+                     'technical': f'wake lock not held: {awake_hold.why or awake_hold.how}'})
         try:
             run.status = 'running'
             if target.is_real:
@@ -1393,6 +1449,8 @@ class DiscoveryRegistry:
                      'technical': f'{type(e).__name__}: {e}'})
             run.finish('error', None, f'{type(e).__name__}: {e}', reason='internal_error')
         finally:
+            if awake_hold is not None:
+                self.keeper.release()
             with self.lock:
                 if target.is_real:
                     self.active_real = max(0, self.active_real - 1)
