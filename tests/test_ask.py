@@ -29,6 +29,14 @@ from tests.test_omnigent_runtime import (_Harness, _Session, _Sessions, cfg_for,
                                          setUpModule, tearDownModule)
 
 
+class _Gap:
+    """A stream frame that is not an event: the adapter maps it to nothing.
+
+    Stands in for the quiet in the middle of a turn, when the agent is running
+    a tool and the session reads as idle.
+    """
+
+
 def reply(text):
     return ev('response.output_item.done',
               item={'type': 'message', 'role': 'assistant',
@@ -99,6 +107,73 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(out['fresh'])
         self.assertIn('create', [c[0] for c in h.last_client.sessions.calls])
         self.assertEqual('From the files: …', out['answer'])
+
+    def test_a_lull_in_the_middle_of_a_turn_is_not_the_end_of_the_answer(self):
+        """The bug a person actually hit: a question came back answered with
+        "I'll read the run's files" and nothing else.
+
+        An agent says what it is about to do, then reads files for a while with
+        nothing on the stream. A session polled in that gap reports idle. The
+        old loop believed one such reading, kept the preamble and called it the
+        answer.
+        """
+        h = _Harness().install(self)
+        h.events = [reply("I'll read the run's files to answer from what it actually found."),
+                    _Gap(),         # the tool runs: the stream goes quiet and closes
+                    reply('M-CSF at 100 ng/mL in myeloid (H01, vanWilgenburg2013). '
+                          'Expansion and mesoderm have no dose in this run; both are gaps.'),
+                    ev('response.completed')]
+        with mock.patch.object(OMNI, 'IDLE_RECHECK_S', 0.01), \
+             mock.patch.object(OMNI, 'STREAM_POLL_S', 0.05):
+            out = OMNI.answer(cfg_for(), 'What are the inducers?', session_id='conv_run')
+        self.assertIn('M-CSF at 100 ng/mL', out['answer'])
+        self.assertIsNone(out['error'])
+
+    def test_a_promise_with_no_answer_behind_it_is_a_failure_not_a_reply(self):
+        """If the agent really does stop after its preamble, the person is told
+        that, in its own words — not handed the promise as though it answered."""
+        h = _Harness().install(self)
+        h.events = [reply("I'll read the run's files to answer from what it actually found.")]
+        with mock.patch.object(OMNI, 'IDLE_RECHECK_S', 0.01), \
+             mock.patch.object(OMNI, 'STREAM_POLL_S', 0.05), \
+             mock.patch.object(OMNI, 'ANSWER_SETTLE', 2):
+            out = OMNI.answer(cfg_for(), 'What are the inducers?', session_id='conv_run')
+        self.assertIsNone(out['answer'])
+        self.assertIn('said what it would do and then stopped', out['error'])
+        self.assertIn("I'll read the run's files", out['error'])
+        self.assertEqual(1, out['nudged'], 'asked once for the answer before giving up')
+        posted = [c for c in h.last_client.sessions.calls if c[0] == 'post_event']
+        self.assertEqual(2, len(posted), 'the question, then the nudge')
+        self.assertIn('Give the answer itself now',
+                      posted[1][2]['data']['content'][0]['text'])
+
+    def test_a_preamble_followed_by_the_answer_is_an_answer(self):
+        """Saying what you are about to do and then doing it is the normal
+        shape of a reply; only the promise alone is the failure."""
+        self.assertFalse(OMNI._is_preamble(
+            ["I'll read the files.", 'M-CSF at 100 ng/mL in myeloid (H01).']))
+        self.assertTrue(OMNI._is_preamble(
+            ["I'll read the files.", 'Let me check the round plan too.']))
+
+    def test_a_long_reply_is_never_treated_as_a_preamble(self):
+        """The nudge must not fire on an answer that happens to open politely."""
+        self.assertFalse(OMNI._is_preamble(
+            ['Sure — the inducers are BMP4 and VEGF in mesoderm (H01).']))
+        self.assertFalse(OMNI._is_preamble(
+            ['I will not speculate: no source in this run doses GM-CSF for a stirred tank, '
+             'so the protocol records it as a gap rather than guessing. ' + 'x' * 400]))
+        self.assertTrue(OMNI._is_preamble(['Let me check the files.']))
+
+    def test_the_same_message_replayed_on_a_reopened_tail_is_not_new_work(self):
+        """A reopened stream can hand back what it already handed back. Twice
+        the same sentence is one sentence, and it may not read as progress."""
+        h = _Harness().install(self)
+        h.events = [reply('The answer is M-CSF.')]        # replayed on every reopen
+        with mock.patch.object(OMNI, 'IDLE_RECHECK_S', 0.01), \
+             mock.patch.object(OMNI, 'STREAM_POLL_S', 0.05), \
+             mock.patch.object(OMNI, 'ANSWER_SETTLE', 2):
+            out = OMNI.answer(cfg_for(), 'q', session_id='conv_run')
+        self.assertEqual('The answer is M-CSF.', out['answer'], 'said once, not twice')
 
     def test_a_synthetic_runtime_has_no_one_to_ask(self):
         with self.assertRaises(K.ContractError):

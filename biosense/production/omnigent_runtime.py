@@ -37,6 +37,7 @@ exception message or a log line.
 from __future__ import annotations
 
 import asyncio
+import re
 import threading
 import time
 
@@ -580,6 +581,35 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop, inbox=
 
 # A question after the run is one turn, not a run: bounded on its own.
 ANSWER_TIMEOUT_S = 600
+# How many consecutive quiet readings end an answer's turn. A session reads as
+# idle while the agent runs a tool, so one reading means nothing.
+ANSWER_SETTLE = 3
+ANSWER_NUDGE_LIMIT = 1
+ANSWER_NUDGE_TEXT = (
+    'BioSense: you said what you were going to do and then stopped, so the person has your '
+    'preamble and no answer. Give the answer itself now, in this message: lead with the '
+    'direct reply, then the basis, citing the run\'s own files. Do not dispatch a '
+    'specialist and do not change any file.')
+# What a reply looks like when it is a promise rather than an answer.
+_PREAMBLE = re.compile(r"^\s*(i(?:'| a|\u2019)?m? ?(?:will|'ll| will)?\s*(?:now\s*)?"
+                       r"(?:read|look|check|review|go through|start|begin|examine|open)"
+                       r"|let me\b|one moment|first,? (?:i|let))", re.I)
+PREAMBLE_MAX_CHARS = 400
+
+
+def _is_preamble(said):
+    """True when everything the agent has said is a statement of intent.
+
+    Every message has to be one: a preamble followed by the answer is an
+    answer, and treating it as a preamble would throw the answer away.
+    Deliberately narrow otherwise — short, and opening the way somebody opens
+    before doing the work rather than reporting it. A long message is never a
+    preamble however it begins, because the length is the answer.
+    """
+    parts = [t.strip() for t in said if t and t.strip()]
+    if not parts:
+        return True
+    return all(len(t) <= PREAMBLE_MAX_CHARS and _PREAMBLE.match(t) for t in parts)
 
 
 def answer(cfg, text, *, session_id=None, title=None, timeout_s=None):
@@ -632,7 +662,16 @@ async def _answer(cfg, text, *, session_id, title, timeout_s):
         # Opened before the question is posted, so the reply cannot slip past.
         stream = client.sessions.stream(session_id).__aiter__()
         await _post_user(client, session_id, text)
+        # An answer is one turn, and a turn goes quiet in the middle of itself:
+        # the agent says what it is about to do, then reads files for a while
+        # with nothing on the stream. A session polled in that gap reports
+        # idle, and believing one such reading is how a question came back
+        # answered with only "I'll read the run's files" — the preamble, kept
+        # as though it were the answer. So the end of a turn is confirmed the
+        # way the run loop confirms it: several consecutive quiet readings,
+        # with the tail reopened in between.
         said, error, done, timed_out = [], None, False, False
+        settled, nudged, seen = 0, 0, set()
         deadline = time.monotonic() + timeout_s
         while not done:
             if time.monotonic() > deadline:
@@ -643,9 +682,7 @@ async def _answer(cfg, text, *, session_id, title, timeout_s):
                     pass
                 break
             raw = None
-            if stream is None:
-                await asyncio.sleep(IDLE_RECHECK_S)
-            else:
+            if stream is not None:
                 try:
                     raw = await asyncio.wait_for(stream.__anext__(), timeout=STREAM_POLL_S)
                 except asyncio.TimeoutError:
@@ -654,31 +691,76 @@ async def _answer(cfg, text, *, session_id, title, timeout_s):
                     stream = None
                 except Exception:  # noqa: BLE001 - a dropped tail is reopened
                     stream = None
-            if raw is None:
-                if stream is None and said:
-                    try:
-                        live = await client.sessions.get(session_id)
-                        if (getattr(live, 'status', None) or '').lower() not in SESSION_LIVE:
-                            done = True
-                    except Exception:  # noqa: BLE001
-                        done = True
-                elif stream is None:
-                    stream = await _reopen(client, session_id)
-                    if stream is None:
-                        await asyncio.sleep(IDLE_RECHECK_S)
+            progress = False
+            if raw is not None:
+                mapped = ST.map_event(raw)
+                if mapped is None:
+                    continue
+                if mapped['kind'] in ('terminal', 'error') and mapped.get('stage') in ST.TERMINAL:
+                    # The session saying it is finished is the one signal that
+                    # needs no confirming.
+                    if mapped['stage'] == 'failed':
+                        error = mapped.get('technical') or 'the session failed'
+                    done = True
+                    continue
+                if mapped['kind'] == 'message' and mapped.get('role') == 'assistant':
+                    text = mapped.get('technical') or ''
+                    # A reopened tail can hand back what it already handed
+                    # back. The same sentence twice is one sentence, and it is
+                    # not evidence that the agent is still working.
+                    if text not in seen:
+                        seen.add(text)
+                        said.append(text)
+                        progress = True
+                else:
+                    progress = True
+            if progress:
+                settled = 0
                 continue
-            mapped = ST.map_event(raw)
-            if mapped is None:
+            if raw is not None and stream is not None:
                 continue
-            if mapped['kind'] == 'message' and mapped.get('role') == 'assistant':
-                said.append(mapped.get('technical') or '')
-            elif mapped['kind'] in ('terminal', 'error') and mapped.get('stage') in ST.TERMINAL:
-                if mapped['stage'] == 'failed':
-                    error = mapped.get('technical') or 'the session failed'
-                done = True
-        return {'answer': '\n\n'.join(t for t in said if t.strip()) or None,
-                'session_id': session_id, 'fresh': fresh, 'error': error,
-                'timed_out': timed_out}
+
+            if stream is None:
+                stream = await _reopen(client, session_id)
+            try:
+                live = await client.sessions.get(session_id)
+                status = (getattr(live, 'status', None) or '').lower()
+            except Exception:  # noqa: BLE001 - a failed poll is not a finished answer
+                status = ''
+            if status == 'failed':
+                error = _task_error(getattr(live, 'last_task_error', None)) or 'the session failed'
+                break
+            if status in SESSION_LIVE or not status:
+                settled = 0
+                if stream is None:
+                    await asyncio.sleep(IDLE_RECHECK_S)
+                continue
+            settled += 1
+            if settled < ANSWER_SETTLE:
+                await asyncio.sleep(IDLE_RECHECK_S)
+                continue
+            # Quiet, repeatedly, and nothing but a preamble to show for it: the
+            # agent said what it would do and stopped. Asked once for the
+            # answer itself before giving up, because the alternative is
+            # handing the person a promise and calling it a reply.
+            if nudged < ANSWER_NUDGE_LIMIT and _is_preamble(said):
+                nudged += 1
+                await _post_user(client, session_id, ANSWER_NUDGE_TEXT)
+                settled = 0
+                stream = stream or await _reopen(client, session_id)
+                continue
+            done = True
+        text = '\n\n'.join(t for t in said if t.strip()) or None
+        if text and not error and not timed_out and _is_preamble(said):
+            # A promise is not a reply. Reported as a failure with its own
+            # words, rather than handed over as though the question had been
+            # answered — which is what a person sees and believes.
+            return {'answer': None, 'session_id': session_id, 'fresh': fresh,
+                    'timed_out': False, 'nudged': nudged,
+                    'error': f'the orchestrator said what it would do and then stopped: '
+                             f'{text.strip()[:200]!r}. Ask again, or start a follow-up run.'}
+        return {'answer': text, 'session_id': session_id, 'fresh': fresh, 'error': error,
+                'timed_out': timed_out, 'nudged': nudged}
     finally:
         await client.close()
 
