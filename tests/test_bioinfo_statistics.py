@@ -120,6 +120,55 @@ class ComparisonTests(unittest.TestCase):
         self.assertIn('not a mechanism', row['note'])
 
 
+class ManyReadoutTests(unittest.TestCase):
+    """The genome-wide path must be the same arithmetic, not a cheaper rule.
+
+    A transcriptome cannot pay a scipy call per gene, so `compare_many` does the
+    Welch test in closed form across all readouts at once. The thing worth
+    testing is that this changes the cost and nothing else: the same p-value,
+    the same interval, the same refusals.
+    """
+
+    def test_it_matches_the_single_comparison_exactly(self):
+        rng = np.random.default_rng(11)
+        items = [(f'G{i}', rng.normal(5, 1.5, 4), rng.normal(5.4, 1.2, 5)) for i in range(40)]
+        many = S.compare_many(items)
+        for (name, a, b), row in zip(items, many):
+            one = S.compare_groups(name, a, b, ci='welch')
+            self.assertAlmostEqual(one['p_value'], row['p_value'], places=12, msg=name)
+            self.assertAlmostEqual(one['ci_low'], row['ci_low'], places=12, msg=name)
+            self.assertAlmostEqual(one['ci_high'], row['ci_high'], places=12, msg=name)
+            self.assertAlmostEqual(one['effect'], row['effect'], places=12, msg=name)
+            self.assertEqual(one['ci_method'], row['ci_method'], name)
+            self.assertEqual(one['direction'], row['direction'], name)
+
+    def test_the_p_value_still_matches_scipy_directly(self):
+        a, b = [41.0, 38.2, 44.1, 40.0], [68.0, 65.4, 71.2, 69.1]
+        row = S.compare_many([('CD14', a, b)])[0]
+        self.assertAlmostEqual(float(sps.ttest_ind(b, a, equal_var=False).pvalue),
+                               row['p_value'], places=12)
+
+    def test_every_row_says_the_rank_test_was_not_run(self):
+        """Its absence here is a property of the fast path, not agreement."""
+        row = S.compare_many([('x', [1, 2, 3, 4, 5], [6, 7, 8, 9, 10])])[0]
+        self.assertIn('no rank test', row['note'])
+        self.assertEqual("Welch's t-test", row['test'])
+
+    def test_the_same_refusals_hold_per_row(self):
+        rows = S.compare_many([('thin', [5.0], [9.0, 9.5, 9.1]),
+                               ('flat', [3, 3, 3], [7, 7, 7]),
+                               ('real', [1, 2, 3], [6, 7, 9])])
+        self.assertEqual(['none', 'none', "Welch's t-test"], [r['test'] for r in rows])
+        self.assertIn('no spread', rows[0]['note'])
+        self.assertIn('both groups are constant', rows[1]['note'])
+        self.assertAlmostEqual(4.0, rows[1]['effect'], msg='an effect without a test is still real')
+
+    def test_one_constant_group_is_still_tested(self):
+        row = S.compare_many([('x', [3, 3, 3, 3], [5, 6, 7, 8])])[0]
+        self.assertEqual("Welch's t-test", row['test'])
+        self.assertIsNotNone(row['p_value'])
+
+
 class ImplicationTests(unittest.TestCase):
     def test_a_yield_readout_is_not_classified_as_a_viability_constraint(self):
         self.assertEqual('yield', IMP.readout_kind('viable_cells_e6')[0])

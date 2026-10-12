@@ -19,6 +19,12 @@ import numpy as np
 from .... import contracts as K
 from ...toolkit import statistics as S
 
+# A whole human annotation is about 60k features; more than that means the
+# rows are probes or transcripts, not genes, which is worth saying out loud.
+MAX_FEATURES = 60_000
+# Above this many features the interval is analytic rather than bootstrapped.
+BOOTSTRAP_UP_TO = 2_000
+
 NAME = 'bulk.expression_comparison'
 VERSION = '1.0.0'
 MODALITIES = ('bulk_rna', 'generic_table')
@@ -75,25 +81,35 @@ def run(table, manifest, plan):
             f'result as a derived dataset.')
 
     features = table.levels(feature)
-    if len(features) > 5000:
-        raise K.ContractError(f'{len(features)} features is beyond what this minimal tool is for; '
-                              f'use the external-tool adapter')
-
+    if len(features) > MAX_FEATURES:
+        raise K.ContractError(
+            f'{len(features)} features is more than this tool compares ({MAX_FEATURES}); that is '
+            f'more than a whole annotation, so check the feature column is genes rather than '
+            f'probes or transcripts, or run the comparison through the external-tool adapter.')
     # One pass to group rows by gene: scanning the whole table once per gene
     # made a few-thousand-gene public series take minutes.
     by_gene = {}
     for i, r in enumerate(table.rows):
         by_gene.setdefault(r[feature], []).append(i)
-    rows = []
+    groups = []
     for g in features:
         idx = by_gene.get(g, [])
         a = [vals[i] for i in idx if table.rows[i][cond] == control]
         b = [vals[i] for i in idx if table.rows[i][cond] == treatment]
         if len(a) < S.MIN_N or len(b) < S.MIN_N:
             continue
-        rows.append(S.compare_groups(g, a, b, group_a=control, group_b=treatment,
-                                     effect_type='difference',
-                                     independence_note=f'{len(a)} vs {len(b)} samples per group'))
+        groups.append((g, a, b))
+    # A handful of readouts gets the bootstrap interval and the rank test
+    # beside the t-test. A transcriptome gets the same Welch arithmetic in
+    # closed form across all of them at once: a scipy call per gene is
+    # milliseconds of signature handling, which is a minute across 17,000.
+    if len(groups) > BOOTSTRAP_UP_TO:
+        rows = S.compare_many(groups, group_a=control, group_b=treatment)
+    else:
+        rows = [S.compare_groups(g, a, b, group_a=control, group_b=treatment,
+                                 effect_type='difference',
+                                 independence_note=f'{len(a)} vs {len(b)} samples per group')
+                for g, a, b in groups]
     if not rows:
         raise K.ContractError('no feature has at least two samples in both groups')
     S.apply_fdr(rows)

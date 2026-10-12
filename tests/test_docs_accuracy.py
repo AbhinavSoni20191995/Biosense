@@ -204,7 +204,10 @@ class ReadmeTests(unittest.TestCase):
         m = re.search(r'python -m unittest\s+#\s*(\d+) tests', self.readme)
         self.assertIsNotNone(m, 'the README no longer quotes a test count')
         import unittest as ut
-        total = ut.defaultTestLoader.discover(str(K.ROOT / 'tests'),
+        # Discover what the quoted command discovers: the whole tree, not only
+        # tests/. Counting the package tests alone made the README look stale by
+        # exactly the number of cases sitting at the root.
+        total = ut.defaultTestLoader.discover(str(K.ROOT),
                                               top_level_dir=str(K.ROOT)).countTestCases()
         self.assertAlmostEqual(int(m.group(1)), total, delta=15,
                                msg=f'README says {m.group(1)} tests; there are {total}')
