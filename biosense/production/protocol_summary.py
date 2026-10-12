@@ -572,7 +572,8 @@ def _effect_line(e):
             f'{rel} [{et}]{basis}')
 
 
-def display(doc, *, devmap=None, sota=None, baseline=None, culture_format=None):
+def display(doc, *, devmap=None, sota=None, baseline=None, culture_format=None,
+            bench=None):
     """The payload the interface renders: the document plus a few derived counts."""
     changed = [p for st in doc['stages'] for p in st['parameters'] if p['changed']]
     ledger = doc['hypothesis_ledger']
@@ -599,6 +600,9 @@ def display(doc, *, devmap=None, sota=None, baseline=None, culture_format=None):
         # The vessel this protocol was written for, so laying it out in
         # another one knows what it is translating from.
         'culture_format': culture_format,
+        # What round 1 needs at the bench, so the written protocol and the
+        # Word copy carry it as well as the page.
+        'bench_setup': bench,
         # Every condition this run surfaced, sorted by what stands behind it,
         # so a person designing a run can see the options rather than an
         # empty stage.

@@ -20,7 +20,12 @@ class RerenderTests(unittest.TestCase):
         self.assertIn('let resultSeen', JS)
         fn = JS[JS.index('function renderResult'):JS.index('function renderEvidence')]
         self.assertIn('if (key === resultSeen)', fn)
-        self.assertIn("$('#resultPanel').hidden = false; return;", fn)
+        # The early return still shows the panel and keeps the answered layout;
+        # what it must not do is rebuild the DOM a reader has folds open in.
+        early = fn[fn.index('if (key === resultSeen)'):fn.index('resultSeen = key;')]
+        self.assertIn("$('#resultPanel').hidden = false;", early)
+        self.assertIn("classList.add('answered')", early)
+        self.assertIn('return;', early)
 
 
 class WidenTests(unittest.TestCase):

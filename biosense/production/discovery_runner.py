@@ -332,7 +332,8 @@ def _lenses(out_dir):
     out = {}
     for key, name, kind in (('devmap', 'developmental_map.json', 'developmental_map'),
                             ('sota', 'sota_comparison.json', 'sota_comparison'),
-                            ('baseline', 'baseline_protocol.json', 'baseline_protocol')):
+                            ('baseline', 'baseline_protocol.json', 'baseline_protocol'),
+                            ('bench', 'bench_setup.json', 'bench_setup')):
         try:
             doc = K.read_json(Path(out_dir) / name)
         except (OSError, ValueError):

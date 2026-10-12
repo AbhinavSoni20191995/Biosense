@@ -575,6 +575,18 @@ and the page rebuilds its event stream on waking instead of showing a frozen
 run. Nothing executes while a machine is suspended, so a run that has to carry
 on unattended belongs on a server that does not sleep.
 
+**The answer reads in the order you act in**: the hypothesis first — the claim,
+with the one-line action it implies inside it — then **round 1 at the bench**,
+then the current estimated parameters. Round 1 carries what an arms table never
+did: the medium per stage, the reagents with stock, storage and handling, how
+the culture is actually run, and the do's and don'ts with what goes wrong if
+they are ignored. A **supplier or catalogue number appears only where a source
+states it**, quoted; everything else says to use your own qualified stock,
+because a catalogue number nobody checks before ordering is the most expensive
+thing this system could invent. Stage lengths are your project's own and you
+can change them — `d0–7` was fixed in the profile, and it is a fact about your
+process, not about this software.
+
 **A run can be asked for in the vessel you actually have.** Nobody starts in a
 bioreactor, so a run can be pointed at a **6-well plate**, a **CERO 3D rotating
 tube** or a **stirred tank**, and a finished protocol can be laid out in any of
@@ -898,7 +910,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1470 tests
+uv run --frozen python -m unittest     # 1496 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

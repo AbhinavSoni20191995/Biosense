@@ -365,8 +365,16 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div id="runState" hidden style="margin-top:14px"></div>
     </section>
 
-    <!-- What the literature agent writes as it reads, before the orchestrator has
-         weighed it: leads for the scientist watching, labelled as such. -->
+    <!-- The answer, in the order a person acts on it: what the run thinks is
+         true, then the experiment that settles it, then the numbers to set. -->
+    <section class="glass card" id="resultPanel" hidden>
+      <div class="head"><h3>The hypothesis</h3><span class="hint" id="resultHead"></span></div>
+      <div id="hypothesis"></div>
+    </section>
+
+    <!-- What the literature agent writes as it reads, before the orchestrator
+         has weighed it: leads for the scientist watching, labelled as such.
+         Beside the hypothesis, because it is what the hypothesis came from. -->
     <section class="glass card" id="insightsPanel" hidden>
       <div class="head"><h3>Insights as they come</h3><span class="hint" id="insightsHead"></span></div>
       <!-- One foldable section per source, each remembering whether it is open.
@@ -424,11 +432,6 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
           <span class="dim" id="sotaSum"></span></summary>
         <div id="sotaInsights"></div>
       </details>
-      <details class="ins-sec" id="roundSec" data-key="round" hidden>
-        <summary><span class="ins-t" id="roundTitle">Round 1 at the bench</span>
-          <span class="dim" id="roundSum"></span></summary>
-        <div id="roundInsights"></div>
-      </details>
       <details class="ins-sec" id="anaSec" data-key="ana" hidden>
         <summary><span class="ins-t">Analysis details</span>
           <span class="dim" id="anaSum"></span></summary>
@@ -436,16 +439,17 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       </details>
     </section>
 
-    <!-- The answer, in the order a person acts on it: the one recommendation,
-         the plan stage by stage, then every other hypothesis. -->
-    <section class="glass card" id="resultPanel" hidden>
-      <div class="head"><h3>Recommendation</h3><span class="hint" id="resultHead"></span></div>
-      <div id="hypothesis"></div>
+    <!-- Round 1 is the next thing that happens, so it is a section rather than
+         a fold: the arms, and everything somebody needs to actually run them. -->
+    <section class="glass card span2" id="roundPanel" hidden>
+      <div class="head"><h3 id="roundTitle">Round 1 at the bench</h3>
+        <span class="hint" id="roundSum"></span></div>
+      <div id="roundInsights"></div>
     </section>
 
-    <section class="glass card" id="protocolPanel" hidden>
-      <div class="head"><h3>Plan</h3>
-        <span class="hint">the recommended protocol, stage by stage</span></div>
+    <section class="glass card span2" id="protocolPanel" hidden>
+      <div class="head"><h3>Current estimated parameters</h3>
+        <span class="hint" id="protocolHint">the protocol this run recommends, stage by stage</span></div>
       <div id="protocol"></div>
     </section>
 

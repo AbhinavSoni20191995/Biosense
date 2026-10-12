@@ -750,6 +750,21 @@ def cmd_baseline(a):
     return 0
 
 
+def cmd_bench(a):
+    """What round 1 needs at the bench: media, reagents, handling, do's and don'ts."""
+    from . import bench as BN
+    doc = BN.build(K.read_json(a.draft), project=PJ.load(a.project, a.projects_dir),
+                   run_id=a.run_id, created_by=a.created_by or 'orchestrator',
+                   round_number=a.round, culture_format=a.culture_format)
+    K.write_json_atomic(a.out, doc)
+    print(json.dumps({'written': a.out, 'coverage': doc['coverage'],
+                      'next': 'This is what turns the arms table into something somebody can '
+                              'run. A supplier or catalogue number appears only where a source '
+                              'states it; everything else says to use your own qualified '
+                              'stock, which is the honest answer and the safe one.'}, indent=1))
+    return 0
+
+
 def cmd_data_request(a):
     """What this run could not get, asked of the person who can supply it."""
     from . import datareq as DR
@@ -799,10 +814,11 @@ def cmd_template(a):
     from . import fidelity as FD
     from . import datareq as DRQ
     from . import baseline as BL
+    from . import bench as BN
     shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
              'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE,
              'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE,
-             'fidelity': FD.TEMPLATE, 'baseline': BL.TEMPLATE,
+             'fidelity': FD.TEMPLATE, 'baseline': BL.TEMPLATE, 'bench': BN.TEMPLATE,
              'data-request': DRQ.TEMPLATE}.get(a.what, TEMPLATE)
     print(json.dumps(shape, indent=2))
     return 0
@@ -906,6 +922,15 @@ def main(argv=None):
     p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
     p.add_argument('--run-id'); p.add_argument('--created-by')
     p.set_defaults(fn=cmd_baseline)
+    p = sub.add_parser('bench', help="what round 1 needs at the bench: media, reagents, "
+                                     "handling, do's and don'ts")
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--run-id'); p.add_argument('--created-by')
+    p.add_argument('--round', type=int, default=1)
+    p.add_argument('--culture-format', dest='culture_format',
+                   choices=['six_well', 'cero', 'stirred_tank'])
+    p.set_defaults(fn=cmd_bench)
     p = sub.add_parser('data-request', help='ask the person for what this run could not '
                                            'fetch, so the next round can use it')
     p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
@@ -917,7 +942,7 @@ def main(argv=None):
     p = sub.add_parser('template', help='print an example draft')
     p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
                                     'devmap', 'sota', 'route-select', 'fidelity',
-                                    'baseline', 'data-request'])
+                                    'baseline', 'bench', 'data-request'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

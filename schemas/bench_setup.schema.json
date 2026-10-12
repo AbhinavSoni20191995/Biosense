@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/bench-setup-v1.0",
+  "title": "BenchSetup 1.0: what somebody actually needs to run round 1",
+  "description": "An arms table is not a protocol. Somebody has to know which medium, which reagents, whose catalogue number, how the cells are handled, how long each stage lasts, and what goes wrong. This is that, for one round plan. Its hard rule is about sourcing: a supplier or a catalogue number may only be recorded where a source states it, with the source and the quoted sentence, because a plausible catalogue number is the easiest thing in this system to invent and the most expensive to discover wrong. Anything nobody sourced is `your_lab`: a line that says what to use from your own stock, not a number somebody made up. Nothing here is approved, and a named person still approves the protocol before anything runs.",
+  "type": "object",
+  "required": ["kind", "schema_version", "project_id", "media", "reagents", "handling", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "bench_setup"},
+    "schema_version": {"type": "string"},
+    "project_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "round": {"type": ["integer", "null"]},
+    "created_at": {"type": ["string", "null"]},
+    "created_by": {"type": ["string", "null"]},
+    "culture_format": {"type": ["string", "null"], "description": "The vessel this setup is written for."},
+    "vessel": {"type": ["string", "null"], "description": "The consumable itself: '6-well plate', 'CERO 50 mL tube', the bioreactor vessel."},
+    "media": {
+      "type": "array",
+      "description": "One entry per stage: the base medium and what goes into it.",
+      "items": {
+        "type": "object",
+        "required": ["stage_id", "base_medium", "provenance"],
+        "additionalProperties": false,
+        "properties": {
+          "stage_id": {"type": "string"},
+          "stage_label": {"type": ["string", "null"]},
+          "base_medium": {"type": "string", "minLength": 2},
+          "supplements": {"type": "array", "items": {"type": "string"}},
+          "serum": {"type": ["string", "null"], "description": "Serum or its absence, said explicitly: 'serum-free' is a fact about the medium, not a missing field."},
+          "prepare": {"type": ["string", "null"], "description": "How the medium is made up and how long it keeps."},
+          "provenance": {"enum": ["reported", "adapted", "design_choice", "gap"]},
+          "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}},
+          "note": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "reagents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "role", "sourcing", "provenance"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "minLength": 2},
+          "role": {"type": "string", "minLength": 3, "description": "What it is for, in a few words."},
+          "stage_ids": {"type": "array", "items": {"type": "string"}},
+          "working_concentration": {"type": ["string", "null"]},
+          "supplier": {"type": ["string", "null"], "description": "Only where a source states it. Refused otherwise."},
+          "catalogue": {"type": ["string", "null"], "description": "Only where a source states it. Refused otherwise."},
+          "sourcing": {"enum": ["from_source", "your_lab"], "description": "from_source: a paper's methods name this supplier and catalogue, and the source is cited. your_lab: nobody sourced it, so use your own qualified stock."},
+          "stock": {"type": ["string", "null"], "description": "How the stock is made up: solvent, concentration, aliquot size."},
+          "storage": {"type": ["string", "null"]},
+          "handling": {"type": ["string", "null"], "description": "Freeze-thaw, light, carrier protein, sterile filtration."},
+          "provenance": {"enum": ["reported", "adapted", "design_choice", "gap"]},
+          "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}},
+          "note": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "handling": {
+      "type": "array",
+      "description": "How the culture is actually run, step by step, in the order it happens.",
+      "items": {
+        "type": "object",
+        "required": ["step", "what"],
+        "additionalProperties": false,
+        "properties": {
+          "step": {"type": "string", "minLength": 2, "description": "'Seeding', 'Daily', 'Feed', 'Harvest', 'Passage'."},
+          "stage_id": {"type": ["string", "null"]},
+          "what": {"type": "string", "minLength": 10},
+          "when": {"type": ["string", "null"], "description": "Day, interval or trigger."},
+          "duration": {"type": ["string", "null"]},
+          "provenance": {"enum": ["reported", "adapted", "design_choice", "gap"]},
+          "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}}
+        }
+      }
+    },
+    "do": {"type": "array", "items": {"$ref": "#/$defs/rule"}},
+    "dont": {"type": "array", "items": {"$ref": "#/$defs/rule"}},
+    "safety": {"type": "array", "items": {"type": "string"}},
+    "consumables": {"type": "array", "items": {"type": "string"}},
+    "coverage": {
+      "type": "object",
+      "required": ["stages_total", "stages_with_medium", "reagents", "sourced", "gaps"],
+      "additionalProperties": false,
+      "properties": {
+        "stages_total": {"type": "integer"}, "stages_with_medium": {"type": "integer"},
+        "reagents": {"type": "integer"}, "sourced": {"type": "integer"},
+        "gaps": {"type": "integer"}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "note": {"type": "string"}
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": ["ref", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {"type": "string"},
+        "quote": {"type": "string", "minLength": 3},
+        "locator": {"type": ["string", "null"]}
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["rule", "why"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {"type": "string", "minLength": 5},
+        "why": {"type": "string", "minLength": 10, "description": "What goes wrong if it is ignored. A rule with no reason is folklore."},
+        "provenance": {"enum": ["reported", "adapted", "design_choice", "gap"]},
+        "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}}
+      }
+    }
+  }
+}

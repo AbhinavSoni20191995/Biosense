@@ -78,16 +78,35 @@ class PlanTests(unittest.TestCase):
 
 
 class PageTests(unittest.TestCase):
-    def test_the_page_reads_insights_then_recommendation_then_plan_then_the_rest(self):
+    def test_the_page_reads_hypothesis_then_the_round_then_the_parameters(self):
+        """The order somebody acts in: what the run thinks is true, the
+        experiment that settles it, then the numbers to set. The insights sit
+        beside the hypothesis because they are what it came from; round 1 is a
+        section of its own because it is the next thing that happens."""
         html = (K.ROOT / 'webapp' / 'console.html').read_text()
-        order = [html.index(x) for x in ('id="litSec"', 'id="bioSec"', 'id="anaSec"',
-                                         'id="resultPanel"', 'id="protocolPanel"',
-                                         'id="otherPanel"')]
+        order = [html.index(x) for x in ('id="resultPanel"', 'id="litSec"', 'id="bioSec"',
+                                         'id="anaSec"', 'id="roundPanel"',
+                                         'id="protocolPanel"', 'id="otherPanel"')]
         self.assertEqual(sorted(order), order)
+        self.assertIn('<h3>The hypothesis</h3>', html)
+        self.assertIn('<h3>Current estimated parameters</h3>', html)
+        self.assertNotIn('id="roundSec"', html, 'the round is no longer a fold among insights')
+
+    def test_the_hypothesis_leads_and_the_action_is_part_of_it(self):
+        """An instruction with the science folded away behind "Why" reads like
+        an order from something that cannot be questioned."""
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
-        self.assertIn('host.append(recommendationCard(selected, protocol))', js)
+        body = js[js.index('function renderHypothesis'):js.index('function effectLine')]
+        statement = body.index("el('h4', null, selected.statement)")
+        action = body.index('host.append(recommendationCard(selected, protocol))')
+        fold = body.index("el('details', 'rec-why')")
+        self.assertLess(statement, action, 'the claim before what it implies')
+        self.assertLess(action, fold, 'the detail last, and only the detail is folded')
+        self.assertNotIn("'Why — the full hypothesis, its effects and evidence'", js)
+
+    def test_the_plan_is_still_rendered_from_the_first_pass(self):
+        js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
         self.assertIn('host.append(renderPlan(p.first_pass, p))', js)
-        self.assertIn("'Why — the full hypothesis, its effects and evidence'", js)
         proto = js[js.index('function renderProtocol'):js.index('function planItem')]
         self.assertNotIn("el('table', 'ledger')", proto, 'the ledger moved to Other hypotheses')
 

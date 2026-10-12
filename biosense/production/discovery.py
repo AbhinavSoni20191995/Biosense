@@ -1481,6 +1481,25 @@ without them, and do not drop the parameter.
    validates it. The person runs it and comes back with the results as a
    follow-up run; nothing here approves or actuates anything.
 
+   **An arms table is not a protocol.** Somebody has to know which medium,
+   made up how, which reagent at what stock concentration, seeded how, fed how
+   often, for how long, and what ruins the run. You have read the papers that
+   answer most of that, so write it down beside the plan:
+   `{python} -m biosense.evidence.cli template bench` prints the shape;
+   `{python} -m biosense.evidence.cli bench --project {project.project_id}{pdir} \
+       --run-id {Path(loop_dir).name} --draft {loop_dir}/bench.draft.json \
+       --out {loop_dir}/bench_setup.json` checks it.
+
+   One rule it enforces, and the reason for it: a **supplier or catalogue
+   number may only be recorded where a source states it**, with the sentence
+   quoted. A paper's methods section usually does. Where none does, set
+   `sourcing: "your_lab"` and say what to use from their own stock — nobody
+   checks a catalogue number before ordering and a wrong one costs a week, so
+   an invented one is the most expensive thing you could write anywhere in
+   this run. Give at least one thing to do and one to avoid, each with what
+   goes wrong if it is ignored: a rule with no reason is folklore, and the
+   first person in a hurry drops it.
+
    **Round 1 is a complete design, not a list of unknowns.** Somebody has to
    put something in a vessel on the first day, so every arm — the control
    included — carries a full set of conditions: for each factor the arm needs,

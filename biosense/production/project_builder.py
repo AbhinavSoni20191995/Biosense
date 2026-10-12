@@ -553,6 +553,47 @@ def add_parameter(identity, project_id, spec, *, registered_by=None, from_run=No
     return doc, pid, how
 
 
+def set_stage_days(identity, project_id, stage_id, days, *, changed_by=None):
+    """How long a stage runs, in this workspace's copy of the project.
+
+    A stage length was a fixed property of the profile, so every plan drew the
+    same day ranges whatever the system actually does — and a person looking at
+    "d0–7" had no way to say "ours is ten days". It is a number about their
+    process, so they set it, inside the bounds the profile declares.
+
+    Returns (doc, stage). The project is copied into the workspace first, so a
+    committed template is never edited.
+    """
+    project = load_for(identity, project_id)
+    doc = _editable(project.doc)
+    doc['stages'] = [dict(st) for st in doc['stages']]
+    stage = next((st for st in doc['stages'] if st['stage_id'] == stage_id), None)
+    if stage is None:
+        raise K.ContractError(
+            f'{project_id} has no stage {stage_id!r}; its stages are '
+            f'{", ".join(st["stage_id"] for st in doc["stages"])}')
+    try:
+        value = float(days)
+    except (TypeError, ValueError):
+        raise K.ContractError(f'a stage length is a number of days; got {days!r}') from None
+    if not 0 < value <= 365:
+        raise K.ContractError(f'{value} days is not a stage length anybody runs')
+    lo, hi = stage.get('min_days'), stage.get('max_days')
+    if lo is not None and value < lo:
+        raise K.ContractError(
+            f'{stage_id}: {value:g} days is below this stage\'s minimum of {lo:g}. The bound '
+            f'is part of the project; change it there if the process really is shorter.')
+    if hi is not None and value > hi:
+        raise K.ContractError(
+            f'{stage_id}: {value:g} days is above this stage\'s maximum of {hi:g}. The bound '
+            f'is part of the project; change it there if the process really is longer.')
+    stage['default_days'] = value
+    _bump(doc)
+    PJ.Project(doc)                     # validated before anything is written
+    save(identity, doc, overwrite=True)
+    return doc, stage
+
+
 def _editable(doc):
     """A copy of a profile whose parameter lists can be changed without touching the original."""
     out = dict(doc)

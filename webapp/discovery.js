@@ -1005,6 +1005,7 @@ function watchRun(runId) {
       RV.timeline($('#rvTimeline'), snap);
       RV.limitations($('#rvLims'), snap);
       renderInsights(snap);
+      renderRound(snap);
       renderQuestions(snap);
       renderDataRequests(snap);
       renderStages(snap.progress);
@@ -2089,26 +2090,136 @@ function wireSection(id, dflt) {
   return d;
 }
 
+/* What round 1 needs at the bench: the medium, the reagents, how the culture
+   is actually handled, and the mistakes that ruin it. The one thing to read
+   carefully is the sourcing column — a supplier and a catalogue number appear
+   only where a paper states them, because nobody checks a catalogue number
+   before ordering and a wrong one costs a week. */
+function renderBench(host, b) {
+  if (!host) return;
+  const box = el('div', 'bench');
+  box.append(el('div', 'plan-lab', 'At the bench'));
+  const c = b.coverage || {};
+  box.append(el('p', 'dim', [b.vessel,
+    `${c.stages_with_medium || 0}/${c.stages_total || 0} stages have a medium`,
+    `${c.reagents || 0} reagent(s), ${c.sourced || 0} with a supplier from a source`]
+    .filter(Boolean).join(' · ')));
+
+  if ((b.media || []).length) {
+    box.append(el('div', 'plan-lab', 'Medium, per stage'));
+    box.append(foldTable(['Stage', 'Base', 'Stands on'], b.media.map(m => ({
+      key: 'bm:' + m.stage_id,
+      cells: [m.stage_label || m.stage_id,
+        m.base_medium + (m.serum ? ` · ${m.serum}` : ''),
+        el('span', 'pl ' + m.provenance, m.provenance)],
+      detail: appendAll(el('div'), [
+        kv('Supplements', (m.supplements || []).join(' · ')),
+        m.prepare ? kv('Make it up', m.prepare) : null,
+        m.note ? kv('Note', m.note) : null,
+        ...(m.sources || []).map(x => kv(x.ref + (x.locator ? ' · ' + x.locator : ''),
+          '\u201c' + x.quote + '\u201d')),
+      ]),
+    })), 'bench'));
+  }
+
+  if ((b.reagents || []).length) {
+    box.append(el('div', 'plan-lab', 'Reagents'));
+    box.append(foldTable(['Reagent', 'At', 'Where from'], b.reagents.map(r => {
+      const from = r.sourcing === 'from_source'
+        ? el('span', 'tag ok amount', [r.supplier, r.catalogue].filter(Boolean).join(' '))
+        : el('span', 'tag mut', 'your own stock');
+      return {
+        key: 'br:' + r.name,
+        cells: [r.name, r.working_concentration || '—', from],
+        detail: appendAll(el('div'), [
+          kv('What it is for', r.role),
+          r.stock ? kv('Stock', r.stock) : null,
+          r.storage ? kv('Storage', r.storage) : null,
+          r.handling ? kv('Handling', r.handling) : null,
+          r.sourcing === 'from_source' ? null
+            : kv('Supplier', 'No source read by this run names one, so use your own '
+              + 'qualified stock and record the lot. A catalogue number with nothing '
+              + 'behind it is not written here.'),
+          r.note ? kv('Note', r.note) : null,
+          ...(r.sources || []).map(x => kv(x.ref + (x.locator ? ' · ' + x.locator : ''),
+            '\u201c' + x.quote + '\u201d')),
+        ]),
+      };
+    }), 'bench'));
+  }
+
+  if ((b.handling || []).length) {
+    box.append(el('div', 'plan-lab', 'How it is run'));
+    b.handling.forEach(h => {
+      const row = el('div', 'fmtrow');
+      const top = el('div');
+      top.append(el('b', null, h.step));
+      if (h.when) top.append(el('span', 'dim', ` · ${h.when}`));
+      if (h.duration) top.append(el('span', 'dim', ` · ${h.duration}`));
+      top.append(el('span', 'pl ' + h.provenance, h.provenance));
+      row.append(top, el('div', null, h.what));
+      box.append(row);
+    });
+  }
+
+  [['do', 'Do'], ['dont', 'Do not']].forEach(([key, label]) => {
+    if (!(b[key] || []).length) return;
+    box.append(el('div', 'plan-lab', label));
+    b[key].forEach(r => {
+      const row = el('div', 'fmtrow ' + key);
+      row.append(el('div', null, r.rule));
+      row.append(el('div', 'dim', r.why));
+      box.append(row);
+    });
+  });
+
+  if ((b.consumables || []).length) {
+    box.append(el('div', 'plan-lab', 'Consumables'));
+    const ul = el('ul', 'tight');
+    b.consumables.forEach(x => ul.append(el('li', null, x)));
+    box.append(ul);
+  }
+  (b.safety || []).forEach(x => box.append(el('p', 'caveat', x)));
+  (b.limitations || []).forEach(x => box.append(el('p', 'caveat', x)));
+  box.append(el('p', 'caveat', b.note));
+  host.append(box);
+}
+
+/* Round 1 is what happens next, so it is a section of its own rather than a
+   fold among the insights: the arms, and — once the run has written one — the
+   media, reagents, handling and the two mistakes that ruin it. */
+function renderRound(snap) {
+  const panel = $('#roundPanel'); if (!panel) return;
+  const plan = snap.round_plan;
+  panel.hidden = !plan;
+  if (!plan) return;
+  renderRoundPlan(plan, snap);
+  $('#roundTitle').textContent = `Round ${plan.round || 1} at the bench`;
+  $('#roundSum').textContent = `${(plan.unknowns || []).length} unknown(s) · `
+    + `${(plan.arms || []).length} arms × ${plan.replicates} · PROPOSED`;
+  const bench = snap.bench_setup;
+  if (bench) renderBench($('#roundInsights'), bench);
+}
+
 function renderInsights(snap) {
   const panel = $('#insightsPanel'); if (!panel) return;
   const ins = snap.insights, papers = snap.papers_found || [], bio = snap.bioinformatics;
   const geno = snap.genotype_simulation;
   const terms = snap.proposed_terms;
-  const plan = snap.round_plan;
   const dev = snap.developmental_map;
   const sota = snap.sota_comparison;
   const route = snap.route_selection;
   const fid = snap.cell_fidelity;
   const base = snap.baseline_protocol;
   const analysed = $('#anaSec') && !$('#anaSec').hidden;
-  if (!ins && !papers.length && !bio && !geno && !terms && !plan && !dev && !sota && !route
+  if (!ins && !papers.length && !bio && !geno && !terms && !dev && !sota && !route
       && !fid && !base && !snap.reference_draft && !analysed) {
     panel.hidden = true; return;
   }
   panel.hidden = false;
   wireSection('litSec', false); wireSection('papersSec', false);
   wireSection('bioSec', false); wireSection('genoSec', true); wireSection('termsSec', true);
-  wireSection('devSec', true); wireSection('sotaSec', true); wireSection('roundSec', true);
+  wireSection('devSec', true); wireSection('sotaSec', true);
   wireSection('routeSec', true); wireSection('fidSec', true); wireSection('baseSec', true);
   const baseOn = base && (base.stages || []).length;
   $('#baseSec').hidden = !baseOn;
@@ -2152,13 +2263,7 @@ function renderInsights(snap) {
     $('#sotaSum').textContent = [STANDING_LABEL[(sota.standing || {}).verdict] || '',
       `${(sota.references || []).length} protocol(s)`].filter(Boolean).join(' · ');
   }
-  $('#roundSec').hidden = !plan;
-  if (plan) {
-    renderRoundPlan(plan, snap);
-    $('#roundTitle').textContent = `Round ${plan.round || 1} at the bench`;
-    $('#roundSum').textContent = `${(plan.unknowns || []).length} unknown(s) · `
-      + `${(plan.arms || []).length} arms × ${plan.replicates} · PROPOSED`;
-  }
+
   $('#termsSec').hidden = !(terms && (terms.terms || []).length);
   if (terms && (terms.terms || []).length) {
     renderProposedTerms(terms, snap.run_id);
@@ -2280,7 +2385,11 @@ let resultSeen = '';
 function renderResult(snap) {
   const r = snap.result;
   const key = snap.run_id + ':' + JSON.stringify(r);
-  if (key === resultSeen) { $('#resultPanel').hidden = false; return; }
+  if (key === resultSeen) {
+    $('#resultPanel').hidden = false;
+    document.body.classList.add('answered');
+    return;
+  }
   resultSeen = key;
   renderEvidence(r.bundle.evidence);
   renderAnalyses(r.bundle.analyses);
@@ -2290,6 +2399,9 @@ function renderResult(snap) {
   renderOtherHypotheses(r.protocol, r.bundle.selected_hypothesis);
   renderExports(snap);
   const panel = $('#resultPanel'); panel.hidden = false;
+  /* With an answer on the page, the answer is the page: it gets the width,
+     and the panels that fit beside each other do. */
+  document.body.classList.add('answered');
   const head = $('#resultHead'); head.textContent = '';
   head.append(el('span', 'mut', `${r.bundle.artifacts_ingested} artifact(s) read`));
   if ((r.bundle.artifacts_rejected || []).length) {
@@ -2553,11 +2665,12 @@ function renderHypothesis(selected, all, protocol) {
     host.append(el('p', 'dim', why || 'No hypothesis was formed by this run.'));
     return;
   }
-  host.append(recommendationCard(selected, protocol));
-  const why = el('details', 'rec-why');
-  why.append(el('summary', null, 'Why — the full hypothesis, its effects and evidence'));
-  const w = el('div', 'hyp');
-  why.append(w);
+  /* The hypothesis first, in its own words: it is the claim, and the action
+     below is what the claim implies. The other way round — an instruction
+     with the science folded away behind "Why" — reads like an order from
+     something that cannot be questioned, which is the opposite of the point. */
+  const w = el('div', 'hyp lead');
+  host.append(w);
   /* The claim level comes first, because it is what tells a reader how much
      weight the sentence under it can carry. A CANDIDATE is a real output —
      most useful hypotheses start there — and not a degraded QUANTIFIED one. */
@@ -2575,6 +2688,17 @@ function renderHypothesis(selected, all, protocol) {
   if (selected.claim_level_reason) {
     w.append(el('p', 'caveat', selected.claim_level_reason));
   }
+  /* What it means to do about it, in one line a person can act on. */
+  host.append(el('div', 'lab', 'What that means to do'));
+  host.append(recommendationCard(selected, protocol));
+
+  const why = el('details', 'rec-why');
+  why.append(el('summary', null, 'The parameter, every expected effect, and the evidence '
+    + 'behind each'));
+  const d = el('div', 'hyp');
+  why.append(d);
+  host.append(why);
+
   const p = selected.parameter;
   const move = el('div', 'move');
   if (p.current_value != null && p.candidate_value != null) {
@@ -2584,33 +2708,32 @@ function renderHypothesis(selected, all, protocol) {
   } else {
     move.textContent = `${p.label || p.parameter_id}: ${p.direction || 'change'}`;
   }
-  w.append(move);
+  d.append(move);
   const cov = el('div', 'ev-row');
   cov.append(term('simulator_coverage', p.simulator_coverage, null, 'ev'));
   cov.append(term('hypothesis_status', selected.status, null, 'ev'));
-  w.append(cov);
-  if (p.coverage_note) w.append(el('p', 'caveat', p.coverage_note));
-  w.append(el('div', 'lab', 'Expected effects'));
-  (selected.effects || []).forEach(e => w.append(effectRow(e)));
+  d.append(cov);
+  if (p.coverage_note) d.append(el('p', 'caveat', p.coverage_note));
+  d.append(el('div', 'lab', 'Expected effects'));
+  (selected.effects || []).forEach(e => d.append(effectRow(e)));
   (selected.trade_offs || []).forEach(t => {
-    if (t.summary) w.append(el('p', 'caveat', 'Trade-off: ' + t.summary));
+    if (t.summary) d.append(el('p', 'caveat', 'Trade-off: ' + t.summary));
   });
   const confLab = el('div', 'lab');
   confLab.append(document.createTextNode('Evidence · confidence '));
   confLab.append(document.createTextNode(selected.confidence || 'unstated'));
-  w.append(confLab);
+  d.append(confLab);
   (selected.evidence || []).forEach(ev => {
     const row = el('div', 'hev');
     row.append(term('evidence_class', ev.evidence_class, ev.label, 'cls'));
     row.append(el('div', null, ev.summary || ''));
-    w.append(row);
+    d.append(row);
   });
   const nx = selected.next_experiment || {};
   if (nx.summary) {
-    w.append(el('div', 'lab', 'Recommended next experiment'));
-    w.append(Object.assign(el('div'), { style: 'font-size:13.5px', textContent: nx.summary }));
+    d.append(el('div', 'lab', 'Recommended next experiment'));
+    d.append(Object.assign(el('div'), { style: 'font-size:13.5px', textContent: nx.summary }));
   }
-  host.append(why);
   if ((all || []).length > 1) {
     host.append(el('p', 'caveat',
       `${all.length} hypotheses were formed; the other ${all.length - 1}, and what became of `
@@ -2799,7 +2922,12 @@ function renderQuestions(snap) {
     box.append(el('div', 'dim ask-who', [q.asked_by, BS.fmt.ago(Date.parse(q.asked_at) / 1000)]
       .filter(Boolean).join(' · ')));
     if (q.status === 'answering') {
-      box.append(el('p', 'dim', 'The orchestrator is reading its run and answering…'));
+      /* With how long it has been at it: "reading its run" for twenty minutes
+         means something is wrong, and a person should not have to guess at
+         what a spinner is doing. */
+      const since = Date.parse(q.asked_at) / 1000;
+      box.append(el('p', 'dim', 'The orchestrator is reading its run and answering… '
+        + `(${BS.fmt.elapsed(since)} so far; a long answer is a few minutes)`));
     } else if (q.answer) {
       const a = el('div', 'ask-a'); mdBlock(q.answer, a); box.append(a);
     } else {
@@ -3528,6 +3656,42 @@ function planItem(i, withStage, p, stages) {
   }
   return row;
 }
+/* A stage's length, editable. Fixed day ranges drawn from the profile made
+   every plan look like the same process; the number belongs to whoever runs
+   it. Bounds come from the project, so a typo cannot make a 2-day expansion
+   into 200. */
+function stageDays(s, p) {
+  const wrap = el('span', 'days');
+  const text = s.days == null ? 'days not set'
+    : `d${num(s.day_start)}–${num(s.day_start + s.days)}`;
+  const label = el('span', null, text);
+  wrap.append(label);
+  const project = (p || {}).project || {};
+  const pid = project.project_id || currentProject();
+  if (!pid || !state.run) return wrap;
+  const edit = el('button', 'btn del', '✎');
+  edit.type = 'button';
+  edit.title = `How long ${s.label} runs in your process (now ${num(s.days)} d)`;
+  edit.setAttribute('aria-label', edit.title);
+  edit.addEventListener('click', async () => {
+    const asked = prompt(`How many days does ${s.label} run in your process?`
+      + '\n\nThis is your project\u2019s own stage length, not a recommendation from the '
+      + 'run. The plan and the timeline redraw against it.', s.days == null ? '' : num(s.days));
+    if (asked === null) return;
+    const days = parseFloat(asked);
+    if (!(days > 0)) { note('A stage length is a number of days.'); return; }
+    edit.disabled = true;
+    try {
+      const d = await post(`/api/projects/${encodeURIComponent(pid)}/stages/`
+        + `${encodeURIComponent(s.stage_id)}/days`, { days, run_id: state.run.run_id });
+      note(d.note);
+      if (d.protocol_rebuilt) setTimeout(() => watchRun(state.run.run_id), 600);
+    } catch (e) { fail(e); } finally { edit.disabled = false; }
+  });
+  wrap.append(edit);
+  return wrap;
+}
+
 function renderPlan(fp, p) {
   const wrap = el('div', 'plan');
   const boxes = el('div', 'plan-stages');
@@ -3537,8 +3701,10 @@ function renderPlan(fp, p) {
     const b = el('div', 'plan-stage');
     const h = el('div', 'plan-head');
     h.append(el('strong', null, s.label));
-    h.append(el('span', 'days', s.days == null ? 'days not set'
-      : `d${num(s.day_start)}–${num(s.day_start + s.days)}`));
+    /* The day range is the project's own stage length, not a recommendation —
+       and it is a fact about this person's process, so they can change it
+       here rather than reading a number that is wrong for their system. */
+    h.append(stageDays(s, p));
     b.append(h, el('div', 'plan-lab', 'Inducers'));
     /* An empty stage means one thing only: this project has no factor
        parameter for it, so no dose can be carried here however much the

@@ -76,6 +76,8 @@ SCHEMAS = {
     'data_requests': 'data_requests.schema.json',
     # the published route, stage by stage, before this run changes anything
     'baseline_protocol': 'baseline_protocol.schema.json',
+    # what round 1 needs at the bench: media, reagents, handling, do's and don'ts
+    'bench_setup': 'bench_setup.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',

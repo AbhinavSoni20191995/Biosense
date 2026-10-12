@@ -38,6 +38,7 @@ bioreactor; nothing here touches an actuator.
 | `bioinformatics_report` | bioinformatics tools | per gene: found or not, annotated effects with direction, conditions, confidence and source; implicated protocol levers; assays that cannot run here; limitations |
 | `analysis_report` | `analyze` | verdict, per-arm target and QC, genotype comparison, diagnosis hypotheses, data integrity |
 | `human_consult` | orchestrator | question, why it matters, the assay that cannot run here, expected gain, options, **blocking**, and **what happens if nobody answers** |
+| `bench_setup` | literature agent | media per stage, reagents, handling, consumables, safety, do's and don'ts with their reasons; a supplier or catalogue number only where a source states it, everything else "use your own qualified stock" |
 | `baseline_protocol` | literature agent | the published route stage by stage: every stage of the project, what goes in the medium, the dose where a source gives one with the sentence quoted; `reported` / `adapted` / `design_choice` / `gap` per factor, and a stage nobody addressed stated rather than missing |
 | `loop_decision` | orchestrator agent, or the policy | type, `authored_by`, `reasoning`, `considered` alternatives, `hypotheses` with their basis, `tool_calls`, `consult_ids`, the `allowed_actions` it was validated against, the `policy_advice` it may have overridden, `advances_iteration`, `status` |
 
@@ -77,6 +78,35 @@ row per vessel, and an empty approval block. "PROPOSED — NOT APPROVED" is at
 the top and the bottom, and every number keeps its letter. The writer
 (`biosense/production/docx.py`) is about two hundred lines of OOXML on the
 standard library rather than a fourth dependency.
+
+## From a recommendation to something somebody can run
+
+An arms table is not a protocol. "A2: GM-CSF 50 ng/mL replacing M-CSF" does not
+say which medium, made up how, which reagent at what stock concentration,
+seeded how, fed how often, for how long, or what ruins the run — and the run
+has usually read the papers that answer most of it. `bench_setup`
+(`biosense/evidence/bench.py`) is where that goes: media per stage, reagents,
+handling step by step, consumables, safety, and the do's and don'ts, each with
+what goes wrong if it is ignored, because a rule with no reason is folklore.
+
+Its hard rule is sourcing. A **supplier or catalogue number may only be
+recorded where a source states it**, with the sentence quoted; a paper's
+methods section usually does. Anything else is `sourcing: "your_lab"`, which
+says to use your own qualified stock and names nobody. A catalogue number looks
+like a fact, is rarely checked before ordering, and a wrong one costs a week,
+so one with nothing behind it is refused outright rather than caveated.
+
+The answer is laid out in the order somebody acts in: **the hypothesis** (the
+claim, with the one-line action it implies inside it — not an instruction with
+the science folded away behind "Why"), **round 1 at the bench** as a section of
+its own with everything above, then **the current estimated parameters** for
+the vessel in use. On a wide screen the panels that fit beside each other do,
+because a long page of half-empty cards is one nobody scrolls to the end of.
+
+Stage lengths are the project's own and **editable**: `d0–7` was a fixed
+property of the profile, so every plan drew the same ranges whatever the real
+process does. `POST /api/projects/<id>/stages/<stage>/days` sets it inside the
+bounds the profile declares, in the person's own copy, and the plan redraws.
 
 ## Plate, tube, tank: the vessel the protocol is for
 

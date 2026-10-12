@@ -259,6 +259,7 @@ class Run:
         self.route_selection = None
         self.cell_fidelity = None
         self.baseline_protocol = None
+        self.bench_setup = None
         self.data_requests = None
         self.literature_stages = []
         self.reference_draft = None
@@ -386,6 +387,7 @@ class DiscoveryRun:
         self.route_selection = None
         self.cell_fidelity = None
         self.baseline_protocol = None
+        self.bench_setup = None
         self.data_requests = None
         self.literature_stages = []
         self.reference_draft = None
@@ -449,6 +451,7 @@ class DiscoveryRun:
         self._read_route_selection()
         self._read_cell_fidelity()
         self._read_baseline_protocol()
+        self._read_bench_setup()
         self._read_data_requests()
         self._read_stage_shards()
         self._read_bio_specialists()
@@ -819,6 +822,20 @@ class DiscoveryRun:
         self.baseline_protocol = {k: doc.get(k) for k in (
             'cell_type', 'route', 'base_medium', 'stages', 'coverage', 'limitations', 'note')}
 
+    def _read_bench_setup(self):
+        """What round 1 needs at the bench, where the run wrote it."""
+        f = self.out_dir / 'bench_setup.json'
+        try:
+            doc = K.read_json(f) if f.is_file() else None
+        except (OSError, ValueError):
+            doc = None
+        if not isinstance(doc, dict) or doc.get('kind') != 'bench_setup':
+            self.bench_setup = None
+            return
+        self.bench_setup = {k: doc.get(k) for k in (
+            'culture_format', 'vessel', 'media', 'reagents', 'handling', 'do', 'dont',
+            'safety', 'consumables', 'coverage', 'limitations', 'note')}
+
     def _read_data_requests(self):
         """What this run could not get, and whatever a person has handed over."""
         from ..evidence import datareq as DRQ
@@ -1168,6 +1185,7 @@ class DiscoveryRun:
                 'route_selection': self.route_selection,
                 'cell_fidelity': self.cell_fidelity,
                 'baseline_protocol': self.baseline_protocol,
+                'bench_setup': self.bench_setup,
                 'data_requests': self.data_requests,
                 'literature_stages': list(self.literature_stages),
                 'reference_draft': self.reference_draft,
@@ -1933,6 +1951,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/projects/([^/]+)/parameters', path)
             if m:
                 return self._add_parameter(m.group(1), self._body())
+            m = re.fullmatch(r'/api/projects/([^/]+)/stages/([^/]+)/days', path)
+            if m:
+                return self._set_stage_days(m.group(1), m.group(2), self._body())
             m = re.fullmatch(r'/api/projects/([^/]+)/parameters/([^/]+)/model', path)
             if m:
                 return self._model_parameter(m.group(1), m.group(2), self._body())
@@ -2345,6 +2366,31 @@ class Handler(BaseHTTPRequestHandler):
                                                'when it finishes',
                                        None: 'no such finished run of yours'}.get(
                                            rebuilt, str(rebuilt))
+        return self._send(200, out)
+
+    def _set_stage_days(self, project_id, stage_id, body):
+        """How long a stage runs, in this person's own copy of the project.
+
+        A stage length is a fact about their process, not about this software,
+        so every plan drawing the same fixed day ranges was wrong for most
+        people looking at it. With a run id, that run's protocol is rebuilt so
+        the timeline redraws against the length they set.
+        """
+        identity = self._identity()
+        pid = PB.check_project_id(project_id)
+        who = str(getattr(identity, 'display', None) or identity.owner or 'local user')[:80]
+        doc, stage = PB.set_stage_days(identity, pid, stage_id, body.get('days'),
+                                       changed_by=who)
+        out = {'project_id': pid, 'stage_id': stage['stage_id'],
+               'days': stage['default_days'], 'version': doc['version'],
+               'note': f'{stage.get("label") or stage["stage_id"]} is {stage["default_days"]:g} '
+                       f'days in your copy of {pid}. It is the project\'s own length, not a '
+                       f'recommendation from any run.'}
+        rid = (body.get('run_id') or '').strip() or None
+        if rid:
+            rebuilt = self.discovery.rebuild_protocol(
+                rid, owner=identity.owner, projects_dir=str(WS.projects_dir(identity)))
+            out['protocol_rebuilt'] = rebuilt == 'rebuilt'
         return self._send(200, out)
 
     def _model_parameter(self, project_id, parameter_id, body):
