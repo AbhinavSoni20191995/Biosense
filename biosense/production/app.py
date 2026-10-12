@@ -55,6 +55,8 @@ Endpoints
                                   answers from the run's files, read-only (GET the run for it)
     POST /api/discovery/<id>/rename   give a run your own name, so a list of six runs on the
                                   same objective can be told apart
+    POST /api/discovery/<id>/data-request   hand over what a run could not fetch (a dataset
+                                  id, a link, or what you know), or decline it
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
     POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
@@ -254,6 +256,7 @@ class Run:
         self.sota_comparison = None
         self.route_selection = None
         self.cell_fidelity = None
+        self.data_requests = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -376,6 +379,7 @@ class DiscoveryRun:
         self.sota_comparison = None
         self.route_selection = None
         self.cell_fidelity = None
+        self.data_requests = None
         self.literature_stages = []
         self.reference_draft = None
         self._live_mtimes = {}
@@ -437,6 +441,7 @@ class DiscoveryRun:
         self._read_sota_comparison()
         self._read_route_selection()
         self._read_cell_fidelity()
+        self._read_data_requests()
         self._read_stage_shards()
         self._read_bio_specialists()
         self._read_reference_draft()
@@ -788,6 +793,13 @@ class DiscoveryRun:
         self.cell_fidelity = {k: doc.get(k) for k in (
             'cell_type', 'in_vivo_reference', 'criteria', 'overall', 'limitations', 'note')}
 
+    def _read_data_requests(self):
+        """What this run could not get, and whatever a person has handed over."""
+        from ..evidence import datareq as DRQ
+        doc = DRQ.load(self.out_dir)
+        self.data_requests = ({'items': doc['items'], 'note': doc['note'],
+                               'handover': DRQ.handover(doc)} if doc else None)
+
     def _read_proposed_terms(self):
         """The response terms this run proposed for levers the base reactor lacks.
 
@@ -1091,6 +1103,7 @@ class DiscoveryRun:
                 'sota_comparison': self.sota_comparison,
                 'route_selection': self.route_selection,
                 'cell_fidelity': self.cell_fidelity,
+                'data_requests': self.data_requests,
                 'literature_stages': list(self.literature_stages),
                 'reference_draft': self.reference_draft,
                 'stage_counts': ST.stage_counts(self.stages_reached,
@@ -1816,6 +1829,9 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 return self._continue_ended(m.group(1), self._identity(),
                                             follow_up=self._body(MAX_BODY_DISCOVERY))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/data-request', path)
+            if m:
+                return self._answer_data_request(m.group(1), self._body())
             m = re.fullmatch(r'/api/discovery/([^/]+)/rename', path)
             if m:
                 return self._rename_discovery(m.group(1), self._body())
@@ -2415,6 +2431,35 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {'run_id': rid, 'measurements': RR.summary(d),
                                 'recorded': len(body.get('entries') or []),
                                 'note': doc['note']})
+
+    def _answer_data_request(self, rid, body):
+        """Hand over what the run could not fetch, or say it cannot be had.
+
+        Recorded against the run that asked, with who gave it and when. It
+        changes nothing in that run: the next round reads the answers, which is
+        what keeps a finished run a record of what it actually did.
+        """
+        from ..evidence import datareq as DRQ
+        identity = self._identity()
+        d, _status = self._ended_run_dir(rid, identity)
+        if d is None:
+            run = self.discovery.get(rid, owner=identity.owner)
+            if run is None:
+                return self._send(404, {'error': 'no such discovery run'})
+            d = run.out_dir            # a live run may already have asked
+        who = str(getattr(identity, 'display', None) or identity.owner or 'local user')[:80]
+        req = str(body.get('request_id') or '').strip()
+        try:
+            if body.get('decline'):
+                item = DRQ.decline(d, req, note=body.get('note'), provided_by=who)
+            else:
+                item = DRQ.answer(d, req, dataset_id=body.get('dataset_id'),
+                                  note=body.get('note'), url=body.get('url'), provided_by=who)
+        except K.ContractError as e:
+            return self._send(400, {'error': str(e)})
+        doc = DRQ.load(d)
+        return self._send(200, {'run_id': rid, 'item': item,
+                                'handover': DRQ.handover(doc)})
 
     def _rename_discovery(self, rid, body):
         """Give a run a name of your own.

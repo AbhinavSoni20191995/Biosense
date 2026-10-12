@@ -72,6 +72,8 @@ SCHEMAS = {
     'route_selection': 'route_selection.schema.json',
     # how close the product is expected to come to the real cell
     'cell_fidelity': 'cell_fidelity.schema.json',
+    # what a run could not fetch, asked of the person who can supply it
+    'data_requests': 'data_requests.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',

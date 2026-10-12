@@ -720,7 +720,8 @@ async function start() {
   }
   $('#runBtn').disabled = true;
   $('#runState').hidden = true;
-  ['resultPanel', 'protocolPanel', 'otherPanel', 'askPanel', 'evidencePanel', 'anaSec', 'benchPanel']
+  ['resultPanel', 'protocolPanel', 'otherPanel', 'askDataPanel', 'askPanel', 'evidencePanel',
+   'anaSec', 'benchPanel']
     .forEach(i => { const n = $('#' + i); if (n) n.hidden = true; });
   try {
     const run = await post('/api/discovery', body);
@@ -756,6 +757,7 @@ function watchRun(runId) {
       RV.limitations($('#rvLims'), snap);
       renderInsights(snap);
       renderQuestions(snap);
+      renderDataRequests(snap);
       renderStages(snap.progress);
       (snap.events || []).forEach(seedEvent);
       $('#runBtn').disabled = RV.isLive(snap);
@@ -2359,6 +2361,115 @@ function recommendationCard(h, protocol) {
     card.append(el('p', 'rec-test', clip(nx, 220)));
   }
   return card;
+}
+
+/* What the run could not fetch, asked of the person who can supply it. Each
+   ask says what failed and what it would unblock; answering records what they
+   gave, and the next round is where it is used. */
+const NEEDS_LABEL = { processed_table: 'a processed table', sample_sheet: 'a sample sheet',
+  identifier_mapping: 'an identifier mapping', full_text: 'a full text',
+  measurement: 'a measurement', access: 'access', other: 'something else' };
+function renderDataRequests(snap) {
+  const panel = $('#askDataPanel'); if (!panel) return;
+  const dr = snap.data_requests;
+  const items = (dr && dr.items) || [];
+  panel.hidden = !items.length;
+  if (!items.length) return;
+  const h = dr.handover || {};
+  $('#askDataHead').textContent = [h.open ? `${h.open} still open` : null,
+    h.answered ? `${h.answered} answered` : null].filter(Boolean).join(' · ');
+  const host = $('#askDataList'); host.textContent = '';
+  host.append(el('p', 'dim', dr.note || ''));
+  items.forEach(it => {
+    const box = el('div', 'dreq ' + it.status);
+    const head = el('div', 'dreq-head');
+    head.append(el('span', 'tag', NEEDS_LABEL[it.needs] || it.needs));
+    head.append(el('b', null, it.what));
+    if (it.accession) head.append(el('span', 'chip', it.accession));
+    box.append(head);
+    appendAll(box, [
+      kv('Why it failed', it.why),
+      kv('What a usable answer looks like', it.shape),
+      kv('It would unblock', it.unblocks),
+      (it.where_to_look || []).length ? kv('Where to look', it.where_to_look.join('; ')) : null,
+    ]);
+    if (it.status === 'open') {
+      box.append(dataAnswerForm(snap.run_id, it));
+    } else {
+      const a = it.answer || {};
+      const done = el('div', 'dreq-answer');
+      done.append(el('b', null, it.status === 'declined' ? 'Cannot be supplied'
+        : 'You provided'));
+      appendAll(done, [
+        a.dataset_id ? kv('Dataset', a.dataset_id) : null,
+        a.url ? kv('Link', a.url) : null,
+        a.note ? kv('In your words', a.note) : null,
+        kv('By', `${a.provided_by} · ${BS.fmt.ago(Date.parse(a.at) / 1000)}`),
+      ]);
+      if (a.note) {
+        done.append(el('p', 'caveat', 'Your words are your report of your own process: the '
+          + 'next round can let them settle a direction, and a number in them enters a '
+          + 'protocol only as an adapted value naming this report, never as a cited one.'));
+      }
+      box.append(done);
+    }
+    host.append(box);
+  });
+  /* Nothing is used until a round reads it: this is the hand-back. */
+  if (h.answered) {
+    const go = el('button', 'btn go', `Start round 2 with what I provided`);
+    go.title = 'A new run seeded with this one\'s files, carrying the datasets and notes you '
+      + 'gave, which reads them against what this run could not settle';
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      try {
+        await followUpRun(snap.run_id, { results: h.results || undefined,
+                                         dataset_ids: h.dataset_ids || [] });
+      } catch (e) { fail(e); go.disabled = false; }
+    });
+    const act = el('div', 'rv-actions'); act.append(go);
+    host.append(act);
+    host.append(el('p', 'caveat', 'This run stays as it is — a record of what it actually did. '
+      + 'The next round starts from its files plus what you gave.'));
+  }
+}
+function dataAnswerForm(runId, it) {
+  const f = el('form', 'dreq-form');
+  const field = (label, input, hint) => {
+    const l = el('label', null, label); l.append(input); f.append(l);
+    if (hint) f.append(el('p', 'hint', hint));
+    return input;
+  };
+  const ds = field('Dataset id (registered on the Data page)',
+    Object.assign(el('input'), { maxLength: 120, placeholder: 'e.g. my-gse311159-counts' }),
+    'The answer the next round can actually analyse. Register the table on the Data page, '
+    + 'then paste its id here.');
+  const url = field('Or a link', Object.assign(el('input'),
+    { maxLength: 400, placeholder: 'https://…' }));
+  const note = field('Or what you know, in your own words',
+    Object.assign(el('textarea'), { maxLength: 4000, rows: 3 }),
+    'Your report of your own process. It can settle a direction; a number in it enters a '
+    + 'protocol only as an adapted value naming this report.');
+  const go = el('button', 'btn go sm', 'Give this to the run'); go.type = 'submit';
+  const no = el('button', 'btn sm', 'Cannot be supplied'); no.type = 'button';
+  const msg = el('span', 'dim');
+  const row = el('div', 'rv-actions'); row.append(go, no, msg);
+  f.append(row);
+  const send = async body => {
+    go.disabled = no.disabled = true; msg.textContent = 'saving…';
+    try {
+      await post(`/api/discovery/${encodeURIComponent(runId)}/data-request`,
+                 Object.assign({ request_id: it.request_id }, body));
+      const s = await get(`/api/discovery/${encodeURIComponent(runId)}`);
+      state.run = s; renderDataRequests(s);
+    } catch (e) { msg.textContent = e.message; go.disabled = no.disabled = false; }
+  };
+  f.addEventListener('submit', ev => {
+    ev.preventDefault();
+    send({ dataset_id: ds.value.trim(), url: url.value.trim(), note: note.value.trim() });
+  });
+  no.addEventListener('click', () => send({ decline: true, note: note.value.trim() }));
+  return f;
 }
 
 /* Questions to the orchestrator about an ended real run, and its answers.

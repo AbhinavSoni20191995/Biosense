@@ -299,6 +299,11 @@ def restore(runs_dir, run_id, *, after=-1):
     # Questions are answered after the state was last written; read them live.
     from . import ask as ASK
     snap['questions'] = ASK.load(d)['items'] or None
+    # So are data requests: a person answers one long after the run ended.
+    from ..evidence import datareq as DRQ
+    doc = DRQ.load(d)
+    snap['data_requests'] = ({'items': doc['items'], 'note': doc['note'],
+                              'handover': DRQ.handover(doc)} if doc else None)
     live = snap.get('status') in LIVE_STATUSES
     if live:
         age = time.time() - (snap.get('written_at') or 0)

@@ -1242,7 +1242,21 @@ without them, and do not drop the parameter.
    lead can be checked with data, ask `bioinformatics` to check it. Where one
    source has nothing to add (no dataset, no annotation), the others still
    carry the hypothesis and the recommendation: record the gap, do not wait on it.
-{data_note}3. **Where there is a plan, execute it with the tools, never by hand.** Run
+{data_note}   **When something a person could supply is what blocked you, ask for it.**
+   A repository with no processed counts, a series whose row ids resolve to no
+   gene, a paper behind a paywall, a number only their bench book has: these
+   end as limitations, and a limitation nobody can act on is where a run goes
+   thin for no reason. Write the ask instead, alongside the limitation:
+   `{python} -m biosense.evidence.cli data-request --draft {loop_dir}/data_requests.draft.json \
+       --out {loop_dir}/data_requests.json --run-id {Path(loop_dir).name}`
+   in the shape `{python} -m biosense.evidence.cli template data-request` prints.
+   Each asks for one thing: what exactly (the accession, the ids, the quantity),
+   why it failed here (the 404, the ids that did not map), what shape a usable
+   answer takes, what it would unblock, and where a person might look. Ask only
+   for what would change the answer. The person sees these on the run page and
+   starts the next round with what they give; this run does not wait, and
+   carries on with what it has.
+3. **Where there is a plan, execute it with the tools, never by hand.** Run
    `{python} -m biosense.bioinformatics.cli analyse run --plan <plan.json> --out …`
    (the plan comes from `analyse plan`). Quote its numbers;
    do not retype them from memory and do not compute your own.

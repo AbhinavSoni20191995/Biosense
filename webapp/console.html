@@ -437,6 +437,14 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div id="otherHyps"></div>
     </section>
 
+    <!-- What the run could not fetch, asked of the person who can supply it.
+         Answering changes nothing here; the next round reads the answers. -->
+    <section class="glass card" id="askDataPanel" hidden>
+      <div class="head"><h3>The run needs your help</h3>
+        <span class="hint" id="askDataHead"></span></div>
+      <div id="askDataList"></div>
+    </section>
+
     <!-- Challenge the result before acting on it: the orchestrator answers from
          what this run wrote. Read-only; new evidence is a follow-up run's job. -->
     <section class="glass card" id="askPanel" hidden>

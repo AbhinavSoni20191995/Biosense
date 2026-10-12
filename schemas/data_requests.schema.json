@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/data-requests-v1.0",
+  "title": "DataRequests 1.0: what the run could not get, asked of the person who can",
+  "description": "An agent that cannot fetch a table records a limitation, and a limitation is where the matter usually ends. Often the person who started the run can supply exactly the missing thing -- the processed counts a repository never published, the sample sheet behind an accession, the gene mapping for an in-house array, a number from their own bench book. This document turns each such dead end into a request: what is needed, why, in what shape, and what it would unblock. A request carries an answer once the person gives one, and an answer is data with provenance: a dataset they registered, or their own words, which can settle a direction but never becomes a cited value. Nothing here fetches anything or re-runs anything; it is the handover, and the next round reads it.",
+  "type": "object",
+  "required": ["kind", "schema_version", "run_id", "items", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "data_requests"},
+    "schema_version": {"type": "string"},
+    "project_id": {"type": ["string", "null"]},
+    "run_id": {"type": "string"},
+    "created_at": {"type": ["string", "null"]},
+    "created_by": {"type": ["string", "null"]},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["request_id", "needs", "what", "why", "unblocks", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {"type": "string"},
+          "needs": {
+            "enum": ["processed_table", "sample_sheet", "identifier_mapping", "full_text", "measurement", "access", "other"],
+            "description": "processed_table: counts or a matrix a repository never published. sample_sheet: which sample is which condition. identifier_mapping: probe or locus ids this run could not resolve to genes. full_text: a paper behind a paywall. measurement: a number from the person's own work. access: a credential or a permission the run does not have."
+          },
+          "what": {"type": "string", "minLength": 10, "description": "The thing itself, named precisely enough to hand over: the accession, the file, the identifiers, the quantity."},
+          "why": {"type": "string", "minLength": 10, "description": "What was tried and why it failed -- the 404, the ids that did not map, the paywall."},
+          "shape": {"type": ["string", "null"], "description": "What a usable answer looks like: a CSV with genes as rows and samples as columns, a two-column id map, a number with its unit."},
+          "unblocks": {"type": "string", "minLength": 5, "description": "What this run could then do that it could not: the analysis, the hypothesis, the arm."},
+          "accession": {"type": ["string", "null"]},
+          "where_to_look": {"type": "array", "items": {"type": "string"}, "description": "Public queries or URLs a person could try, so the ask is not a dead end for them either."},
+          "status": {"enum": ["open", "answered", "declined"]},
+          "answer": {
+            "type": ["object", "null"],
+            "required": ["provided_by", "at"],
+            "additionalProperties": false,
+            "properties": {
+              "dataset_id": {"type": ["string", "null"], "description": "A dataset the person registered. This is the answer that can be analysed."},
+              "note": {"type": ["string", "null"], "description": "The person's own words. They can settle a direction and update a hypothesis; a number in them enters a protocol only as an adapted value naming this report, never as a cited one."},
+              "url": {"type": ["string", "null"]},
+              "provided_by": {"type": "string"},
+              "at": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "note": {"type": "string"}
+  }
+}

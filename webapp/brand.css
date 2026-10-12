@@ -871,3 +871,15 @@ body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
 .tag.necessary{border-color:var(--ok);color:var(--ok)}
 .tag.potential{border-color:var(--s1);color:var(--s1)}
 .tag.experimental{border-color:var(--s3);color:var(--s3)}
+
+/* ── What the run could not get, asked of the person who can ── */
+.dreq{border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:var(--r-s);
+  padding:11px 13px;margin:0 0 12px}
+.dreq.answered{border-left-color:var(--ok)} .dreq.declined{border-left-color:var(--neutral)}
+.dreq-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px;margin-bottom:7px;
+  font-size:14px}
+.dreq-answer{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);font-size:13px}
+.dreq-form{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.dreq-form label{display:block;font-size:12.5px;color:var(--ink-2);margin-top:8px}
+.dreq-form input,.dreq-form textarea{width:100%;box-sizing:border-box;margin-top:4px}
+.dreq-form .hint{font-size:11.5px;margin:3px 0 0}

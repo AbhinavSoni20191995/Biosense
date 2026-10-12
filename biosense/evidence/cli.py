@@ -710,6 +710,21 @@ def cmd_fidelity(a):
     return 0
 
 
+def cmd_data_request(a):
+    """What this run could not get, asked of the person who can supply it."""
+    from . import datareq as DR
+    doc = DR.build(K.read_json(a.draft), run_id=a.run_id or Path(a.out).parent.name,
+                   project_id=a.project, created_by=a.created_by or 'orchestrator')
+    K.write_json_atomic(a.out, doc)
+    print(json.dumps({'written': a.out,
+                      'asked': [{'request_id': i['request_id'], 'needs': i['needs'],
+                                 'unblocks': i['unblocks']} for i in doc['items']],
+                      'next': 'The run page shows these to the person. Answering one does not '
+                              'change this run: they start the next round with what they gave, '
+                              'and it reads the answers.'}, indent=1))
+    return 0
+
+
 def cmd_check(a):
     """Validate a file an agent wrote itself. The errors are the answer, in full.
 
@@ -742,10 +757,12 @@ def cmd_template(a):
     from . import sota as SO
     from . import routes as RS
     from . import fidelity as FD
+    from . import datareq as DRQ
     shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
              'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE,
              'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE,
-             'fidelity': FD.TEMPLATE}.get(a.what, TEMPLATE)
+             'fidelity': FD.TEMPLATE,
+             'data-request': DRQ.TEMPLATE}.get(a.what, TEMPLATE)
     print(json.dumps(shape, indent=2))
     return 0
 
@@ -838,12 +855,18 @@ def main(argv=None):
                                         'measures are marked')
     p.add_argument('--run-id'); p.add_argument('--created-by')
     p.set_defaults(fn=cmd_fidelity)
+    p = sub.add_parser('data-request', help='ask the person for what this run could not '
+                                           'fetch, so the next round can use it')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--project'); p.add_argument('--run-id'); p.add_argument('--created-by')
+    p.set_defaults(fn=cmd_data_request)
     p = sub.add_parser('check', help='validate a BioSense artifact file and list every error')
     p.add_argument('file'); p.add_argument('--kind', choices=sorted(KINDS_BY_NAME))
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser('template', help='print an example draft')
     p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
-                                    'devmap', 'sota', 'route-select', 'fidelity'])
+                                    'devmap', 'sota', 'route-select', 'fidelity',
+                                    'data-request'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:
