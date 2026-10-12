@@ -74,6 +74,8 @@ SCHEMAS = {
     'cell_fidelity': 'cell_fidelity.schema.json',
     # what a run could not fetch, asked of the person who can supply it
     'data_requests': 'data_requests.schema.json',
+    # the published route, stage by stage, before this run changes anything
+    'baseline_protocol': 'baseline_protocol.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',

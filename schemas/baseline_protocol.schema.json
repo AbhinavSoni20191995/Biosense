@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/biosense/baseline-protocol-v1.0",
+  "title": "BaselineProtocol 1.0: the published way this cell is made, stage by stage",
+  "description": "What goes into the medium at every stage of the route, as the literature states it -- before this run changes anything. A protocol document can only carry a dose for a parameter the project registered, which is the rule that stops invented numbers; the cost is that a stage nobody registered a factor for reads as empty, as though nothing is known about it. This document is where that knowledge lives. Every stage of the project appears, whether or not the run found anything for it. Every factor says what stands behind it: `reported` with a source and the sentence quoted, `adapted` from a stated other context, `design_choice` with a rationale and no claim of being published, or `gap` -- something the stage needs and this run could not establish, which carries no value at all. None of this is approved and none of it is a protocol value: it is the published starting point a person builds their protocol from.",
+  "type": "object",
+  "required": ["kind", "schema_version", "project_id", "cell_type", "stages", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "baseline_protocol"},
+    "schema_version": {"type": "string"},
+    "project_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "created_at": {"type": ["string", "null"]},
+    "created_by": {"type": ["string", "null"]},
+    "cell_type": {"type": "string", "minLength": 2},
+    "route": {"type": ["string", "null"], "description": "The route this baseline describes, matching route_selection.chosen where this run chose one."},
+    "base_medium": {"type": ["string", "null"], "description": "The medium the stages are built on, where the sources agree on one."},
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stage_id", "label", "purpose", "factors", "addressed"],
+        "additionalProperties": false,
+        "properties": {
+          "stage_id": {"type": "string"},
+          "label": {"type": "string"},
+          "purpose": {"type": "string", "description": "What this stage is for, in one sentence: what goes in and what comes out."},
+          "addressed": {"type": "boolean", "description": "False where the run established nothing for this stage; the stage still appears."},
+          "base_medium": {"type": ["string", "null"]},
+          "note": {"type": ["string", "null"]},
+          "factors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["factor_id", "name", "role", "provenance", "why"],
+              "additionalProperties": false,
+              "properties": {
+                "factor_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_]{0,47}$"},
+                "name": {"type": "string", "minLength": 2},
+                "role": {"enum": ["essential", "supporting", "optional"]},
+                "value": {"type": ["number", "null"]},
+                "unit": {"type": ["string", "null"]},
+                "range": {"type": ["object", "null"], "required": ["lower", "upper"], "additionalProperties": false,
+                  "properties": {"lower": {"type": "number"}, "upper": {"type": "number"}}},
+                "timing": {"type": ["string", "null"], "description": "When within the stage: 'day 0 to 4', 'from the first feed', 'withdrawn at day 8'."},
+                "provenance": {"enum": ["reported", "adapted", "design_choice", "gap"]},
+                "sources": {"type": "array", "items": {"type": "object", "required": ["ref", "quote"],
+                  "additionalProperties": false,
+                  "properties": {"ref": {"type": "string"}, "quote": {"type": "string", "minLength": 3},
+                                 "locator": {"type": ["string", "null"]},
+                                 "context": {"type": ["string", "null"], "description": "The system the source used, where it differs from this one."}}}},
+                "why": {"type": "string", "minLength": 10, "description": "What this factor does at this stage."},
+                "adapted_from": {"type": ["string", "null"]},
+                "what_to_search": {"type": ["string", "null"]},
+                "in_project": {"type": ["string", "null"], "description": "The project parameter that already carries this factor, where one does. Filled by BioSense, not by an agent."},
+                "notes": {"type": ["string", "null"]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["stages_total", "stages_addressed", "factors", "reported", "gaps"],
+      "additionalProperties": false,
+      "properties": {
+        "stages_total": {"type": "integer"},
+        "stages_addressed": {"type": "integer"},
+        "factors": {"type": "integer"},
+        "reported": {"type": "integer"},
+        "gaps": {"type": "integer"},
+        "already_parameters": {"type": "integer"}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "note": {"type": "string"}
+  }
+}

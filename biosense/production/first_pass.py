@@ -132,8 +132,16 @@ def lever_action(lever, stage_labels=None):
                        dose_known=lever.get('candidate_value') is not None)
 
 
-def plan(doc):
-    """{stages: [{..., inducers}], unstaged: [...], physical: [...]} from a protocol."""
+def plan(doc, baseline=None):
+    """{stages: [{..., inducers}], unstaged: [...], physical: [...]} from a protocol.
+
+    *baseline*, when the run wrote one, is the published route stage by stage.
+    Its factors are merged into the stages the protocol itself says nothing
+    about, so a reader sees the whole process rather than the one stage this
+    run had a hypothesis for. They are marked as what they are — published,
+    not carried by this protocol and not approved — and a factor the protocol
+    already carries is never duplicated by one.
+    """
     tl = doc.get('timeline') or {}
     stages = [dict(s, inducers=[]) for s in tl.get('stages') or []]
     by_id = {s['stage_id']: s for s in stages}
@@ -189,6 +197,8 @@ def plan(doc):
         else:
             unstaged.append(item)
 
+    _merge_baseline(baseline, stages, by_id, labels)
+
     order = {'add': 0, 'raise': 1, 'lower': 2, 'set': 3, 'gap': 4, 'keep': 5}
     for s in stages:
         s['inducers'].sort(key=lambda i: (order.get(i['action'], 9), i['label']))
@@ -197,6 +207,8 @@ def plan(doc):
         'stages': stages, 'unstaged': unstaged, 'physical': physical,
         'changes': sum(1 for s in stages for i in s['inducers'] if i['action'] != 'keep')
                    + sum(1 for i in unstaged + physical if i['action'] != 'keep'),
+        'baseline_stages': sum(1 for s in stages if any(i.get('from_baseline')
+                                                        for i in s['inducers'])),
         'note': ('A first pass: the protocol\'s own values stage by stage. NEW marks a lever a '
                  'live hypothesis named that this project does not have yet; it carries that '
                  'hypothesis\'s dose or says none was set, and enters the protocol only once '
@@ -204,9 +216,74 @@ def plan(doc):
     }
 
 
+def _norm(name):
+    """One key per real thing: 'M-CSF', 'mcsf_ng_ml' and 'M-CSF concentration' agree."""
+    base = re.sub(r'_(ng_ml|ug_ml|mg_ml|um|nm|mm|pct|percent|h|hr|hours|days?|c|rpm|'
+                  r'e6_per_ml|fraction)$', '', str(name or '').strip().lower())
+    base = re.split(r'\b(concentration|dose|level)\b', base)[0]
+    return re.sub(r'[^a-z0-9]+', '', base)
+
+
+BASELINE_VERB = {'essential': 'Add', 'supporting': 'Add', 'optional': 'Consider'}
+
+
+def _merge_baseline(baseline, stages, by_id, labels):
+    """Put the published route's factors into the stages, where nothing covers them.
+
+    A stage reading "no inducer set" means the project registered no parameter
+    that could hold a dose there — not that nothing is known about the stage.
+    The baseline is what is known, and it belongs in front of the person
+    reading the plan. It is merged, never substituted: a factor the protocol
+    already carries keeps the protocol's own value, and the baseline row for it
+    is dropped rather than shown twice with two numbers.
+    """
+    if not baseline:
+        return
+    have = {_norm(i.get('parameter_id')) for s in stages for i in s['inducers']}
+    have |= {_norm(i.get('label')) for s in stages for i in s['inducers']}
+    have.discard('')
+    for st in baseline.get('stages') or []:
+        target = by_id.get(st.get('stage_id'))
+        if target is None:
+            continue
+        for f in st.get('factors') or []:
+            key = _norm(f.get('name'))
+            if key and key in have:
+                continue
+            if key:
+                have.add(key)
+            gap = f['provenance'] == 'gap'
+            action = 'gap' if gap else ('add' if f['role'] != 'optional' else 'set')
+            refs = [x['ref'] for x in f.get('sources') or []]
+            text = (f'{BASELINE_VERB.get(f["role"], "Add")} {f["name"]}'
+                    + (f' at {_num(f["value"])} {f["unit"] or ""}'.rstrip()
+                       if f.get('value') is not None else
+                       ' — the published route needs it here and no source found gives a dose'))
+            if f.get('timing'):
+                text += f' ({f["timing"]})'
+            target['inducers'].append({
+                'parameter_id': f['factor_id'], 'label': f['name'], 'unit': f.get('unit'),
+                'value': f.get('value'), 'was': None, 'action': action,
+                'provenance': f['provenance'],
+                'letter': 'GAP' if gap else 'PUB',
+                'confidence': None, 'hypothesis_id': None,
+                'registered': bool(f.get('in_project')), 'stage_id': st['stage_id'],
+                'stage_label': labels.get(st['stage_id']),
+                'from_baseline': True, 'role': f['role'], 'why': f.get('why'),
+                'timing': f.get('timing'),
+                'refs': refs, 'what_to_search': f.get('what_to_search'),
+                'in_project': f.get('in_project'),
+                'text': text,
+            })
+
+
 def markdown(p):
     """The plan as the report's first section."""
     L = ['## First-pass plan', '', p['note'], '']
+    if p.get('baseline_stages'):
+        L += ['PUB marks a factor the published route uses that this protocol does not carry: '
+              'it is what the literature states, not a value this run set or anybody approved.',
+              '']
     for s in p['stages']:
         days = (f'd{_num(s["day_start"])}–{_num(s["day_start"] + s["days"])}'
                 if s.get('days') is not None else 'days not set')
@@ -215,7 +292,8 @@ def markdown(p):
             L.append('- No inducer is set for this stage in this run.')
         L += [f'- {i["text"]} [{i["letter"]}'
               + (f', {i["confidence"]}' if i.get('confidence') else '')
-              + (f', {i["hypothesis_id"]}' if i.get('hypothesis_id') else '') + ']'
+              + (f', {i["hypothesis_id"]}' if i.get('hypothesis_id') else '')
+              + (f', {", ".join(i["refs"])}' if i.get('refs') else '') + ']'
               for i in s['inducers']]
         L.append('')
     if p['unstaged']:

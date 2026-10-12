@@ -572,7 +572,7 @@ def _effect_line(e):
             f'{rel} [{et}]{basis}')
 
 
-def display(doc, *, devmap=None, sota=None):
+def display(doc, *, devmap=None, sota=None, baseline=None):
     """The payload the interface renders: the document plus a few derived counts."""
     changed = [p for st in doc['stages'] for p in st['parameters'] if p['changed']]
     ledger = doc['hypothesis_ledger']
@@ -592,7 +592,10 @@ def display(doc, *, devmap=None, sota=None):
         'badge': RT.LABELS[doc['runtime_mode']],
         # The same protocol laid out stage by stage for the bench, and each
         # hypothesis as the one action it asks for.
-        'first_pass': FP.plan(doc),
+        'first_pass': FP.plan(doc, baseline=baseline),
+        # Carried through so the plan can say which empty stage is "no
+        # parameter registered" and which is "nothing was found".
+        'baseline_protocol': baseline,
         # Every condition this run surfaced, sorted by what stands behind it,
         # so a person designing a run can see the options rather than an
         # empty stage.

@@ -1321,6 +1321,58 @@ function renderFidelity(f) {
   (f.limitations || []).forEach(l => host.append(el('p', 'caveat', l)));
 }
 
+/* The published route, stage by stage: what the established protocol puts in
+   the medium before this run changes anything. The plan shows these rows
+   inline; this is the long form, with what each factor does and the sentence
+   each dose rests on. */
+const ROLE_CLS = { essential: 'bad', supporting: 'warn', optional: 'mut' };
+let baseSeen = '';
+function renderBaseline(b) {
+  const host = $('#baseInsights'); if (!host) return;
+  const key = JSON.stringify(b);
+  if (key === baseSeen) return;
+  baseSeen = key; host.textContent = '';
+  const c = b.coverage || {};
+  const head = el('div');
+  head.append(el('b', null, b.cell_type || ''));
+  if (b.route) head.append(el('span', 'dim', ' · ' + b.route));
+  if (b.base_medium) head.append(el('div', 'dim', 'Base medium: ' + b.base_medium));
+  head.append(el('div', 'dim', `${c.stages_addressed || 0} of ${c.stages_total || 0} stages have `
+    + `factors · ${c.reported || 0} of ${c.factors || 0} carry a reported dose · `
+    + `${c.gaps || 0} gap(s) · ${c.already_parameters || 0} already a parameter of this project`));
+  host.append(head);
+
+  (b.stages || []).forEach(st => {
+    host.append(el('div', 'plan-lab', st.label + (st.addressed ? '' : ' — not established')));
+    host.append(el('p', 'dim', st.purpose));
+    if (!(st.factors || []).length) return;
+    host.append(foldTable(['Factor', 'Dose', 'Stands on'], st.factors.map(f => {
+      const nm = el('span');
+      nm.append(el('b', null, f.name));
+      nm.append(el('span', 'tag ' + (ROLE_CLS[f.role] || 'mut'), ' ' + f.role));
+      if (f.in_project) nm.append(el('span', 'tag brand', ' a parameter here'));
+      const dose = f.value == null ? (f.provenance === 'gap' ? 'no dose established' : '—')
+        : `${num(f.value)}${f.unit ? ' ' + f.unit : ''}`;
+      const stands = el('span', 'pl ' + f.provenance, f.provenance);
+      const detail = appendAll(el('div'), [
+        kv('What it does', f.why),
+        f.timing ? kv('When', f.timing) : null,
+        f.adapted_from ? kv('Adapted from', f.adapted_from) : null,
+        f.what_to_search ? kv('To settle it, search', f.what_to_search) : null,
+        f.in_project ? kv('In this project', f.in_project + ' — the protocol can carry its dose')
+          : kv('Not a parameter here', 'register it in the project and the protocol can carry '
+            + 'its dose; until then it is a condition to design the run around'),
+        ...(f.sources || []).map(x => kv(x.ref + (x.locator ? ' · ' + x.locator : ''),
+          '“' + x.quote + '”' + (x.context ? ' — ' + x.context : ''))),
+      ]);
+      return { key: 'base:' + st.stage_id + ':' + f.factor_id,
+        cells: [nm, dose, stands], detail };
+    }), 'base'));
+  });
+  host.append(el('p', 'caveat', b.note));
+  (b.limitations || []).forEach(l => host.append(el('p', 'caveat', l)));
+}
+
 /* The specialist mode's phase 2: which way of making the cell this run chose.
    The choice and its reasons first, then every candidate scored against each
    criterion — a row opens on its outline, numbers and why it was not chosen. */
@@ -1798,16 +1850,26 @@ function renderInsights(snap) {
   const sota = snap.sota_comparison;
   const route = snap.route_selection;
   const fid = snap.cell_fidelity;
+  const base = snap.baseline_protocol;
   const analysed = $('#anaSec') && !$('#anaSec').hidden;
   if (!ins && !papers.length && !bio && !geno && !terms && !plan && !dev && !sota && !route
-      && !fid && !snap.reference_draft && !analysed) {
+      && !fid && !base && !snap.reference_draft && !analysed) {
     panel.hidden = true; return;
   }
   panel.hidden = false;
   wireSection('litSec', false); wireSection('papersSec', false);
   wireSection('bioSec', false); wireSection('genoSec', true); wireSection('termsSec', true);
   wireSection('devSec', true); wireSection('sotaSec', true); wireSection('roundSec', true);
-  wireSection('routeSec', true); wireSection('fidSec', true);
+  wireSection('routeSec', true); wireSection('fidSec', true); wireSection('baseSec', true);
+  const baseOn = base && (base.stages || []).length;
+  $('#baseSec').hidden = !baseOn;
+  if (baseOn) {
+    renderBaseline(base);
+    const c = base.coverage || {};
+    $('#baseSum').textContent = [`${c.stages_addressed || 0}/${c.stages_total || 0} stages`,
+      `${c.factors || 0} factor(s)`, c.gaps ? `${c.gaps} gap(s)` : null]
+      .filter(Boolean).join(' · ');
+  }
   const fidOn = fid && (fid.criteria || []).length;
   $('#fidSec').hidden = !fidOn;
   if (fidOn) {
@@ -3172,13 +3234,20 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleFocus(
    project's, and says so. */
 const PLAN_VERB = { add: 'ADD', raise: 'RAISE', lower: 'LOWER', set: 'SET', gap: 'NO VALUE' };
 function planItem(i, withStage, p, stages) {
-  const row = el('div', `plan-item act-${i.action}${i.registered ? '' : ' new'}`);
-  row.title = i.text + (i.hypothesis_id ? ` — from ${i.hypothesis_id}` : '');
+  const row = el('div', `plan-item act-${i.action}${i.registered ? '' : ' new'}`
+    + (i.from_baseline ? ' pub' : ''));
+  row.title = [i.text, i.why, i.hypothesis_id ? `from ${i.hypothesis_id}` : '',
+    (i.refs || []).length ? (i.refs || []).join(', ') : ''].filter(Boolean).join(' — ');
   if (PLAN_VERB[i.action]) row.append(el('span', 'plan-verb', PLAN_VERB[i.action]));
   const body = el('span', 'plan-body');
   body.append(el('b', null, i.label));
+  /* A published factor with no dose and one this project cannot carry are
+     different sentences: the first means nobody reports a number, the second
+     means there is nowhere to put one. */
   body.append(el('span', 'v', i.value == null
-    ? (i.registered ? '—' : 'dose not set') : ` ${num(i.value)}${i.unit ? ' ' + i.unit : ''}`));
+    ? (i.from_baseline ? ' no dose published' : i.registered ? ' —' : ' dose not set')
+    : ` ${num(i.value)}${i.unit ? ' ' + i.unit : ''}`));
+  if (i.from_baseline && i.timing) body.append(el('span', 'dim', ` · ${i.timing}`));
   if (i.was != null) body.append(el('span', 'was', `was ${num(i.was)}`));
   if (withStage && i.stage_id !== 'all' && i.stage_label) body.append(el('span', 'dim', ` · ${i.stage_label}`));
   row.append(body);
@@ -3186,6 +3255,10 @@ function planItem(i, withStage, p, stages) {
   meta.append(el('span', 'pl ' + i.provenance, i.letter));
   if (i.confidence) meta.append(miniBar(i.confidence));
   if (i.hypothesis_id) meta.append(el('span', 'dim', i.hypothesis_id));
+  if (i.from_baseline) {
+    meta.append(el('span', 'dim', i.role || 'published'));
+    (i.refs || []).slice(0, 2).forEach(r => meta.append(el('span', 'ref', r)));
+  }
   row.append(meta);
   /* An unregistered lever is one click from being carried: the protocol can
      hold its dose as soon as the project has the parameter. */
@@ -3223,8 +3296,13 @@ function renderPlan(fp, p) {
        literature says. Saying that — and offering what the run proposed —
        is the difference between a blank box and a next step. */
     if (!s.inducers.length) {
-      b.append(el('p', 'dim plan-none', 'This project has no inducer registered for this '
-        + 'stage, so the protocol cannot carry a dose here yet.'));
+      const bs = ((p || {}).baseline_protocol || {}).stages || [];
+      const found = bs.find(x => x.stage_id === s.stage_id);
+      b.append(el('p', 'dim plan-none', found && !found.addressed
+        ? 'This run established nothing for this stage: no source it read says what goes '
+          + 'in here. That is a gap in the evidence, not a stage that needs nothing.'
+        : 'This project has no inducer registered for this stage, so the protocol cannot '
+          + 'carry a dose here yet.'));
     }
     s.inducers.forEach(i => b.append(planItem(i, false, p, stages)));
     // Only what this stage does not already show: a lever placed in the stage
@@ -3257,7 +3335,11 @@ function renderPlan(fp, p) {
      empty stage is not the same as nothing being available. */
   const cat = (p || {}).options;
   if (cat && cat.count) wrap.append(conditionPicker(cat));
-  wrap.append(el('p', 'caveat plan-note', fp.note + ' R reported · A adapted · D design choice.'));
+  wrap.append(el('p', 'caveat plan-note', fp.note
+    + (fp.baseline_stages ? ' PUB marks a factor the published route uses that this protocol '
+      + 'does not carry — what the literature states, not a value this run set or anybody '
+      + 'approved. GAP marks one the route needs that no source doses.' : '')
+    + ' R reported · A adapted · D design choice.'));
   return wrap;
 }
 

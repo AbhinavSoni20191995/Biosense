@@ -765,6 +765,12 @@ button{font-family:inherit}
 .plan-item.new{border-style:dashed}
 .plan-note{margin-top:10px}
 .pl.candidate{color:var(--s3)}
+/* A factor from the published route, not from this protocol: the left rule
+   says at a glance which rows the run set and which the literature did. */
+.plan-item.pub{border-left:3px solid var(--s1);border-style:solid}
+.plan-item.pub .plan-verb{color:var(--s1)}
+.plan-item .ref{font-family:var(--mono);font-size:10px;color:var(--ink-3);
+  border:1px solid var(--line);border-radius:5px;padding:0 4px}
 .plan-item .plan-body{flex:1 1 auto}
 .ft.other td:nth-child(2),.ft.other th:nth-child(2){width:58%}
 #protocol details ul.tight{font-size:13px;line-height:1.5}

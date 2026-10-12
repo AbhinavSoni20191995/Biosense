@@ -710,6 +710,25 @@ def cmd_fidelity(a):
     return 0
 
 
+def cmd_baseline(a):
+    """The published route, stage by stage, before this run changes anything."""
+    from . import baseline as BL
+    doc = BL.build(K.read_json(a.draft), project=PJ.load(a.project, a.projects_dir),
+                   run_id=a.run_id, created_by=a.created_by or 'orchestrator')
+    K.write_json_atomic(a.out, doc)
+    c = doc['coverage']
+    print(json.dumps({'written': a.out, 'coverage': c,
+                      'stages': [{'stage_id': s['stage_id'], 'factors': len(s['factors']),
+                                  'addressed': s['addressed']} for s in doc['stages']],
+                      'next': 'Every stage of the project is in this file, including the ones '
+                              'nothing was found for. The plan shows these beside the '
+                              'protocol\'s own values, marked as published rather than '
+                              'recommended; a factor becomes a protocol value only once '
+                              'somebody registers it as a parameter and approves the protocol.'},
+                     indent=1))
+    return 0
+
+
 def cmd_data_request(a):
     """What this run could not get, asked of the person who can supply it."""
     from . import datareq as DR
@@ -758,10 +777,11 @@ def cmd_template(a):
     from . import routes as RS
     from . import fidelity as FD
     from . import datareq as DRQ
+    from . import baseline as BL
     shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
              'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE,
              'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE,
-             'fidelity': FD.TEMPLATE,
+             'fidelity': FD.TEMPLATE, 'baseline': BL.TEMPLATE,
              'data-request': DRQ.TEMPLATE}.get(a.what, TEMPLATE)
     print(json.dumps(shape, indent=2))
     return 0
@@ -855,6 +875,12 @@ def main(argv=None):
                                         'measures are marked')
     p.add_argument('--run-id'); p.add_argument('--created-by')
     p.set_defaults(fn=cmd_fidelity)
+    p = sub.add_parser('baseline', help='the published route stage by stage: what goes into '
+                                        'the medium at each stage, before this run changes it')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--run-id'); p.add_argument('--created-by')
+    p.set_defaults(fn=cmd_baseline)
     p = sub.add_parser('data-request', help='ask the person for what this run could not '
                                            'fetch, so the next round can use it')
     p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
@@ -866,7 +892,7 @@ def main(argv=None):
     p = sub.add_parser('template', help='print an example draft')
     p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
                                     'devmap', 'sota', 'route-select', 'fidelity',
-                                    'data-request'])
+                                    'baseline', 'data-request'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

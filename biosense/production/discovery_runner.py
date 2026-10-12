@@ -323,12 +323,16 @@ def _design(out_dir, project, why_not):
 
 
 def _lenses(out_dir):
-    """The developmental map and state-of-the-art comparison, when this run wrote
-    them: the option catalogue reads both, and a missing one simply contributes
-    nothing."""
+    """The lenses a protocol is rendered through, when this run wrote them.
+
+    The developmental map and the state-of-the-art comparison feed the option
+    catalogue; the baseline protocol fills the stages the project has no
+    parameter for. A missing one contributes nothing and is never an error: a
+    run that did not write one still has a protocol to show."""
     out = {}
     for key, name, kind in (('devmap', 'developmental_map.json', 'developmental_map'),
-                            ('sota', 'sota_comparison.json', 'sota_comparison')):
+                            ('sota', 'sota_comparison.json', 'sota_comparison'),
+                            ('baseline', 'baseline_protocol.json', 'baseline_protocol')):
         try:
             doc = K.read_json(Path(out_dir) / name)
         except (OSError, ValueError):

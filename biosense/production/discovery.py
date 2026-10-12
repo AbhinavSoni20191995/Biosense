@@ -1350,7 +1350,30 @@ without them, and do not drop the parameter.
    person adds it from the run page if they accept it. Constants you cannot
    read from a source are not invented — leave that lever as a gap and say
    which measurement would supply them (it belongs in the round-1 experiment).
-6. **Give every setpoint the process needs a number, or say why it must not have
+6. **Write the whole route down, not only the stage you changed.** The
+   protocol document can carry a dose only for a parameter this project
+   registered, and this project registered what it registered — usually the
+   vessel controls and nothing else. So a stage you found plenty about still
+   renders as "no inducer set", and the person reads a protocol that appears to
+   start at the last stage. Write the baseline instead: for **every** stage of
+   this process, what the established route puts in the medium, what it is
+   for, the dose where a source gives one, and the timing.
+   `{python} -m biosense.evidence.cli template baseline` prints the shape;
+   `{python} -m biosense.evidence.cli baseline --project {project.project_id}{pdir} \
+       --run-id {Path(loop_dir).name} --draft {loop_dir}/baseline.draft.json \
+       --out {loop_dir}/baseline_protocol.json` checks it.
+
+   A factor is `reported` only with the source and the sentence quoted;
+   `adapted` says which context the dose came from; `design_choice` carries a
+   rationale and no citation; `gap` carries **no value** and says what to
+   search. A stage the route needs a factor for that nobody doses is a gap
+   worth writing — it is what the first round measures. Do not leave a stage
+   out to save turns: a stage you omit comes back marked "this run established
+   nothing for this stage", which is a weaker answer than the one you could
+   have given. This is the published starting point, shown beside your
+   recommendation and never as it: nothing here is approved, and a factor
+   enters the protocol only when the person registers it as a parameter.
+7. **Give every setpoint the process needs a number, or say why it must not have
    one.** A protocol with a blank cannot be run, and the literature will not
    report the value for this exact vessel, density and line. Each parameter the
    project exposes ends as one of three things, and the third is not a failure:
@@ -1380,7 +1403,7 @@ without them, and do not drop the parameter.
    Leaving a routine setpoint blank because no paper states it is not caution;
    it leaves the work undone. Propose the number, label it, and say how sure
    you are.
-7. Recommend the **next experiment**: the conditions, what to measure, and why.
+8. Recommend the **next experiment**: the conditions, what to measure, and why.
    This matters most when the magnitude is unknown — the experiment is how it
    stops being unknown.
 
