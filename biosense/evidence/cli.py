@@ -296,11 +296,28 @@ def cmd_context(a):
     return 0
 
 
-def simulate(project_id, settings, *, projects_dir=None, seed=7):
-    """Control versus candidate through the project's own model. Never invents."""
+def simulate(project_id, settings, *, projects_dir=None, seed=7, culture_format=None):
+    """Control versus candidate through the project's own model. Never invents.
+
+    *culture_format*, when given, is the vessel the question is about. The
+    model was written for a stirred tank, so in a plate or a tube its mixing
+    and oxygen terms describe equipment that is not there: those settings are
+    dropped, named in `dropped_for_format`, and the note says what is left is
+    about the model rather than about that vessel.
+    """
+    from .. import formats as FMT
     from ..production import sim_candidate as SC
     project = PJ.load(project_id, projects_dir)
     values = {PR.resolve(k): v for k, v in settings.items()}
+    fmt_dropped, fmt_note = [], None
+    if culture_format:
+        values, fmt_dropped, fmt_note = FMT.simulatable(culture_format, values)
+        if not values:
+            raise K.ContractError(
+                f'nothing left to simulate for a {FMT.get(culture_format).label}: every '
+                f'setting given is a stirred-tank control this vessel does not have '
+                f'({", ".join(d["parameter_id"] for d in fmt_dropped)}). '
+                f'{FMT.get(culture_format).simulator_note}')
     control = {}
     for pid, v in project.defaults().items():
         pp = project.parameter(pid)
@@ -312,12 +329,15 @@ def simulate(project_id, settings, *, projects_dir=None, seed=7):
     out = SC.compare_conditions(project, control=control, candidates=candidates,
                                 candidate_values=values, seed=seed)
     return {'project_id': project.project_id, 'requested': values,
+            'culture_format': culture_format or None,
+            'dropped_for_format': fmt_dropped, 'format_note': fmt_note,
             'prediction': out['prediction'], 'prediction_note': out['prediction_note'],
             'applied': out['handoff']['applied'], 'skipped': out['handoff']['skipped'],
             'clamped': out.get('clamped') or [], 'effects': out['effects'],
             'relative_effects': out.get('relative_effects') or [],
-            'note': 'SIMULATED by an uncalibrated model unless the project says otherwise. A '
-                    'simulation is evidence about the model, not about the cells.'}
+            'note': ('SIMULATED by an uncalibrated model unless the project says otherwise. A '
+                     'simulation is evidence about the model, not about the cells.'
+                     + (f' {fmt_note}' if fmt_note else ''))}
 
 
 def _factor(text):
@@ -545,7 +565,8 @@ def cmd_simulate(a):
         tdoc = K.read_json(Path(a.terms))
         PB.with_proposed_terms(PJ.load(a.project, a.projects_dir), tdoc.get('drafts') or [],
                                run_id=tdoc.get('run_id'))
-    doc = simulate(a.project, dict(a.set or []), projects_dir=a.projects_dir, seed=a.seed)
+    doc = simulate(a.project, dict(a.set or []), projects_dir=a.projects_dir, seed=a.seed,
+                   culture_format=getattr(a, 'culture_format', None))
     if a.genotype and a.factor:
         raise K.ContractError('give --genotype or --factor, not both: each is one assumed effect '
                               'against its own control')
@@ -824,6 +845,10 @@ def main(argv=None):
                         '(the file `term` wrote), each labelled DE NOVO')
     p.add_argument('--seed', type=int, default=7)
     p.add_argument('--out', required=True)
+    p.add_argument('--culture-format', dest='culture_format',
+                   choices=['six_well', 'cero', 'stirred_tank'],
+                   help='the vessel the question is about; a setting this vessel has no '
+                        'equipment for is dropped and named rather than modelled')
     p.set_defaults(fn=cmd_simulate)
     p = sub.add_parser('term', help='propose a response term for a lever the base reactor has '
                                     'no equation for (validated, never saved to the project)')

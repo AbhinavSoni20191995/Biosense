@@ -575,6 +575,17 @@ and the page rebuilds its event stream on waking instead of showing a frozen
 run. Nothing executes while a machine is suspended, so a run that has to carry
 on unattended belongs on a server that does not sleep.
 
+**A run can be asked for in the vessel you actually have.** Nobody starts in a
+bioreactor, so a run can be pointed at a **6-well plate**, a **CERO 3D rotating
+tube** or a **stirred tank**, and a finished protocol can be laid out in any of
+them afterwards. A concentration carries between vessels and the amount per
+well or per tube is worked out for you (100 ng/mL in 2 mL is 200 ng); an
+impeller speed and a tube rotation rate do not carry in either direction, and
+no conversion is offered because none exists; a dissolved-oxygen setpoint is
+dropped for a vessel with no probe rather than printed as a number describing
+nothing. What the new vessel needs you to decide is listed instead of filled
+in, and the simulator says which of its terms stop meaning anything there.
+
 **Two runs of the same question can be compared.** Ask the same thing twice and
 a language model does not write the same file twice, so the run list offers a
 comparison: the inputs that differed first (model, objective, effort, datasets
@@ -887,7 +898,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1434 tests
+uv run --frozen python -m unittest     # 1470 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

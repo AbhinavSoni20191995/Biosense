@@ -309,6 +309,19 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
           </select>
           <!-- One literature agent is the default. By stage runs one per process stage
                in parallel and merges them: faster literature, more model calls. -->
+          <!-- Where the cells actually are. Nobody starts in a bioreactor: the
+               plate is where a factor is tried, the tube is where aggregates
+               first form, the tank is where the numbers come from. The choice
+               changes what the agents look for, and a finished protocol can be
+               laid out in any of the three afterwards. -->
+          <label class="lab" for="cultureFormat" style="margin-top:14px">Where it will run</label>
+          <select id="cultureFormat" class="select">
+            <option value="" selected>The project's own vessel (default)</option>
+            <option value="six_well">6-well plate — try a factor first, many conditions, cheap</option>
+            <option value="cero">CERO 3D rotating tube — real suspension aggregates, 50 mL</option>
+            <option value="stirred_tank">Stirred-tank bioreactor — controlled, instrumented, the cell numbers</option>
+          </select>
+          <div class="note" id="cultureFormatNote"></div>
           <label class="lab" for="purpose" style="margin-top:14px">What this run is for</label>
           <select id="purpose" class="select">
             <option value="discovery" selected>A question about this process (default)</option>

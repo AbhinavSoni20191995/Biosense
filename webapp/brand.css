@@ -788,6 +788,17 @@ button{font-family:inherit}
 .cmpin,.cmpval{font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--line)}
 .cmpin:last-of-type,.cmpval:last-of-type{border-bottom:0}
 
+/* ── The same protocol in another vessel ── */
+.fmtbox{margin-top:6px}
+.fmtfacts{margin-top:6px}
+.fmtrow{border:1px solid var(--line);border-radius:9px;padding:6px 8px;margin:4px 0;
+  font-size:13px}
+.fmtrow .v{font-family:var(--mono);font-size:12.5px}
+/* An amount keeps the case it was written in. Uppercasing 'µmol' renders a
+   capital Mu that reads as 'MMOL', which is the same number a thousand times
+   over — the one typographic accident this page must not have. */
+.tag.amount{text-transform:none;letter-spacing:.02em}
+
 /* ── Questions to the orchestrator after a run ── */
 .ask-item{border:1px solid var(--line);border-radius:var(--r-s);padding:10px 12px;margin:0 0 10px}
 .ask-item.answering{border-style:dashed}

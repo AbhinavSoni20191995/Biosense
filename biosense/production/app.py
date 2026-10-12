@@ -2222,7 +2222,7 @@ class Handler(BaseHTTPRequestHandler):
             literature_mode=body.get('literature_mode'), purpose=body.get('purpose'),
             public_data=body.get('public_data'),
             bioinformatics_mode=body.get('bioinformatics_mode'),
-            addons=body.get('addons'),
+            addons=body.get('addons'), culture_format=body.get('culture_format'),
             requested_by=identity.owner if identity.authenticated else None,
             projects_dir=self._projects_dir(identity))
 
@@ -2494,6 +2494,38 @@ class Handler(BaseHTTPRequestHandler):
         if not state or (state.get('owner') is not None and state.get('owner') != identity.owner):
             return None, (404, {'error': 'no such discovery run'})
         return d, state.get('status')
+
+    def _translate_protocol(self, rid, to, *, volume='', fmt='json'):
+        """This run's protocol laid out in another culture format.
+
+        Computed from what the run already wrote: no agent, no model, no new
+        evidence. The arithmetic is concentration times working volume; what
+        cannot cross between vessels is named rather than converted.
+        """
+        from .. import formats as FMT
+        owner = self._identity().owner
+        run = self.discovery.get(rid, owner=owner)
+        result = (run.result if run
+                  else (self.discovery.restore(rid, owner=owner) or {}).get('result'))
+        protocol = (result or {}).get('protocol')
+        if not protocol:
+            return self._send(404, {'error': 'no protocol summary for that run'})
+        try:
+            vol = float(volume) if str(volume).strip() else None
+        except ValueError:
+            return self._send(400, {'error': 'working_volume_ml must be a number of mL'})
+        if vol is not None and not 0 < vol <= 100000:
+            return self._send(400, {'error': 'working_volume_ml is out of range'})
+        try:
+            doc = FMT.translate(protocol, to,
+                                from_=(protocol.get('culture_format')
+                                       or (run.request.get('culture_format') if run else None)),
+                                working_volume_ml=vol)
+        except K.ContractError as e:
+            return self._send(400, {'error': str(e)})
+        if fmt == 'md':
+            return self._send(200, FMT.markdown(doc), 'text/markdown; charset=utf-8')
+        return self._send(200, doc)
 
     def _compare_runs(self, a, b, *, fmt='json'):
         """Two of this person's ended runs, compared by code.
@@ -3026,6 +3058,18 @@ class Handler(BaseHTTPRequestHandler):
                 'note': 'Every run you have started, live or finished, from this process and '
                         'from its records on disk. A run keeps going whether or not this page '
                         'is open: closing the browser observes less, it does not stop work.'})
+        if path == '/api/formats':
+            from .. import formats as FMT
+            return self._send(200, {
+                'formats': FMT.listing(), 'order': list(FMT.ORDER), 'default': FMT.DEFAULT,
+                'note': 'Where the cells are. A protocol can be asked for in one of these '
+                        'and laid out in another; a concentration carries between them, a '
+                        'mixing rate and a dissolved-oxygen setpoint do not.'})
+        m = re.fullmatch(r'/api/discovery/([^/]+)/translate', path)
+        if m:
+            return self._translate_protocol(m.group(1), (q.get('to') or [''])[0],
+                                            volume=(q.get('working_volume_ml') or [''])[0],
+                                            fmt=(q.get('format') or ['json'])[0])
         if path == '/api/discovery/compare':
             return self._compare_runs((q.get('a') or [''])[0], (q.get('b') or [''])[0],
                                       fmt=(q.get('format') or ['json'])[0])
@@ -3069,11 +3113,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, PSUM.markdown(doc), 'text/markdown; charset=utf-8')
             if fmt == 'docx':
                 # The bench copy: the same protocol, in the order the work
-                # happens, as a file somebody can print and sign.
+                # happens, as a file somebody can print and sign. `as` lays it
+                # out for the vessel it is actually going into.
+                from .. import formats as FMT
                 from . import lab_protocol as LP
+                as_fmt = (q.get('as') or [''])[0].strip()
+                translation = None
+                if as_fmt:
+                    try:
+                        vol = (q.get('working_volume_ml') or [''])[0]
+                        translation = FMT.translate(
+                            protocol, as_fmt, from_=protocol.get('culture_format'),
+                            working_volume_ml=float(vol) if vol.strip() else None)
+                    except (K.ContractError, ValueError) as e:
+                        return self._send(400, {'error': str(e)})
                 name = re.sub(r'[^A-Za-z0-9._-]+', '-',
                               (protocol.get('title') or 'protocol'))[:60].strip('-') or 'protocol'
-                body = LP.tobytes(protocol, run_id=m.group(1))
+                body = LP.tobytes(protocol, run_id=m.group(1), translation=translation)
                 return self._send(
                     200, body,
                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

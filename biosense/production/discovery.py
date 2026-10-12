@@ -32,6 +32,7 @@ import uuid
 from pathlib import Path
 
 from .. import contracts as K
+from .. import formats as FMT
 from .. import parameters as PR
 from .. import projects as PJ
 from ..evidence import context as CTX
@@ -55,6 +56,50 @@ ARTIFACTS = (
     ('research_context.json', 'research_context',
      'the scope that was applied, so a context mismatch can be shown rather than absorbed'),
 )
+
+
+def _format_section(req):
+    """The vessel this run is for, when the person chose one.
+
+    A dose is a dose in any vessel, but what is worth gathering is not: a
+    plate run has no dissolved oxygen to set and no impeller to speed up, and
+    an agent that spends its searches on them has spent them on nothing.
+    """
+    fid = (req or {}).get('culture_format')
+    f = FMT.get(fid, required=False)
+    if f is None:
+        return ''
+    decide = '\n'.join(f'  - {d["what"]} — {d["why"]}' for d in f.decide)
+    others = ', '.join(FMT.FORMATS[x].label for x in FMT.ORDER if x != f.format_id)
+    return f"""## The vessel this run is for: {f.label}
+
+{f.summary}
+
+- **Vessel** {f.vessel}
+- **Mixing** {f.mixing}
+- **Oxygen** {f.gas_exchange}
+- **Feeding** {f.feeding}
+
+What that means for what you gather:
+
+- Prefer sources that used this format, and **say which format each source
+  used** in the evidence row. A dose from a stirred tank is not wrong here,
+  but it is a different context and the hypothesis should say so.
+- A concentration is the same concentration in any vessel; a mixing rate and a
+  dissolved-oxygen setpoint are not. Do not carry one across from another
+  format, in either direction, and do not propose a value for a control this
+  vessel does not have — say what the format decides instead.
+- These are this format's own decisions, and they belong in the protocol or
+  in the round plan as design choices with their basis:
+{decide}
+- The project's parameters are written for its own vessel. Where one of them
+  has no meaning here, say so in the limitations rather than setting it.
+
+The other formats ({others}) are where this process goes next or came from.
+BioSense can lay the finished protocol out in any of them, so write the
+protocol for **this** one and leave the arithmetic to it.
+
+"""
 
 
 def _clean(text, *, field, limit, minimum=0):
@@ -173,7 +218,8 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
           expert_knowledge_ids=(), process_constraints=None, uncertainty=None, control=None,
           candidate_values=None, title=None, notes=None, requested_by=None, request_id=None,
           projects_dir=None, effort=None, literature_mode=None, purpose=None,
-          public_data=None, continued_from=None, bioinformatics_mode=None, addons=None):
+          public_data=None, continued_from=None, bioinformatics_mode=None, addons=None,
+          culture_format=None):
     """A validated DiscoveryRequest, or a refusal naming what is wrong.
 
     Everything is checked against something real: the project against the profile
@@ -203,6 +249,9 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
     effort = (effort or DEFAULT_EFFORT).strip().lower()
     if effort not in EFFORT:
         raise K.ContractError(f'effort must be one of {sorted(EFFORT)}; got {effort!r}')
+    fmt = (culture_format or '').strip().lower() or None
+    if fmt is not None:
+        FMT.get(fmt)                    # refuses an unknown vessel by name
     purpose = (purpose or 'discovery').strip().lower()
     if purpose not in PURPOSES:
         raise K.ContractError(f'purpose must be one of {", ".join(PURPOSES)}; got {purpose!r}')
@@ -258,6 +307,10 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
         'bioinformatics_mode': bio_mode,
         'addons': addons,
         'purpose': purpose,
+        # The vessel this protocol is meant for. It changes which doses and
+        # settings are worth gathering, so the agents are told before they
+        # start rather than after.
+        'culture_format': fmt,
         'public_data': public_data,
         'requested_by': _clean(requested_by, field='requested_by', limit=200),
         'notes': _clean(notes, field='notes', limit=2000),
@@ -1054,6 +1107,7 @@ survives a restart.
         lit_dispatch, lit_after = _specialist_plan(req, project, loop_dir, budget, python, pdir)
         dev_lit = ''
         spec_section, lit_after = lit_after, ''
+    format_section = _format_section(req)
     wanted = '\n'.join(
         f'- `{loop_dir}/{name}` — a `{kind}`: {why}' for name, kind, why in ARTIFACTS)
     # With no dataset named, the only tables in reach are the committed demo
@@ -1209,7 +1263,7 @@ usable as design and evidence variables, and produce no prediction unless this
 run proposes a term for one from cited claims (step 5). Do not invent a term
 without them, and do not drop the parameter.
 
-{spec_section}{dev_section}{sota_section}## What to do
+{format_section}{spec_section}{dev_section}{sota_section}## What to do
 
 1. Name the **decision-blocking uncertainty**, if the request did not. One
    sentence: what is not known, and what it would change.

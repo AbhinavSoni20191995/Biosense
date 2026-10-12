@@ -469,6 +469,132 @@ function renderProjectRunList(snapshot) {
   }
 }
 
+/* The same protocol in another vessel.
+ *
+ * Nobody starts in a bioreactor. The plate is where a factor is tried, the
+ * tube is where aggregates first form, the tank is where the cell numbers
+ * come from — and a protocol written for one of them is most of a protocol
+ * for the others. What this shows is exactly how much of it: the
+ * concentrations carry and get an amount per vessel, the mixing and the
+ * oxygen do not carry at all, and what the new vessel needs decided is listed
+ * rather than filled in.
+ */
+const FORMAT_KIND = {
+  carried: ['ok', 'carries'],
+  amount: ['ok', 'carries'],
+  set_here: ['warn', 'set for this vessel'],
+  dropped: ['bad', 'not in this vessel'],
+  unknown: ['mut', 'check it'],
+};
+
+function formatPanel(p, snap) {
+  const wrap = el('div', 'fmtbox');
+  const bar = el('div', 'cmpbar');
+  bar.append(el('span', 'dim', 'Lay this protocol out in'));
+  const sel = el('select', 'cmpsel');
+  sel.setAttribute('aria-label', 'Culture format');
+  [['six_well', '6-well plate'], ['cero', 'CERO 3D rotating tube'],
+    ['stirred_tank', 'Stirred-tank bioreactor']].forEach(([v, t]) => {
+    if (v === p.culture_format) return;       // it is already in that one
+    const o = el('option', null, t); o.value = v; sel.append(o);
+  });
+  const vol = el('input', 'cmpsel');
+  vol.type = 'number'; vol.min = '0.1'; vol.step = '0.1';
+  vol.placeholder = 'working volume (mL)';
+  vol.setAttribute('aria-label', 'Working volume in mL');
+  const go = el('button', 'btn', 'Lay it out');
+  const out = el('div', 'cmpout');
+  const run = async () => {
+    go.disabled = true; out.textContent = '';
+    out.append(el('p', 'dim', 'Working it out…'));
+    try {
+      const q = `to=${encodeURIComponent(sel.value)}`
+        + (vol.value ? `&working_volume_ml=${encodeURIComponent(vol.value)}` : '');
+      const d = await get(`/api/discovery/${snap.run_id}/translate?${q}`);
+      out.textContent = '';
+      renderTranslation(out, d, snap);
+    } catch (e) {
+      out.textContent = '';
+      out.append(el('p', 'dim', e.message || 'That could not be laid out.'));
+    } finally { go.disabled = false; }
+  };
+  go.addEventListener('click', run);
+  sel.addEventListener('change', () => { out.textContent = ''; });
+  bar.append(sel, vol, go);
+  wrap.append(bar, out);
+  return wrap;
+}
+
+function renderTranslation(host, t, snap) {
+  const to = t.to;
+  const head = el('div', 'cmphead');
+  head.append(el('div', 'route-lab', to.label));
+  head.append(el('div', null, t.headline));
+  const facts = el('div', 'dim fmtfacts');
+  [['Vessel', to.vessel],
+    ['Working volume', t.working_volume_ml
+      ? `${num(t.working_volume_ml)} mL — ${t.working_volume_basis}`
+      : 'not set: give one above to get the amount per vessel'],
+    ['Mixing', to.mixing], ['Oxygen', to.gas_exchange], ['Feeding', to.feeding]]
+    .forEach(([k, v]) => facts.append(kv(k, v)));
+  head.append(facts);
+  host.append(head);
+
+  (t.stages || []).forEach(st => {
+    if (!(st.items || []).length) return;
+    host.append(el('div', 'plan-lab', st.label || st.stage_id));
+    st.items.forEach(r => host.append(translationRow(r)));
+  });
+  if ((t.physical || []).length) {
+    host.append(el('div', 'plan-lab', 'Vessel settings'));
+    t.physical.forEach(r => host.append(translationRow(r)));
+  }
+  if (t.per_unit) {
+    host.append(el('p', 'dim', `Amounts are per ${to.vessel}. One `
+      + `${t.per_unit.label} is ${t.per_unit.vessels}× that.`));
+  }
+  host.append(el('div', 'plan-lab', 'What this vessel needs you to decide'));
+  const ul = el('ul', 'tight');
+  (t.decide || []).forEach(d => {
+    const li = el('li');
+    li.append(el('b', null, d.what));
+    li.append(document.createTextNode(' — ' + d.why
+      + (d.typical ? ` (typical: ${d.typical})` : '')));
+    ul.append(li);
+  });
+  host.append(ul);
+  host.append(el('p', 'caveat', t.simulator_note));
+  host.append(el('p', 'caveat', t.note));
+  const vq = t.working_volume_ml ? `&working_volume_ml=${t.working_volume_ml}` : '';
+  const word = el('a', 'btn', `Bench protocol for the ${to.label} (Word)`);
+  word.href = `/api/discovery/${snap.run_id}/protocol?format=docx`
+    + `&as=${encodeURIComponent(to.format_id)}${vq}`;
+  word.target = '_blank'; word.rel = 'noopener';
+  const dl = el('a', 'btn', 'This layout as text');
+  dl.href = `/api/discovery/${snap.run_id}/translate?to=${encodeURIComponent(to.format_id)}`
+    + `${vq}&format=md`;
+  dl.target = '_blank'; dl.rel = 'noopener';
+  host.append(word, dl);
+}
+
+function translationRow(r) {
+  const [cls, word] = FORMAT_KIND[r.kind] || ['mut', r.kind];
+  const row = el('div', 'fmtrow');
+  const top = el('div');
+  top.append(el('b', null, r.label || r.parameter_id));
+  if (r.value != null) {
+    top.append(el('span', 'v', ` ${num(r.value)}${r.unit ? ' ' + r.unit : ''}`));
+  }
+  if (r.amount) {
+    top.append(el('span', 'tag ok amount',
+      ` ${num(r.amount.amount)} ${r.amount.unit} per vessel`));
+  }
+  top.append(el('span', 'tag ' + cls, ' ' + word));
+  row.append(top);
+  row.append(el('div', 'dim', r.why));
+  return row;
+}
+
 /* Two runs of the same question, side by side.
  *
  * A run of this system is a language model reading papers: ask it the same
@@ -795,6 +921,7 @@ function buildRequest() {
     literature_mode: ($('#litMode') && $('#litMode').value) || 'single',
     bioinformatics_mode: ($('#bioMode') && $('#bioMode').value) || 'single',
     purpose: ($('#purpose') && $('#purpose').value) || 'discovery',
+    culture_format: (($('#cultureFormat') && $('#cultureFormat').value) || '') || null,
     public_data: !($('#publicData') && $('#publicData').value === 'off'),
     dataset_ids: $$('#datasetPicks input:checked').map(i => i.value),
   };
@@ -3457,6 +3584,18 @@ function renderPlan(fp, p) {
      empty stage is not the same as nothing being available. */
   const cat = (p || {}).options;
   if (cat && cat.count) wrap.append(conditionPicker(cat));
+  /* The same protocol in a plate, a tube or a tank. Most people cannot start
+     in a bioreactor, and a protocol they cannot start is a protocol they do
+     not use. */
+  if (p && state.run && state.run.run_id) {
+    wrap.append(el('div', 'plan-lab', 'This protocol in another vessel'));
+    if (p.culture_format) {
+      wrap.append(el('p', 'dim', 'Written for: '
+        + ({ six_well: 'a 6-well plate', cero: 'a CERO 3D rotating tube',
+          stirred_tank: 'a stirred-tank bioreactor' }[p.culture_format] || p.culture_format)));
+    }
+    wrap.append(formatPanel(p, state.run));
+  }
   wrap.append(el('p', 'caveat plan-note', fp.note
     + (fp.baseline_stages ? ' PUB marks a factor the published route uses that this protocol '
       + 'does not carry — what the literature states, not a value this run set or anybody '

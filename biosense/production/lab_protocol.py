@@ -50,6 +50,15 @@ NOT_APPROVED = ('PROPOSED — NOT APPROVED. No part of this document has been ap
                 'to run.')
 
 
+VESSEL_WORD = {'six_well': 'one well of a 6-well plate',
+               'cero': 'one CERO 50 mL rotating tube',
+               'stirred_tank': 'a stirred-tank vessel'}
+
+
+def _vessel_word(fid):
+    return VESSEL_WORD.get(fid or '')
+
+
 def _v(x):
     if x is None or x == '':
         return '—'
@@ -92,8 +101,14 @@ def _stage_days(s):
     return f'day {_v(start)} to {_v(start + s["days"])} ({_v(s["days"])} d)'
 
 
-def build(protocol, *, title=None, run_id=None, project_name=None):
-    """A Document for *protocol* — the display payload `protocol_summary.display` returns."""
+def build(protocol, *, title=None, run_id=None, project_name=None, translation=None):
+    """A Document for *protocol* — the display payload `protocol_summary.display` returns.
+
+    *translation*, when given, is `formats.translate(...)` for the vessel the
+    person is actually going to use: the amounts per vessel go beside the
+    concentrations, and what does not cross between vessels is listed as
+    theirs to decide rather than printed as though it had.
+    """
     p = protocol or {}
     fp = p.get('first_pass') or FP.plan(p)
     tl = p.get('timeline') or {}
@@ -102,8 +117,12 @@ def build(protocol, *, title=None, run_id=None, project_name=None):
 
     doc.title_block(title or p.get('title') or 'Production protocol',
                     p.get('objective'))
+    fmt = (translation or {}).get('to') or {}
     meta = [('Project', project_name or (p.get('project') or {}).get('name')
              or (p.get('project') or {}).get('project_id')),
+            ('Vessel', fmt.get('vessel') or _vessel_word(p.get('culture_format'))),
+            ('Working volume', (f'{_v((translation or {}).get("working_volume_ml"))} mL'
+                                if (translation or {}).get('working_volume_ml') else None)),
             ('Run', run_id or p.get('run_id')),
             ('Produced', p.get('created_at')),
             ('Process', ' → '.join(s.get('label') or s['stage_id']
@@ -140,7 +159,14 @@ def build(protocol, *, title=None, run_id=None, project_name=None):
                    f'{" " + lev["unit"] if lev.get("unit") else ""}'
                    f' · confidence {r.get("confidence") or "not stated"}')
 
-    doc.heading('The protocol, stage by stage', 1)
+    # Asked for in a particular vessel, the vessel's own numbers come first:
+    # that is what the person is going to pipette. The stage-by-stage section
+    # below it is the protocol as the run wrote it, in its own vessel.
+    if translation:
+        _vessel_section(doc, translation)
+
+    doc.heading('The protocol, stage by stage'
+                + (' (as written, in the original vessel)' if translation else ''), 1)
     doc.para('What goes into the medium at each stage. The letter after each line says what '
              'stands behind the number.')
     for s in fp.get('stages') or []:
@@ -164,7 +190,8 @@ def build(protocol, *, title=None, run_id=None, project_name=None):
                                   'Decide a value before the run, and record it as a design '
                                   'choice.'))
 
-    phys = fp.get('physical') or []
+    # Already listed above, with what becomes of each in the new vessel.
+    phys = [] if translation else (fp.get('physical') or [])
     if phys:
         doc.heading('Bioreactor settings', 1)
         doc.para('What an operator enters. A setting marked "all" holds for the whole run; '
@@ -226,6 +253,33 @@ def build(protocol, *, title=None, run_id=None, project_name=None):
                          ['Changes made at the bench', '']], widths=[1, 3])
     doc.caveat(NOT_APPROVED)
     return doc
+
+
+def _vessel_section(doc, t):
+    """The same protocol in the vessel it is actually going into."""
+    to = t['to']
+    doc.heading(f'In a {to["label"]}', 1)
+    doc.para(t['headline'])
+    doc.caveat(t['note'])
+    rows = [r for st in t.get('stages') or [] for r in st.get('items') or []]
+    rows += list(t.get('physical') or [])
+    if rows:
+        doc.table(['Line', 'Value', 'Per vessel', 'In this vessel'],
+                  [[r.get('label') or r.get('parameter_id', ''),
+                    (f'{_v(r.get("value"))} {r.get("unit") or ""}'.strip()
+                     if r.get('value') is not None else '—'),
+                    (f'{_v(r["amount"]["amount"])} {r["amount"]["unit"]}'
+                     if r.get('amount') else '—'),
+                    f'{r["kind"]}: {r["why"]}'] for r in rows],
+                  widths=[3, 2, 2, 5])
+    if t.get('per_unit'):
+        doc.para(f'Amounts are per {to["vessel"]}. One {t["per_unit"]["label"]} is '
+                 f'{t["per_unit"]["vessels"]} times that.')
+    doc.heading('What this vessel needs you to decide', 2)
+    for d in t.get('decide') or []:
+        doc.bullet(f'{d["what"]} — {d["why"]}'
+                   + (f' (typical: {d["typical"]})' if d.get('typical') else ''))
+    doc.caveat(t['simulator_note'])
 
 
 def tobytes(protocol, **kw):

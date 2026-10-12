@@ -365,11 +365,30 @@ def parse_condition(payload):
     sent = payload.get('setpoints') or {}
     if not isinstance(sent, dict):
         raise K.ContractError('setpoints must be a JSON object')
+    sent = dict(sent)                      # the caller's object is not ours to edit
     unknown = sorted(set(sent) - set(KNOB_BY_ID))
     if unknown:
         raise K.ContractError(
             f'simulator mode does not expose {", ".join(unknown)}. '
             f'Available knobs: {", ".join(KNOB_BY_ID)}.')
+
+    # The vessel the person says they are asking about. The model is a
+    # stirred tank: in a plate or a tube its mixing and oxygen terms describe
+    # equipment that is not there, so the knobs for them are refused rather
+    # than taken, and the whole reading is labelled as the tank's.
+    from .. import formats as FMT
+    fid = str(payload.get('culture_format') or '').strip().lower() or None
+    fmt = FMT.get(fid) if fid else None
+    fmt_refused = []
+    if fmt is not None and fmt.simulator != 'modelled':
+        rules = FMT.BY_FAMILY.get(fmt.family, {})
+        for kid in list(sent):
+            rule = rules.get(kid)
+            if rule or kid in FMT.VESSEL_TERMS:
+                fmt_refused.append({'knob': kid, 'why': rule[1] if rule else
+                                    f'{fmt.label}: a stirred-tank control this vessel '
+                                    f'does not have.'})
+                sent.pop(kid)
 
     values, clamped = {}, []
     for kid, knob in KNOB_BY_ID.items():
@@ -411,7 +430,13 @@ def parse_condition(payload):
     sp = Setpoints(**values)
     meta = dict(challenge=challenge, seed=seed, clamped=clamped,
                 total_days=round(total, 2), genotype=parse_genotype(payload.get('genotype')),
-                assumed_effects=parse_effects(payload.get('assumed_effects')))
+                assumed_effects=parse_effects(payload.get('assumed_effects')),
+                culture_format=(fmt.format_id if fmt else None),
+                format_label=(fmt.label if fmt else None),
+                format_support=(fmt.simulator if fmt else None),
+                format_note=(fmt.simulator_note if fmt and fmt.simulator != 'modelled'
+                             else None),
+                format_refused=fmt_refused)
     return sp, stage_days, meta
 
 
@@ -593,10 +618,16 @@ def simulate(payload):
         genotype=meta.get('genotype'),
         seed=meta['seed'], clamped=meta['clamped'],
         total_days=meta['total_days'],
+        culture_format=meta['culture_format'], format_label=meta['format_label'],
+        format_support=meta['format_support'], format_note=meta['format_note'],
+        format_refused=meta['format_refused'],
         frames=frames, outcome=rec.outcome, signature=_signature(frames, rec.outcome),
         assay_cost=rec.total_assay_cost,
-        note='A sandbox reading from a phenomenological model. Not a measurement '
-             'of any real cell, and not evidence for any protocol value.',
+        note=('A sandbox reading from a phenomenological model. Not a measurement '
+              'of any real cell, and not evidence for any protocol value.'
+              + (f' You asked about a {meta["format_label"]}: {meta["format_note"]} '
+                 f'These curves are the stirred tank\'s, whatever the label says.'
+                 if meta['format_note'] else '')),
     )
 
 

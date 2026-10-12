@@ -78,6 +78,51 @@ the top and the bottom, and every number keeps its letter. The writer
 (`biosense/production/docx.py`) is about two hundred lines of OOXML on the
 standard library rather than a fourth dependency.
 
+## Plate, tube, tank: the vessel the protocol is for
+
+Nobody starts in a bioreactor. The work starts in a **6-well plate**, because
+that is where eight conditions cost what one bioreactor run costs and you can
+look at them; it moves to a **CERO 3D rotating tube** when suspension
+aggregates are the point and a plate cannot make them; it ends in a
+**stirred tank** when the number of cells is the point. `biosense/formats.py`
+holds the three, and a protocol written for one can be laid out in another —
+chosen at the start of a run (`culture_format` on the request, which the brief
+then tells the agents) or applied to a finished one
+(`/api/discovery/<id>/translate?to=…`, or `?format=docx&as=…` for the bench
+copy).
+
+What travels between vessels is less than people assume, and that is the whole
+content of the module:
+
+| | travels? |
+|---|---|
+| a concentration (ng/mL, µM) | yes — and the amount per vessel is worked out from the working volume |
+| a time, a temperature, a fraction | yes |
+| an impeller speed, a tube rotation rate | **no**, in either direction: different geometry, different shear, no conversion exists |
+| a dissolved-oxygen setpoint | **no** into a plate or a tube: neither has a probe or a control loop, so the number would describe nothing |
+| cells/mL → cells/cm² | **no**: which one matters depends on whether the culture is adherent, which the vessel does not know |
+
+Every number about a vessel carries its basis — `catalogue` for published
+labware geometry (a 6-well well is 9.6 cm²), `convention` for standard practice
+(2 mL of medium in it), `design_choice` for what the person sets. A CERO tube's
+working volume has **no default**: it is nominally 50 mL, never run full, and
+how full is a decision, so per-vessel amounts appear only once somebody gives
+one.
+
+The simulator follows the same rule. The project's model was written for a
+stirred tank, so in a plate or a tube its mixing and oxygen terms refer to
+equipment that is not there: `formats.simulatable()` drops them, names each one
+dropped, and labels what is left as the tank's dose response read in a vessel
+it was not fitted in — a hypothesis about the model, not a prediction about
+that format. `evidence.cli simulate --culture-format` refuses outright when
+every setting given was a tank control.
+
+A translated protocol is a **starting point in the new vessel, not the same
+process**. Oxygen transfer, shear, settling and evaporation all change and the
+cells respond to them, so the first run in a new format is a comparison against
+the old one — never a continuation, and never evidence that the protocol
+transferred. Every translation says so.
+
 ## A sleeping computer
 
 A run's time limit is a bill cap, and a suspended process buys nothing: no turn

@@ -572,7 +572,7 @@ def _effect_line(e):
             f'{rel} [{et}]{basis}')
 
 
-def display(doc, *, devmap=None, sota=None, baseline=None):
+def display(doc, *, devmap=None, sota=None, baseline=None, culture_format=None):
     """The payload the interface renders: the document plus a few derived counts."""
     changed = [p for st in doc['stages'] for p in st['parameters'] if p['changed']]
     ledger = doc['hypothesis_ledger']
@@ -596,6 +596,9 @@ def display(doc, *, devmap=None, sota=None, baseline=None):
         # Carried through so the plan can say which empty stage is "no
         # parameter registered" and which is "nothing was found".
         'baseline_protocol': baseline,
+        # The vessel this protocol was written for, so laying it out in
+        # another one knows what it is translating from.
+        'culture_format': culture_format,
         # Every condition this run surfaced, sorted by what stands behind it,
         # so a person designing a run can see the options rather than an
         # empty stage.
