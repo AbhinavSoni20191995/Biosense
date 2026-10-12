@@ -394,7 +394,9 @@ def main(argv=None):
     p.add_argument('--genes', nargs='*')
     p.add_argument('--max-genes', type=int, default=2000)
     p.add_argument('--dataset-id'); p.add_argument('--cell-type')
-    p.add_argument('--supplementary', help='use this supplementary file name (any species)')
+    p.add_argument('--supplementary', help='use this series supplementary file name (any '
+                                           'species); for per-sample files, a substring that '
+                                           'picks one where a sample carries several')
     p.add_argument('--column-map', nargs='*', default=[], metavar='HEADER=GSM',
                    help='which table column is which sample, when headers are not GSM ids or titles')
     p.add_argument('--infer-columns', action='store_true',

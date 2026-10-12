@@ -63,6 +63,13 @@ def choice(parameter_id, value, *, rationale, derived_from, confidence, project,
             f'protocol. Its parameters are: {", ".join(sorted(project.parameter_ids))}')
     q = project.parameter(pid)
     v = _number(value)
+    # The unit before the bounds: 300000 "cells/mL" against a maximum of 2
+    # (in 1e6 cells/mL) is a unit slip, and the bounds message would hide it.
+    c = q.canonical
+    if unit and q.unit and _unit(unit) != _unit(q.unit):
+        raise K.ContractError(f'{pid} is set in {q.unit}; give the value in that unit (it was '
+                              f'given in {unit}) and state any conversion in the rationale.'
+                              + unit_hint(v, unit, q.unit))
     lims = []
     if isinstance(v, float):
         if q.minimum is not None and v < q.minimum:
@@ -75,10 +82,6 @@ def choice(parameter_id, value, *, rationale, derived_from, confidence, project,
     # The parameter's own limits of physical sense hold whatever the project
     # says, and the unit is the parameter's: a dissolved-oxygen "100" written
     # as % air saturation is 1.0 as a fraction, and must not pass as 100.
-    c = q.canonical
-    if unit and q.unit and _unit(unit) != _unit(q.unit):
-        raise K.ContractError(f'{pid} is set in {q.unit}; give the value in that unit (it was '
-                              f'given in {unit}) and state any conversion in the rationale')
     if isinstance(v, float):
         if (c.global_min is not None and v < c.global_min) or \
                 (c.global_max is not None and v > c.global_max):
@@ -108,8 +111,35 @@ UNIT_SYNONYMS = {
 
 
 def _unit(u):
-    k = ''.join(str(u).lower().split()).replace('µ', 'u').replace('°', 'deg')
+    k = ''.join(str(u).lower().split()).replace('µ', 'u').replace('°', 'deg') \
+        .replace('²', '2').replace('^2', '2')
     return UNIT_SYNONYMS.get(k, k)
+
+
+def unit_hint(value, given, wanted):
+    """What to do about a value given in the wrong unit, where that is sayable. Pure.
+
+    A scale prefix (`cells/mL` for `1e6 cells/mL`) is arithmetic, and the
+    converted number is written out. A density per cm² against one per mL is
+    not: it is a surface density from an adherent culture, and the per-mL
+    figure exists only for a named vessel. The hint says how to reason it as a
+    design choice, and that it is a judgement, never a conversion.
+    """
+    g, w = _unit(given), _unit(wanted)
+    n = value if isinstance(value, float) else None
+    if n is not None and w == '1e6' + g:
+        return f' {n:g} {given} is {n / 1e6:g} {wanted}.'
+    if n is not None and g == '1e6' + w:
+        return f' {n:g} {given} is {n * 1e6:g} {wanted}.'
+    if 'cm2' in g and 'ml' in w:
+        return (' A density per cm² is a surface density for an adherent culture and does not '
+                'convert into a per-mL one. If the source seeds per cm², work the per-mL figure '
+                'out for the vessel this run is in (cells per cm² × growth area ÷ working '
+                'volume; a standard 6-well well is 9.6 cm² under about 2 mL), show that '
+                'arithmetic in the rationale, keep the per-cm² figure and its source in '
+                'context_note, and set confidence low: whether that density suits this culture '
+                'is a judgement, not a conversion. If it cannot be reasoned, leave it a gap.')
+    return ''
 
 
 def _range(r):

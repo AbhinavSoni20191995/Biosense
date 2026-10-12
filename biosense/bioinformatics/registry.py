@@ -10,6 +10,8 @@ Adding a modality means adding a ToolSpec, not editing a prompt or a schema.
 """
 from __future__ import annotations
 
+import difflib
+import re
 from dataclasses import dataclass, field
 
 from .. import contracts as K
@@ -321,16 +323,53 @@ def is_implemented(name):
     return bool(planned) and planned['status'] in IMPLEMENTED_STATUSES
 
 
+def _key(name):
+    return re.sub(r'[^a-z0-9]', '', str(name or '').lower())
+
+
+def resolve(name):
+    """The registered or declared tool *name* means, or None. Pure over the registry.
+
+    Exact first; then the same name in another spelling
+    (`bulk_expression_comparison`, `Bulk Expression Comparison`); then a DESeq2
+    by any name (`deseq2`, `DESeq2_like`) is `external.deseq2`, whether or not
+    it is registered here — the alternative to DESeq2 is not an approximate
+    DESeq2 (see _register_deseq2), so the name is resolved and the registry
+    says whether it can run. Nothing else is guessed.
+    """
+    n = str(name or '').strip()
+    if n in TOOLS:
+        return n
+    k = _key(n)
+    for t in list(TOOLS) + [p['name'] for p in PLANNED]:
+        if _key(t) == k:
+            return t
+    if 'deseq' in k:
+        return 'external.deseq2'
+    return None
+
+
 def get(name):
-    if name not in TOOLS:
-        planned = next((p for p in PLANNED if p['name'] == name), None)
-        if planned:
-            kind = WAITING_ON.get(planned['status']) or 'is declared but not implemented'
-            raise K.ContractError(
-                f'{name!r} {kind} ({planned["notes"]}). '
-                f'Available now: {", ".join(sorted(TOOLS))}.')
-        raise K.ContractError(f'unknown tool {name!r}; available: {", ".join(sorted(TOOLS))}')
-    return TOOLS[name]
+    hit = resolve(name)
+    if hit is None:
+        keys = {_key(t): t for t in TOOLS}
+        near = difflib.get_close_matches(_key(name), list(keys), n=1, cutoff=0.6)
+        hint = f' did you mean {keys[near[0]]!r}?' if near else ''
+        raise K.ContractError(f'unknown tool {name!r};{hint} available: '
+                              + ', '.join(sorted(TOOLS)))
+    if hit not in TOOLS:
+        planned = next(p for p in PLANNED if p['name'] == hit)
+        kind = WAITING_ON.get(planned['status']) or 'is declared but not implemented'
+        who = f'{name!r} is {hit!r}, which' if hit != name else f'{name!r}'
+        more = ''
+        if hit == 'external.deseq2':
+            more = (' For a table that is already normalised (log2 CPM, as `datasets fetch-geo` '
+                    'writes), the comparison that runs here is bulk.expression_comparison: a '
+                    'screening comparison, not DESeq2, and its result says so.')
+        raise K.ContractError(
+            f'{who} {kind} ({planned["notes"]}). '
+            f'Available now: {", ".join(sorted(TOOLS))}.{more}')
+    return TOOLS[hit]
 
 
 def for_analysis(analysis_type, modality):

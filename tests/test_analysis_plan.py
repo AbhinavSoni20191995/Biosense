@@ -143,6 +143,32 @@ class ToolMatchingTests(PlanCase):
             self.a_plan(tool='magic.do_science')
         self.assertIn('unknown tool', str(e.exception))
 
+    def test_a_tool_named_in_another_spelling_is_the_same_tool(self):
+        self.assertEqual('bulk.expression_comparison', TREG.resolve('bulk_expression_comparison'))
+        self.assertEqual('bulk.expression_comparison', TREG.get('Bulk Expression Comparison').name)
+        self.assertIsNone(TREG.resolve('magic.do_science'))
+
+    def test_a_typo_is_refused_with_the_nearest_name(self):
+        with self.assertRaises(K.ContractError) as e:
+            TREG.get('bulk.expresion_comparison')
+        self.assertIn("did you mean 'bulk.expression_comparison'", str(e.exception))
+
+    def test_a_deseq2_by_any_name_is_external_deseq2(self):
+        """A run planned with tool 'deseq2_like' and was told only "unknown tool".
+        The name means DESeq2; the registry says so, says whether it can run
+        here, and names the screening comparison for a normalised table."""
+        self.assertEqual('external.deseq2', TREG.resolve('deseq2_like'))
+        self.assertEqual('external.deseq2', TREG.resolve('DESeq2'))
+        if 'external.deseq2' in TREG.TOOLS:
+            self.assertEqual('external.deseq2', TREG.get('deseq2_like').name)
+            return
+        with self.assertRaises(K.ContractError) as e:
+            TREG.get('deseq2_like')
+        msg = str(e.exception)
+        self.assertIn("'deseq2_like' is 'external.deseq2', which needs an external program", msg)
+        self.assertIn('bulk.expression_comparison: a screening comparison, not DESeq2', msg)
+        self.assertNotIn('unknown tool', msg)
+
     def test_a_declared_but_unimplemented_tool_says_so(self):
         with self.assertRaises(K.ContractError) as e:
             TREG.get('cytometry.gating')

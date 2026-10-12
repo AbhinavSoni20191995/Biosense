@@ -131,6 +131,11 @@ class AnalystTests(unittest.TestCase):
                          runtime_mode='local')
         brief = DISC.render_brief(req, loop_dir='ai-x')
         self.assertIn('Analysing a dataset goes to `analyst`', brief)
+        # The tool names and the parameter units are in the brief, so a plan or
+        # a design choice is written in the registry's terms the first time.
+        self.assertIn('`bulk.expression_comparison`', brief)
+        self.assertIn('`seed_density` in 1e6 cells/mL', brief)
+        self.assertIn('`analyse plan` refuses any', brief)
         self.assertEqual('analyst', AC.agent_named(
             '{"agent": "analyst", "args": "analysis of GSE1 for the bioinformatics gap"}'))
 

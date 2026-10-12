@@ -366,8 +366,11 @@ later run starts from.
 
 **Public and private datasets.** The bioinformatics agent finds a GEO series,
 reads its samples, and registers an analysable table: NCBI's processed counts
-where they exist, the depositors' own table otherwise, for any species — each
-with a confidence ceiling for its species and route. The data analyst plans
+where they exist, the depositors' own table otherwise, or — where the series
+holds only a RAW archive — one count file per sample assembled into a table and
+labelled as such, for any species — each with a confidence ceiling for its
+species and route. When none applies, the refusal names what the series and
+its samples hold, so the data request to a person is specific. The data analyst plans
 against it, repairs what the tools refuse, and interprets the result for this
 process, resolving a named uncertainty.
 

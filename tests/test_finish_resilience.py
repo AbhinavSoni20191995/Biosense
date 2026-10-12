@@ -36,6 +36,22 @@ class UnitAndRangeTests(unittest.TestCase):
         with self.assertRaisesRegex(K.ContractError, 'give the value in that unit'):
             choice(parameter_id='do_setpoint', value=0.2, unit='% O2')
 
+    def test_a_wrong_unit_is_refused_with_what_to_do_about_it(self):
+        """A run's design choices ended "seed_density is set in 1e6 cells/mL; give the
+        value in that unit (it was given in 1e6 cells/cm2)": true, and no way
+        forward. A scale slip is converted in the message; a surface density is
+        explained as a judgement to reason, never a conversion."""
+        with self.assertRaisesRegex(K.ContractError, r'300000 cells/mL is 0\.3 1e6 cells/mL'):
+            choice(parameter_id='seed_density', value=300000, unit='cells/mL')
+        with self.assertRaises(K.ContractError) as e:
+            choice(parameter_id='seed_density', value=0.1, unit='1e6 cells/cm2')
+        msg = str(e.exception)
+        self.assertIn('surface density', msg)
+        self.assertIn('growth area ÷ working volume', msg)
+        self.assertIn('a judgement, not a conversion', msg)
+        self.assertEqual(DC._unit('1e6 cells/cm²'), DC._unit('1e6 cells/cm^2'))
+        self.assertEqual('', DC.unit_hint(0.2, '% O2', 'fraction'), 'nothing sayable: no hint')
+
     def test_a_range_in_the_shapes_agents_write(self):
         for r in ({'lower': 40, 'upper': 70}, {'low': 40, 'high': 70}, {'min': 70, 'max': 40}, [40, 70]):
             self.assertEqual({'lower': 40.0, 'upper': 70.0}, choice(range=r)['range'], r)

@@ -14,7 +14,7 @@ This is the in-between, in two steps a person or an agent can follow:
                   table and registered as a PUBLIC dataset with its accession,
                   URLs, retrieval time and the transform applied.
 
-Two routes, in this order:
+Three routes, in this order:
 
 * NCBI's uniformly processed raw counts (human and mouse RNA-seq): one
   reference, one GeneID x GSM matrix per series — preferred where it exists;
@@ -22,7 +22,15 @@ Two routes, in this order:
   for ANY species and for human or mouse series NCBI has not processed. Its
   columns are used only where they match a sample (GSM, title, or a column
   map the agent supplies), and what the values are (counts, linear, log) is
-  read from the numbers and stated.
+  read from the numbers and stated;
+* the depositors' per-sample files, where the series directory holds only a
+  RAW archive and each sample carries its own count or quantification table
+  (HTSeq, featureCounts, STAR, RSEM, Salmon shapes). One file per chosen
+  sample is read and the matrix is assembled here, which is said in the
+  dataset's limitations along with which value column was taken.
+
+When none of the three applies, the refusal says what the series and its
+samples actually hold, so the ask to a person is specific.
 
 Every result carries an evidence weight — a confidence ceiling from the
 species and the route: human via NCBI can support high confidence; another
@@ -109,7 +117,7 @@ def _cells(line):
 # ── step 1: what the samples are ────────────────────────────────────────
 def parse_series_matrix(text):
     """Sample rows from a series matrix's header block. Pure; tested on recorded shapes."""
-    fields, chars, meta = {}, [], {}
+    fields, chars, meta, supp = {}, [], {}, []
     for line in text.splitlines():
         if line.startswith('!series_matrix_table_begin'):
             break
@@ -119,6 +127,8 @@ def parse_series_matrix(text):
         key, vals = cells[0], cells[1:]
         if key == '!Sample_characteristics_ch1':
             chars.append(vals)
+        elif key.startswith('!Sample_supplementary_file'):
+            supp.append(vals)
         elif key in ('!Sample_geo_accession', '!Sample_title', '!Sample_source_name_ch1',
                      '!Sample_organism_ch1', '!Sample_platform_id', '!Sample_library_strategy'):
             fields[key] = vals
@@ -144,13 +154,23 @@ def parse_series_matrix(text):
                 ch[k.strip().lower()] = val.strip()
             elif v:
                 ch.setdefault('characteristics', v)
+        files = []
+        for line in supp:
+            v = (line[i] if i < len(line) else '').strip()
+            if v and v.upper() != 'NONE' and _https(v) not in files:
+                files.append(_https(v))
         rows.append({'gsm': gsm, 'title': at('!Sample_title'),
                      'source': at('!Sample_source_name_ch1'),
                      'organism': at('!Sample_organism_ch1'),
                      'platform': at('!Sample_platform_id'),
                      'library_strategy': at('!Sample_library_strategy'),
-                     'characteristics': ch})
+                     'characteristics': ch, 'supplementary_files': files})
     return rows, meta
+
+
+def _https(url):
+    # GEO writes ftp:// links; the same host serves them over https.
+    return re.sub(r'^ftp://', 'https://', url.strip())
 
 
 def samples(acc, *, i_have_network_permission=False, timeout=60):
@@ -179,8 +199,16 @@ def samples(acc, *, i_have_network_permission=False, timeout=60):
             keys[k][v] += 1
     # A field whose every value differs (a title, a replicate id) groups nothing.
     groups = {k: v for k, v in keys.items() if 1 < len(v) < len(rows)}
+    with_table = [r['gsm'] for r in rows if sample_table_url(r.get('supplementary_files'))]
     return {'accession': acc, 'url': url, 'retrieved_at': K.now_iso(), 'series': meta,
             'organisms': sorted({r['organism'] for r in rows if r['organism']}),
+            'per_sample_tables': (
+                f'{len(with_table)} of {len(rows)} samples carry a table-like supplementary '
+                f'file of their own; fetch-geo reads those when the series has no processed '
+                f'matrix' if with_table else
+                'no sample carries a table-like supplementary file of its own'
+                + (f' (they hold {sample_files_summary(rows)})' if any(
+                    r.get('supplementary_files') for r in rows) else '')),
             'library_strategies': sorted({r['library_strategy'] for r in rows
                                           if r['library_strategy']}),
             'pubmed_ids': meta.get('pubmed_ids', []),
@@ -399,6 +427,184 @@ def supplementary_files(listing_html):
             continue
         names.append(n)
     return sorted(names, key=lambda n: (not any(w in n.lower() for w in PREFER), n))
+
+
+def listing_names(listing_html):
+    """Every file a GEO directory listing links to, table-like or not. Pure."""
+    out = []
+    for n in re.findall(r'href="([^"/?]+)"', listing_html or ''):
+        if n not in out and '.' in n:
+            out.append(n)
+    return out
+
+
+# ── the depositors' per-sample files ────────────────────────────────────
+TABLE_NAME_RE = re.compile(r'^[^/?]+\.(?:txt|tsv|csv|tab)(?:\.gz)?$', re.I)
+COUNT_WORDS = ('count', 'reads')
+LINEAR_WORDS = ('tpm', 'fpkm', 'rpkm', 'cpm')
+# Summary rows HTSeq-count and STAR write under the genes.
+SUMMARY_ROW_RE = re.compile(r'^(?:__|N_)')
+MAX_PER_SAMPLE = 24
+
+
+def sample_table_url(files, pick=None):
+    """The one table-like file among a sample's supplementary files, or None. Pure.
+
+    With several, the one whose name says what it holds (count, tpm, ...) wins
+    if that leaves one; `pick` (a substring of the file name) settles the rest.
+    An ambiguous sample gives None rather than a guess.
+    """
+    named = [(u, u.rsplit('/', 1)[-1]) for u in files or []]
+    tables = [u for u, n in named
+              if TABLE_NAME_RE.match(n) and not any(s in n.lower() for s in SKIP)]
+    if pick:
+        tables = [u for u in tables if pick in u.rsplit('/', 1)[-1]]
+    if len(tables) > 1:
+        pref = [u for u in tables if any(w in u.rsplit('/', 1)[-1].lower() for w in PREFER)]
+        tables = pref if len(pref) == 1 else tables
+    return tables[0] if len(tables) == 1 else None
+
+
+def sample_files_summary(sample_rows):
+    """What the samples' own supplementary files are, by kind, for a refusal. Pure.
+
+    `.bw (8 samples), .bam (8 samples)`; a 10x triple is named as such, because
+    the remedy differs (a processed .h5ad for the single-cell tools, not a
+    count table).
+    """
+    kinds, tenx = {}, 0
+    for r in sample_rows:
+        names = [u.rsplit('/', 1)[-1].lower() for u in r.get('supplementary_files') or []]
+        if any('barcodes' in n for n in names) and any('matrix' in n for n in names):
+            tenx += 1
+        for n in names:
+            m = re.search(r'(\.[a-z0-9]+(?:\.gz)?)$', n)
+            ext = m.group(1) if m else n
+            kinds.setdefault(ext, set()).add(r['gsm'])
+    parts = [f'{ext} ({len(g)} sample{"s" if len(g) != 1 else ""})'
+             for ext, g in sorted(kinds.items(), key=lambda kv: -len(kv[1]))[:6]]
+    text = ', '.join(parts) if parts else 'no files'
+    if tenx:
+        text += (f'; {tenx} sample(s) carry 10x single-cell output (barcodes/features/matrix), '
+                 f'which no bulk tool here reads — a processed .h5ad is what the single-cell '
+                 f'tools take')
+    return text
+
+
+def _is_number(x, decimal_comma=False):
+    try:
+        _number(x, decimal_comma)
+        return True
+    except ValueError:
+        return False
+
+
+def parse_sample_table(text):
+    """One sample's feature -> value file -> (gene ids, values, how it was read). Pure.
+
+    Two shapes are common. A headerless two-column file (HTSeq-count, STAR
+    ReadsPerGene) is read as id and the first numeric column. A headed table
+    with several numeric columns (featureCounts, RSEM `.genes.results`, Salmon
+    `quant.sf`) takes the value column by its header — a count column first,
+    then TPM, then FPKM/RPKM/CPM — and otherwise the last numeric column; which
+    one is said in `value_column`. A chosen count column is `counts` whether or
+    not its values are integers (RSEM expected counts are not); a TPM-like one
+    is `linear`; anything else is read from the numbers as the series table is.
+    Summary rows (`__no_feature`, `N_unmapped`) are dropped.
+    """
+    lines = [l for l in text.splitlines() if l.strip() and not l.startswith('#')]
+    if len(lines) < 3:
+        raise K.ContractError('the file has fewer than two data rows')
+    delim = sniff_delimiter(lines)
+    rows = list(csv.reader(lines, delimiter=delim))
+    dc = delim == ';'
+    first = [c.strip().strip('"') for c in rows[0]]
+    headerless = len(first) >= 2 and _is_number(first[-1], dc)
+    head, data = ([''] * len(first), rows) if headerless else (first, rows[1:])
+    numeric = sorted(_numeric_columns(data, len(head), dc))
+    low = [_norm(h) for h in head]
+    feat = next((low.index(_norm(n)) for n in FEATURE_NAMES
+                 if _norm(n) in low and low.index(_norm(n)) not in numeric),
+                next((j for j in range(len(head)) if j not in numeric), None))
+    if feat is None:
+        raise K.ContractError('no feature-id column: every column is numeric')
+    numeric = [j for j in numeric if j != feat]
+    if not numeric:
+        raise K.ContractError(f'no numeric value column (columns: {", ".join(head) or "unnamed"})')
+    kind = None
+    if headerless:
+        val, basis = numeric[0], 'the first numeric column of a headerless file'
+    else:
+        by_word = {j: head[j].lower() for j in numeric}
+        val = next((j for j in numeric if any(w in by_word[j] for w in COUNT_WORDS)), None)
+        if val is not None:
+            kind, basis = 'counts', f'the column named {head[val]!r} (a count column)'
+        else:
+            val = next((j for j in numeric if any(w in by_word[j] for w in LINEAR_WORDS)), None)
+            if val is not None:
+                kind, basis = 'linear', f'the column named {head[val]!r} (a normalised column)'
+            else:
+                val, basis = numeric[-1], (f'the last numeric column, {head[numeric[-1]]!r}; '
+                                           f'no header named a count or TPM column')
+    gene_ids, values = [], []
+    for r in data:
+        if len(r) <= max(feat, val):
+            continue
+        gid = r[feat].strip().strip('"')
+        if not gid or SUMMARY_ROW_RE.match(gid):
+            continue
+        try:
+            v = _number(r[val], dc)
+        except ValueError:
+            continue
+        gene_ids.append(gid)
+        values.append(v)
+    if len(gene_ids) < 2:
+        raise K.ContractError('fewer than two numeric rows')
+    if kind is None:
+        integer = all(abs(v - round(v)) < 1e-9 for v in values[:200000])
+        top, bottom = max(values), min(values)
+        kind = ('counts' if integer and top > 1000 else
+                'log' if top <= 50 and bottom < 0 or top <= 25 else 'linear')
+    return gene_ids, values, {'delimiter': DELIMITERS[delim],
+                              'feature_column': head[feat] or '(unnamed first column)',
+                              'value_column': basis, 'transform': kind}
+
+
+def assemble_sample_tables(per_sample):
+    """{gsm: (gene ids, values, how)} -> (gene ids, gsms, matrix, how). Pure.
+
+    The genes are those present in every sample, in the first sample's order;
+    how many were dropped is recorded. The files must agree on what they hold
+    (all counts, or all TPM): a mix is refused, because normalising half a
+    matrix is not a table.
+    """
+    if not per_sample:
+        raise K.ContractError('no per-sample file to assemble')
+    gsms = list(per_sample)
+    kinds = {h['transform'] for _, _, h in per_sample.values()}
+    if len(kinds) > 1:
+        raise K.ContractError(f'the per-sample files do not hold the same kind of value '
+                              f'({", ".join(sorted(kinds))}); they cannot be one table')
+    maps = {g: dict(zip(ids, vals)) for g, (ids, vals, _) in per_sample.items()}
+    first_ids = per_sample[gsms[0]][0]
+    common = set(first_ids)
+    for g in gsms[1:]:
+        common &= set(maps[g])
+    gene_ids = [gid for gid in first_ids if gid in common]
+    if len(gene_ids) < 2:
+        raise K.ContractError('fewer than two feature ids are shared by every sample\'s file; '
+                              'the files do not describe the same features')
+    matrix = [[maps[g][gid] for g in gsms] for gid in gene_ids]
+    seen = set()
+    for g in gsms:
+        seen.update(maps[g])
+    first_how = per_sample[gsms[0]][2]
+    return gene_ids, gsms, matrix, {
+        'delimiter': first_how['delimiter'], 'feature_column': first_how['feature_column'],
+        'value_column': first_how['value_column'], 'transform': first_how['transform'],
+        'assembled_from': f'{len(gsms)} per-sample files, one per chosen sample',
+        'genes_in_every_sample': len(gene_ids), 'genes_dropped': len(seen) - len(gene_ids)}
 
 
 def _norm(s):
@@ -830,8 +1036,9 @@ def species_weight(organism, route):
         note = (f'{organism}: not a mammal. Conserved pathways may transfer, specific doses '
                 f'and kinetics rarely do; genes are matched by symbol only.')
     if route != 'ncbi_processed':
-        rnote = ('Values are the depositors\' own processed table, not a uniform '
-                 're-processing: methods differ between labs.')
+        rnote = ('Values are the depositors\' own processed '
+                 + ('per-sample files' if route == 'depositor_per_sample' else 'table')
+                 + ', not a uniform re-processing: methods differ between labs.')
         note = f'{note} {rnote}' if note else rnote
     return {'route': route, 'organism': organism, 'confidence_ceiling': ceiling, 'note': note}
 
@@ -844,6 +1051,28 @@ def _value_of(sample, key):
     if key == 'organism':
         return sample.get('organism')
     return sample['characteristics'].get(key.lower())
+
+
+def _group_of(sample, condition_key, control, treatments, keep):
+    """The control or treatment value this sample belongs to, or None. Pure."""
+    if sample is None:
+        return None
+    if any((_value_of(sample, k) or '').lower() != v.lower() for k, v in (keep or {}).items()):
+        return None
+    v = _value_of(sample, condition_key)
+    if v is None:
+        return None
+    return next((w for w in [control] + list(treatments) if w.lower() == v.lower()), None)
+
+
+def select_samples(sample_rows, *, condition_key, control, treatments, keep=None):
+    """[(gsm, group)] for the samples a comparison would use. Pure."""
+    out = []
+    for s in sample_rows:
+        g = _group_of(s, condition_key, control, treatments, keep)
+        if g:
+            out.append((s['gsm'], g))
+    return out
 
 
 def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_key, control,
@@ -863,15 +1092,7 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
     chosen, groups = [], {}
     wanted = [control] + list(treatments)
     for j, gsm in enumerate(gsms):
-        s = by_gsm.get(gsm)
-        if s is None:
-            continue
-        if any((_value_of(s, k) or '').lower() != v.lower() for k, v in keep.items()):
-            continue
-        v = _value_of(s, condition_key)
-        if v is None:
-            continue
-        match = next((w for w in wanted if w.lower() == v.lower()), None)
+        match = _group_of(by_gsm.get(gsm), condition_key, control, treatments, keep)
         if match:
             chosen.append((j, gsm, match))
             groups[match] = groups.get(match, 0) + 1
@@ -1033,6 +1254,7 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             why_not_ncbi = f'NCBI has no processed counts for {acc} (HTTP {e.code})'
     else:
         why_not_ncbi = f'NCBI processes human and mouse RNA-seq only; this is {organism}'
+    errors, ens_cache = [], {}
     if route is None:
         # Any species, and human or mouse series NCBI has not processed: the
         # depositors' own table, read only where its columns match samples.
@@ -1043,11 +1265,10 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
         files = [f for f in supplementary_files(listing)
                  if not supplementary or f == supplementary][:4]
         if not files:
-            raise K.ContractError(
-                f'{why_not_ncbi}, and {acc} has no table-like supplementary file at '
-                f'{series_url(acc)}/suppl/ (only archives or raw data). A person can register a '
-                f'processed table from there.')
-        errors, ens_cache = [], {}
+            held = listing_names(listing)
+            errors.append(f'the series directory {series_url(acc)}/suppl/ has no table-like '
+                          f'file (it holds ' + (', '.join(held[:8]) + (' …' if len(held) > 8 else '')
+                                                if held else 'nothing readable') + ')')
         for name in files:
             url = f'{series_url(acc)}/suppl/{name}'
             try:
@@ -1067,12 +1288,59 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             if annot:
                 sources.update(annotation=annot)
             break
-        if route is None:
-            raise K.ContractError(f'{why_not_ncbi}. No supplementary table could be used: '
-                                  + ' | '.join(errors))
+    if route is None:
+        # The series directory holds only a RAW archive, but each sample may
+        # carry its own table (HTSeq, featureCounts, RSEM...). One file per
+        # chosen sample, assembled here and said to be.
+        by_gsm = {s['gsm']: s for s in info['samples']}
+        chosen = select_samples(info['samples'], condition_key=condition_key, control=control,
+                                treatments=treatments, keep=keep)
+        urls = {g: sample_table_url(by_gsm[g].get('supplementary_files'), supplementary)
+                for g, _ in chosen}
+        if not chosen:
+            present = sorted({_value_of(s, condition_key) for s in info['samples']
+                              if _value_of(s, condition_key) is not None})
+            errors.append(f'no sample has {condition_key!r} = {control!r} or '
+                          f'{", ".join(map(repr, treatments))}' + (
+                              f' (values: {", ".join(present)})' if present else
+                              f' (no sample has a field {condition_key!r})'))
+        elif not all(urls.values()):
+            missing = [g for g, u in urls.items() if not u]
+            errors.append(f'the samples\' own supplementary files are not one table per '
+                          f'sample: {sample_files_summary([by_gsm[g] for g, _ in chosen])}'
+                          + (f' — ambiguous or absent for {", ".join(missing[:6])}; '
+                             f'--supplementary <substring> picks one where several exist'
+                             if any(sample_table_url(by_gsm[g].get("supplementary_files"))
+                                    is None and len(by_gsm[g].get("supplementary_files") or [])
+                                    > 1 for g in missing) else ''))
+        elif len(chosen) > MAX_PER_SAMPLE:
+            errors.append(f'{len(chosen)} samples match, more than the {MAX_PER_SAMPLE} '
+                          f'per-sample files fetched for one comparison; narrow with --keep')
+        else:
+            try:
+                per = {}
+                for g, url in urls.items():
+                    try:
+                        per[g] = parse_sample_table(_text(_get(url, timeout)))
+                    except (K.ContractError, urllib.error.HTTPError) as e:
+                        raise K.ContractError(f'{url.rsplit("/", 1)[-1]}: {str(e)[:300]}') from None
+                gene_ids, gsms, matrix, read = assemble_sample_tables(per)
+                symbols, read['symbols'], annot = _table_symbols(gene_ids, organism, acc,
+                                                                timeout, ens_cache)
+                rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, symbols,
+                                               transform=read['transform'], **common)
+                route = 'depositor_per_sample'
+                sources.update(tables=urls)
+                if annot:
+                    sources.update(annotation=annot)
+            except K.ContractError as e:
+                errors.append(f'per-sample files: {str(e)[:1000]}')
+    if route is None:
+        raise K.ContractError(
+            f'{why_not_ncbi}, and no table for {acc} could be read from its supplementary '
+            f'files: ' + ' | '.join(errors) + '. A person can register a processed table '
+            f'(genes by samples, with the GSM ids or titles as columns) for this series.')
     weight = species_weight(organism, route)
-    counts_url = sources.get('counts') or sources.get('table')
-    annot_url = sources.get('annotation')
 
     did = dataset_id or f'{acc.lower()}_{_slug(condition_key)}'
     base = Path(out_root or roots.cache_root()) / 'geo' / did
@@ -1105,7 +1373,12 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             description=((f'NCBI-generated raw counts for {acc}, normalised to log2(CPM+1) '
                           f'with library size over all genes' if route == 'ncbi_processed' else
                           f'The depositors\' processed table {sources["table"].rsplit("/", 1)[-1]} '
-                          f'for {acc}, read as {read["transform"]} and put on a log2 scale')
+                          f'for {acc}, read as {read["transform"]} and put on a log2 scale'
+                          if route == 'depositor_supplementary' else
+                          f'The depositors\' per-sample files for {acc} ({read["assembled_from"]}, '
+                          f'e.g. {next(iter(sources["tables"].values())).rsplit("/", 1)[-1]}), '
+                          f'assembled by BioSense into one table, read as {read["transform"]} '
+                          f'and put on a log2 scale')
                          + ', restricted to '
                          + (f'{stats["genes_in_table"]} requested genes'
                             if genes else f'the {stats["genes_in_table"]} most expressed genes')
@@ -1116,6 +1389,10 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
                    f'and route: {weight["confidence_ceiling"]}'),
             extra_limitations=([weight['note']] if weight['note'] else [])
             + column_limitations(read)
+            + ([f'Assembled by BioSense from one supplementary file per sample, not from a '
+                f'table the depositors published: the value taken from each file is '
+                f'{read["value_column"]}, and {read["genes_dropped"]} feature(s) absent from '
+                f'some sample\'s file were dropped.'] if route == 'depositor_per_sample' else [])
             + ([read['symbols_warning']] if read.get('symbols_warning') else [])
             + [c['statement'] for c in stats.get('confounded') or []],
             overwrite=overwrite)

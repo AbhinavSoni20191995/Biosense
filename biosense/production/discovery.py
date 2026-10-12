@@ -357,6 +357,26 @@ def _uncertainty(u):
     return {'kind': kind, 'ref': ref, 'statement': statement}
 
 
+def _parameter_units(project):
+    """Each parameter the project exposes with the unit a value for it is set in,
+    and the project's own bounds where it has them: what a design choice has to
+    be written in, said before the CLI has to refuse one."""
+    out = []
+    for pid in sorted(project.parameter_ids):
+        q = project.parameter(pid)
+        lo, hi = q.minimum, q.maximum
+        bounds = (f' [{lo:g}–{hi:g}]' if lo is not None and hi is not None else
+                  f' [≥ {lo:g}]' if lo is not None else f' [≤ {hi:g}]' if hi is not None else '')
+        out.append(f'`{pid}` in {q.unit}{bounds}')
+    return ', '.join(out)
+
+
+def _analysis_tools():
+    """The registered analysis tool names, as `analyse plan` accepts them."""
+    from ..bioinformatics import registry as TREG
+    return ', '.join(f'`{t}`' for t in sorted(TREG.TOOLS))
+
+
 def _values(field, values, project):
     """Canonicalise parameter names and refuse one this project does not expose."""
     if not values:
@@ -1089,6 +1109,8 @@ survives a restart.
     doc = json.dumps(req, indent=2, ensure_ascii=False)
     modelled = sorted(project.modelled_ids())
     not_modelled = sorted(p for p in project.parameter_ids if project.coverage(p) != 'modelled')
+    units = _parameter_units(project)
+    tools = _analysis_tools()
 
     # A project the person created lives in their workspace, not the repository;
     # the agents' commands have to be told where, or they load the wrong one.
@@ -1158,9 +1180,12 @@ so in its task, with these commands (each needs `--i-have-network-permission`):
 - `{bio} datasets fetch-geo --accession GSE… --condition-key "<field>"
   --control "<value>" --treatment "<value>" [--keep "<field>=<value>"]
   [--genes <SYMBOL ...>]` — any species: NCBI's processed counts (human,
-  mouse) or the depositors' own table, on a log2 scale, registered as a public
-  dataset with an evidence weight (a confidence ceiling for the species and
-  route); it prints the `analyse plan` line to run next.
+  mouse), the depositors' own table, or — where the series holds only a RAW
+  archive — one count file per sample, assembled and said to be; on a log2
+  scale, registered as a public dataset with an evidence weight (a confidence
+  ceiling for the species and route); it prints the `analyse plan` line to run
+  next. When all three fail, the refusal names what the series and its samples
+  hold: put that in the data request.
 
 Then send each registered dataset to `analyst` to plan, run and interpret.
 A public series is another lab's experiment: evidence to weigh by how close its
@@ -1207,6 +1232,10 @@ on a question ends the run with nothing to show. So:
   writes an interpretation whose confidence is capped by the result, the
   dataset's species and route, and how close the experiment is to this
   process. Send several datasets as several analyst tasks in one response.
+  The analysis tools that can run here are {tools}; `analyse plan` refuses any
+  other name (a DESeq2 by any name needs R on this machine, and a table
+  `fetch-geo` wrote is already normalised, which is what
+  `bulk.expression_comparison` reads).
 - **If a specialist fails or refuses**, read its reply for the reason. Send it
   once more, narrower (one gene, one parameter, a smaller budget), under a new
   title such as `literature-it1-retry`. If that fails too, record the reason it
@@ -1442,7 +1471,12 @@ without them, and do not drop the parameter.
      `{python} -m biosense.evidence.cli design-choices --project {project.project_id}{pdir} \
          --draft {loop_dir}/choices.draft.json --out {loop_dir}/design_choices.json`
      builds it. They appear as **D** in the protocol, never as reported values,
-     and a person approves them.
+     and a person approves them. Each value goes in the parameter's own unit,
+     which the CLI checks: {units}. Show any conversion from the source's unit
+     in the rationale. A seeding density a plate protocol gives per cm² is not
+     a per-mL one: the per-mL figure for that vessel is arithmetic you show
+     (cells per cm² × growth area ÷ working volume), and whether it suits this
+     culture is a judgement you state at low confidence.
      Before proposing a physical setpoint, read the process reference:
      `{python} -m biosense.evidence.process_reference show`. An entry there
      is the starting value to cite (`derived_from: ["process_reference:<id>"]`);

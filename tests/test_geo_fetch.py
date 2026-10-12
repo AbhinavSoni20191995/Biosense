@@ -577,3 +577,160 @@ class RequestTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+# A series whose directory holds only the RAW archive, while each sample
+# carries its own count file — GSE268547's shape, which ended a run with "no
+# table-like supplementary file (only archives or raw data)".
+PER_SAMPLE_FILES = [f'ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSMnnn/{g}/suppl/{g}_counts.txt.gz'
+                    for g in GSMS]
+PER_SAMPLE_MATRIX = MATRIX.replace(
+    '!Sample_library_strategy',
+    '!Sample_supplementary_file_1\t' + '\t'.join(f'"{u}"' for u in PER_SAMPLE_FILES)
+    + '\n!Sample_library_strategy')
+RAW_ONLY_LISTING = ('<a href="GSE123456_RAW.tar">GSE123456_RAW.tar</a> '
+                    '<a href="filelist.txt">filelist.txt</a>')
+# HTSeq-count shape: no header, summary rows under the genes. GATA6 rises.
+HTSEQ = {g: '\n'.join([f'GATA6\t{v}', 'ACTB\t5000', 'TFRC\t900', '__no_feature\t100',
+                        '__ambiguous\t5'])
+         for g, v in zip(GSMS, (100, 110, 90, 400, 420, 380))}
+# The series directory's key names the series: a sample's own file also lives
+# under a `/suppl/`.
+PER_SAMPLE_SERVED = {'_series_matrix.txt.gz': PER_SAMPLE_MATRIX,
+                     f'/{ACC}/suppl/': RAW_ONLY_LISTING,
+                     **{f'{g}_counts.txt.gz': t for g, t in HTSEQ.items()}}
+KW = dict(condition_key='treatment', control='vehicle', treatments=['ATRA 100 nM'])
+
+
+class PerSampleTableTests(unittest.TestCase):
+    """The pure parts: which file is the table, how one is read, how they join."""
+
+    def test_the_series_matrix_lists_each_sample_s_own_files_over_https(self):
+        rows, _ = GF.parse_series_matrix(PER_SAMPLE_MATRIX)
+        self.assertEqual([PER_SAMPLE_FILES[0].replace('ftp://', 'https://')],
+                         rows[0]['supplementary_files'])
+        self.assertEqual([], GF.parse_series_matrix(MATRIX)[0][0]['supplementary_files'])
+
+    def test_which_of_a_sample_s_files_is_its_table(self):
+        url = GF.sample_table_url
+        self.assertEqual('x/GSM1_counts.txt.gz', url(['x/GSM1.bw', 'x/GSM1_counts.txt.gz']))
+        self.assertIsNone(url(['x/GSM1.bw', 'x/GSM1.bam']))
+        self.assertIsNone(url([]))
+        # Two tables: the one whose name says what it holds wins; otherwise nobody guesses.
+        self.assertEqual('x/GSM1_counts.tsv', url(['x/GSM1_notes.txt', 'x/GSM1_counts.tsv']))
+        self.assertIsNone(url(['x/GSM1_counts.tsv', 'x/GSM1_tpm.tsv']))
+        self.assertEqual('x/GSM1_tpm.tsv', url(['x/GSM1_counts.tsv', 'x/GSM1_tpm.tsv'], 'tpm'))
+        self.assertIsNone(url(['x/GSM1_barcodes.tsv.gz', 'x/GSM1_features.tsv.gz']),
+                          '10x pieces are not a table of genes by this sample')
+
+    def test_a_headerless_htseq_file_drops_its_summary_rows(self):
+        ids, vals, how = GF.parse_sample_table(HTSEQ['GSM1'])
+        self.assertEqual((['GATA6', 'ACTB', 'TFRC'], [100.0, 5000.0, 900.0]), (ids, vals))
+        self.assertIn('headerless', how['value_column'])
+        self.assertEqual('counts', how['transform'])
+
+    def test_a_headed_file_takes_the_column_its_header_names(self):
+        rsem = '\n'.join(['gene_id\ttranscript_id(s)\tlength\teffective_length\texpected_count\tTPM\tFPKM',
+                          'GATA6\tT1\t2000\t1800\t100.5\t12.1\t10.2',
+                          'ACTB\tT2\t1800\t1600\t5000.25\t600.4\t500.1',
+                          'TFRC\tT3\t3000\t2800\t900\t50.3\t42.0'])
+        ids, vals, how = GF.parse_sample_table(rsem)
+        self.assertEqual([100.5, 5000.25, 900.0], vals)
+        self.assertIn("'expected_count'", how['value_column'])
+        self.assertEqual('counts', how['transform'], 'a count column is counts even when not integer')
+        fc = '\n'.join(['# Program:featureCounts v2.0', 'Geneid\tChr\tStart\tEnd\tStrand\tLength\tS1.bam',
+                        'GATA6\tchr18\t100;300\t200;400\t+;+\t2000\t100',
+                        'ACTB\tchr7\t1\t2\t-\t1800\t5000', 'TFRC\tchr3\t1\t2\t+\t3000\t900'])
+        ids, vals, how = GF.parse_sample_table(fc)
+        self.assertEqual((['GATA6', 'ACTB', 'TFRC'], [100.0, 5000.0, 900.0]), (ids, vals))
+        self.assertIn("'S1.bam'", how['value_column'])
+        salmon = '\n'.join(['Name\tLength\tEffectiveLength\tTPM\tNumReads', 'GATA6\t2000\t1800\t12\t100',
+                            'ACTB\t1800\t1600\t600\t5000', 'TFRC\t3000\t2800\t50\t900'])
+        self.assertIn("'NumReads'", GF.parse_sample_table(salmon)[2]['value_column'])
+        with self.assertRaisesRegex(K.ContractError, 'fewer than two'):
+            GF.parse_sample_table('GATA6\t1')
+
+    def test_files_are_joined_on_the_genes_every_sample_has(self):
+        per = {'GSM1': (['A', 'B', 'C'], [1.0, 2.0, 3.0], {'delimiter': 'tab', 'feature_column': '',
+                                                          'value_column': 'c', 'transform': 'counts'}),
+               'GSM2': (['B', 'A', 'D'], [20.0, 10.0, 40.0], {'delimiter': 'tab', 'feature_column': '',
+                                                             'value_column': 'c', 'transform': 'counts'})}
+        ids, gsms, m, how = GF.assemble_sample_tables(per)
+        self.assertEqual((['A', 'B'], ['GSM1', 'GSM2']), (ids, gsms))
+        self.assertEqual([[1.0, 10.0], [2.0, 20.0]], m)
+        self.assertEqual((2, 2), (how['genes_in_every_sample'], how['genes_dropped']))
+        per['GSM2'][2]['transform'] = 'linear'
+        with self.assertRaisesRegex(K.ContractError, 'same kind of value'):
+            GF.assemble_sample_tables(per)
+
+    def test_what_the_samples_hold_instead_is_named(self):
+        rows = [{'gsm': f'GSM{i}', 'supplementary_files': [f'x/GSM{i}.bw', f'x/GSM{i}.bam']}
+                for i in range(3)]
+        self.assertEqual('.bw (3 samples), .bam (3 samples)', GF.sample_files_summary(rows))
+        tenx = [{'gsm': 'GSM9', 'supplementary_files': ['x/GSM9_barcodes.tsv.gz', 'x/GSM9_features.tsv.gz',
+                                                        'x/GSM9_matrix.mtx.gz']}]
+        self.assertIn('10x single-cell output', GF.sample_files_summary(tenx))
+        self.assertIn('.h5ad', GF.sample_files_summary(tenx))
+
+
+class PerSampleFetchTests(Sandbox):
+    def test_a_series_with_only_a_raw_archive_is_read_from_its_samples_files(self):
+        with mock.patch.object(GF, '_get', fake_get(PER_SAMPLE_SERVED)):
+            s = GF.samples(ACC, i_have_network_permission=True)
+            self.assertIn('6 of 6 samples carry a table-like', s['per_sample_tables'])
+            d = GF.fetch(ACC, genes=['GATA6', 'ACTB'], i_have_network_permission=True, **KW)
+        self.assertEqual('depositor_per_sample', d['route'])
+        self.assertEqual('moderate', d['evidence_weight']['confidence_ceiling'])
+        self.assertIn('per-sample files', d['evidence_weight']['note'])
+        self.assertEqual({'vehicle': 3, 'ATRA 100 nM': 3}, d['samples_per_group'])
+        self.assertEqual(6, len(d['sources']['tables']))
+        self.assertEqual('counts', d['how_read']['transform'])
+        self.assertIn('NCBI has no processed counts', d['why_not_ncbi'])
+        from biosense.data import registry as REG
+        m = REG.require(d['dataset_id'])
+        self.assertIn('assembled by BioSense', m['description'])
+        self.assertTrue(any('Assembled by BioSense from one supplementary file per sample' in x
+                            for x in m['limitations']), m['limitations'])
+        # The table is the same one the series route would have given: log2 CPM.
+        gata6 = [r for r in Path(d['table']).read_text().splitlines()
+                 if r.startswith('GATA6\tGSM1')]
+        lib = 100 + 5000 + 900
+        self.assertAlmostEqual(math.log2(100 / lib * 1e6 + 1), float(gata6[0].split('\t')[-1]), 4)
+
+    def test_a_series_level_table_is_still_preferred_over_per_sample_files(self):
+        # The table's key comes first: its URL also contains the directory's.
+        served = {'_normalized_tpm.txt.gz': TPM, **PER_SAMPLE_SERVED, f'/{ACC}/suppl/': LISTING}
+        with mock.patch.object(GF, '_get', fake_get(served)):
+            d = GF.fetch(ACC, i_have_network_permission=True, **KW)
+        self.assertEqual('depositor_supplementary', d['route'])
+
+    def test_a_series_with_nothing_readable_says_what_it_holds(self):
+        bw = PER_SAMPLE_MATRIX.replace('_counts.txt.gz', '.bw')
+        with mock.patch.object(GF, '_get', fake_get({'_series_matrix.txt.gz': bw,
+                                                    f'/{ACC}/suppl/': RAW_ONLY_LISTING})):
+            with self.assertRaises(K.ContractError) as e:
+                GF.fetch(ACC, i_have_network_permission=True, **KW)
+        msg = str(e.exception)
+        self.assertRegex(msg, 'no processed counts.*supplementary')
+        self.assertIn('it holds GSE123456_RAW.tar, filelist.txt', msg)
+        self.assertIn('.bw (6 samples)', msg)
+        self.assertIn('A person can register a processed table', msg)
+        # A sample with two candidate tables is ambiguous, and the remedy is named.
+        two = PER_SAMPLE_MATRIX.replace('!Sample_library_strategy',
+                                        '!Sample_supplementary_file_2\t' + '\t'.join(
+                                            f'"{u.replace("counts", "tpm")}"' for u in PER_SAMPLE_FILES)
+                                        + '\n!Sample_library_strategy')
+        served = dict(PER_SAMPLE_SERVED)
+        served['_series_matrix.txt.gz'] = two
+        with mock.patch.object(GF, '_get', fake_get(served)):
+            with self.assertRaisesRegex(K.ContractError, '--supplementary <substring>'):
+                GF.fetch(ACC, i_have_network_permission=True, **KW)
+            d = GF.fetch(ACC, supplementary='counts', i_have_network_permission=True, **KW)
+        self.assertEqual('depositor_per_sample', d['route'])
+
+    def test_a_file_that_cannot_be_read_names_the_file(self):
+        served = dict(PER_SAMPLE_SERVED)
+        served['GSM3_counts.txt.gz'] = 'GATA6\tnot a number\n'
+        with mock.patch.object(GF, '_get', fake_get(served)):
+            with self.assertRaisesRegex(K.ContractError, 'GSM3_counts.txt.gz: '):
+                GF.fetch(ACC, i_have_network_permission=True, **KW)
