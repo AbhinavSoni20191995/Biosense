@@ -581,6 +581,10 @@ async def _drive(cfg, brief, *, title, on_event, on_session, should_stop, inbox=
 
 # A question after the run is one turn, not a run: bounded on its own.
 ANSWER_TIMEOUT_S = 600
+# How long after the inner deadline the whole call is cut off, so a stall in
+# session creation ends as a timeout rather than as a question that never
+# finishes.
+ANSWER_GRACE_S = 120
 # How many consecutive quiet readings end an answer's turn. A session reads as
 # idle while the agent runs a tool, so one reading means nothing.
 ANSWER_SETTLE = 3
@@ -627,16 +631,37 @@ def answer(cfg, text, *, session_id=None, title=None, timeout_s=None):
                               'orchestrator to ask')
     RT.check_workspace(cfg)
     RT.check_sandbox(cfg)
+    limit = timeout_s or ANSWER_TIMEOUT_S
     try:
-        return _run_async(_answer(cfg, text, session_id=session_id,
-                                  title=title or 'BioSense question',
-                                  timeout_s=timeout_s or ANSWER_TIMEOUT_S))
+        # The deadline inside the loop only covers the part after the question
+        # is posted. Resolving the agent, finding an executor and creating a
+        # session happen before it, and a stall there used to leave a question
+        # reading "answering" for ever — which is what a person sees, and the
+        # worst failure here because nothing says it will never finish. So the
+        # whole call is bounded, with a little room for the inner deadline to
+        # fire first and return what was said.
+        return _run_async(_bounded(_answer(cfg, text, session_id=session_id,
+                                           title=title or 'BioSense question',
+                                           timeout_s=limit),
+                                   limit + ANSWER_GRACE_S))
     except RT.RuntimeUnavailable:
         raise
     except Exception as e:  # noqa: BLE001
         code, detail = _classify(e)
         raise RT.RuntimeUnavailable(code, detail,
                                     hosted=bool(getattr(cfg, 'hosted', False))) from None
+
+
+async def _bounded(coro, seconds):
+    """*coro*, or a timed-out answer. Never leaves the caller waiting for ever."""
+    try:
+        return await asyncio.wait_for(coro, timeout=seconds)
+    except asyncio.TimeoutError:
+        return {'answer': None, 'session_id': None, 'fresh': False, 'nudged': 0,
+                'timed_out': True,
+                'error': f'nothing came back within {int(seconds // 60)} minutes, including '
+                         f'the time spent opening a session. The run\'s files are unchanged; '
+                         f'ask again, or start a follow-up run.'}
 
 
 async def _answer(cfg, text, *, session_id, title, timeout_s):

@@ -5,6 +5,7 @@ The orchestrator answers from what the run wrote: one turn, on the run's own
 session when it still exists, read-only by instruction and checked — a file it
 changed while answering is named on the answer. No live model is needed here.
 """
+import asyncio
 import json
 import shutil
 import tempfile
@@ -60,6 +61,27 @@ class RecordTests(unittest.TestCase):
         self.assertEqual('Because H02 …', items[0]['answer'])
         with self.assertRaisesRegex(K.ContractError, 'ask a question'):
             ASK.clean_question('  ')
+
+    def test_a_question_nobody_is_answering_stops_saying_it_is_being_answered(self):
+        """A restart, a crash or a stall with no deadline leaves a question
+        marked answering with nothing working on it, and the page said "the
+        orchestrator is reading its run" for ever. Decided on read, so a
+        question already stranded on disk is corrected too."""
+        q = ASK.start(self.d, 'What are the inducers during expansion?')
+        self.assertEqual('answering', ASK.load(self.d)['items'][0]['status'])
+        later = time.time() + ASK.STALE_AFTER_S + 1
+        item = ASK.load(self.d, now=later)['items'][0]
+        self.assertEqual('failed', item['status'])
+        self.assertTrue(item['stale'])
+        self.assertIn('20 minutes', item['error'])
+        self.assertIn('files are unchanged', item['error'])
+        self.assertEqual(q['id'], item['id'])
+
+    def test_an_answered_question_is_never_aged_out(self):
+        q = ASK.start(self.d, 'Why?')
+        ASK.finish(self.d, q['id'], status='answered', answer='Because H02 …')
+        item = ASK.load(self.d, now=time.time() + 10 * ASK.STALE_AFTER_S)['items'][0]
+        self.assertEqual(('answered', 'Because H02 …'), (item['status'], item['answer']))
 
     def test_a_file_written_while_answering_is_named(self):
         (self.d / 'quantified_hypothesis.json').write_text('{}')
@@ -174,6 +196,23 @@ class RuntimeTests(unittest.TestCase):
              mock.patch.object(OMNI, 'ANSWER_SETTLE', 2):
             out = OMNI.answer(cfg_for(), 'q', session_id='conv_run')
         self.assertEqual('The answer is M-CSF.', out['answer'], 'said once, not twice')
+
+    def test_a_stall_before_the_first_event_still_ends_as_a_timeout(self):
+        """The inner deadline starts when the question is posted. Resolving the
+        agent and creating a session happen before it, and a stall there is
+        what leaves a question answering for ever."""
+        h = _Harness().install(self)
+
+        class _Slow(_Sessions):
+            async def resolve_agent(self, name):
+                await asyncio.sleep(10)
+                return await super().resolve_agent(name)
+        h.sessions_cls = _Slow
+        with mock.patch.object(OMNI, 'ANSWER_GRACE_S', 0.05):
+            out = OMNI.answer(cfg_for(), 'q', session_id=None, timeout_s=0.05)
+        self.assertTrue(out['timed_out'])
+        self.assertIsNone(out['answer'])
+        self.assertIn('including the time spent opening a session', out['error'])
 
     def test_a_synthetic_runtime_has_no_one_to_ask(self):
         with self.assertRaises(K.ContractError):

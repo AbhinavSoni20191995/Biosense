@@ -25,20 +25,49 @@ from pathlib import Path
 from .. import contracts as K
 
 QA_NAME = 'questions.json'
+# A question is answered by a thread in this process. A restart, a crash or a
+# stall with no deadline leaves one marked `answering` with nothing working on
+# it, and the page says "the orchestrator is reading its run" for ever. After
+# this long it is reported as what it is: nobody is answering it.
+STALE_AFTER_S = 20 * 60
 MAX_QUESTION = 2000
 MAX_QUESTIONS = 50
 # Bookkeeping that changes whatever the agent does; never counted as its edit.
 IGNORED = {QA_NAME, 'app_run.json', 'events.jsonl', 'run_state.json'}
 
 
-def load(run_dir):
+def load(run_dir, *, now=None):
     try:
         doc = K.read_json(Path(run_dir) / QA_NAME)
     except (OSError, ValueError):
         return {'kind': 'run_questions', 'items': []}
     if not isinstance(doc, dict) or not isinstance(doc.get('items'), list):
         return {'kind': 'run_questions', 'items': []}
+    for item in doc['items']:
+        _age_out(item, now=now)
     return doc
+
+
+def _age_out(item, *, now=None):
+    """An answer nothing is working on any more reads as failed, not pending.
+
+    Decided when the file is read rather than written, so a question stranded
+    by a restart is corrected for everybody looking at it, including the ones
+    already on disk.
+    """
+    if item.get('status') != 'answering':
+        return item
+    started = K.parse_iso(item.get('asked_at'))
+    if started is None:
+        return item
+    if (now or time.time()) - started <= STALE_AFTER_S:
+        return item
+    item['status'] = 'failed'
+    item['error'] = (f'nothing answered this within {STALE_AFTER_S // 60} minutes. The '
+                     f'session was lost, the server restarted, or the model never replied; '
+                     f'the run\'s files are unchanged. Ask again, or start a follow-up run.')
+    item['stale'] = True
+    return item
 
 
 def _save(run_dir, doc):

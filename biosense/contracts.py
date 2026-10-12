@@ -169,6 +169,18 @@ def now_iso():
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+def parse_iso(text):
+    """An ISO timestamp as a unix time, or None. Never raises: a stored string
+    that cannot be read is a reason to say nothing, not to fail a read."""
+    try:
+        d = dt.datetime.fromisoformat(str(text or '').replace('Z', '+00:00'))
+    except (TypeError, ValueError):
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=dt.timezone.utc)
+    return d.timestamp()
+
+
 def read_json(path):
     return json.loads(Path(path).read_text())
 
