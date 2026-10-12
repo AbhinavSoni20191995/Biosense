@@ -25,6 +25,7 @@ from biosense.production import budget as BU
 from biosense.production import omnigent_runtime as OMNI
 from biosense.production import run_store as RS
 from biosense.production import runtime as RT
+from biosense.production import stages as ST
 from biosense import workspace as WS
 from tests.test_omnigent_runtime import (_Harness, _Session, _Sessions, cfg_for, ev,  # noqa: F401
                                          setUpModule, tearDownModule)
@@ -114,6 +115,28 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn('create', calls, 'no new session when the run\'s own one is there')
         posted = next(c for c in h.last_client.sessions.calls if c[0] == 'post_event')
         self.assertEqual('conv_run', posted[1])
+
+    def test_a_long_answer_comes_back_whole(self):
+        """A person read an answer that stopped mid-word: "the run's concrete
+        target, if you want o". The reply was being read through the cap that
+        keeps a timeline row short, so everything past 4000 characters was
+        thrown away before it reached them."""
+        long = 'DEV-003 (PMC8759608): the AM precursor is on the MYB-dependent branch. ' * 120
+        h = _Harness().install(self)
+        h.events = [reply(long), ev('response.completed')]
+        out = OMNI.answer(cfg_for(), 'question', session_id='conv_run')
+        self.assertEqual(long.strip(), out['answer'])
+        self.assertGreater(len(out['answer']), ST.MESSAGE_CAP)
+        self.assertTrue(out['answer'].rstrip().endswith('branch.'), 'not cut mid-word')
+
+    def test_a_reply_past_the_upper_bound_says_that_it_was_cut(self):
+        """The bound is there so one reply cannot fill the run directory. A cut
+        nobody is told about is the bug this path exists to avoid."""
+        h = _Harness().install(self)
+        h.events = [reply('x' * (OMNI.ANSWER_CAP + 500)), ev('response.completed')]
+        out = OMNI.answer(cfg_for(), 'question', session_id='conv_run')
+        self.assertIn('is cut here', out['answer'])
+        self.assertIn('Ask again for the part you need', out['answer'])
 
     def test_a_session_the_server_lost_gives_way_to_a_fresh_one(self):
         h = _Harness().install(self)

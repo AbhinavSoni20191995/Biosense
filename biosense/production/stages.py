@@ -316,17 +316,45 @@ def _item_event(item, etype):
             'technical': _text(kind)}
 
 
-def _message_text(item):
+#: What one timeline row may carry. A row in a feed is not a document, so a
+#: message is cut to this length for display — and `message_text` exists
+#: because an ANSWER is a document, and reading one through this cap ends it
+#: mid-word.
+MESSAGE_CAP = 4000
+
+
+def _message_text(item, limit=MESSAGE_CAP):
+    """The text of a message item, cut to *limit* (None for all of it)."""
     content = item.get('content')
     if isinstance(content, str):
-        return content[:4000]
+        return content[:limit] if limit else content
     parts = []
     for block in content or []:
         if isinstance(block, dict):
             parts.append(block.get('text') or '')
         elif isinstance(block, str):
             parts.append(block)
-    return ' '.join(p for p in parts if p).strip()[:4000]
+    text = ' '.join(p for p in parts if p).strip()
+    return text[:limit] if limit else text
+
+
+def message_text(event):
+    """The whole text of a completed message event, uncapped, or None.
+
+    `map_event` cuts a message at MESSAGE_CAP, which is right for what it
+    feeds: a timeline row, a journal line, a badge. It is wrong for a reply a
+    person reads — an orchestrator's answer came back to somebody ending
+    "the run's concrete target, if you want o", cut mid-word at 4000
+    characters because the answer was read through the display cap. A caller
+    that is keeping the message itself reads it here instead.
+    """
+    e = _as_dict(event)
+    if (e.get('type') or '') != 'response.output_item.done':
+        return None
+    item = e.get('item') or {}
+    if item.get('type') != 'message':
+        return None
+    return _message_text(item, limit=None) or None
 
 
 def stage_counts(reached, *, terminal=None):

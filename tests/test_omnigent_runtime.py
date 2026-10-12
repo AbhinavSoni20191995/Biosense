@@ -683,6 +683,23 @@ class StageMappingTests(unittest.TestCase):
                          'text': 'Now I will search the literature and run the analysis.'}]}))
         self.assertIsNone(mapped['stage'])
 
+    def test_a_message_is_cut_for_a_timeline_row_and_whole_for_an_answer(self):
+        """A row in a feed is not a document; an answer is. Reading an answer
+        through the row's cap ended one mid-word at 4000 characters."""
+        long = 'The run\'s concrete target, if you want one. ' * 200
+        e = ev('response.output_item.done', item={
+            'type': 'message', 'role': 'assistant',
+            'content': [{'type': 'output_text', 'text': long}]})
+        self.assertEqual(ST.MESSAGE_CAP, len(ST.map_event(e)['technical']))
+        self.assertEqual(long.strip(), ST.message_text(e))
+        self.assertGreater(len(ST.message_text(e)), ST.MESSAGE_CAP)
+        # Only a message, and only a completed one.
+        self.assertIsNone(ST.message_text(ev('response.completed')))
+        self.assertIsNone(ST.message_text(ev('response.output_item.done', item={
+            'type': 'function_call', 'name': 'sys_os_exec', 'arguments': 'ls'})))
+        self.assertIsNone(ST.message_text(ev('response.output_item.done', item={
+            'type': 'message', 'role': 'assistant', 'content': []})))
+
     def test_terminal_events_are_recognised(self):
         self.assertEqual('complete', ST.map_event(ev('response.completed'))['stage'])
         for t in ('response.failed', 'response.cancelled', 'response.incomplete'):

@@ -599,6 +599,12 @@ _PREAMBLE = re.compile(r"^\s*(i(?:'| a|\u2019)?m? ?(?:will|'ll| will)?\s*(?:now\
                        r"(?:read|look|check|review|go through|start|begin|examine|open)"
                        r"|let me\b|one moment|first,? (?:i|let))", re.I)
 PREAMBLE_MAX_CHARS = 400
+# An upper bound on a kept answer, so one reply cannot fill the run directory.
+# It is not there to shorten an answer — it is far above any readable reply —
+# and a reply that reaches it is cut with a sentence saying so, because an
+# answer that stops mid-word with nothing to explain it is the bug this
+# whole path exists to avoid.
+ANSWER_CAP = 200_000
 
 
 def _is_preamble(said):
@@ -729,13 +735,16 @@ async def _answer(cfg, text, *, session_id, title, timeout_s):
                     done = True
                     continue
                 if mapped['kind'] == 'message' and mapped.get('role') == 'assistant':
-                    text = mapped.get('technical') or ''
+                    # The whole message, not `mapped['technical']`: that is cut
+                    # to a timeline row's length, and an answer read through it
+                    # ends mid-word.
+                    msg = ST.message_text(raw) or mapped.get('technical') or ''
                     # A reopened tail can hand back what it already handed
                     # back. The same sentence twice is one sentence, and it is
                     # not evidence that the agent is still working.
-                    if text not in seen:
-                        seen.add(text)
-                        said.append(text)
+                    if msg not in seen:
+                        seen.add(msg)
+                        said.append(msg)
                         progress = True
                 else:
                     progress = True
@@ -776,6 +785,10 @@ async def _answer(cfg, text, *, session_id, title, timeout_s):
                 continue
             done = True
         text = '\n\n'.join(t for t in said if t.strip()) or None
+        if text and len(text) > ANSWER_CAP:
+            text = text[:ANSWER_CAP] + (
+                f'\n\n[BioSense: this reply is longer than {ANSWER_CAP} characters and is cut '
+                f'here. Ask again for the part you need.]')
         if text and not error and not timed_out and _is_preamble(said):
             # A promise is not a reply. Reported as a failure with its own
             # words, rather than handed over as though the question had been
