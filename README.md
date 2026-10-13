@@ -635,6 +635,12 @@ an approval block for a named person to sign. "PROPOSED — NOT APPROVED" is on
 it twice. The PDF is written on the standard library like the Word file and
 opens the same everywhere.
 
+**The run page can be laid out as a canvas.** "Arrange as a canvas" frees
+every box from the reading order: drag one by its title, resize it from its
+corner, set it aside and bring it back. The arrangement is remembered in your
+browser for every run, "Reset layout" starts it again, and "Back to the page
+layout" returns to the reading order. A phone keeps the reading order.
+
 **You can change the bench copy in the same conversation.** "Change the
 protocol document" tells the orchestrator what you want in the copy you take
 to the bench — the vessel it is laid out for and its working volume, a value
@@ -944,7 +950,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1606 tests
+uv run --frozen python -m unittest     # 1613 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

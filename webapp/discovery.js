@@ -1149,6 +1149,8 @@ function foldTable(headers, rows, cls) {
     r.cells.forEach(c => {
       const td = el('td');
       if (c instanceof Node) td.append(c); else td.textContent = c == null ? '' : String(c);
+      // What a closed row cuts short is readable on hover, and in full when open.
+      td.querySelectorAll('.clip').forEach(n => { if (!n.title) n.title = n.textContent; });
       tr.append(td);
     });
     t.append(tr);
