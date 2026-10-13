@@ -109,5 +109,19 @@ class WiringTests(unittest.TestCase):
                           ' '.join(PDF.text_of(SR.tobytes('breakthrough', empty, 'pdf'))))
 
 
+
+class PageTests(unittest.TestCase):
+    def test_the_run_page_shows_it_and_offers_it_as_a_turn(self):
+        html = (K.ROOT / 'webapp' / 'console.html').read_text()
+        js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
+        self.assertIn('id="btPanel"', html)
+        self.assertIn('id="btBtn"', html)
+        self.assertEqual(1, html.count('data-section="breakthrough"'))
+        self.assertIn('renderBreakthrough(snap);', js)
+        self.assertIn("askQuestion(null, 'breakthrough')", js)
+        from biosense.production import ask as ASK
+        self.assertIn('breakthrough', ASK.KINDS)
+
+
 if __name__ == '__main__':
     unittest.main()

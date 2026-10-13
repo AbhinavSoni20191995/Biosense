@@ -1008,6 +1008,7 @@ function watchRun(runId) {
       renderRound(snap);
       renderQuestions(snap);
       renderAlternates(snap);
+      renderBreakthrough(snap);
       renderDataRequests(snap);
       renderStages(snap.progress);
       (snap.events || []).forEach(seedEvent);
@@ -2966,6 +2967,7 @@ function renderQuestions(snap) {
     const qline = el('div', 'ask-q');
     if (q.kind === 'alternate') qline.append(el('span', 'chip', 'alternate plan'));
     if (q.kind === 'protocol') qline.append(el('span', 'chip', 'protocol change'));
+    if (q.kind === 'breakthrough') qline.append(el('span', 'chip', 'past the apparatus'));
     qline.append(document.createTextNode(q.question));
     box.append(qline);
     box.append(el('div', 'dim ask-who', [q.asked_by, BS.fmt.ago(Date.parse(q.asked_at) / 1000)]
@@ -2977,6 +2979,8 @@ function renderQuestions(snap) {
       const since = Date.parse(q.asked_at) / 1000;
       box.append(el('p', 'dim', (q.kind === 'protocol'
         ? 'The orchestrator is writing the changes… '
+        : q.kind === 'breakthrough'
+        ? 'The orchestrator is designing past the apparatus… '
         : 'The orchestrator is reading its run and answering… ')
         + `(${BS.fmt.elapsed(since)} so far; a long answer is a few minutes)`));
     } else if (q.answer) {
@@ -2987,6 +2991,10 @@ function renderQuestions(snap) {
     if (q.wrote && (q.wrote.new || []).length) {
       box.append(el('p', 'dim', 'Wrote ' + q.wrote.new.join(', ')
         + ' — under Alternate and extended plans.'));
+    }
+    if (q.kind === 'breakthrough' && q.wrote && q.wrote.breakthrough) {
+      box.append(el('p', 'dim', `Wrote \u201c${q.wrote.breakthrough}\u201d \u2014 under `
+        + 'Beyond the apparatus.'));
     }
     if (q.kind === 'protocol' && q.wrote && q.wrote.edits) {
       const e = q.wrote.edits;
@@ -3008,6 +3016,8 @@ function renderQuestions(snap) {
         ? 'It also changed these, and it was asked to write only the plans: '
         : q.kind === 'protocol'
           ? 'It also changed these, and it was asked to write only the protocol edits: '
+          : q.kind === 'breakthrough'
+          ? 'It also changed these, and it was asked to write only the design: '
           : 'While answering, these files changed (it was asked not to change anything): ')
         + q.files_changed.join(', ')));
     }
@@ -3021,6 +3031,7 @@ function renderQuestions(snap) {
   $('#askBtn').disabled = busy;
   if ($('#altBtn')) $('#altBtn').disabled = busy;
   if ($('#editBtn')) $('#editBtn').disabled = busy;
+  if ($('#btBtn')) $('#btBtn').disabled = busy;
   clearTimeout(askTimer);
   if (busy) {
     askTimer = setTimeout(() => get(`/api/discovery/${snap.run_id}`)
@@ -3090,9 +3101,128 @@ function renderAlternates(snap) {
   host.append(el('p', 'caveat', a.note));
 }
 
+/* The experiment past the apparatus: what it lifts, what it keeps, the stages
+   in the new apparatus, the arms and a judgement range. A concept beside
+   round 1 — never runnable here, never approved, the aim never relaxed. */
+function btCondition(c) {
+  if (c.provenance === 'gap') {
+    return el('div', 'bt-cond gap', `${c.factor}: GAP \u2014 ${c.what_would_settle || ''}`);
+  }
+  const d = el('div', 'bt-cond');
+  d.append(document.createTextNode(`${c.factor} `));
+  d.append(el('b', null, `${c.value}${c.unit ? ' ' + c.unit : ''}`));
+  d.append(el('span', 'dim', ` [${PROV_LETTER[c.provenance] || c.provenance}]`
+    + ((c.refs || []).length ? ' ' + c.refs.join(', ') : '')));
+  if (c.rationale) d.title = c.rationale;
+  return d;
+}
+function renderBreakthrough(snap) {
+  const panel = $('#btPanel'); if (!panel) return;
+  const bt = snap.breakthrough_design;
+  panel.hidden = !bt;
+  if (!bt) return;
+  renderSectionExports(snap);   // idempotent; a run with no insights never reaches it
+  $('#btHead').textContent = 'a concept beside round 1 \u00b7 not runnable here, not approved';
+  const host = $('#btBody'); host.textContent = '';
+  const head = el('div', 'ev-row');
+  head.append(el('span', 'chip', 'CONCEPT'));
+  head.append(miniBar(bt.confidence));
+  head.append(el('span', 'dim', `${bt.confidence} \u00b7 ${BASIS_LABEL[bt.evidence_basis]
+    || bt.evidence_basis}`));
+  (bt.refs || []).slice(0, 4).forEach(r => head.append(el('span', 'ref', r)));
+  host.append(head);
+  host.append(el('h4', null, bt.title));
+  host.append(appendAll(el('div'), [
+    kv('Aim', bt.aim), kv('Why this, now', bt.why_now),
+    kv('Why it gets closer', bt.closest_to_aim), kv('What it still leaves', bt.gap_to_aim),
+  ]));
+
+  host.append(el('div', 'lab', 'What it lifts'));
+  const lift = el('div', 'bt-lift');
+  bt.constraints_lifted.forEach(c => {
+    const row = el('div', 'bt-lift-row');
+    const now = el('div', 'bt-now');
+    now.append(el('div', 'bt-k', c.constraint), el('div', 'dim', c.now));
+    const to = el('div', 'bt-to');
+    to.append(el('div', 'bt-k', c.kind.replace(/_/g, ' ')), el('div', null, c.lifted_to));
+    row.append(now, el('div', 'bt-arrow', '\u2192'), to);
+    const why = el('div', 'dim bt-why', 'Why it stands in the way: ' + c.why_it_limits
+      + ` (${c.evidence_basis}${(c.refs || []).length ? '; ' + c.refs.join(', ') : ''})`);
+    lift.append(row, why);
+  });
+  host.append(lift);
+  host.append(el('p', 'dim', 'Kept: ' + bt.kept.map(k => k.what).join(' \u00b7 ')));
+
+  const a = bt.apparatus;
+  host.append(el('div', 'lab', 'The apparatus'));
+  host.append(el('p', null, `${a.name} (${a.exists.replace(/_/g, ' ')}). ${a.description}`));
+  if ((a.features || []).length) {
+    const f = el('div', 'row');
+    a.features.forEach(x => f.append(el('span', 'chip', x)));
+    host.append(f);
+  }
+
+  host.append(el('div', 'lab', 'The stages in the new apparatus'));
+  const lo = Math.min(...bt.stages.map(x => x.day_start));
+  const hi = Math.max(...bt.stages.map(x => x.day_end));
+  const band = el('div', 'bt-band');
+  const cards = el('div', 'bt-stages');
+  bt.stages.forEach((st, i) => {
+    const seg = el('div', 'bt-seg s' + (i % 7), st.label);
+    seg.style.flexGrow = String(Math.max(st.day_end - st.day_start, 0.5));
+    seg.title = `${st.label}: day ${st.day_start}\u2013${st.day_end}`;
+    band.append(seg);
+    const card = el('div', 'bt-stage');
+    card.append(el('div', 'bt-k', st.label),
+      el('div', 'dim', `day ${st.day_start}\u2013${st.day_end}`));
+    (st.conditions || []).forEach(c => card.append(btCondition(c)));
+    if (!(st.conditions || []).length) card.append(el('div', 'dim', 'no factor set'));
+    if (st.note) card.append(el('div', 'dim', st.note));
+    cards.append(card);
+  });
+  host.append(band, el('div', 'dim bt-axis', `day ${lo} \u2192 day ${hi}`), cards);
+
+  host.append(el('div', 'lab', 'The arms'));
+  const t = el('table', 'rp-arms');
+  const hr = el('tr');
+  ['Arm', 'What it is', 'What differs'].forEach(x => hr.append(el('th', null, x)));
+  t.append(hr);
+  bt.arms.forEach(arm => {
+    const tr = el('tr');
+    [arm.arm_id + (arm.control ? ' \u00b7 control' : ''), arm.label, arm.differs]
+      .forEach(x => tr.append(el('td', null, x)));
+    t.append(tr);
+  });
+  host.append(t);
+  host.append(el('div', 'lab', 'Measure'));
+  bt.readouts.forEach(r => host.append(el('div', 'chip', [r.name, r.unit, r.when]
+    .filter(Boolean).join(' \u00b7 '))));
+  if (bt.replicates) host.append(el('p', 'dim', `${bt.replicates} replicate(s) per arm.`));
+  host.append(el('p', 'rec-test', `If ${bt.decision_rule.if} \u2192 ${bt.decision_rule.then}`));
+
+  const x = bt.expected;
+  if (x) {
+    host.append(el('div', 'lab', 'What it might do \u2014 a judgement, not a prediction'));
+    const unit = x.change_unit === 'percentage_points' ? 'percentage points' : (x.change_unit || '');
+    host.append(el('p', null, `${x.metric}: ${x.interval.lower} to ${x.interval.upper} ${unit} `
+      + `over the control, ${x.judgement.confidence} confidence. ${x.judgement.rationale}`));
+  }
+  const f = bt.feasibility;
+  host.append(appendAll(el('div'), [
+    kv('What it takes', [f.cost, f.time, f.expertise].filter(Boolean).join(' \u00b7 ')),
+    kv('Build steps', (f.build_steps || []).join(' \u2192 ')),
+    kv('Risks', bt.risks.map(r => `${r.risk} \u2014 ${r.mitigation}`).join('; ')),
+  ]));
+  host.append(el('p', 'caveat', bt.does_not_change));
+}
+
 async function askQuestion(ev, kind) {
   if (ev) ev.preventDefault();
-  const snap = state.run; const text = $('#askText').value.trim();
+  const snap = state.run;
+  let text = $('#askText').value.trim();
+  if (kind === 'breakthrough' && text.length < 3) {
+    text = 'Design the experiment past the apparatus that gets closest to the aim.';
+  }
   if (!snap || text.length < 3) {
     if (kind === 'alternate') {
       $('#askMsg').textContent = 'Say which of the run\u2019s leads to work up.';
@@ -3104,6 +3234,7 @@ async function askQuestion(ev, kind) {
   $('#askBtn').disabled = true;
   if ($('#altBtn')) $('#altBtn').disabled = true;
   if ($('#editBtn')) $('#editBtn').disabled = true;
+  if ($('#btBtn')) $('#btBtn').disabled = true;
   $('#askMsg').textContent = '';
   try {
     await post(`/api/discovery/${snap.run_id}/ask`,
@@ -3115,6 +3246,7 @@ async function askQuestion(ev, kind) {
     $('#askBtn').disabled = false;
     if ($('#altBtn')) $('#altBtn').disabled = false;
     if ($('#editBtn')) $('#editBtn').disabled = false;
+    if ($('#btBtn')) $('#btBtn').disabled = false;
   }
 }
 
@@ -3957,7 +4089,8 @@ function renderSectionExports(snap) {
     host.hidden = !snap.run_id;
     if (!snap.run_id) return;
     const sec = host.dataset.section;
-    const name = sec === 'literature' ? 'the literature' : 'the bioinformatics';
+    const name = { literature: 'the literature', bioinformatics: 'the bioinformatics',
+      breakthrough: 'the design past the apparatus' }[sec] || sec;
     const a = (fmt, label) => {
       const l = el('a', 'btn sm', label);
       l.href = `/api/discovery/${encodeURIComponent(snap.run_id)}/export?section=${sec}&format=${fmt}`;
@@ -4154,6 +4287,8 @@ function wire() {
   if (alt) alt.addEventListener('click', () => askQuestion(null, 'alternate'));
   const edit = $('#editBtn');
   if (edit) edit.addEventListener('click', () => askQuestion(null, 'protocol'));
+  const beyond = $('#btBtn');
+  if (beyond) beyond.addEventListener('click', () => askQuestion(null, 'breakthrough'));
   const np = $('#newProjectBtn');
   if (np) {
     np.addEventListener('click', () => {

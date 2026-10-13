@@ -651,6 +651,19 @@ analysed, the datasets found from the papers and the genes looked up. Both are
 built from the run's files, so they work after a restart, and a file that does
 not parse is named, not mended.
 
+**The orchestrator also designs past the apparatus.** Round 1 is designed for
+the vessel you have. Once it is written, the orchestrator writes one more
+thing: the experiment it would run if the apparatus were not the limit — a
+staged harvest, a coated carrier, perfusion, a co-culture, a sensor the vessel
+lacks — the one that gets closest to your aim. Each constraint it lifts says
+what it is now, what it becomes and why it stands between the process and the
+aim. Only the apparatus is lifted: the aim, the QC limits and any safety bound
+are kept by BioSense whatever the draft says. Every quantity keeps its
+provenance, the round-1 process in the new apparatus is the control, and the
+expected outcome is a judgement range. It is shown under "Beyond the
+apparatus", exports as Word or PDF, can be asked for again from the Ask box
+("Design past the apparatus"), and is never runnable here or approved.
+
 **The run page can be laid out as a canvas.** "Arrange as a canvas" frees
 every box from the reading order: drag one by its title, widen it from either
 side, heighten it from the bottom. Any single box can also be detached into a

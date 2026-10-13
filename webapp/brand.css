@@ -993,3 +993,27 @@ body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
 .dreq-form label{display:block;font-size:12.5px;color:var(--ink-2);margin-top:8px}
 .dreq-form input,.dreq-form textarea{width:100%;box-sizing:border-box;margin-top:4px}
 .dreq-form .hint{font-size:11.5px;margin:3px 0 0}
+
+/* Beyond the apparatus: what a design lifts, its stages to scale, its arms. */
+.bt-lift{display:flex;flex-direction:column;gap:4px;margin:6px 0 8px}
+.bt-lift-row{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:stretch}
+.bt-now,.bt-to{border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px}
+.bt-now{background:var(--glass-2)}
+.bt-to{background:color-mix(in srgb,var(--s1) 10%,transparent);
+  border-color:color-mix(in srgb,var(--s1) 35%,transparent)}
+.bt-k{font-weight:600;margin-bottom:2px}
+.bt-arrow{align-self:center;color:var(--ink-3);font-size:1.2em}
+.bt-why{margin:0 0 6px;font-size:.92em}
+.bt-band{display:flex;gap:2px;margin:6px 0 2px;border-radius:var(--r-s);overflow:hidden}
+.bt-seg{flex:1 1 0;min-width:0;padding:6px 8px;font-size:.86em;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#13221b}
+.bt-seg.s0{background:#DCEFE6}.bt-seg.s1{background:#E1E7F7}.bt-seg.s2{background:#F7EBDD}
+.bt-seg.s3{background:#ECE3F4}.bt-seg.s4{background:#DDF1F3}.bt-seg.s5{background:#F3EFD9}
+.bt-seg.s6{background:#F4E1E6}
+.bt-axis{font-size:.85em;margin-bottom:6px}
+.bt-stages{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+.bt-stage{border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px}
+.bt-cond{margin-top:4px;font-size:.92em;overflow-wrap:anywhere}
+.bt-cond.gap{padding:3px 6px;border-radius:6px;color:#5c1a10;
+  background:repeating-linear-gradient(45deg,#f6d4cf 0 6px,#fbeeea 6px 12px)}
+@media (max-width:640px){.bt-lift-row{grid-template-columns:1fr}.bt-arrow{transform:rotate(90deg);justify-self:center}}

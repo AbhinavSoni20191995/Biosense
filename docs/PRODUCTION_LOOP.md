@@ -39,6 +39,7 @@ bioreactor; nothing here touches an actuator.
 | `analysis_report` | `analyze` | verdict, per-arm target and QC, genotype comparison, diagnosis hypotheses, data integrity |
 | `human_consult` | orchestrator | question, why it matters, the assay that cannot run here, expected gain, options, **blocking**, and **what happens if nobody answers** |
 | `alternate_plans` | orchestrator, at a person's request | the other leads as experiments: each a claim, its arms, what it costs to run and what either outcome means; confidence capped by cited / mechanistic / judgement; never changes round 1 |
+| `breakthrough_design` | orchestrator, after round 1 or at a person's request | the experiment closest to the aim if the apparatus were not the limit: each lifted constraint (now, lifted to, why it limits), what is kept (aim, QC limits, safety bounds — always), the apparatus, stages with provenance per quantity, arms with one control, readouts, a decision rule, a judgement-typed expected range, feasibility and risks; status `concept`, never runnable here or approved |
 | `bench_setup` | literature agent | media per stage, reagents, handling, consumables, safety, do's and don'ts with their reasons; a supplier or catalogue number only where a source states it, everything else "use your own qualified stock" |
 | `baseline_protocol` | literature agent | the published route stage by stage: every stage of the project, what goes in the medium, the dose where a source gives one with the sentence quoted; `reported` / `adapted` / `design_choice` / `gap` per factor, and a stage nobody addressed stated rather than missing |
 | `loop_decision` | orchestrator agent, or the policy | type, `authored_by`, `reasoning`, `considered` alternatives, `hypotheses` with their basis, `tool_calls`, `consult_ids`, the `allowed_actions` it was validated against, the `policy_advice` it may have overridden, `advances_iteration`, `status` |
@@ -151,6 +152,38 @@ reasoning — is low, a mechanism nobody tested here is moderate at best, and
 `cited` needs refs from the run's own evidence. A judgement is a real answer
 and says so, rather than acquiring a citation that does not test the change.
 
+
+## Past the apparatus
+
+Round 1 is designed inside the process as it is: the vessel, its working
+volume, the settings it can hold, the request's bounds. That is right for
+round 1, and it is also why a run can end with "the levers are timing levers
+and a continuous harvest cannot time them". The constrained design says how
+close the process can get; it does not say how close the aim could be got.
+
+So the orchestrator's brief ends with one more design step, and the Ask
+conversation has a fourth kind of turn: **"Design past the apparatus"** writes
+exactly one file, `breakthrough_design`
+(`biosense/evidence/breakthrough.py`). The checker holds four rules:
+
+* **only the apparatus is lifted.** A lifted constraint of kind target, qc or
+  safety is refused, and so is one that names a bound the request records as
+  a `safety_constraint`. The aim, the QC limits and those bounds are listed
+  under `kept` by BioSense, whatever the draft says;
+* **every quantity keeps its provenance**, exactly as in a protocol: reported
+  with refs, adapted or design choice with a rationale, a gap with no value
+  and what would settle it;
+* **one control**: the round-1 process carried into the new apparatus, so the
+  apparatus' own effect can be told from the biology's;
+* **the expected outcome is a judgement**: an Estimate typed `judgement`,
+  whose confidence cannot exceed the design's own, which is capped by its
+  evidence basis. The toy model does not cover the new apparatus and is not
+  quoted as if it did.
+
+It is labelled `concept`, `runnable_on_current_apparatus: false` and
+`ready_for_wet_lab: false`, and does not change the main hypothesis, the
+protocol or round 1. It becomes a protocol only when one is written for the
+new apparatus and a named person approves it.
 
 ## The bench copy, changed in the same conversation
 

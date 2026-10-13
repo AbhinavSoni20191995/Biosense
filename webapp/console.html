@@ -489,6 +489,10 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
                section left out — written to one file and laid over every
                export. The run's own protocol is never rewritten. -->
           <button class="btn" id="editBtn" type="button">Change the protocol document</button>
+          <!-- The fourth kind: the experiment past the apparatus. Written to one
+               file beside round 1; only the apparatus is lifted, never the aim,
+               the QC limits or a safety bound. -->
+          <button class="btn" id="btBtn" type="button">Design past the apparatus</button>
           <span class="dim" id="askMsg"></span></div>
         <p class="caveat">A question answers from this run's files and changes nothing. An
           alternate plan is written into the run beside the main hypothesis — it never changes
@@ -496,7 +500,10 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
           result existed. A protocol change edits the bench copy only: the vessel it is laid
           out for, a value of yours (checked against the project, marked D with your name), a
           note in your words (marked P), or a section left out; then export it as Word or PDF
-          below. None of these searches again; a follow-up run gathers new evidence.</p>
+          below. "Design past the apparatus" writes the experiment that would get closest to
+          the aim if the vessel were not the limit — a concept beside round 1, never runnable
+          here or approved; the aim, the QC limits and safety bounds are kept. None of these
+          searches again; a follow-up run gathers new evidence.</p>
       </form>
     </section>
 
@@ -506,6 +513,15 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div class="head"><h3>Alternate and extended plans</h3>
         <span class="hint" id="altHead"></span></div>
       <div id="altList"></div>
+    </section>
+
+    <!-- The experiment past the apparatus: what it lifts, the stages, the arms,
+         and a judgement range. A concept beside round 1, never in it. -->
+    <section class="glass card" id="btPanel" hidden>
+      <div class="head"><h3>Beyond the apparatus</h3>
+        <span class="hint" id="btHead"></span></div>
+      <div class="sec-export" data-section="breakthrough" hidden></div>
+      <div id="btBody"></div>
     </section>
 
     <section class="glass card" id="benchPanel" hidden>
