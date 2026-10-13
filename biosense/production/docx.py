@@ -139,9 +139,11 @@ def _run(text, *, bold=False, italic=False, mono=False, color=None):
 class Document:
     """Paragraphs and tables, in order. Build it, then `save`."""
 
-    def __init__(self, title=None, author='BioSense'):
+    def __init__(self, title=None, author='BioSense', landscape=False):
         self.title = title
         self.author = author
+        # A one-page plan reads across: stages left to right, arms down.
+        self.landscape = landscape
         self._body = []
 
     # ── blocks ────────────────────────────────────────────────────────
@@ -178,29 +180,48 @@ class Document:
     def caveat(self, text):
         return self.para(text, style='Caveat')
 
-    def table(self, headers, rows, widths=None):
-        """A plain grid. *widths* are relative; they are normalised to the page."""
+    def text_width(self):
+        # A4 with 2 cm margins, in twentieths of a point.
+        return 14570 if self.landscape else 9070
+
+    def table(self, headers, rows, widths=None, fills=None, head_fills=None):
+        """A grid. *widths* are relative; they are normalised to the page.
+
+        A cell is a string, or a list of lines `[(text, bold), ...]` for a cell
+        that lists several things. *head_fills* (one hex colour or None per
+        column) and *fills* (one per cell, row by row) shade cells: a stage's
+        colour, an arm's change from control.
+        """
         cols = len(headers)
         widths = widths or [1] * cols
         total = float(sum(widths)) or 1.0
-        # A4 portrait with 2 cm margins is about 9070 twentieths of a point.
-        page = 9070
+        page = self.text_width()
         grid = ''.join(f'<w:gridCol w:w="{int(page * w / total)}"/>' for w in widths)
 
-        def cell(text, *, bold=False, w=1):
+        def cell(content, *, bold=False, w=1, fill=None):
             width = int(page * w / total)
-            return (f'<w:tc><w:tcPr><w:tcW w:w="{width}" w:type="dxa"/></w:tcPr>'
-                    f'<w:p><w:pPr><w:spacing w:after="40"/></w:pPr>'
-                    f'{_run(text, bold=bold)}</w:p></w:tc>')
+            shade = (f'<w:shd w:val="clear" w:color="auto" w:fill="{fill}"/>' if fill else '')
+            # A cell given as lines keeps each line's own weight: a header's day
+            # range under its bold stage name is not bold.
+            lines = content if isinstance(content, list) else [(content, bold)]
+            paras = ''.join(
+                f'<w:p><w:pPr><w:spacing w:after="40"/></w:pPr>'
+                f'{_run(t, bold=b)}</w:p>' for t, b in (lines or [('', False)]))
+            return (f'<w:tc><w:tcPr><w:tcW w:w="{width}" w:type="dxa"/>{shade}</w:tcPr>'
+                    f'{paras}</w:tc>')
 
         out = [f'<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/>'
                f'<w:tblW w:w="{page}" w:type="dxa"/></w:tblPr><w:tblGrid>{grid}</w:tblGrid>']
+        hf = list(head_fills or []) + [None] * cols
         out.append('<w:tr><w:trPr><w:tblHeader/></w:trPr>'
-                   + ''.join(cell(h, bold=True, w=w) for h, w in zip(headers, widths))
+                   + ''.join(cell(h, bold=True, w=w, fill=f)
+                             for h, w, f in zip(headers, widths, hf))
                    + '</w:tr>')
-        for r in rows:
+        for i, r in enumerate(rows):
             cells = list(r) + [''] * (cols - len(r))
-            out.append('<w:tr>' + ''.join(cell(c, w=w) for c, w in zip(cells, widths))
+            rf = list((fills or [])[i] if fills and i < len(fills) else []) + [None] * cols
+            out.append('<w:tr>' + ''.join(cell(c, w=w, fill=f)
+                                          for c, w, f in zip(cells, widths, rf))
                        + '</w:tr>')
         out.append('</w:tbl>')
         # Word runs two adjacent tables together; an empty paragraph after one
@@ -217,8 +238,9 @@ class Document:
     def _document_xml(self):
         return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
                 f'<w:document xmlns:w="{W}"><w:body>' + ''.join(self._body)
-                + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
-                  '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/>'
+                + ('<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>'
+                   if self.landscape else '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>')
+                + '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/>'
                   '</w:sectPr></w:body></w:document>')
 
     def _core_xml(self):

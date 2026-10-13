@@ -635,11 +635,29 @@ an approval block for a named person to sign. "PROPOSED — NOT APPROVED" is on
 it twice. The PDF is written on the standard library like the Word file and
 opens the same everywhere.
 
+**The round also exports as one picture.** "Round at a glance" is a single
+landscape page: the stages drawn to scale over the days, then one row per arm
+and one column per stage, each arm shown as the control plus what it changes —
+a change shaded, a gap shaded red with "decide before the round" — with the
+vessel, working volume and arms × replicates = vessels above it. It is never
+read as approved.
+
+**Literature and bioinformatics export from their own sections.** Each section
+has PDF and Word links. The literature document lists every paper once with who
+found it and whether it was read in full, the evidence the hypotheses rest on,
+and the notes as the agent read. The bioinformatics document pairs each
+analysis plan with its result and interpretation, and lists the datasets
+analysed, the datasets found from the papers and the genes looked up. Both are
+built from the run's files, so they work after a restart, and a file that does
+not parse is named, not mended.
+
 **The run page can be laid out as a canvas.** "Arrange as a canvas" frees
-every box from the reading order: drag one by its title, resize it from its
-corner, set it aside and bring it back. The arrangement is remembered in your
-browser for every run, "Reset layout" starts it again, and "Back to the page
-layout" returns to the reading order. A phone keeps the reading order.
+every box from the reading order: drag one by its title, widen it from either
+side, heighten it from the bottom. Any single box can also be detached into a
+floating window and docked back. Closing a box leaves it as a translucent title
+strip, and clicking the title brings it back. The arrangement is remembered in
+your browser for every run, "Reset layout" starts it again, and "Back to the
+page layout" returns to the reading order. A phone keeps the reading order.
 
 **You can change the bench copy in the same conversation.** "Change the
 protocol document" tells the orchestrator what you want in the copy you take
@@ -950,7 +968,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1613 tests
+uv run --frozen python -m unittest     # 1630 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

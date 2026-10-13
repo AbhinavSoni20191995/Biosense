@@ -1441,6 +1441,12 @@ function runTheRound(p, snap) {
     + 'would be assembled; nothing is sent.';
   const enter = el('button', 'btn more', 'Enter results');
   const act = el('div', 'rv-actions'); act.append(send, enter);
+  /* This round on one page, from where it is planned: arms down, stages
+     across, every change from the control shaded. */
+  if (snap && snap.run_id && snap.result && snap.result.protocol) {
+    act.append(exportLink(snap.run_id, 'pdf', 'This round on one page (PDF)', '&view=plan'),
+      exportLink(snap.run_id, 'docx', 'Word', '&view=plan'));
+  }
   box.append(act);
 
   const inst = el('div', 'rv-follow-box'); inst.hidden = true;
@@ -2291,6 +2297,7 @@ function renderInsights(snap) {
 
   renderLitStages(snap.literature_stages || []);
   renderReferenceDraft(snap);
+  renderSectionExports(snap);
   const key = `${ins ? ins.updated_at : 0}:${papers.length}`;
   if (key === insightsSeen) return;
   insightsSeen = key;
@@ -3941,6 +3948,27 @@ function renderBenchmark(b) {
   $('#benchPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+/* Each specialist's section as a document of its own, from where it is read:
+   the papers, the evidence rows and the notes; the analyses, datasets and
+   genes. Built from the run's files, so it works for any run. */
+function renderSectionExports(snap) {
+  $$('.sec-export').forEach(host => {
+    host.textContent = '';
+    host.hidden = !snap.run_id;
+    if (!snap.run_id) return;
+    const sec = host.dataset.section;
+    const name = sec === 'literature' ? 'the literature' : 'the bioinformatics';
+    const a = (fmt, label) => {
+      const l = el('a', 'btn sm', label);
+      l.href = `/api/discovery/${encodeURIComponent(snap.run_id)}/export?section=${sec}&format=${fmt}`;
+      l.target = '_blank'; l.rel = 'noopener';
+      l.title = `Download ${name} of this run as ${label}`;
+      return l;
+    };
+    host.append(el('span', 'dim', 'Export this section'), a('pdf', 'PDF'), a('docx', 'Word'));
+  });
+}
+
 function exportLink(id, fmt, label, extra) {
   const a = el('a', 'btn', label);
   a.href = `/api/discovery/${id}/protocol?format=${fmt}${extra || ''}`;
@@ -4031,6 +4059,15 @@ function renderExports(snap) {
   if (snap.result && snap.result.protocol) {
     /* The bench copy first: a Word file or a PDF is what gets printed, signed
        and emailed to whoever actually runs it. Markdown is for the repository. */
+    /* The round on one page first: the arms, the vessel, the stages — the
+       picture drawn on a whiteboard before a round. The full copy after it. */
+    const glance = el('div', 'row');
+    glance.append(exportLink(id, 'pdf', 'Round at a glance (PDF)', '&view=plan'),
+      exportLink(id, 'docx', 'Round at a glance (Word)', '&view=plan'));
+    host.append(glance);
+    host.append(el('div', 'note', 'One landscape page: the stages drawn to scale, one row per '
+      + 'arm, and in each cell what that arm gets at that stage, with every change from the '
+      + 'control shaded.'));
     const row = el('div', 'row');
     row.append(exportLink(id, 'docx', 'Protocol for the bench (Word)'),
       exportLink(id, 'pdf', 'Protocol for the bench (PDF)'));

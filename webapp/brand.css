@@ -708,26 +708,57 @@ button{font-family:inherit}
    rest of the question. */
 .ft tr.open .clip{display:inline;-webkit-line-clamp:unset;overflow:visible}
 
-/* ── canvas layout (canvas.js): the run page's boxes, moved and resized ── */
+/* ── the run page's boxes, arranged by the reader (canvas.js) ── */
 .cv-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
 .cv-bar .hint{font-size:12.5px;color:var(--ink-3)}
-.cv-aside-menu{position:relative}
-.cv-aside-menu summary{cursor:pointer;font-size:13px;color:var(--ink-2);list-style:none;
-  padding:5px 10px;border:1px solid var(--line);border-radius:var(--r-s)}
-.cv-aside-menu[open] > button{display:block;margin-top:6px;text-align:left}
+.cols > .stack > section.card > .head{padding-right:62px}
+.cv-ctl{position:absolute;top:10px;right:10px;display:flex;gap:4px;z-index:4}
+/* A folded box hides what follows its title; its controls are not content. */
+.cols > .stack > section.card > .cv-ctl{display:flex !important}
+.cv-body{display:contents}
+.cv-b{width:24px;height:24px;border-radius:7px;border:1px solid var(--line);padding:0;
+  background:var(--surface-solid);color:var(--ink-2);font-size:13px;line-height:20px;cursor:pointer}
+.cv-b:hover{color:var(--ink);border-color:var(--ink-3)}
+.cv-b[hidden]{display:none}
+/* Free boxes: on the canvas, or detached into a window over the page. */
 .cols.canvas{display:block;position:relative}
 .cols.canvas > .stack{display:contents}
-.cols.canvas > .stack > section.card{position:absolute;resize:both;overflow:auto;
-  min-width:260px;min-height:64px;box-sizing:border-box;margin:0}
-.cols.canvas > .stack > section.card > .head{cursor:grab;touch-action:none;padding-right:28px}
-.cols.canvas > .stack > section.card.cv-drag{box-shadow:0 18px 40px rgba(0,0,0,.18);opacity:.97}
-.cols.canvas > .stack > section.card.cv-drag > .head{cursor:grabbing}
-.cols.canvas > .stack > section.card.cv-out{display:none}
-.cv-x{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;
-  border:1px solid var(--line);background:var(--surface-solid, #fff);color:var(--ink-2);
-  font-size:15px;line-height:18px;padding:0;cursor:pointer}
-.cv-x:hover{color:var(--ink);border-color:var(--ink-3)}
-@media (max-width:900px){.cv-bar{display:none}}
+.cols.canvas > .stack > section.card{position:absolute;min-width:260px;
+  box-sizing:border-box;margin:0}
+.cols > .stack > section.card.cv-float{position:fixed;min-width:260px;
+  box-sizing:border-box;margin:0;max-height:calc(100vh - 16px);
+  box-shadow:0 22px 50px rgba(0,0,0,.22);background:var(--surface-solid)}
+/* A free box is its title over a body that scrolls. */
+.cols > .stack > section.card.cv-free{display:flex;flex-direction:column;overflow:hidden}
+.cols > .stack > section.card.cv-free[hidden]{display:none !important}
+.cv-free > .head{flex:none}
+.cv-free > .cv-body{display:block;flex:1 1 auto;min-height:0;overflow:auto}
+.cv-free > .head{cursor:grab;touch-action:none}
+.cv-drag{opacity:.97;box-shadow:0 18px 40px rgba(0,0,0,.18)}
+.cv-drag > .head{cursor:grabbing}
+/* Edges you can take hold of: either side to widen, the bottom to heighten. */
+.cv-h{display:none;position:absolute;z-index:3;touch-action:none}
+.cols > .stack > section.cv-free > .cv-h{display:block !important}
+/* Inside the edge: a free box clips what overflows it, handles included. */
+.cv-h-e{top:0;right:0;width:9px;height:100%;cursor:ew-resize}
+.cv-h-w{top:0;left:0;width:9px;height:100%;cursor:ew-resize}
+.cv-h-s{left:0;bottom:0;height:9px;width:100%;cursor:ns-resize}
+.cv-h-se{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
+.cv-h-sw{left:0;bottom:0;width:16px;height:16px;cursor:nesw-resize}
+.cv-free .cv-h-se::after{content:"";position:absolute;right:4px;bottom:4px;width:8px;height:8px;
+  border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);opacity:.7}
+.cv-free:hover .cv-h-e,.cv-free:hover .cv-h-w{background:linear-gradient(90deg,transparent 3px,
+  color-mix(in srgb,var(--brand) 35%,transparent) 3px,color-mix(in srgb,var(--brand) 35%,transparent) 5px,transparent 5px)}
+/* Minimised: the title as a translucent strip; click it to bring the box back. */
+section.card.cv-min{opacity:.6;background:color-mix(in srgb,var(--glass) 45%,transparent);
+  height:auto !important;overflow:hidden;padding-top:12px;padding-bottom:12px;
+  transition:opacity .15s}
+section.card.cv-min:hover{opacity:.9}
+section.card.cv-min > .head{margin-bottom:0;cursor:pointer}
+section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !important}
+.cols > .stack > section.card.cv-min > .cv-h-s,.cols > .stack > section.card.cv-min > .cv-h-se,
+.cols > .stack > section.card.cv-min > .cv-h-sw{display:none !important}
+@media (max-width:900px){.cv-bar{display:none}.cv-det{display:none}}
 .ft-an th:nth-child(2){width:44%}.ft-an th:nth-child(3){width:70px}.ft-an th:nth-child(5){width:74px}
 .ft-sub{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -954,6 +985,8 @@ body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
   font-size:14px}
 .dreq-answer{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);font-size:13px}
 .dreq-why{font-size:13px;margin:0 0 4px}
+.sec-export{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+.sec-export .dim{font-size:12.5px}
 .dreq-more summary{cursor:pointer;font-size:12.5px;color:var(--ink-2);margin-top:4px}
 .dreq-more[open] summary{margin-bottom:6px}
 .dreq-form{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}

@@ -2572,6 +2572,28 @@ class Handler(BaseHTTPRequestHandler):
             return None, (404, {'error': 'no such discovery run'})
         return d, state.get('status')
 
+    def _export_section(self, rid, section, fmt):
+        """One specialist's section of a run — its literature, or its bioinformatics —
+        as a Word file or a PDF, from the files the run wrote (section_report.py)."""
+        from . import section_report as SR
+        if section not in SR.SECTIONS:
+            return self._send(400, {'error': f'section must be one of {", ".join(SR.SECTIONS)}'})
+        if fmt not in ('docx', 'pdf'):
+            return self._send(400, {'error': 'format must be docx or pdf'})
+        owner = self._identity().owner
+        run = self.discovery.get(rid, owner=owner)
+        if run is None and not self.discovery.restore(rid, owner=owner):
+            return self._send(404, {'error': 'no such discovery run'})
+        d = run.out_dir if run else RS.find(self.discovery.runs_dir, rid)
+        if d is None:
+            return self._send(404, {'error': 'that run has no directory on this server'})
+        body = SR.tobytes(section, d, fmt, run_id=rid)
+        stem = f'{section}-{rid[:8]}'
+        ctype = ('application/pdf' if fmt == 'pdf' else
+                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        return self._send(200, body, ctype,
+                          extra=[('Content-Disposition', f'attachment; filename="{stem}.{fmt}"')])
+
     def _translate_protocol(self, rid, to, *, volume='', fmt='json'):
         """This run's protocol laid out in another culture format.
 
@@ -3248,6 +3270,10 @@ class Handler(BaseHTTPRequestHandler):
                 'note': 'Where the cells are. A protocol can be asked for in one of these '
                         'and laid out in another; a concentration carries between them, a '
                         'mixing rate and a dissolved-oxygen setpoint do not.'})
+        m = re.fullmatch(r'/api/discovery/([^/]+)/export', path)
+        if m:
+            return self._export_section(m.group(1), (q.get('section') or [''])[0],
+                                        (q.get('format') or ['docx'])[0])
         m = re.fullmatch(r'/api/discovery/([^/]+)/translate', path)
         if m:
             return self._translate_protocol(m.group(1), (q.get('to') or [''])[0],
@@ -3336,6 +3362,21 @@ class Handler(BaseHTTPRequestHandler):
                         return self._send(400, {'error': str(e)})
                 name = re.sub(r'[^A-Za-z0-9._-]+', '-',
                               (protocol.get('title') or 'protocol'))[:60].strip('-') or 'protocol'
+                if (q.get('view') or [''])[0] == 'plan':
+                    # The round on one landscape page: the arms, the vessel and
+                    # the stages, each arm's change from control shaded.
+                    from . import visual_protocol as VP
+                    stem = f'{name}-{m.group(1)[:8]}-round-at-a-glance'
+                    if fmt == 'pdf':
+                        return self._send(
+                            200, VP.tobytes_pdf(protocol, run_id=m.group(1),
+                                                translation=translation),
+                            'application/pdf',
+                            extra=[('Content-Disposition', f'attachment; filename="{stem}.pdf"')])
+                    return self._send(
+                        200, VP.tobytes(protocol, run_id=m.group(1), translation=translation),
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        extra=[('Content-Disposition', f'attachment; filename="{stem}.docx"')])
                 if fmt == 'pdf':
                     body = LP.tobytes_pdf(protocol, run_id=m.group(1), translation=translation)
                     return self._send(

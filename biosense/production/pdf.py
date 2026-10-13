@@ -62,6 +62,12 @@ SPELL = {'→': '->', '←': '<-', '≥': '>=', '≤': '<=', '☐': '[ ]', '☑'
          '′': "'", '­': ''}
 
 
+def _rgb(hexcolour):
+    """'FFF1C2' -> '1 0.945 0.761', the fill operands a PDF wants."""
+    h = str(hexcolour).lstrip('#')
+    return ' '.join(f'{int(h[i:i + 2], 16) / 255:.3f}' for i in (0, 2, 4))
+
+
 def _plain(text):
     s = '' if text is None else str(text)
     s = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', s)
@@ -132,10 +138,13 @@ GREY, DARK, RULE = '0.35 0.35 0.35', '0.08 0.08 0.08', '0.72 0.72 0.72'
 class Document:
     """The same blocks as `docx.Document`, laid out as pages. Build it, then `tobytes`."""
 
-    def __init__(self, title=None, author='BioSense', footer=None):
+    def __init__(self, title=None, author='BioSense', footer=None, landscape=False):
         self.title = title
         self.author = author
         self.footer = footer
+        # A one-page plan reads across: stages left to right, arms down.
+        self.pw, self.ph = (PAGE_H, PAGE_W) if landscape else (PAGE_W, PAGE_H)
+        self.tw = self.pw - 2 * MARGIN
         self._pages = []                 # each a list of content-stream lines
         self._cur = None
         self._y = 0.0
@@ -146,7 +155,7 @@ class Document:
     def _new_page(self):
         self._cur = []
         self._pages.append(self._cur)
-        self._y = PAGE_H - MARGIN
+        self._y = self.ph - MARGIN
 
     def _need(self, height):
         if self._y - height < MARGIN + 8 and self._cur:
@@ -194,17 +203,17 @@ class Document:
         if style.startswith('Heading'):
             self._need(before + leading * 2)
         self._y -= before
-        x, width, prefix, color = MARGIN, TEXT_W, None, DARK
+        x, width, prefix, color = MARGIN, self.tw, None, DARK
         if style == 'Caveat':
-            x, width, color = MARGIN + 10, TEXT_W - 10, GREY
+            x, width, color = MARGIN + 10, self.tw - 10, GREY
             top = self._y
         if style == 'ListBullet':
-            x, width, prefix = MARGIN + 14, TEXT_W - 14, ('•', 10, 'F1')
+            x, width, prefix = MARGIN + 14, self.tw - 14, ('•', 10, 'F1')
         if style == 'ListNumber':
             self._steps += 1
-            x, width, prefix = MARGIN + 18, TEXT_W - 18, (f'{self._steps}.', 18, 'F2')
+            x, width, prefix = MARGIN + 18, self.tw - 18, (f'{self._steps}.', 18, 'F2')
         if style == 'Check':
-            x, width = MARGIN + 16, TEXT_W - 16
+            x, width = MARGIN + 16, self.tw - 16
         lines = _wrap(text, size, width, bold=font in ('F2', 'F4'))
         if style == 'Check':
             self._need(leading)
@@ -215,7 +224,7 @@ class Document:
         if style == 'Caveat' and self._y < top:
             self._line(MARGIN + 2, top - 2, MARGIN + 2, self._y - 2, color=RULE, w=2)
         if style == 'Heading1':
-            self._line(MARGIN, self._y - 3, PAGE_W - MARGIN, self._y - 3, w=0.8)
+            self._line(MARGIN, self._y - 3, self.pw - MARGIN, self._y - 3, w=0.8)
         self._y -= after
         return self
 
@@ -242,48 +251,62 @@ class Document:
     def caveat(self, text):
         return self.para(text, style='Caveat')
 
-    def table(self, headers, rows, widths=None):
+    def table(self, headers, rows, widths=None, fills=None, head_fills=None):
+        """A grid. A cell is a string or a list of lines `[(text, bold), ...]`;
+        *head_fills* and *fills* (hex colours or None) shade cells, as in the
+        Word writer, so the two documents say and show the same things."""
         cols = len(headers)
         widths = widths or [1] * cols
         total = float(sum(widths)) or 1.0
-        px = [TEXT_W * w / total for w in widths]
+        px = [self.tw * w / total for w in widths]
         size, leading, pad = 9, 11.5, 3.5
 
+        def lines_of(content, bold):
+            pairs = content if isinstance(content, list) else [(content, bold)]
+            return pairs or [('', bold)]
+
         def row_lines(cells, bold):
-            return [_wrap(c, size, px[j] - 2 * pad, bold=bold)
+            # A cell given as lines keeps each line's own weight.
+            return [[(ln, b) for t, b in lines_of(c, bold)
+                     for ln in _wrap(t, size, px[j] - 2 * pad, bold=b)]
                     for j, c in enumerate(list(cells)[:cols])]
 
-        def draw(cells_lines, bold, shade):
+        def draw(cells_lines, row_fills, default_shade):
             n = max(len(ls) for ls in cells_lines) if cells_lines else 1
             h = n * leading + 2 * pad
             top = self._y
-            if shade:
-                self._rect(MARGIN, top - h, TEXT_W, h, '0.93 0.93 0.93')
+            if default_shade:
+                self._rect(MARGIN, top - h, self.tw, h, '0.93 0.93 0.93')
             x = MARGIN
             for j, ls in enumerate(cells_lines):
+                f = row_fills[j] if j < len(row_fills) else None
+                if f:
+                    self._rect(x, top - h, px[j], h, _rgb(f))
                 y = top - pad
-                for ln in ls:
+                for ln, b in ls:
                     y -= leading - 2
-                    self._text(x + pad, y, ln, font='F2' if bold else 'F1', size=size)
+                    self._text(x + pad, y, ln, font='F2' if b else 'F1', size=size)
                     y -= 2
                 x += px[j]
             self._y = top - h
-            self._line(MARGIN, self._y, PAGE_W - MARGIN, self._y)
+            self._line(MARGIN, self._y, self.pw - MARGIN, self._y)
 
         head = row_lines(headers, True)
+        hf = list(head_fills or [])
         head_h = (max(len(ls) for ls in head) if head else 1) * leading + 2 * pad
         self._need(head_h + leading + 2 * pad)
-        self._line(MARGIN, self._y, PAGE_W - MARGIN, self._y, w=0.8)
-        draw(head, True, True)
-        for r in rows:
+        self._line(MARGIN, self._y, self.pw - MARGIN, self._y, w=0.8)
+        draw(head, hf, not any(hf))
+        for i, r in enumerate(rows):
             cells = list(r) + [''] * (cols - len(r))
             ls = row_lines(cells, False)
+            rf = list(fills[i]) if fills and i < len(fills) else []
             h = (max(len(x) for x in ls) if ls else 1) * leading + 2 * pad
             if self._y - h < MARGIN + 8:
                 self._new_page()
-                self._line(MARGIN, self._y, PAGE_W - MARGIN, self._y, w=0.8)
-                draw(head, True, True)
-            draw(ls, False, False)
+                self._line(MARGIN, self._y, self.pw - MARGIN, self._y, w=0.8)
+                draw(head, hf, not any(hf))
+            draw(ls, rf, False)
         self._y -= 8
         return self
 
@@ -293,7 +316,7 @@ class Document:
         right = f'page {n} of {total}'
         return [f'BT {GREY} rg /F1 8 Tf {MARGIN:.1f} {FOOT_Y:.1f} Td ({_esc(left[:110])}) Tj ET',
                 f'BT {GREY} rg /F1 8 Tf '
-                f'{PAGE_W - MARGIN - _width(right, 8):.1f} {FOOT_Y:.1f} Td ({_esc(right)}) Tj ET']
+                f'{self.pw - MARGIN - _width(right, 8):.1f} {FOOT_Y:.1f} Td ({_esc(right)}) Tj ET']
 
     def tobytes(self):
         pages = [p for p in self._pages if p] or [[]]
@@ -317,7 +340,7 @@ class Document:
             stream = add(f'<< /Length {len(content)} >>\nstream\n'.encode('latin-1')
                          + content + b'\nendstream')
             page_ids.append(add(f'<< /Type /Page /Parent {tree} 0 R '
-                                f'/MediaBox [0 0 {PAGE_W:g} {PAGE_H:g}] '
+                                f'/MediaBox [0 0 {self.pw:g} {self.ph:g}] '
                                 f'/Resources << /Font << {fonts} >> >> '
                                 f'/Contents {stream} 0 R >>'))
         objs[catalog - 1] = f'<< /Type /Catalog /Pages {tree} 0 R >>'
