@@ -69,6 +69,17 @@ class RoundPlanTests(unittest.TestCase):
         with self.assertRaisesRegex(K.ContractError, 'what to measure'):
             self.build()
 
+    def test_why_an_unknown_is_unresolved_has_room_to_say_so(self):
+        """A whole round plan was refused over 64 characters of this field.
+        Naming the sources looked at and what each did not say is the reason
+        the round exists, and it does not fit in a sentence."""
+        self.draft['unknowns'][0]['why_unresolved'] = (
+            'No source reports a dose-response for this cell type. ' * 12)[:1900]
+        self.assertTrue(self.build()['unknowns'][0]['why_unresolved'])
+        self.draft['unknowns'][0]['why_unresolved'] = 'x' * 2001
+        with self.assertRaisesRegex(K.ContractError, 'the limit is 2000'):
+            self.build()
+
     def test_one_replicate_is_allowed_and_says_what_it_cannot_show(self):
         self.draft['replicates'] = 1
         self.assertIn('directional only', self.build()['limitations'][0])

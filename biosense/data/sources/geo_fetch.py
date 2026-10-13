@@ -1336,10 +1336,16 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             except K.ContractError as e:
                 errors.append(f'per-sample files: {str(e)[:1000]}')
     if route is None:
+        # The remedy first, the diagnosis after it. A limitation is shown to a
+        # person in a card that holds about 300 characters, and this message
+        # led with an FTP URL, so what a reader saw was the path that failed
+        # and never the sentence saying what they could do about it.
         raise K.ContractError(
-            f'{why_not_ncbi}, and no table for {acc} could be read from its supplementary '
-            f'files: ' + ' | '.join(errors) + '. A person can register a processed table '
-            f'(genes by samples, with the GSM ids or titles as columns) for this series.')
+            f'{acc} has no table this run can read, so it is a dataset a person can supply: '
+            f'register a processed count table for it (genes as rows, one column per sample, '
+            f'headed by the GSM ids or the sample titles), or name another series. Why not: '
+            f'{why_not_ncbi}; and nothing in its supplementary files could be read: '
+            + ' | '.join(errors) + '.')
     weight = species_weight(organism, route)
 
     did = dataset_id or f'{acc.lower()}_{_slug(condition_key)}'

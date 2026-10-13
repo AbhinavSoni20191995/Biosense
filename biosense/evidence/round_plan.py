@@ -105,7 +105,11 @@ def build(draft, project, *, run_id=None, created_by=None, extra_levers=(),
         out_unknowns.append({
             'id': uid,
             'question': _text(u.get('question'), f'{uid}.question', 400, 10),
-            'why_unresolved': _text(u.get('why_unresolved'), f'{uid}.why_unresolved', 600, 10),
+            # Why nothing settled this is the reason the round exists, and it
+            # takes the room it takes: naming the sources looked at and what
+            # each of them did not say runs past a short field. A whole round
+            # plan was refused over 64 characters of it.
+            'why_unresolved': _text(u.get('why_unresolved'), f'{uid}.why_unresolved', 2000, 10),
             'levers': [lever(x, uid) for x in u.get('levers') or []]})
 
     arms = draft.get('arms') or []

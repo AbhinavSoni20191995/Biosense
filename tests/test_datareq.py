@@ -53,6 +53,27 @@ class BuildTests(unittest.TestCase):
         with self.assertRaisesRegex(K.ContractError, 'at least one thing'):
             DRQ.build({'items': []}, run_id='ai-x')
 
+    def test_the_word_an_agent_reaches_for_is_the_need_it_names(self):
+        """A run that could not fetch three series wrote `needs: "dataset"`,
+        the request was refused for the word, and the person who could have
+        supplied the table was asked for nothing."""
+        for word, kind in (('dataset', 'processed_table'), ('Count Matrix', 'processed_table'),
+                           ('metadata', 'sample_sheet'), ('gene-mapping', 'identifier_mapping'),
+                           ('paper', 'full_text'), ('credentials', 'access')):
+            d = copy.deepcopy(DRQ.TEMPLATE)
+            d['items'] = d['items'][:1]
+            d['items'][0]['needs'] = word
+            self.assertEqual(kind, DRQ.build(d, run_id='ai-x')['items'][0]['needs'], word)
+
+    def test_a_word_that_names_nothing_is_still_refused_with_what_to_do(self):
+        d = copy.deepcopy(DRQ.TEMPLATE)
+        d['items'] = d['items'][:1]
+        d['items'][0]['needs'] = 'a unicorn'
+        with self.assertRaises(K.ContractError) as e:
+            DRQ.build(d, run_id='ai-x')
+        self.assertIn('use one of', str(e.exception))
+        self.assertIn('"other"', str(e.exception), 'and a way through, not just a list')
+
     def test_an_answer_carries_who_gave_it_and_when(self):
         K.write_json_atomic(self.d / DRQ.NAME, DRQ.build(DRQ.TEMPLATE, run_id='ai-x'))
         item = DRQ.answer(self.d, 'R1', dataset_id='my-counts', provided_by='Ana')

@@ -27,6 +27,28 @@ from .. import contracts as K
 
 NEEDS = ('processed_table', 'sample_sheet', 'identifier_mapping', 'full_text',
          'measurement', 'access', 'other')
+#: The words an agent actually reaches for, and the need each one names. A run
+#: that could not fetch three series wrote `needs: "dataset"` and the request
+#: was refused for the word — so the person who could have supplied the table
+#: was asked for nothing, which is the one outcome this file exists to prevent.
+#: The kind is a filing label, not a claim, and nothing downstream is weaker
+#: for the agent having said "dataset".
+NEEDS_ALSO = {
+    'dataset': 'processed_table', 'datasets': 'processed_table', 'data': 'processed_table',
+    'table': 'processed_table', 'counts': 'processed_table', 'count_table': 'processed_table',
+    'count_matrix': 'processed_table', 'matrix': 'processed_table',
+    'expression_table': 'processed_table', 'expression_matrix': 'processed_table',
+    'processed_counts': 'processed_table', 'processed_data': 'processed_table',
+    'metadata': 'sample_sheet', 'samples': 'sample_sheet', 'sample_metadata': 'sample_sheet',
+    'sample_table': 'sample_sheet', 'design': 'sample_sheet',
+    'annotation': 'identifier_mapping', 'mapping': 'identifier_mapping',
+    'identifiers': 'identifier_mapping', 'ids': 'identifier_mapping',
+    'gene_mapping': 'identifier_mapping', 'gene_ids': 'identifier_mapping',
+    'paper': 'full_text', 'fulltext': 'full_text', 'pdf': 'full_text',
+    'publication': 'full_text', 'article': 'full_text',
+    'number': 'measurement', 'value': 'measurement', 'measurements': 'measurement',
+    'permission': 'access', 'credentials': 'access', 'login': 'access', 'account': 'access',
+}
 STATUS = ('open', 'answered', 'declined')
 NAME = 'data_requests.json'
 MAX_ITEMS = 40
@@ -87,10 +109,14 @@ def build(draft, *, run_id, project_id=None, created_by=None):
         if rid in seen:
             raise K.ContractError(f'{w}: request_id {rid!r} is used twice')
         seen.add(rid)
-        needs = str(it.get('needs') or 'other').strip().lower().replace(' ', '_')
+        needs = str(it.get('needs') or 'other').strip().lower().replace(' ', '_') \
+            .replace('-', '_')
+        needs = NEEDS_ALSO.get(needs, needs)
         if needs not in NEEDS:
             raise K.ContractError(f'{w}.needs is {it.get("needs")!r}; use one of '
-                                  f'{", ".join(NEEDS)}')
+                                  f'{", ".join(NEEDS)}. If none fits, use "other" and say '
+                                  f'what it is in "what" — the kind is a filing label, and no '
+                                  f'request is worth losing over it.')
         rows.append({
             'request_id': rid, 'needs': needs,
             'what': _text(it.get('what'), f'{w}.what', minimum=10),

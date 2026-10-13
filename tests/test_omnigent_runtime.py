@@ -514,6 +514,48 @@ class SubAgentTests(unittest.TestCase):
             runtime_mode='synthetic_demo'), loop_dir='ai-x', workspace='/app')
         self.assertIn('ai-x/scratch/', brief)
 
+    def test_a_traceback_from_the_agent_s_own_script_is_a_slip_not_a_limitation(self):
+        """A run showed `File "/tmp/mk.py" ... NameError: name 'null' is not
+        defined` as a limitation of the analysis. It is a typo in a throwaway
+        script the agent wrote; it fixes it and carries on."""
+        a = AC.Activity(started_at=0)
+        a.observe({'kind': 'tool_result', 'at': 1, 'tool': 'sys_os_shell',
+                   'technical': json.dumps({'exit_code': 1, 'stdout': '', 'stderr': (
+                       'Traceback (most recent call last):\n  File "/tmp/mk.py", line 170, in '
+                       '<module>\n    "reported_yield": [],"timeline":null\n'
+                       "NameError: name 'null' is not defined")})})
+        snap = a.snapshot()
+        self.assertEqual([], snap['limitations'])
+        slip = [r for r in snap['timeline'] if r['kind'] == 'agent_slip']
+        self.assertTrue(slip)
+        self.assertIn("name 'null' is not defined", slip[0]['text'])
+
+    def test_a_command_that_printed_data_and_exited_is_not_a_limitation(self):
+        """A run reported "4993 PRESENT NODAL PRESENT LIN28A PRESENT DNMT3B …"
+        as an analysis limitation. That is a gene list a script printed; the
+        exit code said something went wrong, the output said nothing about
+        what, and pasting it tells a reader nothing."""
+        a = AC.Activity(started_at=0)
+        a.observe({'kind': 'tool_result', 'at': 1, 'tool': 'sys_os_shell',
+                   'technical': json.dumps({'exit_code': 1, 'stderr': '', 'stdout': (
+                       '4993 PRESENT NODAL PRESENT LIN28A PRESENT DNMT3B PRESENT L1TD1 '
+                       'PRESENT TERF1 PRESENT ZFP42 PRESENT SALL4 PRESENT LDHA PRESENT '
+                       'ENO1 PRESENT PDK1 PRESENT ALDOA PRESENT ANKRD37 PRESENT HK2 '
+                       'PRESENT CDH1')})})
+        snap = a.snapshot()
+        self.assertEqual([], snap['limitations'])
+        self.assertTrue(any(r['kind'] == 'agent_slip' for r in snap['timeline']))
+
+    def test_a_command_that_said_why_it_failed_is_still_a_limitation(self):
+        """The rule is about output with no reason in it, not about exit codes:
+        a command that names what went wrong is still worth reporting."""
+        a = AC.Activity(started_at=0)
+        a.observe({'kind': 'tool_result', 'at': 1, 'tool': 'sys_os_shell',
+                   'technical': json.dumps({'exit_code': 1, 'stdout': '', 'stderr': (
+                       'curl: (6) Could not resolve host: ftp.ncbi.nlm.nih.gov')})})
+        texts = [r['text'] for r in a.snapshot()['limitations']]
+        self.assertTrue(any('Could not resolve host' in t for t in texts), texts)
+
     def test_stopping_a_run_stops_its_working_children(self):
         h = self.harness(busy_polls=10 ** 6)
         flag = {'n': 0}

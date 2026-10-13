@@ -714,7 +714,10 @@ class PerSampleFetchTests(Sandbox):
         self.assertRegex(msg, 'no processed counts.*supplementary')
         self.assertIn('it holds GSE123456_RAW.tar, filelist.txt', msg)
         self.assertIn('.bw (6 samples)', msg)
-        self.assertIn('A person can register a processed table', msg)
+        self.assertIn('a dataset a person can supply', msg)
+        # The remedy is in the first 300 characters: that is all a limitation
+        # card shows, and this message used to spend them on an FTP path.
+        self.assertIn('register a processed count table', msg[:300])
         # A sample with two candidate tables is ambiguous, and the remedy is named.
         two = PER_SAMPLE_MATRIX.replace('!Sample_library_strategy',
                                         '!Sample_supplementary_file_2\t' + '\t'.join(

@@ -83,7 +83,25 @@ WORKSPACE_BOUNDARY_RE = re.compile(
 # showing either as a limitation of the analysis misleads the reader.
 WRONG_DIR_RE = re.compile(r'\.venv/bin/python: No such file or directory|'
                           r'agent_tools\.py\W+No such file or directory', re.I)
-SCRATCH_CODE_RE = re.compile(r'File "<(string|stdin)>"')
+# A traceback from code the agent wrote for itself: inline (`python -c`, a
+# heredoc — whose frames read "<string>" or "<stdin>"), or written to a scratch
+# file and run (`/tmp/mk.py`). A run showed `File "/tmp/mk.py" ... NameError:
+# name 'null' is not defined` as a limitation of the analysis; it is a typo in
+# a throwaway script, and the agent fixes it and carries on.
+SCRATCH_CODE_RE = re.compile(r'File "(?:<(?:string|stdin)>|/tmp/[^"]*|[^"]*/scratch/[^"]*)"')
+
+# What makes a non-zero exit a *reason* rather than the command's own output.
+# Without one of these the tail of stdout is data: a run reported "4993 PRESENT
+# NODAL PRESENT LIN28A PRESENT DNMT3B …" as an analysis limitation, which is a
+# gene list a script printed, not a finding about the analysis.
+# "error" and "exception" match inside a word on purpose: a BioSense tool's own
+# refusal reads "ContractError: no plan", and that is a reason worth showing.
+_REASON_RE = re.compile(r'(error|exception)|\b(traceback|refus\w+|fail\w*|cannot|can\'t|'
+                        r'could not|couldn\'t|unable|denied|invalid|missing|timed out|'
+                        r'timeout|no such|not found|permission|unreachable|resolve|'
+                        r'connection|abort\w*|killed|not permitted|no space)\b', re.I)
+COMMAND_EXITED = 'a command the agent ran exited'
+COMMAND_EXITED_RE = re.compile(rf'^{COMMAND_EXITED} -?\d+$')
 
 MAX_TIMELINE = 300
 MAX_LIMITATIONS = 60
@@ -120,7 +138,12 @@ def refusal_in(technical):
         if isinstance(code, int) and code not in (0, 2):
             # 2 is the documented "found nothing" (an unannotated gene): an
             # answer, not a failure.
-            return _short((err or out)[-300:] or f'the command exited {code}', 300)
+            tail = (err or out)[-300:]
+            if tail and not _REASON_RE.search(tail):
+                # The tail is what the command printed, not why it stopped.
+                # Pasting it would put a script's output in the limitations.
+                return f'{COMMAND_EXITED} {code}'
+            return _short(tail or f'the command exited {code}', 300)
         return None
     if isinstance(doc, dict) and (doc.get('refused') or doc.get('error')):
         return _short(str(doc.get('reason') or doc.get('message') or doc.get('error')), 300)
@@ -356,6 +379,11 @@ class Activity:
 
     def _limit(self, at, text, tool=None, cap=300):
         if not text:
+            return
+        if COMMAND_EXITED_RE.match(text.strip()):
+            self._note(at, 'agent_slip', 'A command an agent ran exited non-zero without '
+                       'saying why; what it printed was output, not a reason. The agent '
+                       'carries on. Not a limitation of the analysis.')
             return
         if WORKSPACE_BOUNDARY_RE.search(text):
             self._note(at, 'workspace', 'An agent tried to open a file outside the workspace '
