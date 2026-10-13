@@ -160,6 +160,27 @@ so "this index has no match" never reads as "no such data exists".
 > has not been exercised against the real service. It needs two explicit flags
 > and is never used by CI.
 
+### Bringing a series in: grouping, time, peaks and single cells
+
+A run lost three decision-relevant series to plumbing, not biology. Each now
+has a route, and each states what it did on the dataset it registers.
+
+| What the series holds | Command | What it does |
+|---|---|---|
+| the contrast only in the sample title (`CD43- rep2`) | `fetch-geo --condition-key title_label` or `"title~(CD43[+-])"` | groups by the title without its replicate number, or by a pattern over any field |
+| the control written two ways (UT, Ctrl) | `fetch-geo --control UT Ctrl` | pools them as one control, labelled by the first, and says so |
+| samples at several times | `fetch-geo --time-key "<field from time_fields>"` | keeps a `timepoint` column registered as the dataset's `timepoint_column`; without a time key, pooling is written onto the dataset as a limitation |
+| a `.tab` / `.tab.gz` table | `fetch-geo`, `datasets register` | read like `.tsv` |
+| called peaks (`.narrowPeak.gz`, `.broadPeak`, `.bed`) | `fetch-peaks`, or `register-peaks` for local files | one peak set per condition for `chromatin.peak_overlap`; replicates combined only with `--replicates consensus` (peaks in at least half) or `union`, stated as BioSense's combination |
+| a single-cell count matrix (Matrix Market), its genes and a cell annotation table | `fetch-sc`, or `pseudobulk` for local files | each sample's cells summed — one annotated population with `--population`, by the depositors' own annotation — on log2(CPM + 1), with its time axis; normalised values refused |
+| an `.h5ad` | `register-h5ad` (singlecell extra) | the single-cell tools read it directly |
+
+An analysis of a dataset with several timepoints names the one it compares at
+(`analyse plan … --timepoint "day 4"`, one plan per timepoint) or pools them on
+purpose (`--pool-timepoints`), which the result states; one that does neither
+is refused with the timepoints it could name. Nothing here calls peaks,
+clusters cells or annotates a population.
+
 ---
 
 ## Analysis

@@ -13,6 +13,7 @@ silently becomes a zero.
 from __future__ import annotations
 
 import csv
+import gzip
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,14 +81,19 @@ def read_table(path, file_type=None, *, max_rows=MAX_ROWS):
         raise K.ContractError(f'{p.name} is {size / 1e6:.0f} MB; the limit for an in-process read '
                               f'is {MAX_BYTES / 1e6:.0f} MB. Summarise it outside the loop and '
                               f'register the summary.')
-    ft = (file_type or p.suffix.lstrip('.')).lower()
-    if ft == 'txt':
+    name = p.name.lower()
+    gz = name.endswith('.gz')
+    inner = Path(name[:-3]).suffix.lstrip('.') if gz else p.suffix.lstrip('.')
+    ft = (file_type if file_type and file_type.lower() != 'gz' else inner).lower()
+    if ft in ('txt', 'tab'):
         ft = 'tsv'
     if ft not in DELIMS:
         raise K.ContractError(
             f'{p.name}: this version reads {", ".join(sorted(DELIMS))} tables. '
             f'{ft!r} files can be described in a manifest but not analysed yet.')
-    with p.open(newline='', encoding='utf-8-sig') as fh:
+    opener = (lambda: gzip.open(p, 'rt', newline='', encoding='utf-8-sig')) if gz else (
+        lambda: p.open(newline='', encoding='utf-8-sig'))
+    with opener() as fh:
         reader = csv.DictReader(fh, delimiter=DELIMS[ft])
         cols = [c.strip() for c in (reader.fieldnames or [])]
         if not cols or any(not c for c in cols):

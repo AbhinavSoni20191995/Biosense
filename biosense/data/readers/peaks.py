@@ -12,6 +12,7 @@ process decision might actually turn on.
 """
 from __future__ import annotations
 
+import gzip
 from pathlib import Path
 
 from ... import contracts as K
@@ -23,12 +24,33 @@ NARROW = ('chrom', 'start', 'end', 'name', 'score', 'strand',
 BROAD = NARROW[:9]
 
 
+def peak_type(name):
+    """'narrowPeak', 'broadPeak' or 'bed' from a file name in any case, .gz or not; else None."""
+    low = str(name or '').lower()
+    if low.endswith('.gz'):
+        low = low[:-3]
+    for ext, ft in (('.narrowpeak', 'narrowPeak'), ('.broadpeak', 'broadPeak'),
+                    ('.bed', 'bed')):
+        if low.endswith(ext):
+            return ft
+    return None
+
+
+def _open(p):
+    with open(p, 'rb') as fh:
+        gz = fh.read(2) == b'\x1f\x8b'
+    return gzip.open(p, 'rt', encoding='utf-8') if gz else p.open(encoding='utf-8')
+
+
 def read_peaks(path, file_type=None):
-    """A peak set as a list of dicts. Refuses a malformed interval rather than skipping it."""
+    """A peak set as a list of dicts. Refuses a malformed interval rather than skipping it.
+
+    Gzipped files are read as they are; GEO serves most peak sets that way.
+    """
     p = Path(path)
     if not p.is_file():
         raise K.ContractError(f'{p} is not a file')
-    ft = (file_type or p.suffix.lstrip('.')).lower()
+    ft = (file_type or peak_type(p.name) or p.suffix.lstrip('.')).lower()
     if ft not in ('bed', 'narrowpeak', 'broadpeak'):
         raise K.ContractError(
             f'{p.name}: this reader handles bed, narrowPeak and broadPeak. '
@@ -36,7 +58,7 @@ def read_peaks(path, file_type=None):
             f'established pipeline and register the result.')
     cols = NARROW if ft == 'narrowpeak' else BROAD if ft == 'broadpeak' else None
     out = []
-    with p.open(encoding='utf-8') as fh:
+    with _open(p) as fh:
         for n, line in enumerate(fh, 1):
             line = line.rstrip('\n')
             if not line or line.startswith(('#', 'track', 'browser')):
@@ -171,3 +193,52 @@ def annotate_to_genes(peaks, anchors, *, promoter_bp=2000):
         'note': 'Distal peaks are reported with their distance, not called enhancers. '
                 'Regulatory function is not something a coordinate overlap establishes.',
     }
+
+
+def consensus(peak_sets, min_support):
+    """Peaks found in at least *min_support* of several replicate peak sets. Pure.
+
+    Overlapping intervals across the sets are merged; a merged interval is kept
+    when that many distinct sets contribute to it. `min_support=1` is the
+    union. Returned as BED6 records whose score is the support count, so what a
+    consensus rests on stays visible. Replicates are combined only when a
+    person or plan asked for it: a consensus is a choice, not the depositors'
+    own peak set.
+    """
+    if not peak_sets:
+        raise K.ContractError('no peak sets to combine')
+    if not 1 <= min_support <= len(peak_sets):
+        raise K.ContractError(f'min_support must be between 1 and {len(peak_sets)}')
+    by_chrom = {}
+    for k, peaks in enumerate(peak_sets):
+        for p in peaks:
+            by_chrom.setdefault(p['chrom'], []).append((p['start'], p['end'], k))
+    out = []
+    for chrom in sorted(by_chrom):
+        ivs = sorted(by_chrom[chrom])
+        cur_s, cur_e, sets = ivs[0][0], ivs[0][1], {ivs[0][2]}
+        for s, e, k in ivs[1:] + [(None, None, None)]:
+            if s is not None and s <= cur_e:
+                cur_e = max(cur_e, e)
+                sets.add(k)
+                continue
+            if len(sets) >= min_support:
+                out.append({'chrom': chrom, 'start': cur_s, 'end': cur_e,
+                            'name': f'consensus_{len(out) + 1}', 'score': float(len(sets)),
+                            'strand': '.'})
+            if s is not None:
+                cur_s, cur_e, sets = s, e, {k}
+    if not out:
+        raise K.ContractError(f'no peak is shared by {min_support} of {len(peak_sets)} '
+                              f'replicate peak sets')
+    return out
+
+
+def write_bed(path, peaks):
+    """Write BED6. The inverse of read_peaks for the columns BED carries."""
+    with open(path, 'w', encoding='utf-8') as fh:
+        for p in peaks:
+            score = p.get('score')
+            fh.write(f'{p["chrom"]}\t{p["start"]}\t{p["end"]}\t{p.get("name") or "."}\t'
+                     f'{0 if score is None else int(score)}\t{p.get("strand") or "."}\n')
+    return path

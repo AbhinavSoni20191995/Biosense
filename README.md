@@ -379,6 +379,20 @@ is optional, one line each, with one click to continue without them. The data an
 against it, repairs what the tools refuse, and interprets the result for this
 process, resolving a named uncertainty.
 
+**Samples are grouped by what they actually say, and time is kept.** A label
+that lives only in the sample title (`CD43- rep2`) groups as `title_label`, or
+through a pattern over any field (`title~(CD43[+-])`); a control written two
+ways is pooled on purpose and said to be. A series sampled at several times
+keeps a `timepoint` column (`--time-key`), and an analysis of it names the
+timepoint it compares at — or pools them on purpose, which the result states —
+because a timing lever cannot be read from a pooled series. A series of called
+peaks (`.narrowPeak.gz`, `.broadPeak`, `.bed`) becomes a peak-set dataset for
+`chromatin.peak_overlap`, with replicates combined only as an explicit
+consensus or union (`fetch-peaks`); a single-cell series with a count matrix
+becomes a per-sample pseudobulk of one annotated population, with its time
+axis (`fetch-sc`); `.tab.gz` tables read like any other. Nothing here calls
+peaks, clusters cells or annotates a population.
+
 <details>
 <summary><b>Evidence classes, analyses and provenance in detail</b></summary>
 
@@ -981,7 +995,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1630 tests
+uv run --frozen python -m unittest     # 1663 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

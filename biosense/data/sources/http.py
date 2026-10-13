@@ -75,3 +75,35 @@ def get(url, timeout=60, max_bytes=DEFAULT_MAX_BYTES, data=None, headers=None):
                                   f'not fetched')
         return body
     return with_retry(once)
+
+
+def download(url, dest, timeout=120, max_bytes=2 * 1024 ** 3, chunk=1 << 20):
+    """Stream *url* to the file *dest*, retried as above; refuses past *max_bytes*.
+
+    For the files too large to hold in memory (a single-cell matrix), written
+    to a partial file and moved into place only when complete.
+    """
+    from pathlib import Path
+    dest = Path(dest)
+    part = dest.with_name(dest.name + '.part')
+
+    def once():
+        req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
+        n = 0
+        with urllib.request.urlopen(req, timeout=timeout) as r, open(part, 'wb') as fh:
+            while True:
+                block = r.read(chunk)
+                if not block:
+                    break
+                n += len(block)
+                if n > max_bytes:
+                    raise K.ContractError(f'{url} is larger than {max_bytes // 1024 ** 2} MB; '
+                                          f'not fetched')
+                fh.write(block)
+        part.replace(dest)
+        return dest
+    try:
+        return with_retry(once)
+    finally:
+        if part.exists():
+            part.unlink()

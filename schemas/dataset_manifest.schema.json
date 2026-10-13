@@ -171,6 +171,7 @@
               "json",
               "bed",
               "narrowPeak",
+              "broadPeak",
               "h5ad",
               "fcs",
               "mtx",

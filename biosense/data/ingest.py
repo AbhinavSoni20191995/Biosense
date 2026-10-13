@@ -123,7 +123,8 @@ def ingest_peaks(path, *, dataset_id, title, modality='atac_seq', organism='Homo
                  cell_type=None, perturbation=None, experimental_design=None,
                  peak_files=None, gene_anchors=None, description=None, registered_by=None,
                  visibility='private', notes=None, register=True, overwrite=False,
-                 extra_files=()):
+                 extra_files=(), source=None, accession=None, source_url=None,
+                 extra_limitations=(), replicates=None):
     """Register processed peak files (BED / narrowPeak / broadPeak).
 
     `peak_files` maps a condition to its file. It is required for a comparison
@@ -134,7 +135,7 @@ def ingest_peaks(path, *, dataset_id, title, modality='atac_seq', organism='Homo
     paths = [Path(path)] + [Path(x) for x in extra_files]
     files, detail = [], {}
     for pth in paths:
-        ft = pth.suffix.lstrip('.')
+        ft = PK.peak_type(pth.name) or pth.suffix.lstrip('.')
         d = PK.describe(pth, ft)
         e = MF.file_entry(pth, 'peaks', ft)
         e['rows'] = d['n_peaks']
@@ -142,9 +143,13 @@ def ingest_peaks(path, *, dataset_id, title, modality='atac_seq', organism='Homo
         detail[e['path']] = {k: d[k] for k in ('n_peaks', 'chromosomes', 'total_bp',
                                                'median_width_bp', 'has_qvalues')}
     stored = {MF.stored_path(k): v for k, v in (peak_files or {}).items()}
+    public = source in MF.PUBLIC_SOURCES
     m = MF.build(dataset_id=dataset_id, title=title,
-                 source='user_upload' if visibility == 'private' else 'fixture',
-                 modality=modality, organism=organism, files=files, visibility=visibility,
+                 source=source or ('user_upload' if visibility == 'private' else 'fixture'),
+                 modality=modality, organism=organism, files=files,
+                 visibility='public' if public else visibility,
+                 accession=accession, source_url=source_url,
+                 retrieved_at=K.now_iso() if public else None,
                  cell_type=cell_type, perturbation=perturbation,
                  conditions=sorted(peak_files or {}),
                  experimental_design=dict(experimental_design or {}),
@@ -152,14 +157,15 @@ def ingest_peaks(path, *, dataset_id, title, modality='atac_seq', organism='Homo
                                   'peak_files': {k: MF.stored_path(v)
                                                  for k, v in (peak_files or {}).items()},
                                   'gene_anchors': (MF.stored_path(gene_anchors)
-                                                   if gene_anchors else None)},
+                                                   if gene_anchors else None),
+                                  'replicates': replicates or None},
                  description=description, registered_by=registered_by, notes=notes,
                  limitations=['BioSense did not call these peaks and cannot verify the calling '
                               'parameters. A difference between peak sets may reflect calling '
-                              'thresholds rather than chromatin.'])
+                              'thresholds rather than chromatin.'] + list(extra_limitations))
     path_out = None
     if register:
-        if visibility == 'private':
+        if visibility == 'private' and not public:
             roots.ensure_roots()
         path_out = REG.register(m, overwrite=overwrite)
     return m, path_out
@@ -174,15 +180,19 @@ def ingest_local(path, *, dataset_id, title, modality=None, organism='Homo sapie
     p = Path(path)
     if not p.is_file():
         raise K.ContractError(f'{p} is not a file')
-    ft = p.suffix.lstrip('.').lower()
-    if ft == 'txt':
+    name = p.name.lower()
+    # A gzipped table is read as the table it holds (GEO serves most of them so).
+    ft = (Path(name[:-3]).suffix if name.endswith('.gz') else p.suffix).lstrip('.').lower()
+    if ft in ('txt', 'tab'):
         ft = 'tsv'
     if ft not in TB.DELIMS:
-        route = {'h5ad': 'ingest_h5ad', 'bed': 'ingest_peaks', 'narrowpeak': 'ingest_peaks',
-                 'broadpeak': 'ingest_peaks'}.get(ft)
+        route = {'h5ad': 'ingest_h5ad() (`datasets register-h5ad`)',
+                 'bed': 'ingest_peaks() (`datasets register-peaks`)',
+                 'narrowpeak': 'ingest_peaks() (`datasets register-peaks`)',
+                 'broadpeak': 'ingest_peaks() (`datasets register-peaks`)'}.get(ft)
         if route:
             raise K.ContractError(
-                f'{p.name}: use {route}() for {ft} files. They are read by a different reader '
+                f'{p.name}: use {route} for {ft} files. They are read by a different reader '
                 f'and carry different metadata.')
         raise K.ContractError(
             f'{p.name}: this version ingests {", ".join(sorted(TB.DELIMS))} tables, .h5ad '

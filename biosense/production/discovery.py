@@ -1213,6 +1213,18 @@ so in its task, with these commands (each needs `--i-have-network-permission`):
   server, then Ensembl), and headers such as `UT_1` or `Ctrl_1` are matched
   to the untreated samples. When all three routes fail, the refusal names what
   the series and its samples hold: put that in the data request.
+- Group by what the samples say: `--condition-key title_label` (the title
+  without its replicate number) or a pattern such as `"title~(CD43[+-])"`;
+  `--control UT Ctrl` pools two spellings; `--time-key "<field from
+  time_fields>"` keeps the time axis (an analysis then names `--timepoint`).
+- `{bio} datasets fetch-peaks --accession GSE… --condition-key "<field>"
+  --control "<value>" --treatment "<value>" [--replicates consensus]` — a
+  series' called peaks (`.narrowPeak.gz`, `.broadPeak`, `.bed`) as a
+  peak-set dataset for `chromatin.peak_overlap`.
+- `{bio} datasets fetch-sc --accession GSE… --matrix <.mtx.gz> --features …
+  --cells … --sample-column … --condition-column … [--time-column …]
+  [--cell-type-column … --population …]` — a single-cell series as a
+  per-sample pseudobulk with its time axis.
 - `{bio} datasets from-papers --papers PMID:… PMC… --out {loop_dir}/bioinformatics/paper_datasets.json`
   — the GEO series the papers this run cites deposited: GEO's own link from a
   series to the paper (paywalled papers too) and the accessions the paper's

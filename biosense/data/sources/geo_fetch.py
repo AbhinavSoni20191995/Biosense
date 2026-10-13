@@ -191,8 +191,18 @@ def samples(acc, *, i_have_network_permission=False, timeout=60):
                 r['characteristics'].items()):
             keys.setdefault(k, {}).setdefault(v, 0)
             keys[k][v] += 1
+    for r in rows:
+        label = _value_of(r, 'title_label')
+        if label is not None:
+            keys.setdefault('title_label', {}).setdefault(label, 0)
+            keys['title_label'][label] += 1
     # A field whose every value differs (a title, a replicate id) groups nothing.
     groups = {k: v for k, v in keys.items() if 1 < len(v) < len(rows)}
+    time_fields = {}
+    for k in keys:
+        vals = [parse_time(_value_of(r, k) or '') for r in rows]
+        if all(vals) and len(set(vals)) > 1:
+            time_fields[k] = sorted(set(vals), key=time_order)
     with_table = [r['gsm'] for r in rows if sample_table_url(r.get('supplementary_files'))]
     return {'accession': acc, 'url': url, 'retrieved_at': K.now_iso(), 'series': meta,
             'organisms': sorted({r['organism'] for r in rows if r['organism']}),
@@ -207,9 +217,14 @@ def samples(acc, *, i_have_network_permission=False, timeout=60):
                                           if r['library_strategy']}),
             'pubmed_ids': meta.get('pubmed_ids', []),
             'papers': [f'https://pubmed.ncbi.nlm.nih.gov/{p}/' for p in meta.get('pubmed_ids', [])],
-            'samples': rows, 'groupable_fields': groups,
+            'samples': rows, 'groupable_fields': groups, 'time_fields': time_fields,
             'note': ('Choose condition_key from groupable_fields and name the control and '
-                     'treatment values exactly as written. Nothing here is inferred. First read '
+                     'treatment values exactly as written. A label that lives only in the '
+                     'title is grouped by title_label (the title without its replicate '
+                     'number) or a pattern over a field ("title~(CD43[+-])"); --control may '
+                     'pool several values. A field under time_fields puts samples at '
+                     'several times: pass it as --time-key to keep the time axis rather than '
+                     'pool it. Nothing here is inferred. First read '
                      'series.summary, series.overall_design and the linked paper (pubmed_ids) '
                      'to learn how the depositors named samples and conditions — their '
                      'supplementary table may use other names than the GEO titles.')}
@@ -341,7 +356,7 @@ def supplementary_symbols(gene_ids, ensembl_map=None, ensembl_note=None):
 
 
 # ── any species: the depositors' own processed table ────────────────────
-TABLE_RE = re.compile(r'href="([^"/?]+\.(?:txt|tsv|csv)(?:\.gz)?)"', re.I)
+TABLE_RE = re.compile(r'href="([^"/?]+\.(?:txt|tsv|csv|tab)(?:\.gz)?)"', re.I)
 PREFER = ('count', 'expression', 'matrix', 'tpm', 'fpkm', 'rpkm', 'cpm', 'norm', 'gene')
 SKIP = ('filelist', 'raw.tar', 'readme', 'peaks', 'barcodes', 'features', 'clusters')
 MAMMALS = ('Homo sapiens', 'Mus musculus', 'Rattus norvegicus', 'Macaca mulatta',
@@ -994,7 +1009,7 @@ def species_weight(organism, route):
     return {'route': route, 'organism': organism, 'confidence_ceiling': ceiling, 'note': note}
 
 
-def _value_of(sample, key):
+def _field(sample, key):
     if key == 'title':
         return sample['title']
     if key == 'source':
@@ -1004,8 +1019,84 @@ def _value_of(sample, key):
     return sample['characteristics'].get(key.lower())
 
 
+# A field a condition or a time can be read from, beyond the ones GEO names:
+#   title_label          the title without its replicate number ("CD43- rep2" -> "CD43-")
+#   <field>~<pattern>    what a regular expression finds in a field: its one
+#                        group, or the whole match ("title~(CD43[+-])")
+# A label that lives only in the per-sample title is the commonest reason a
+# series with the right contrast groups into one sample per side.
+DERIVED_FIELDS = ('title_label',)
+PATTERN_KEY_RE = re.compile(r'^(?P<field>[^~]+)~(?P<pattern>.+)$')
+_PATTERNS = {}
+
+
+def _pattern(text):
+    if text not in _PATTERNS:
+        if len(text) > 200:
+            raise K.ContractError('a field pattern is at most 200 characters')
+        try:
+            rx = re.compile(text, re.I)
+        except re.error as e:
+            raise K.ContractError(f'the field pattern {text!r} is not a regular expression: '
+                                  f'{e}') from None
+        if rx.groups > 1:
+            raise K.ContractError(f'the field pattern {text!r} has {rx.groups} groups; give '
+                                  f'one group (the label) or none (the whole match)')
+        _PATTERNS[text] = rx
+    return _PATTERNS[text]
+
+
+def _value_of(sample, key):
+    """The value *key* reads from a sample: a GEO field, a derived one, or a pattern. Pure."""
+    key = (key or '').strip()
+    if key == 'title_label':
+        return title_label(sample.get('title'))
+    m = PATTERN_KEY_RE.match(key)
+    if m:
+        raw = _value_of(sample, m.group('field').strip())
+        if raw is None:
+            return None
+        hit = _pattern(m.group('pattern')).search(raw)
+        if not hit:
+            return None
+        got = (hit.group(1) if hit.re.groups else hit.group(0)) or ''
+        return got.strip() or None
+    return _field(sample, key)
+
+
+def title_label(title):
+    """The title without its replicate number, keeping a sign that is part of a label. Pure.
+
+    'CD43- rep2' -> 'CD43-' and 'GFP+_3' -> 'GFP+': a trailing + or - before
+    the replicate marker names the population, it does not separate words.
+    """
+    text = (title or '').strip()
+    rest, n = split_replicate(text)
+    if n is None:
+        return text or None
+    at = text.find(rest)
+    after = text[at + len(rest):] if at >= 0 else ''
+    m = re.match(r'^([+-])(?![A-Za-z0-9])', after)
+    if m and rest and rest[-1].isalnum():
+        rest += m.group(1)
+    return rest.strip() or None
+
+
+def controls_of(control):
+    """The control as a list of the values it pools; the first is its label. Pure."""
+    vals = [control] if isinstance(control, str) else list(control or [])
+    vals = [str(v).strip() for v in vals if str(v or '').strip()]
+    if not vals:
+        raise K.ContractError('name the control value (or several, pooled as one control)')
+    return vals
+
+
 def _group_of(sample, condition_key, control, treatments, keep):
-    """The control or treatment value this sample belongs to, or None. Pure."""
+    """The control or treatment group this sample belongs to, or None. Pure.
+
+    *control* may pool several values (UT and Ctrl, say); they form one group,
+    labelled by the first.
+    """
     if sample is None:
         return None
     if any((_value_of(sample, k) or '').lower() != v.lower() for k, v in (keep or {}).items()):
@@ -1013,7 +1104,10 @@ def _group_of(sample, condition_key, control, treatments, keep):
     v = _value_of(sample, condition_key)
     if v is None:
         return None
-    return next((w for w in [control] + list(treatments) if w.lower() == v.lower()), None)
+    ctl = controls_of(control)
+    if any(c.lower() == v.lower() for c in ctl):
+        return ctl[0]
+    return next((w for w in treatments if w.lower() == v.lower()), None)
 
 
 def select_samples(sample_rows, *, condition_key, control, treatments, keep=None):
@@ -1026,9 +1120,69 @@ def select_samples(sample_rows, *, condition_key, control, treatments, keep=None
     return out
 
 
+# ── the time axis ──────────────────────────────────────────────────────
+TIME_UNITS = {'min': 'minute', 'mins': 'minute', 'minute': 'minute', 'minutes': 'minute',
+              'h': 'hour', 'hr': 'hour', 'hrs': 'hour', 'hour': 'hour', 'hours': 'hour',
+              'd': 'day', 'day': 'day', 'days': 'day',
+              'w': 'week', 'wk': 'week', 'wks': 'week', 'week': 'week', 'weeks': 'week'}
+_UNIT_ALT = '|'.join(sorted(TIME_UNITS, key=len, reverse=True))
+TIME_RE = re.compile(rf'(?<![A-Za-z0-9])(?:(?P<u1>{_UNIT_ALT})\s*[-_.]?\s*(?P<n1>\d+(?:\.\d+)?)'
+                     rf'|(?P<n2>\d+(?:\.\d+)?)\s*[-_]?\s*(?P<u2>{_UNIT_ALT}))(?![A-Za-z])',
+                     re.I)
+_UNIT_RANK = {'minute': 0, 'hour': 1, 'day': 2, 'week': 3}
+
+
+def parse_time(text):
+    """'day 2' from 'D2', 'Day_2', '48h' -> 'hour 48', or None. Pure.
+
+    Only a number joined to a time unit is a time: 'CD43' is not day 43, and a
+    bare number is a replicate as often as a time.
+    """
+    m = TIME_RE.search(text or '')
+    if not m:
+        return None
+    unit = TIME_UNITS[(m.group('u1') or m.group('u2')).lower()]
+    n = float(m.group('n1') or m.group('n2'))
+    return f'{unit} {n:g}'
+
+
+def time_order(label):
+    m = re.match(r'^(minute|hour|day|week) (\d+(?:\.\d+)?)$', label or '')
+    return (0, _UNIT_RANK[m.group(1)], float(m.group(2)), '') if m else (1, 0, 0.0, label or '')
+
+
+def time_of(sample, time_key):
+    """The sample's timepoint from *time_key*: parsed when it reads as a time, else as written."""
+    raw = _value_of(sample, time_key)
+    if raw is None:
+        return None
+    return parse_time(raw) or raw.strip() or None
+
+
+def pooled_times(samples_, condition_key, time_key=None):
+    """Fields that put the chosen samples at more than one time, when no time key was given.
+
+    [{'field', 'values'}]. A series registered with Day 2 and Day 4 pooled has
+    lost the time structure a timing lever needs; this names the field so the
+    next fetch can keep it.
+    """
+    if time_key or not samples_:
+        return []
+    fields = ['title_label', 'source'] + sorted({k for s in samples_
+                                                 for k in (s.get('characteristics') or {})})
+    out = []
+    for f in fields:
+        if f == condition_key:
+            continue
+        vals = [parse_time(_value_of(s, f) or '') for s in samples_]
+        if all(vals) and len(set(vals)) > 1:
+            out.append({'field': f, 'values': sorted(set(vals), key=time_order)})
+    return out
+
+
 def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_key, control,
                      treatments, keep=None, genes=None, max_genes=DEFAULT_MAX_GENES,
-                     transform='counts'):
+                     transform='counts', time_key=None):
     """The analysable table: one row per gene and sample, on a log2 scale.
 
     `transform` says what the matrix holds: `counts` (raw, normalised here to
@@ -1041,7 +1195,8 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
     keep = dict(keep or {})
     by_gsm = {s['gsm']: s for s in sample_rows}
     chosen, groups = [], {}
-    wanted = [control] + list(treatments)
+    ctl = controls_of(control)
+    wanted = [ctl[0]] + list(treatments)
     for j, gsm in enumerate(gsms):
         match = _group_of(by_gsm.get(gsm), condition_key, control, treatments, keep)
         if match:
@@ -1051,13 +1206,30 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
                       if _value_of(s, condition_key) is not None})
     if not present:
         raise K.ContractError(f'no sample has a field {condition_key!r}; use one of the '
-                              f'groupable fields the samples step listed')
+                              f'groupable fields the samples step listed, title_label (the '
+                              f'title without its replicate number), or a pattern over a '
+                              f'field such as "title~(CD43[+-])"')
     for w in wanted:
         if groups.get(w, 0) < MIN_PER_GROUP:
             raise K.ContractError(
                 f'{w!r} has {groups.get(w, 0)} sample(s) with counts after filtering; a '
                 f'comparison needs at least {MIN_PER_GROUP} per group. Values of '
-                f'{condition_key!r}: {", ".join(present)}')
+                f'{condition_key!r}: {", ".join(present)}'
+                + (f'. Every value is different, so the label is probably inside the title: '
+                   f'try --condition-key title_label, or a pattern such as '
+                   f'"{condition_key}~(<label>)"' if len(present) == len(sample_rows) > 2
+                   else ''))
+
+    times = {}
+    if time_key:
+        for _, gsm, _ in chosen:
+            times[gsm] = time_of(by_gsm[gsm], time_key)
+        lost = [g for g, t in times.items() if t is None]
+        if lost:
+            raise K.ContractError(
+                f'{len(lost)} chosen sample(s) have no value for the time key {time_key!r} '
+                f'({", ".join(lost[:6])}). Give a field every chosen sample has, or a '
+                f'pattern over the title such as "title~(day ?\\d+)"')
 
     logcpm = []
     if transform == 'counts':
@@ -1105,9 +1277,25 @@ def build_long_table(sample_rows, gene_ids, gsms, matrix, symbols, *, condition_
     rows = []
     for sym, vals in picked:
         for (j, gsm, cond), v in zip(chosen, vals):
-            rows.append({'gene': sym, 'sample_id': gsm, 'condition': cond,
-                         'logcpm': f'{v:.5f}'})
+            row = {'gene': sym, 'sample_id': gsm, 'condition': cond, 'logcpm': f'{v:.5f}'}
+            if time_key:
+                row['timepoint'] = times[gsm]
+            rows.append(row)
+    per_time = {}
+    for _, gsm, cond in chosen:
+        if time_key:
+            per_time.setdefault(times[gsm], {}).setdefault(cond, 0)
+            per_time[times[gsm]][cond] += 1
+    thin = [f'{t}: {g} has {per_time[t].get(g, 0)}' for t in per_time for g in wanted
+            if per_time[t].get(g, 0) < MIN_PER_GROUP]
     return rows, {'samples_per_group': groups, 'genes_in_table': len(picked),
+                  'control_values': ctl, 'time_key': time_key,
+                  'timepoints': sorted(per_time, key=time_order),
+                  'samples_per_group_and_time': {t: per_time[t] for t in
+                                                 sorted(per_time, key=time_order)},
+                  'thin_timepoints': thin,
+                  'time_pooled': pooled_times([by_gsm[g] for _, g, _ in chosen],
+                                              condition_key, time_key),
                   'genes_missing': missing, 'samples_used': [g for _, g, _ in chosen],
                   'values_of_condition_key': present,
                   'confounded': confounded_fields(by_gsm, chosen, condition_key, keep)}
@@ -1153,13 +1341,19 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
           max_genes=DEFAULT_MAX_GENES, dataset_id=None, title=None, cell_type=None,
           registered_by='bioinformatics_agent', i_have_network_permission=False, timeout=90,
           out_root=None, register=True, overwrite=True, supplementary=None, column_map=None,
-          infer_columns=False, column_map_basis=None):
+          infer_columns=False, column_map_basis=None, time_key=None):
     """Fetch, normalise, write and register one comparison from a GEO series.
 
     On the supplementary route, `column_map` (HEADER -> GSM) and the opt-in
     `infer_columns` (apply confident name-similarity suggestions) assign
     columns whose headers are neither GSM ids nor titles; either is recorded
     in how_read with `column_map_basis` and stated as a dataset limitation.
+
+    `condition_key` may be any field, `title_label`, or a pattern over a field
+    (`title~(CD43[+-])`); `control` may pool several values. `time_key` keeps
+    the time axis as a `timepoint` column registered as the dataset's
+    timepoint_column; without one, a field that puts the chosen samples at
+    several times is named as a limitation rather than pooled in silence.
     """
     from .. import ingest as ING
     _need(i_have_network_permission)
@@ -1173,8 +1367,9 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
         raise K.ContractError(f'{acc} mixes organisms ({", ".join(orgs)}); choose one with '
                               f'--keep "organism=<name>"')
     organism = keep.get('organism') or (orgs[0] if orgs else 'unspecified')
-    common = dict(condition_key=condition_key, control=control, treatments=treatments,
-                  keep=keep, genes=genes, max_genes=max_genes)
+    ctl = controls_of(control)
+    common = dict(condition_key=condition_key, control=ctl, treatments=treatments,
+                  keep=keep, genes=genes, max_genes=max_genes, time_key=time_key)
     route, sources, why_not_ncbi, read = None, {'samples': info['url']}, None, {}
     gene_cache = Path(out_root or roots.cache_root())
     if organism in GENOMES:
@@ -1248,14 +1443,14 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
         # carry its own table (HTSeq, featureCounts, RSEM...). One file per
         # chosen sample, assembled here and said to be.
         by_gsm = {s['gsm']: s for s in info['samples']}
-        chosen = select_samples(info['samples'], condition_key=condition_key, control=control,
+        chosen = select_samples(info['samples'], condition_key=condition_key, control=ctl,
                                 treatments=treatments, keep=keep)
         urls = {g: sample_table_url(by_gsm[g].get('supplementary_files'), supplementary)
                 for g, _ in chosen}
         if not chosen:
             present = sorted({_value_of(s, condition_key) for s in info['samples']
                               if _value_of(s, condition_key) is not None})
-            errors.append(f'no sample has {condition_key!r} = {control!r} or '
+            errors.append(f'no sample has {condition_key!r} = {" / ".join(map(repr, ctl))} or '
                           f'{", ".join(map(repr, treatments))}' + (
                               f' (values: {", ".join(present)})' if present else
                               f' (no sample has a field {condition_key!r})'))
@@ -1309,8 +1504,8 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
     base.mkdir(parents=True, exist_ok=True)
     table = base / f'{did}.tsv'
     with open(table, 'w', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=['gene', 'sample_id', 'condition', 'logcpm'],
-                           delimiter='\t')
+        w = csv.DictWriter(f, fieldnames=['gene', 'sample_id', 'condition', 'logcpm']
+                           + (['timepoint'] if time_key else []), delimiter='\t')
         w.writeheader()
         w.writerows(rows)
     sample_tsv = base / f'{did}.samples.tsv'
@@ -1321,17 +1516,34 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
             w.writerow([s['gsm'], s['title'], s['source'],
                         '; '.join(f'{k}: {v}' for k, v in s['characteristics'].items())])
 
+    time_notes = []
+    if ctl[1:]:
+        time_notes.append(f'The control pools {len(ctl)} values of {condition_key!r} '
+                          f'({", ".join(ctl)}), labelled {ctl[0]!r}: a choice made at fetch time, '
+                          f'not a grouping the depositors wrote.')
+    for tp in stats.get('time_pooled') or []:
+        time_notes.append(f'Pooled across time: field {tp["field"]!r} puts these samples at '
+                          f'{", ".join(tp["values"])}, and no time key was given, so they were '
+                          f'compared as one. Fetch again with --time-key "{tp["field"]}" to '
+                          f'keep the time axis.')
+    if stats.get('thin_timepoints'):
+        time_notes.append('Fewer than two samples per group at '
+                          + '; '.join(stats['thin_timepoints'])
+                          + ': a comparison within that timepoint has no replicate spread.')
+
     m = None
     if register:
         m, _ = ING.ingest_public_table(
             table, dataset_id=did, accession=acc, source='geo',
             title=title or f'{acc}: {info["series"].get("title") or "GEO series"} '
-                           f'({condition_key}: {", ".join(treatments)} vs {control})',
+                           f'({condition_key}: {", ".join(treatments)} vs {ctl[0]})'
+                           + (f' over {", ".join(stats["timepoints"])}' if time_key else ''),
             source_url=f'https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={acc}',
             organism=organism, cell_type=cell_type, modality='bulk_rna',
-            experimental_design={'condition_column': 'condition', 'control': control,
+            experimental_design={'condition_column': 'condition', 'control': ctl[0],
                                  'treatments': list(treatments),
-                                 'sample_id_column': 'sample_id'},
+                                 'sample_id_column': 'sample_id',
+                                 'timepoint_column': 'timepoint' if time_key else None},
             description=((f'NCBI-generated raw counts for {acc}, normalised to log2(CPM+1) '
                           f'with library size over all genes' if route == 'ncbi_processed' else
                           f'The depositors\' processed table {sources["table"].rsplit("/", 1)[-1]} '
@@ -1345,6 +1557,9 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
                          + (f'{stats["genes_in_table"]} requested genes'
                             if genes else f'the {stats["genes_in_table"]} most expressed genes')
                          + f'. Samples grouped by {condition_key!r}'
+                         + (f' (control pools {", ".join(ctl)})' if ctl[1:] else '')
+                         + (f', with the time axis from {time_key!r} '
+                            f'({", ".join(stats["timepoints"])})' if time_key else '')
                          + (f', kept where {keep}' if keep else '') + '.'),
             registered_by=registered_by,
             notes=(f'route: {route}; sources: {sources}; confidence ceiling for this species '
@@ -1356,19 +1571,21 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
                 f'{read["value_column"]}, and {read["genes_dropped"]} feature(s) absent from '
                 f'some sample\'s file were dropped.'] if route == 'depositor_per_sample' else [])
             + ([read['symbols_warning']] if read.get('symbols_warning') else [])
-            + [c['statement'] for c in stats.get('confounded') or []],
+            + [c['statement'] for c in stats.get('confounded') or []]
+            + time_notes,
             overwrite=overwrite)
     return {'dataset_id': did, 'accession': acc, 'table': str(table),
             'samples_table': str(sample_tsv), 'organism': organism, 'route': route,
             'evidence_weight': weight, 'how_read': read,
             'why_not_ncbi': why_not_ncbi,
-            'condition_key': condition_key, 'control': control, 'treatments': list(treatments),
+            'condition_key': condition_key, 'control': ctl[0], 'treatments': list(treatments),
+            'limitations_added': time_notes,
             'keep': keep or {}, **stats,
             'sources': sources,
             'registered': bool(m), 'retrieved_at': K.now_iso(),
             'next': (f'analyse plan --dataset-ids {did} --analysis-type '
                      f'bulk_expression_comparison --tool bulk.expression_comparison '
-                     f'--group-column condition --control "{control}" --treatment-level '
+                     f'--group-column condition --control "{ctl[0]}" --treatment-level '
                      f'"{treatments[0]}" ...'),
             'note': ('A public dataset from another lab\'s experiment: evidence about that '
                      'experiment\'s cells and conditions, to be weighed for this process, not '

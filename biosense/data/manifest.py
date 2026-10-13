@@ -41,7 +41,9 @@ FLOW_FIELDS = ('panel_markers', 'fluorophores', 'gating_hierarchy', 'population_
                'compensation', 'instrument')
 
 READABLE_FILE_TYPES = ('csv', 'tsv', 'json')
-DECLARABLE_FILE_TYPES = ('h5ad', 'fcs', 'bed', 'narrowPeak', 'mtx', 'other')
+DECLARABLE_FILE_TYPES = ('h5ad', 'fcs', 'bed', 'narrowPeak', 'broadPeak', 'mtx', 'other')
+# A peak file's type is written one way whatever case its name used.
+CANONICAL_FILE_TYPES = {'narrowpeak': 'narrowPeak', 'broadpeak': 'broadPeak'}
 
 CLASS_FOR_SOURCE = {
     'user_upload': 'private_user_dataset',
@@ -78,6 +80,7 @@ def file_entry(path, role, file_type=None, columns=None, rows=None):
     if not p.is_file():
         raise K.ContractError(f'{p} is not a file')
     ft = file_type or p.suffix.lstrip('.').lower()
+    ft = CANONICAL_FILE_TYPES.get(str(ft).lower(), ft)
     if ft == 'txt':
         ft = 'tsv'
     if ft not in READABLE_FILE_TYPES + DECLARABLE_FILE_TYPES:

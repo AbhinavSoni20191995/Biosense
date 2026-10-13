@@ -82,7 +82,14 @@ task that begins `ANALYSIS: <area>` or `PROCESS: <area>` is one of those:
   question; single-cell composition and pseudobulk. The one route to public
   data end to end: `datasets search --live --modality bulk_rna`,
   `geo-samples`, `fetch-geo`, and `fetch-genesets` for enrichment. A
-  single-cell series is found on GEO but analysed only once registered here.
+  single-cell series with a Matrix Market count matrix becomes a per-sample
+  pseudobulk with its time axis (`fetch-sc`); an `.h5ad` registers with
+  `register-h5ad` where the singlecell extra is installed.
+- **chromatin** — `atac_seq`, `chip_seq`. A series that holds called peaks
+  (`.narrowPeak(.gz)`, `.broadPeak`, `.bed`) becomes a peak-set dataset with
+  `fetch-peaks`, and `chromatin.peak_overlap` compares the conditions.
+  Peaks are never called here: a series with only reads or signal tracks is a
+  data request.
 - **phenotype** — `flow_cytometry`, `cytometry_summary` (FACS), and
   `identity_purity` on registered single-cell data. The surface panel that
   defines the target and each impurity, with the gating a release assay would
@@ -220,8 +227,52 @@ order is fixed, and the first step is the one that matters.
      --i-have-network-permission --out <run dir>/bioinformatics/GSE…_samples.json
    .venv/bin/python -m biosense.bioinformatics.cli datasets fetch-geo --accession GSE… \
      --condition-key "<field from groupable_fields>" --control "<value>" --treatment "<value>" \
-     [--keep "<field>=<value>"] [--genes <SYMBOL ...>] --i-have-network-permission
+     [--keep "<field>=<value>"] [--genes <SYMBOL ...>] [--time-key "<field>"] \
+     --i-have-network-permission
    ```
+
+   **Group by what the samples actually say, and keep the time axis.**
+   - The label lives only in the title (`CD43- rep2`)? `--condition-key
+     title_label` is the title without its replicate number; a pattern over a
+     field reads any part of it: `--condition-key "title~(CD43[+-])"`.
+   - The control is written two ways (UT and Ctrl)? `--control UT Ctrl` pools
+     them, labelled by the first, and says so on the dataset.
+   - `geo-samples` lists `time_fields`: a field that puts samples at several
+     times. Pass it as `--time-key "<field>"` (or a pattern such as
+     `"title~(D\\d+)"`) and the dataset keeps a `timepoint` column. A timing
+     lever cannot be read from a pooled series: without a time key the pooling
+     is written onto the dataset as a limitation, and an analysis of a dataset
+     with several timepoints must name one (`analyse plan ... --timepoint
+     "day 4"`, one plan per timepoint) or pass `--pool-timepoints`.
+   - `.tab` / `.tab.gz` tables are read like `.tsv`.
+
+   **Peak sets** (ATAC, ChIP, CUT&RUN):
+   ```
+   .venv/bin/python -m biosense.bioinformatics.cli datasets fetch-peaks --accession GSE… \
+     --condition-key "<field>" --control "<value>" --treatment "<value>" \
+     [--replicates consensus|union] [--pick <substring>] --i-have-network-permission
+   ```
+   Each chosen sample's own peak file is read. Several samples of one
+   condition are combined only when you say how: `consensus` keeps peaks found
+   in at least half of them (prefer it), `union` keeps all; either is recorded
+   as BioSense's combination, not the depositors' peak set. Series-level peak
+   files are mapped explicitly: `--peak-file WT=<file> KO=<file>`.
+
+   **Single-cell series** (sci-RNA-seq, 10x) as a pseudobulk:
+   ```
+   .venv/bin/python -m biosense.bioinformatics.cli datasets fetch-sc --accession GSE… \
+     --matrix <counts .mtx(.gz)> --features <genes file> --cells <cell annotation table> \
+     [--barcodes <barcodes file> --cell-id-column <col> | --cells-in-matrix-order] \
+     --sample-column <col> --condition-column <col> --control <value> --treatment <value> \
+     [--time-column <col>] [--cell-type-column <col> --population <label ...>] \
+     --i-have-network-permission
+   ```
+   The file names come from the series directory (a refusal lists what it
+   holds). The sample is the unit: each sample's cells are summed (one
+   annotated population with `--population`, by the depositors' own
+   annotation — never one you infer), put on log2(CPM + 1), and registered with
+   the time axis. A matrix of normalised values is refused. Analyse it with
+   `bulk.expression_comparison` at one `--timepoint` per plan.
 
    The CLI is the only way onto the network here: the sandbox ships no `curl`
    or `wget`, and a hand-rolled fetch would leave no recorded query and no

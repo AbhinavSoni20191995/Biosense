@@ -34,6 +34,43 @@ from . import plan as PLAN
 from . import registry as TREG
 
 
+def at_timepoint(table, manifest, plan):
+    """(table, note): the rows at the plan's timepoint, for a dataset with a time axis.
+
+    A dataset registered with a timepoint column holds the same contrast at
+    several times. Compared as one, a timing lever disappears into the pool —
+    which is how a Day 2 / Day 4 series lost the question it was fetched for.
+    So a plan names its timepoint, or says it pools them and the result says
+    so; one that does neither is refused with the timepoints it could name.
+    """
+    col = (manifest.get('experimental_design') or {}).get('timepoint_column')
+    if table is None or not col or col not in table.columns:
+        return table, None
+    comp = plan.get('comparison') or {}
+    levels = table.levels(col)
+    want = (comp.get('timepoint') or '').strip()
+    if want:
+        match = next((lv for lv in levels if lv.lower() == want.lower()), None)
+        if match is None:
+            raise K.ContractError(f'timepoint {want!r} is not in {manifest["dataset_id"]}; its '
+                                  f'timepoints are {", ".join(levels)}')
+        keep = [i for i, r in enumerate(table.rows) if r[col] == match]
+        sub = TB.Table(path=table.path, columns=table.columns,
+                       rows=[table.rows[i] for i in keep],
+                       numeric={k: v[keep] for k, v in table.numeric.items()})
+        return sub, (f'Compared at {match} only ({len(keep)} of {table.n} rows); the dataset '
+                     f'also holds {", ".join(x for x in levels if x != match) or "no other"}.')
+    if len(levels) > 1 and not comp.get('pool_timepoints'):
+        raise K.ContractError(
+            f'{manifest["dataset_id"]} holds {len(levels)} timepoints ({", ".join(levels)}). '
+            f'Name one with --timepoint "<value>" (one plan per timepoint), or pass '
+            f'--pool-timepoints to compare them as one, which the result then states.')
+    if len(levels) > 1:
+        return table, (f'Pooled across {len(levels)} timepoints ({", ".join(levels)}) at the '
+                       f'plan\'s request: a difference that depends on time is averaged away.')
+    return table, None
+
+
 def execute(p, *, dirs=None, executed_by='bioinformatics_agent', analysis_id=None,
             external_record=None, out=None):
     """Run a validated plan. Returns the AnalysisResult."""
@@ -67,6 +104,7 @@ def execute(p, *, dirs=None, executed_by='bioinformatics_agent', analysis_id=Non
             raise K.ContractError(f'{m["dataset_id"]} has no readable table')
         f = readable[0]
         table = TB.read_table(MF.resolve_path(f['path']), f['file_type'])
+    table, time_note = at_timepoint(table, m, p)
 
     frag = spec.runner(table, m, p)
     rows = frag['statistics']
@@ -81,6 +119,8 @@ def execute(p, *, dirs=None, executed_by='bioinformatics_agent', analysis_id=Non
     findings, implications = _narrate(rows, m, frag, levers, no_lever_reason)
 
     lims = list(p.get('limitations') or [])
+    if time_note:
+        lims.append(time_note)
     lims.append(spec.notes)
     lims.append('One dataset, one comparison. A difference here is directional evidence about '
                 'this experiment, not a demonstration that the same change helps your process.')

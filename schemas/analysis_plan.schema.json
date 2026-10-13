@@ -208,6 +208,20 @@
               "boolean"
             ]
           }
+        },
+        "timepoint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The one timepoint to compare at, for a dataset that registered a time axis (its timepoint_column)."
+        },
+        "pool_timepoints": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Compare across every timepoint as one, stated as a limitation of the result. Without it or a timepoint, a dataset with several timepoints is refused rather than pooled."
         }
       }
     },

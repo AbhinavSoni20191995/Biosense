@@ -49,8 +49,8 @@ def run(table, manifest, plan):
             f'{treatment!r}. Record it in modality_detail.peak_files; guessing from filenames '
             f'would silently compare the wrong pair.')
     from ....data import manifest as MF
-    a_path, a_ft = MF.resolve_path(a_key), 'narrowPeak' if a_key.endswith('narrowPeak') else 'bed'
-    b_path, b_ft = MF.resolve_path(b_key), 'narrowPeak' if b_key.endswith('narrowPeak') else 'bed'
+    a_path, a_ft = MF.resolve_path(a_key), PK.peak_type(a_key) or 'bed'
+    b_path, b_ft = MF.resolve_path(b_key), PK.peak_type(b_key) or 'bed'
 
     a = PK.read_peaks(a_path, a_ft)
     b = PK.read_peaks(b_path, b_ft)
