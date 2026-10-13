@@ -928,6 +928,9 @@ body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
 .dreq-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px;margin-bottom:7px;
   font-size:14px}
 .dreq-answer{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);font-size:13px}
+.dreq-why{font-size:13px;margin:0 0 4px}
+.dreq-more summary{cursor:pointer;font-size:12.5px;color:var(--ink-2);margin-top:4px}
+.dreq-more[open] summary{margin-bottom:6px}
 .dreq-form{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
 .dreq-form label{display:block;font-size:12.5px;color:var(--ink-2);margin-top:8px}
 .dreq-form input,.dreq-form textarea{width:100%;box-sizing:border-box;margin-top:4px}

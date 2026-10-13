@@ -58,7 +58,7 @@ ANNOT = 'GeneID\tSymbol\tDescription\n2627\tGATA6\tGATA binding protein 6\n60\tA
 
 
 def fake_get(responses):
-    def get(url, timeout=60, max_bytes=GF.MAX_DOWNLOAD):
+    def get(url, timeout=60, max_bytes=GF.MAX_DOWNLOAD, data=None, headers=None):
         for key, body in responses.items():
             if key in url:
                 if isinstance(body, Exception):
@@ -362,6 +362,39 @@ class ColumnSuggestionTests(unittest.TestCase):
         self.assertIn('gmcsf', basis, 'says why the untreated sample beat the GM-CSF one')
         self.assertEqual(1.0, sug['suggested']['MoCul_GMCSF_n2']['score'])
 
+    def test_a_control_abbreviation_finds_the_untreated_samples(self):
+        """GSE276577: headers UT_1..3 and TGF_1..3, samples titled "Untreated rep1".
+        "ut" begins no word of "Untreated", so the control had no samples and the
+        run asked a person for a table it had already downloaded."""
+        conds = ['Untreated', 'Pam3', 'TGF-B', 'Pam3 + TGF-B']
+        rows = [{'gsm': f'GSM{100 + 3 * i + r}', 'title': f'{c} rep{r + 1}',
+                 'source': 'fetal liver AM-like macrophages',
+                 'characteristics': {'treatment': c, 'replicate': str(r + 1)}}
+                for i, c in enumerate(conds) for r in range(3)]
+        heads = ['UT_1', 'UT_2', 'UT_3', 'TGF_1', 'TGF_2', 'TGF_3']
+        sug = GF.suggest_column_map(heads, rows)
+        self.assertEqual({}, sug['unresolved'])
+        self.assertEqual({'UT_1': 'GSM100', 'UT_2': 'GSM101', 'UT_3': 'GSM102',
+                          'TGF_1': 'GSM106', 'TGF_2': 'GSM107', 'TGF_3': 'GSM108'},
+                         {h: v['gsm'] for h, v in sug['suggested'].items()},
+                         'TGF is TGF-B alone, not the Pam3 + TGF-B combination')
+        for h in ('Ctrl_1', 'Veh_1', 'NT_1', 'Con_1'):
+            self.assertEqual('GSM100', GF.suggest_column_map([h], rows)['suggested'][h]['gsm'], h)
+
+    def test_a_sample_named_by_the_token_wins_over_the_control_fallback(self):
+        """"DMSO_1" is the DMSO sample when one is named so, and the vehicle
+        control only when nothing says DMSO."""
+        rows = [{'gsm': 'GSM1', 'title': 'DMSO rep1', 'source': 'x', 'characteristics': {}},
+                {'gsm': 'GSM2', 'title': 'untreated rep1', 'source': 'x', 'characteristics': {}}]
+        self.assertEqual('GSM1', GF.suggest_column_map(['DMSO_1'], rows)['suggested']['DMSO_1']['gsm'])
+        rows = [{'gsm': 'GSM3', 'title': 'vehicle rep1', 'source': 'x', 'characteristics': {}},
+                {'gsm': 'GSM4', 'title': 'drug A rep1', 'source': 'x', 'characteristics': {}}]
+        self.assertEqual('GSM3', GF.suggest_column_map(['DMSO_1'], rows)['suggested']['DMSO_1']['gsm'])
+
+    def test_a_word_that_is_not_a_control_abbreviation_is_not_matched_loosely(self):
+        rows = [{'gsm': 'GSM1', 'title': 'untreated rep1', 'source': 'x', 'characteristics': {}}]
+        self.assertIn('XYZ_1', GF.suggest_column_map(['XYZ_1'], rows)['unresolved'])
+
     def test_replicate_numbers_are_split_only_where_marked(self):
         sr = GF.split_replicate
         self.assertEqual(('MoCul', 1), sr('MoCul_n1'))
@@ -524,11 +557,16 @@ class EnsemblSymbolTests(Sandbox):
         self.assertNotIn('annotation', d['sources'])
         genes = {r['gene'] for r in csv_rows(d['table'])}
         self.assertIn('ENSG00000141448', genes, 'version stripped, not guessed')
+        # The annotation that just parsed is now this server's copy, and a copy
+        # answers before the service does. To see a failed annotation said, there
+        # has to be no copy.
+        shutil.rmtree(Path(DR.cache_root()) / 'gene_ids')
         served = self.served(urllib.error.HTTPError('u', 500, 'down', {}, None))
         with mock.patch.object(GF, '_get', fake_get(served)):
             d = GF.fetch(ACC, condition_key='treatment', control='vehicle',
                          treatments=['ATRA 100 nM'], i_have_network_permission=True)
-        self.assertIn('could not be read', d['how_read']['symbols'])
+        self.assertIn("NCBI's annotation table could not be read: HTTPError",
+                      d['how_read']['symbols'])
 
 
 class GeneInfoTests(unittest.TestCase):

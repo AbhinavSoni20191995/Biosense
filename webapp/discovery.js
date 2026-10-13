@@ -2807,22 +2807,37 @@ function renderDataRequests(snap) {
   $('#askDataHead').textContent = [h.open ? `${h.open} still open` : null,
     h.answered ? `${h.answered} answered` : null].filter(Boolean).join(' · ');
   const host = $('#askDataList'); host.textContent = '';
-  host.append(el('p', 'dim', dr.note || ''));
-  items.forEach(it => {
+  /* One line per request: what is needed and what it would unlock. The
+     reasoning and the answer form are one click away, not five paragraphs
+     each — a run with five requests read as a wall a person had to get
+     through before they could do anything else. Every request is optional:
+     the run did not wait for them, and the next round runs without them. */
+  host.append(el('p', 'dim', 'Each one is optional: the run did not wait for them, and the '
+    + 'next round runs without them. Answer the ones you can; open one for the details.'));
+  const order = { open: 0, answered: 1, declined: 2 };
+  const sorted = items.slice().sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
+  sorted.forEach(it => {
     const box = el('div', 'dreq ' + it.status);
     const head = el('div', 'dreq-head');
     head.append(el('span', 'tag', NEEDS_LABEL[it.needs] || it.needs));
-    head.append(el('b', null, it.what));
+    head.append(el('b', null, clip(it.what, 160)));
     if (it.accession) head.append(el('span', 'chip', it.accession));
+    if (it.status !== 'open') {
+      head.append(el('span', 'chip', it.status === 'declined' ? 'skipped' : 'answered'));
+    }
     box.append(head);
-    appendAll(box, [
+    if (it.unblocks) box.append(el('div', 'dreq-why dim', 'Unlocks: ' + clip(it.unblocks, 180)));
+    const more = el('details', 'dreq-more');
+    more.append(el('summary', null, it.status === 'open' ? 'Details and answer' : 'Details'));
+    appendAll(more, [
       kv('Why it failed', it.why),
       kv('What a usable answer looks like', it.shape),
       kv('It would unblock', it.unblocks),
       (it.where_to_look || []).length ? kv('Where to look', it.where_to_look.join('; ')) : null,
     ]);
+    box.append(more);
     if (it.status === 'open') {
-      box.append(dataAnswerForm(snap.run_id, it));
+      more.append(dataAnswerForm(snap.run_id, it));
     } else {
       const a = it.answer || {};
       const done = el('div', 'dreq-answer');
@@ -2834,15 +2849,42 @@ function renderDataRequests(snap) {
         a.note ? kv('In your words', a.note) : null,
         kv('By', `${a.provided_by} · ${BS.fmt.ago(Date.parse(a.at) / 1000)}`),
       ]);
-      if (a.note) {
+      if (a.note && it.status === 'answered') {
         done.append(el('p', 'caveat', 'Your words are your report of your own process: the '
           + 'next round can let them settle a direction, and a number in them enters a '
           + 'protocol only as an adapted value naming this report, never as a cited one.'));
       }
-      box.append(done);
+      /* An answer is what the next round uses, so it stays in view; a request
+         that was skipped is a line, with the record of it in the details. */
+      (it.status === 'declined' ? more : box).append(done);
     }
     host.append(box);
   });
+  /* Skipping them is an answer too: the next round is told to stop asking
+     for these, rather than asking again. */
+  const open = items.filter(it => it.status === 'open');
+  if (open.length) {
+    const skip = el('button', 'btn sm', open.length === 1 ? 'Continue without it'
+      : `Continue without these ${open.length}`);
+    skip.title = 'Marks each open request "cannot be supplied", so the next round carries on '
+      + 'without it and does not ask again';
+    skip.addEventListener('click', async () => {
+      if (!confirm(`Mark ${open.length === 1 ? 'this request' : `all ${open.length} open requests`}`
+        + ' as "cannot be supplied"? The next round carries on without them.')) return;
+      skip.disabled = true;
+      try {
+        for (const it of open) {
+          await post(`/api/discovery/${encodeURIComponent(snap.run_id)}/data-request`,
+                     { request_id: it.request_id, decline: true,
+                       note: 'Skipped by the person: carry on without it.' });
+        }
+        const s = await get(`/api/discovery/${encodeURIComponent(snap.run_id)}`);
+        state.run = s; renderDataRequests(s);
+      } catch (e) { fail(e); skip.disabled = false; }
+    });
+    const bar = el('div', 'rv-actions'); bar.append(skip);
+    host.append(bar);
+  }
   /* Nothing is used until a round reads it: this is the hand-back. */
   if (h.answered) {
     const go = el('button', 'btn go', `Start round 2 with what I provided`);

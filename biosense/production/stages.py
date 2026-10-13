@@ -300,7 +300,7 @@ def _item_event(item, etype):
     if kind in ('function_call_output', 'native_tool'):
         return {'kind': 'tool_result', 'stage': None, 'omnigent_type': etype,
                 'tool': item.get('name'), 'simple': None,
-                'technical': _text(item.get('output') or item.get('result') or item, 800)}
+                'technical': tool_output(item.get('output') or item.get('result') or item)}
     if kind == 'message':
         text = _message_text(item)
         if not text:
@@ -321,6 +321,63 @@ def _item_event(item, etype):
 #: because an ANSWER is a document, and reading one through this cap ends it
 #: mid-word.
 MESSAGE_CAP = 4000
+
+
+TOOL_OUTPUT_CAP = 800
+
+
+def _as_json(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.lstrip().startswith('{'):
+        try:
+            doc = json.loads(value)
+        except ValueError:
+            return None
+        return doc if isinstance(doc, dict) else None
+    return None
+
+
+def leading_json(text):
+    """The JSON object a stream starts with, or None. What follows it is ignored:
+    an agent that chains `cmd && echo done` puts more after a tool's JSON."""
+    t = (text or '').lstrip()
+    if not t.startswith('{'):
+        return None
+    try:
+        doc, _ = json.JSONDecoder().raw_decode(t)
+    except ValueError:
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def _refusal_of(stream):
+    inner = leading_json(stream)
+    if isinstance(inner, dict) and (inner.get('refused') or inner.get('error')):
+        return {k: (str(inner[k])[:600] if isinstance(inner[k], str) else inner[k])
+                for k in ('refused', 'error', 'reason', 'message') if k in inner}
+    return None
+
+
+def tool_output(value, limit=TOOL_OUTPUT_CAP):
+    """A tool's result for the timeline: short, and still JSON when it was.
+
+    A shell result is {"stdout", "stderr", "exit_code"}. Cut as text at 800
+    characters it stops being JSON, and what said why it failed — a BioSense
+    refusal at the start of stdout, the error at the end of stderr — is what
+    the cut threw away: a run's limitations panel showed "a command exited 1"
+    and nothing else. So a shell result is cut field by field: a refusal kept
+    whole, the tail of each stream (where an error is), the exit code always.
+    """
+    doc = _as_json(value)
+    if doc is None or not ({'stdout', 'stderr', 'exit_code'} & set(doc)):
+        return _text(value, limit)
+    def keep(stream):
+        refusal = _refusal_of(stream)
+        return json.dumps(refusal) if refusal else stream[-(limit // 3):]
+    return json.dumps({'exit_code': doc.get('exit_code'),
+                       'stdout': keep(str(doc.get('stdout') or '')),
+                       'stderr': keep(str(doc.get('stderr') or ''))})
 
 
 def _message_text(item, limit=MESSAGE_CAP):

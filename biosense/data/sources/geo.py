@@ -16,11 +16,11 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 from ... import contracts as K
 from .. import roots
+from . import http as HTTP
 from .base import DatasetCandidate, SearchResult, offline_refusal
 
 NAME = 'geo'
@@ -150,12 +150,13 @@ def _search_live(query, plan, limit, timeout):
     """
     out = []
     try:
-        with urllib.request.urlopen(plan[0]['url'], timeout=timeout) as r:
-            ids = json.loads(r.read(4_000_001)).get('esearchresult', {}).get('idlist', [])[:limit]
+        # Through the retrying transport: a burst of searches drew HTTP 429,
+        # and a throttled search read as "no such series" (http.py).
+        ids = json.loads(HTTP.get(plan[0]['url'], timeout, 4_000_000)) \
+            .get('esearchresult', {}).get('idlist', [])[:limit]
         if ids:
             url = f'{SUMMARY_URL}?db=gds&id={",".join(ids)}&retmode=json'
-            with urllib.request.urlopen(url, timeout=timeout) as r:
-                payload = json.loads(r.read(8_000_001)).get('result', {})
+            payload = json.loads(HTTP.get(url, timeout, 8_000_000)).get('result', {})
             for i in ids:
                 rec = payload.get(i) or {}
                 if not str(rec.get('accession') or '').startswith('GSE'):
@@ -173,10 +174,15 @@ def _search_live(query, plan, limit, timeout):
                                       f'{(rec.get("summary") or "")[:300]}'),
                     retrieved_at=K.now_iso()))
     except (urllib.error.URLError, OSError, ValueError) as e:
+        throttled = isinstance(e, urllib.error.HTTPError) and e.code == 429
         return SearchResult(source=NAME, query=query, candidates=[], query_plan=plan, live=True,
                             searched_at=K.now_iso(),
                             note=f'Live GEO search failed: {type(e).__name__}: {e}. '
-                                 f'No result is not the same as no such data.')
+                                 f'No result is not the same as no such data.'
+                                 + (f' NCBI is throttling (HTTP 429), and it still was after '
+                                    f'{HTTP.TRIES} tries with backoff: run these searches one '
+                                    f'after another rather than in parallel, then search again.'
+                                    if throttled else ''))
     return SearchResult(source=NAME, query=query, candidates=out, query_plan=plan, live=True,
                         searched_at=K.now_iso(),
                         note='Live GEO records. Nothing has been downloaded: read a series\' '

@@ -86,6 +86,12 @@ def cmd_geo_samples(a):
     return _emit(doc, a.out)
 
 
+def cmd_from_papers(a):
+    from ..data.sources import paper_data as PD
+    return _emit(PD.for_papers(a.papers, i_have_network_permission=a.i_have_network_permission),
+                 a.out)
+
+
 def cmd_fetch_geo(a):
     from ..data.sources import geo_fetch as GF
     keep = {}
@@ -376,6 +382,12 @@ def main(argv=None):
     p.set_defaults(fn=cmd_datasets_list)
     p = ds.add_parser('show', help='one dataset manifest and its lineage')
     p.add_argument('--dataset-id', required=True); p.set_defaults(fn=cmd_datasets_show)
+    p = ds.add_parser('from-papers', help='the GEO series the given papers deposited, from '
+                                          'GEO\'s own links and the papers\' text (network)')
+    p.add_argument('--papers', nargs='+', required=True, help='PMID:123 or PMC123, as cited')
+    p.add_argument('--i-have-network-permission', action='store_true')
+    p.add_argument('--out')
+    p.set_defaults(fn=cmd_from_papers)
     p = ds.add_parser('geo-samples', help='a GEO series\' samples and the fields a condition '
                                           'can be read from (network)')
     p.add_argument('--accession', required=True)
@@ -491,7 +503,11 @@ def main(argv=None):
     try:
         return a.fn(a)
     except (K.ContractError, ValueError, KeyError, OSError) as e:
-        _print({'error': type(e).__name__, 'message': str(e)})
+        # A KeyError's own text is just the quoted key, which reached a person
+        # as the whole of a limitation: "'genotype_arms'".
+        msg = (f'an input file is missing the field {e}, which this command needs'
+               if isinstance(e, KeyError) else str(e))
+        _print({'error': type(e).__name__, 'message': msg})
         return 1
 
 

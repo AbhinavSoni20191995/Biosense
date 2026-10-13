@@ -106,6 +106,16 @@ def cross_check(report, protocol):
     annotation into an actionable gap.
     """
     from ..production.protocol import arm_schedule
+    if not (protocol or {}).get('genotype_arms'):
+        # A run passed a discovery protocol summary, which has stages and no
+        # arms, and the cross-check failed with a bare KeyError ('genotype_arms')
+        # that took the annotation down with it. There is nothing to compare an
+        # engineered arm with here; the annotation stands without it.
+        return {'control_arm_id': None, 'engineered_arm_ids': [], 'levers': [],
+                'note': ('Not cross-checked: this protocol has no genotype arms, so there is '
+                         'no engineered arm to compare with a wild-type control. The cross-check '
+                         'applies to a production protocol with arms (protocol.json from the '
+                         'production loop), not to a discovery protocol summary.')}
     arms = {a['arm_id']: a for a in protocol['genotype_arms']}
     control = next((a for a in arms if arms[a]['genotype'] == 'wild_type'), None)
     engineered = [a for a in arms if arms[a]['genotype'] != 'wild_type']

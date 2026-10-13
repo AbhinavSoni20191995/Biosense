@@ -1184,8 +1184,17 @@ so in its task, with these commands (each needs `--i-have-network-permission`):
   archive — one count file per sample, assembled and said to be; on a log2
   scale, registered as a public dataset with an evidence weight (a confidence
   ceiling for the species and route); it prints the `analyse plan` line to run
-  next. When all three fail, the refusal names what the series and its samples
-  hold: put that in the data request.
+  next. Gene ids are mapped to symbols for you (NCBI's tables, kept on this
+  server, then Ensembl), and headers such as `UT_1` or `Ctrl_1` are matched
+  to the untreated samples. When all three routes fail, the refusal names what
+  the series and its samples hold: put that in the data request.
+- `{bio} datasets from-papers --papers PMID:… PMC… --out {loop_dir}/bioinformatics/paper_datasets.json`
+  — the GEO series the papers this run cites deposited: GEO's own link from a
+  series to the paper (paywalled papers too) and the accessions the paper's
+  text names. A study described by its Cre line or knockout is found here when
+  a gene keyword misses it. Send it the PMIDs the literature agent cited.
+- Searching GEO: run searches one after another, not in a parallel burst. NCBI
+  throttles a burst (HTTP 429), and a throttled search is not an empty one.
 
 Then send each registered dataset to `analyst` to plan, run and interpret.
 A public series is another lab's experiment: evidence to weigh by how close its
@@ -1325,11 +1334,18 @@ without them, and do not drop the parameter.
    lead can be checked with data, ask `bioinformatics` to check it. Where one
    source has nothing to add (no dataset, no annotation), the others still
    carry the hypothesis and the recommendation: record the gap, do not wait on it.
-{data_note}   **When something a person could supply is what blocked you, ask for it.**
-   A repository with no processed counts, a series whose row ids resolve to no
-   gene, a paper behind a paywall, a number only their bench book has: these
-   end as limitations, and a limitation nobody can act on is where a run goes
-   thin for no reason. Write the ask instead, alongside the limitation:
+{data_note}   **When something a person could supply is what blocked you, ask for it —
+   after the commands that could have fetched it.** Before writing a request:
+   an accession for a study the run cites is `datasets from-papers`; gene ids
+   with no symbols mean `datasets fetch-geo` should be run again (it maps them
+   now); a table whose columns did not match its samples has a `--column-map`
+   or `--infer-columns` suggestion in its refusal; a search that came back
+   throttled is searched again, singly. A request for one of these asks a person
+   to do a lookup the run could do, and they see every request you write.
+   What is left — processed counts nobody published, a paper behind a paywall,
+   a number only their bench book has — ends as a limitation, and
+   a limitation nobody can act on is where a run goes thin for no reason.
+   Write the ask instead, alongside the limitation:
    `{python} -m biosense.evidence.cli data-request --draft {loop_dir}/data_requests.draft.json \
        --out {loop_dir}/data_requests.json --run-id {Path(loop_dir).name}`
    in the shape `{python} -m biosense.evidence.cli template data-request` prints.

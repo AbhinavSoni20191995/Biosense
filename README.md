@@ -369,8 +369,13 @@ reads its samples, and registers an analysable table: NCBI's processed counts
 where they exist, the depositors' own table otherwise, or — where the series
 holds only a RAW archive — one count file per sample assembled into a table and
 labelled as such, for any species — each with a confidence ceiling for its
-species and route. When none applies, the refusal names what the series and
-its samples hold, so the data request to a person is specific. The data analyst plans
+species and route. Gene ids become symbols without asking anyone (NCBI's tables,
+fetched once and kept on the server, then Ensembl), headers like `UT_1` are
+matched to the untreated samples, and a study the run cites is traced to its
+deposit from the paper itself (GEO's own link, and the accessions its text
+names). When none of that applies, the refusal names what the series and its
+samples hold, so the data request to a person is specific — and every request
+is optional, one line each, with one click to continue without them. The data analyst plans
 against it, repairs what the tools refuse, and interprets the result for this
 process, resolving a named uncertainty.
 
@@ -939,7 +944,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1569 tests
+uv run --frozen python -m unittest     # 1606 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

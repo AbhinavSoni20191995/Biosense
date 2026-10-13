@@ -130,10 +130,14 @@ def refusal_in(technical):
         doc = None
     if isinstance(doc, dict) and 'stdout' in doc:
         out, err = (doc.get('stdout') or '').strip(), (doc.get('stderr') or '').strip()
-        inner = _json_or_none(out)
-        if isinstance(inner, dict) and (inner.get('refused') or inner.get('error')):
-            return _short(str(inner.get('reason') or inner.get('message')
-                              or inner.get('error')), 300)
+        # A refusal is a refusal on either stream and whatever the exit code:
+        # the evidence CLI writes its refusal to stderr and exits 2, which the
+        # exit-code rule below reads as "found nothing".
+        for stream in (out, err):
+            inner = ST.leading_json(stream)
+            if isinstance(inner, dict) and (inner.get('refused') or inner.get('error')):
+                return _short(str(inner.get('reason') or inner.get('message')
+                                  or inner.get('error')), 300)
         code = doc.get('exit_code')
         if isinstance(code, int) and code not in (0, 2):
             # 2 is the documented "found nothing" (an unannotated gene): an
@@ -149,21 +153,16 @@ def refusal_in(technical):
         return _short(str(doc.get('reason') or doc.get('message') or doc.get('error')), 300)
     if text.startswith('{'):
         # A shell result cut short for display: trust only an explicit marker.
+        # Whatever said why is gone with the cut (stages now keeps a shell
+        # result whole enough to parse), so this says only that it exited.
         m = _EXIT_RE.search(text)
         if m and int(m.group(1)) not in (0, 2):
-            return f'a command exited {m.group(1)}'
+            return f'{COMMAND_EXITED} {m.group(1)}'
         return None
     # Plain text from a tool that answers in words: a short refusal sentence.
     if len(text) <= 400 and REFUSAL_RE.search(text):
         return _short(text, 300)
     return None
-
-
-def _json_or_none(text):
-    try:
-        return json.loads(text)
-    except (TypeError, ValueError):
-        return None
 
 
 _AGENT_FIELD = re.compile(r'["\']?agent["\']?\s*[:=]\s*["\']([a-z_]+)["\']', re.I)

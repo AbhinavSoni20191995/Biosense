@@ -45,8 +45,6 @@ refuses a comparison the samples cannot support.
 from __future__ import annotations
 
 import csv
-import gzip
-import io
 import math
 import re
 import shlex
@@ -57,6 +55,13 @@ from pathlib import Path
 
 from ... import contracts as K
 from .. import roots
+from . import gene_ids as GI
+from . import http as HTTP
+# The identifier readers moved to gene_ids, which every fetch now maps through;
+# the names stay importable from here, where callers and tests have them.
+from .gene_ids import (ENSEMBL_RE, ID_HEADERS, SYMBOL_HEADERS,  # noqa: F401
+                       parse_annotation, parse_annotation_ensembl,
+                       strip_version as _strip_version)
 
 ACC_RE = re.compile(r'^GSE\d{3,8}$')
 FTP = 'https://ftp.ncbi.nlm.nih.gov/geo/series'
@@ -90,24 +95,13 @@ def series_url(acc):
     return f'{FTP}/{stem}/{acc}'
 
 
-def _get(url, timeout=60, max_bytes=MAX_DOWNLOAD):
-    """Bytes at *url*. Replaced in tests; the one place this module touches the network."""
-    req = urllib.request.Request(url, headers={'User-Agent': 'BioSenseBioinformatics/0.1'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = r.read(max_bytes + 1)
-    if len(data) > max_bytes:
-        raise K.ContractError(f'{url} is larger than {max_bytes // 1024 // 1024} MB; not fetched')
-    return data
+def _get(url, timeout=60, max_bytes=MAX_DOWNLOAD, data=None, headers=None):
+    """Bytes at *url* (a POST with *data*). Replaced in tests; the one place this
+    module touches the network. Retried on throttling and server errors."""
+    return HTTP.get(url, timeout, max_bytes, data=data, headers=headers)
 
 
-def _text(data):
-    # A .gz file can arrive gzipped twice (the file itself, and the transfer),
-    # and urllib undoes neither: unwrap until it is no longer gzip.
-    for _ in range(3):
-        if data[:2] != b'\x1f\x8b':
-            break
-        data = gzip.decompress(data)
-    return data.decode('utf-8', errors='replace').lstrip('\ufeff')
+_text = GI.decode
 
 
 def _cells(line):
@@ -257,64 +251,7 @@ def parse_counts(text):
     return genes, gsms, rows
 
 
-ID_HEADERS = ('geneid', 'gene_id', 'entrezid', 'entrezgeneid', 'ncbigeneid', 'id')
-SYMBOL_HEADERS = ('symbol', 'genesymbol', 'gene_symbol', 'genename', 'name')
-
-
-def parse_annotation(text):
-    """GeneID -> Symbol from NCBI's annotation table.
-
-    Read by meaning, not by exact header: a byte-order mark, a comment line or
-    a header in another case once made this return nothing, silently, and every
-    gene kept its number. The caller reports how many ids got a symbol.
-    """
-    lines = [l for l in text.lstrip('\ufeff').splitlines() if l.strip() and not l.startswith('#')]
-    if not lines:
-        return {}
-    reader = csv.reader(lines, delimiter='\t')
-    head = [_norm(h.strip().strip('"')) for h in next(reader)]
-    idc = next((head.index(_norm(h)) for h in ID_HEADERS if _norm(h) in head), None)
-    syc = next((head.index(_norm(h)) for h in SYMBOL_HEADERS if _norm(h) in head), None)
-    if idc is None or syc is None:
-        return {}
-    out = {}
-    for r in reader:
-        if len(r) <= max(idc, syc):
-            continue
-        gid, sym = r[idc].strip().strip('"'), r[syc].strip().strip('"')
-        if gid and sym:
-            out[gid] = sym
-    return out
-
-
-def parse_annotation_ensembl(text):
-    """Ensembl gene id (unversioned) -> Symbol from NCBI's annotation table, or None.
-
-    None when the table has no Ensembl column: the caller then says so rather
-    than guessing. An Ensembl id NCBI gives two different symbols is left out.
-    """
-    reader = csv.DictReader(io.StringIO(text), delimiter='\t')
-    col = next((f for f in reader.fieldnames or []
-                if _norm(f) in ('ensemblgeneid', 'ensemblid', 'ensemblgene', 'ensembl')), None)
-    if col is None:
-        return None
-    out, clash = {}, set()
-    for r in reader:
-        sym = (r.get('Symbol') or '').strip()
-        for e in re.split(r'[;,| ]+', (r.get(col) or '').strip()):
-            if not sym or not ENSEMBL_RE.match(e):
-                continue
-            e = _strip_version(e).upper()
-            if out.get(e, sym) != sym:
-                clash.add(e)
-            out[e] = sym
-    for e in clash:
-        out.pop(e)
-    return out
-
-
 # ── a depositor's feature ids -> gene symbols ───────────────────────────
-ENSEMBL_RE = re.compile(r'^ENS[A-Z]{0,6}[GTPRE]\d{6,}(?:\.\d+)?(?:_PAR_Y)?$', re.I)
 REFSEQ_RE = re.compile(r'^[NX][MRP]_\d+(?:\.\d+)?$')
 NUMERIC_RE = re.compile(r'^[-+]?\d+(?:[.,]\d+)?$')
 BIOTYPES = frozenset((
@@ -324,10 +261,6 @@ BIOTYPES = frozenset((
     'processed_transcript', 'bidirectional_promoter_lncrna', '3prime_overlapping_ncrna',
     'macro_lncrna', 'non_coding', 'known_ncrna', 'retained_intron', 'nonsense_mediated_decay',
     'non_stop_decay', 'artifact', 'other', 'unknown'))
-
-
-def _strip_version(ens):
-    return re.sub(r'\.\d+(?=(_PAR_Y)?$)', '', ens)
 
 
 def _is_biotype(p):
@@ -667,6 +600,15 @@ def _numeric_columns(rows, width, decimal_comma, probe=50):
 # ── which table column is which sample: suggested, never silently guessed ──
 NULL_WORDS = frozenset('untreated control ctrl none no vehicle veh mock nt baseline unstimulated '
                        'naive medium basal'.split())
+# How depositors write the untreated condition in a column header. Each one
+# stands for whichever null word the sample's own metadata uses: "UT_1" is the
+# untreated replicate 1, though "ut" begins no word of "Untreated" — and a run
+# lost GSE276577 to exactly that, its control left with no samples while the
+# TGF-B columns matched. A prefix of a null word is refused (above) because
+# "co" is not "control"; these are not prefixes, they are the abbreviations
+# themselves, so they are matched as a set and nothing looser.
+CONTROL_ABBREV = NULL_WORDS | frozenset(
+    'ut unt untr untrt untx ctl cntl cntrl con cont mck unstim unst neg nc dmso pbs'.split())
 UNIT_WORDS = frozenset('ng ml pg ug h hr hrs d day days min um nm mm'.split())
 STOP_WORDS = frozenset('with and of in for the on at by from to plus a an vs'.split())
 DATA_WORDS = frozenset('count counts raw read reads tpm fpkm rpkm cpm norm normalized normalised '
@@ -771,12 +713,16 @@ def _sample_profile(s):
             'targets': targets, 'cond': cond, 'signature': signature}
 
 
-def _match_token(h, targets):
+def _match_token(h, targets, null_fallback=False):
     """Unit positions a header token matches: equal first, then as an abbreviation
-    (a prefix, len >= 2, never of a null or stop word: 'co' is not 'control')."""
+    (a prefix, len >= 2, never of a null or stop word: 'co' is not 'control'),
+    then — with *null_fallback*, for a control abbreviation (UT, Ctrl, Veh) — any
+    null word the sample uses."""
     tests = (lambda x: x == h,
              lambda x: len(h) >= 2 and x.startswith(h) and x not in NULL_WORDS
              and x not in STOP_WORDS)
+    if null_fallback:
+        tests += (lambda x: x in NULL_WORDS,)
     for test in tests:
         for kind in (0, 1):
             hit = [ids for x, k, ids in targets if k == kind and test(x)]
@@ -790,13 +736,18 @@ def _suggest_one(header, profiles):
     toks = [c for c, _ in _units(rest) if not _ignorable(c)]
     if not toks:
         return 'none', [], 'the header has no name tokens to compare'
+    # A control abbreviation stands for a null word only where no sample is
+    # named by the token itself: "DMSO_1" is the DMSO sample when there is one,
+    # and the vehicle control only when nothing says DMSO.
+    loose = {t for t in toks if t in CONTROL_ABBREV
+             and not any(_match_token(t, p['targets']) for p in profiles)}
     scored = []
     for p in profiles:
         if rep is not None and p['rep'] is not None and rep != p['rep']:
             continue
         hit, matched = set(), []
         for t in toks:
-            pos = _match_token(t, p['targets'])
+            pos = _match_token(t, p['targets'], null_fallback=t in loose)
             if pos:
                 matched.append(t)
                 hit |= pos
@@ -1225,26 +1176,29 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
     common = dict(condition_key=condition_key, control=control, treatments=treatments,
                   keep=keep, genes=genes, max_genes=max_genes)
     route, sources, why_not_ncbi, read = None, {'samples': info['url']}, None, {}
+    gene_cache = Path(out_root or roots.cache_root())
     if organism in GENOMES:
         counts_url, annot_url = counts_urls(acc, organism)
         try:
             gene_ids, gsms, matrix = parse_counts(_text(_get(counts_url, timeout)))
             # The counts are usable without the symbol table, so its failure is
-            # recorded and said loudly, never a reason to drop the counts.
-            try:
-                symbols, annot_error = parse_annotation(_text(_get(annot_url, timeout))), None
-            except (urllib.error.URLError, OSError, K.ContractError) as e:
-                symbols, annot_error = {}, f'{type(e).__name__}: {str(e)[:200]}'
+            # recorded and said loudly, never a reason to drop the counts. The
+            # table comes from this server's copy, NCBI's annotation or NCBI's
+            # gene_info, in that order (gene_ids.py).
+            gm = GI.ncbi_maps(organism, annot_url=annot_url, get=_get, timeout=timeout,
+                              cache_dir=gene_cache)
+            symbols = gm.by_geneid
             rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, symbols,
                                            **common)
             route = 'ncbi_processed'
-            sources.update(counts=counts_url, annotation=annot_url)
+            sources.update(counts=counts_url, annotation=gm.geneid_source or annot_url)
             mapped = sum(1 for g in gene_ids if g in symbols)
             read = {'transform': 'counts',
                     'symbols': (f'{mapped} of {len(gene_ids)} NCBI GeneIDs given a symbol from '
-                                f'NCBI\'s annotation table'
-                                + (f' (the table could not be read: {annot_error})'
-                                   if annot_error else ''))}
+                                + (gm.geneid_note or "NCBI's annotation table")
+                                + (f' (the table could not be read: {"; ".join(gm.errors)})'
+                                   if not symbols and gm.errors else
+                                   f'; {"; ".join(gm.errors)}' if gm.errors else ''))}
             if mapped < len(gene_ids) / 2:
                 read['symbols_warning'] = (
                     f'Only {mapped} of {len(gene_ids)} genes have a symbol: this table\'s genes '
@@ -1276,7 +1230,8 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
                     _text(_get(url, timeout)), info['samples'], column_map=column_map,
                     infer_columns=infer_columns, column_map_basis=column_map_basis)
                 symbols, read['symbols'], annot = _table_symbols(gene_ids, organism, acc,
-                                                                 timeout, ens_cache)
+                                                                 timeout, ens_cache,
+                                                                 cache_dir=gene_cache)
                 rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, symbols,
                                                transform=read['transform'], **common)
             except (K.ContractError, urllib.error.HTTPError) as e:
@@ -1326,7 +1281,8 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
                         raise K.ContractError(f'{url.rsplit("/", 1)[-1]}: {str(e)[:300]}') from None
                 gene_ids, gsms, matrix, read = assemble_sample_tables(per)
                 symbols, read['symbols'], annot = _table_symbols(gene_ids, organism, acc,
-                                                                timeout, ens_cache)
+                                                                timeout, ens_cache,
+                                                                cache_dir=gene_cache)
                 rows, stats = build_long_table(info['samples'], gene_ids, gsms, matrix, symbols,
                                                transform=read['transform'], **common)
                 route = 'depositor_per_sample'
@@ -1419,27 +1375,18 @@ def fetch(acc, *, condition_key, control, treatments, keep=None, genes=None,
                      'a measurement of it.')}
 
 
-def _table_symbols(gene_ids, organism, acc, timeout, cache):
-    """Symbols for a depositor's table: the pure normaliser, plus NCBI's annotation
-    for bare human/mouse Ensembl ids. -> (map, how, annotation url used or None)."""
+def _table_symbols(gene_ids, organism, acc, timeout, cache, cache_dir=None):
+    """Symbols for a depositor's table: the pure normaliser, plus — for bare
+    Ensembl ids — NCBI's tables (human, mouse) and Ensembl's lookup (any
+    species). -> (map, how, sources used or None)."""
     if not any(ENSEMBL_RE.match(feature_symbol(g)) for g in gene_ids):
         m, how = supplementary_symbols(gene_ids)
         return m, how, None
     if 'r' not in cache:
-        if organism not in GENOMES:
-            cache['r'] = (None, None, f'NCBI publishes its gene annotation for human and mouse '
-                                      f'only; this series is {organism}')
-        else:
-            url = counts_urls(acc, organism)[1]
-            try:
-                emap = parse_annotation_ensembl(_text(_get(url, timeout)))
-                cache['r'] = ((emap, url, f"NCBI's annotation table ({url}, EnsemblGeneID "
-                                          f"column)") if emap is not None else
-                              (None, None, f"NCBI's annotation table ({url}) has no Ensembl "
-                                           f"column"))
-            except (OSError, EOFError, ValueError, K.ContractError) as e:
-                cache['r'] = (None, None, f"NCBI's annotation table could not be read: "
-                                          f"{str(e)[:200]}")
+        cache['r'] = GI.ensembl_map(
+            [feature_symbol(g) for g in gene_ids], organism,
+            annot_url=counts_urls(acc, organism)[1] if organism in GENOMES else None,
+            get=_get, timeout=timeout, cache_dir=cache_dir)
     emap, url, note = cache['r']
     m, how = supplementary_symbols(gene_ids, emap, note)
     return m, how, url

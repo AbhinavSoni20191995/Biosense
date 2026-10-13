@@ -13,6 +13,8 @@ confident comparison of the wrong thing.
 """
 from __future__ import annotations
 
+import re
+
 from .. import contracts as K
 from ..data import registry as DREG
 from . import registry as TREG
@@ -64,6 +66,28 @@ def resolve_uncertainty(ref, *, analysis_report=None, recorded_gaps=()):
         raise K.ContractError(f'uncertainty kind must be hypothesis or evidence_gap, got {kind!r}')
 
 
+def resolve_analysis_type(analysis_type, spec):
+    """The analysis type *analysis_type* means for this tool, or it unchanged.
+
+    A plan said `expression_comparison` to a tool whose one type is
+    `bulk_expression_comparison`, and was refused — the run lost an analysis
+    to a modality prefix it had already named in the tool. A spelling that
+    names exactly one of the tool's types is that type; anything that could
+    mean two of them, or none, is left for the refusal to name.
+    """
+    at = str(analysis_type or '').strip()
+    if at in spec.analysis_types:
+        return at
+    key = re.sub(r'[^a-z0-9]', '', at.lower())
+    if not key:
+        return at
+    same = [t for t in spec.analysis_types if re.sub(r'[^a-z0-9]', '', t.lower()) == key]
+    if len(same) == 1:
+        return same[0]
+    tail = [t for t in spec.analysis_types if re.sub(r'[^a-z0-9]', '', t.lower()).endswith(key)]
+    return tail[0] if len(tail) == 1 else at
+
+
 def plan(*, plan_id, question, uncertainty_ref, why_requested, dataset_ids, analysis_type,
          tool, decision_relevance, parameters_that_may_change, created_by='bioinformatics_agent',
          modality=None, comparison=None, steps=(), expected_outputs=(), limitations=(),
@@ -96,6 +120,7 @@ def plan(*, plan_id, question, uncertainty_ref, why_requested, dataset_ids, anal
         raise K.ContractError(
             f'{spec.name} does not accept {modality!r} data (it accepts '
             f'{", ".join(spec.modalities)})')
+    analysis_type = resolve_analysis_type(analysis_type, spec)
     if analysis_type not in spec.analysis_types:
         raise K.ContractError(
             f'{spec.name} does not perform {analysis_type!r} (it performs '
