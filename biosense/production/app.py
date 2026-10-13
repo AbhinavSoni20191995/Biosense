@@ -264,6 +264,7 @@ class Run:
         self.baseline_protocol = None
         self.bench_setup = None
         self.alternate_plans = None
+        self.breakthrough_design = None
         self.protocol_edits = None
         self.data_requests = None
         self.literature_stages = []
@@ -394,6 +395,7 @@ class DiscoveryRun:
         self.baseline_protocol = None
         self.bench_setup = None
         self.alternate_plans = None
+        self.breakthrough_design = None
         self.protocol_edits = None
         self.data_requests = None
         self.literature_stages = []
@@ -460,6 +462,7 @@ class DiscoveryRun:
         self._read_baseline_protocol()
         self._read_bench_setup()
         self._read_alternates()
+        self._read_breakthrough()
         self._read_protocol_edits()
         self._read_data_requests()
         self._read_stage_shards()
@@ -853,6 +856,11 @@ class DiscoveryRun:
             'request', 'requested_by', 'items', 'not_pursued', 'does_not_change', 'note')}
             if doc else None)
 
+    def _read_breakthrough(self):
+        """The experiment past the apparatus, written last or at a person's request."""
+        from ..evidence import breakthrough as BT
+        self.breakthrough_design = BT.load(self.out_dir)
+
     def _read_protocol_edits(self):
         """What a person asked to change in the written protocol, after the run."""
         from ..evidence import protocol_edits as PE
@@ -1213,6 +1221,7 @@ class DiscoveryRun:
                 'baseline_protocol': self.baseline_protocol,
                 'bench_setup': self.bench_setup,
                 'alternate_plans': self.alternate_plans,
+                'breakthrough_design': self.breakthrough_design,
                 'protocol_edits': self.protocol_edits,
                 'data_requests': self.data_requests,
                 'literature_stages': list(self.literature_stages),
@@ -2823,6 +2832,10 @@ class Handler(BaseHTTPRequestHandler):
                                 'note': ('The orchestrator is working the plans up; the run '
                                          'page shows them when they arrive.'
                                          if kind == 'alternate' else
+                                         'The orchestrator is designing past the '
+                                         'apparatus; the run page shows the design when '
+                                         'it arrives.'
+                                         if kind == 'breakthrough' else
                                          'The orchestrator is writing the changes; export '
                                          'the Word or PDF copy when it has replied.'
                                          if kind == 'protocol' else
@@ -2842,11 +2855,14 @@ class Handler(BaseHTTPRequestHandler):
         from ..evidence import protocol_edits as PE
         from . import ask as ASK
         from . import omnigent_runtime as OMNI
+        from ..evidence import breakthrough as BT
         alt = item.get('kind') == 'alternate'
         edit = item.get('kind') == 'protocol'
+        beyond = item.get('kind') == 'breakthrough'
         try:
             before = ASK.fingerprint(d)
-            prior = AL.load(d) if alt else PE.load(d) if edit else None
+            prior = (AL.load(d) if alt else PE.load(d) if edit else BT.load(d) if beyond
+                     else None)
             res = None
             for sid in ([session, None] if session else [None]):
                 if edit:
@@ -2857,6 +2873,19 @@ class Handler(BaseHTTPRequestHandler):
                         projects_dir=(f' --projects-dir {projects_dir}' if projects_dir else ''),
                         python=DRUN.agent_python(target), fresh=sid is None, existing=prior)
                     title = f'Protocol changes: {item["question"][:50]}'
+                elif beyond:
+                    state = RS._read_state(RS.state_path(d)) or {}
+                    try:
+                        req = K.read_json(d / 'discovery_request.json')
+                    except (OSError, ValueError):
+                        req = {}
+                    text = BT.framed(
+                        item['question'], loop_dir=loop_dir,
+                        project_id=state.get('project_id') or '',
+                        projects_dir=(f' --projects-dir {projects_dir}' if projects_dir else ''),
+                        python=DRUN.agent_python(target), fresh=sid is None,
+                        in_force=BT.constraints_in_force(req), existing=prior)
+                    title = f'Breakthrough design: {item["question"][:50]}'
                 elif alt:
                     state = RS._read_state(RS.state_path(d)) or {}
                     text = AL.framed(
@@ -2888,8 +2917,14 @@ class Handler(BaseHTTPRequestHandler):
                 wrote = {'alt_ids': ids, 'new': [i for i in ids if i not in was]}
                 # The file it was asked to write is not a broken promise.
                 moved = [f for f in moved if f not in (AL.NAME, AL.DRAFT)]
+            if beyond:
+                doc = BT.load(d)
+                fresh_doc = bool(doc) and (not prior or doc.get('created_at')
+                                           != prior.get('created_at'))
+                wrote = {'breakthrough': doc['title']} if fresh_doc else None
+                moved = [f for f in moved if f not in (BT.NAME, BT.DRAFT)]
             ok = bool(res.get('answer')) and (not alt or (wrote and wrote['alt_ids'])) \
-                and (not edit or bool(wrote))
+                and (not edit or bool(wrote)) and (not beyond or bool(wrote))
             ASK.finish(d, item['id'],
                        status='answered' if ok else 'failed',
                        answer=res.get('answer'), files_changed=moved, wrote=wrote,
@@ -2900,6 +2935,8 @@ class Handler(BaseHTTPRequestHandler):
                               or (None if ok else
                                   ('it wrote no alternate plan that passed its contract'
                                    if alt else
+                                   'it wrote no breakthrough design that passed its contract'
+                                   if beyond else
                                    'it wrote no protocol change that passed its contract'
                                    if edit else 'the orchestrator said nothing'))))
         except Exception as e:  # noqa: BLE001 - a failed answer is recorded, never lost

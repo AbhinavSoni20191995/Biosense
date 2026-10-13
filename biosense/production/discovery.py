@@ -58,6 +58,31 @@ ARTIFACTS = (
 )
 
 
+def _beyond_section(req, project, loop_dir, python, pdir):
+    """The run's last design step: the experiment past the apparatus.
+
+    Written after round 1, from the same evidence, so the person sees both how
+    close the process can get as it is and what would get closer.
+    """
+    from ..evidence import breakthrough as BT
+    forced = BT.constraints_in_force(req)
+    named = ('\n   The request records these constraints (their ids go in `refers_to`): '
+             + '; '.join(f'`{c["id"]}` = {c["what"]} [{c.get("source")}]' for c in forced)
+             + '.\n' if forced else '\n')
+    body = BT.BRIEF.format(python=python, loop_dir=loop_dir, project_id=project.project_id,
+                           projects_dir=pdir, run_id=Path(loop_dir).name, name=BT.NAME,
+                           draft=BT.DRAFT)
+    import textwrap
+    body = '\n'.join(textwrap.fill(line, 79, initial_indent='   ',
+                                    subsequent_indent='     ' if line.startswith(('-', ' ')) else '   ',
+                                    break_long_words=False, break_on_hyphens=False)
+                      for line in body.splitlines() if line)
+    return f"""9. **Then design past the apparatus.** Round 1 says how close the process can
+   get as it is. The person also wants to know what would get closest to the
+   aim if the vessel were not the limit — write it once round 1 is written.
+{body}{named}"""
+
+
 def _format_section(req):
     """The vessel this run is for, when the person chose one.
 
@@ -1201,6 +1226,8 @@ A public series is another lab's experiment: evidence to weigh by how close its
 cells, stage and treatment are to this process, never a measurement of it.
 
 """ if public else '')
+    beyond_section = (_beyond_section(req, project, loop_dir, python, pdir)
+                      if (req.get('purpose') or 'discovery') == 'discovery' else '')
     return f"""# BioSense web discovery run
 
 A person started this from the BioSense web application. They are not watching a
@@ -1561,7 +1588,7 @@ without them, and do not drop the parameter.
    parameter for a factor the route needs, say so in the plan's limitations and
    name the factor, so the person can register it before the run — a plan that
    quietly omits it reads as a protocol that does not need it.
-
+{beyond_section}
 **Always end with a recommendation.** However thin the evidence, the person
 gets your best-supported proposal; how far to trust it is shown beside it as a
 confidence bar, with the reasons BioSense computes from your evidence rows and

@@ -311,6 +311,9 @@ def restore(runs_dir, run_id, *, after=-1):
     snap['alternate_plans'] = ({k: alt.get(k) for k in (
         'request', 'requested_by', 'items', 'not_pursued', 'does_not_change', 'note')}
         if alt else None)
+    # And the design past the apparatus, which a person may ask for later.
+    from ..evidence import breakthrough as BT
+    snap['breakthrough_design'] = BT.load(d)
     # And the person's edits to the written protocol, for the same reason.
     from ..evidence import protocol_edits as PE
     pe = PE.load(d)

@@ -792,6 +792,37 @@ def cmd_alternates(a):
     return 0
 
 
+def cmd_breakthrough(a):
+    """The experiment closest to the aim if the apparatus were not the limit."""
+    from . import breakthrough as BT
+    PJ.load(a.project, a.projects_dir)          # the project must exist
+    here = Path(a.out).parent
+    request = plan = None
+    for name in ('discovery_request.json',):
+        try:
+            request = K.read_json(here / name)
+        except (OSError, ValueError):
+            request = None
+    try:
+        plan = K.read_json(here / 'round_plan.json')
+    except (OSError, ValueError):
+        plan = None
+    request = dict(request or {}, project_id=(request or {}).get('project_id') or a.project)
+    doc = BT.build(K.read_json(a.draft), request=request, run_id=a.run_id,
+                   created_by=a.created_by or 'orchestrator', requested_by=a.requested_by,
+                   round_plan=plan, ask=a.request)
+    K.write_json_atomic(a.out, doc)
+    print(json.dumps({'written': a.out, 'title': doc['title'],
+                      'lifted': [c['constraint'] for c in doc['constraints_lifted']],
+                      'kept': [k['what'] for k in doc['kept']],
+                      'arms': [a['arm_id'] for a in doc['arms']],
+                      'gaps': [f'{s}: {f}' for s, f in BT.gaps(doc)],
+                      'next': 'A concept beside round 1, which is unchanged. It is not '
+                              'runnable on this apparatus and nothing here is approved.'},
+                     indent=1))
+    return 0
+
+
 def cmd_protocol_edits(a):
     """What a person asked to change in the written protocol, checked and written."""
     from . import protocol_edits as PE
@@ -857,8 +888,9 @@ def cmd_template(a):
     from . import baseline as BL
     from . import bench as BN
     from . import alternates as AL
+    from . import breakthrough as BT
     from . import protocol_edits as PE
-    shape = {'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
+    shape = {'breakthrough': BT.TEMPLATE, 'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
              'protocol-edits': PE.TEMPLATE,
              'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE,
              'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE,
@@ -983,6 +1015,13 @@ def main(argv=None):
     p.add_argument('--request', help="what the person asked for, in their words")
     p.add_argument('--run-id'); p.add_argument('--created-by'); p.add_argument('--requested-by')
     p.set_defaults(fn=cmd_alternates)
+    p = sub.add_parser('breakthrough', help='the experiment closest to the aim if the '
+                                            'apparatus were not the limit')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--request', help="what the person asked for, in their words")
+    p.add_argument('--run-id'); p.add_argument('--created-by'); p.add_argument('--requested-by')
+    p.set_defaults(fn=cmd_breakthrough)
     p = sub.add_parser('protocol-edits', help='what a person asked to change in the written '
                                               'protocol: the vessel, values, notes, sections')
     p.add_argument('--project', required=True); p.add_argument('--projects-dir')
@@ -1002,7 +1041,7 @@ def main(argv=None):
     p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
                                     'devmap', 'sota', 'route-select', 'fidelity',
                                     'baseline', 'bench', 'alternates', 'data-request',
-                                    'protocol-edits'])
+                                    'protocol-edits', 'breakthrough'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

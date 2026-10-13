@@ -86,7 +86,7 @@ def clean_question(text):
     return q
 
 
-KINDS = ('question', 'alternate', 'protocol')
+KINDS = ('question', 'alternate', 'protocol', 'breakthrough', 'figures')
 
 
 def start(run_dir, question, *, asked_by=None, kind='question'):

@@ -406,7 +406,89 @@ def _genes(doc, run_dir):
               widths=[1.2, 2.9, 5, 3])
 
 
-SECTIONS = {'literature': literature, 'bioinformatics': bioinformatics}
+# ── beyond the apparatus ───────────────────────────────────────────────
+GAP_FILL = 'F6D4CF'
+
+
+def breakthrough(run_dir, *, doc=None, title=None, run_id=None):
+    """The experiment past the apparatus, laid out to be read beside round 1."""
+    from ..evidence import breakthrough as BT
+    doc = doc or Document(title='Beyond the apparatus')
+    bt = BT.load(run_dir)
+    _header(doc, 'Beyond the apparatus', run_dir, title=title, run_id=run_id,
+            note=BT.NOTE)
+    if not bt:
+        doc.para('This run has no breakthrough design yet. Ask the orchestrator for one from '
+                 'the run page ("Design past the apparatus").')
+        return doc
+    doc.caveat('CONCEPT — not runnable on the current apparatus and not approved. It becomes '
+               'a protocol only when one is written for the new apparatus and a named person '
+               'approves it.')
+    doc.heading(bt['title'], 1)
+    for label, key in (('Aim', 'aim'), ('Why this, now', 'why_now'),
+                       ('Why it gets closer', 'closest_to_aim'),
+                       ('What it still leaves', 'gap_to_aim')):
+        doc.para(f'{label}. {bt[key]}')
+    doc.heading('The constraints it lifts', 2)
+    doc.table(['Constraint', 'Now', 'Lifted to', 'Why it stands in the way', 'Basis'],
+              [[c['constraint'], c['now'], c['lifted_to'], c['why_it_limits'],
+                c['evidence_basis'] + (f' ({", ".join(c["refs"])})' if c['refs'] else '')]
+               for c in bt['constraints_lifted']], widths=[2, 2, 2.4, 3, 1.6])
+    doc.heading('What it keeps', 2)
+    for k in bt['kept']:
+        doc.bullet(f'{k["what"]} — {k["why"]}')
+    a = bt['apparatus']
+    doc.heading('The apparatus', 2)
+    doc.para(f'{a["name"]} ({a["exists"].replace("_", " ")}). {a["description"]}')
+    for f in a['features']:
+        doc.bullet(f)
+    doc.heading('The stages', 2)
+    rows, fills = [], []
+    for st in bt['stages']:
+        lines = [(BT._cond(c), c['provenance'] == 'gap') for c in st['conditions']] \
+            or [('no factor set', False)]
+        rows.append([f'Day {st["day_start"]:g}–{st["day_end"]:g}', st['label'], lines])
+        fills.append([None, None, GAP_FILL if any(c['provenance'] == 'gap'
+                                                  for c in st['conditions']) else None])
+    doc.table(['Days', 'Stage', 'Conditions (provenance; refs)'], rows, widths=[1.3, 2.4, 6.3],
+              fills=fills)
+    doc.heading('The arms', 2)
+    doc.table(['Arm', 'What it is', 'What differs', 'Basis'],
+              [[x['arm_id'] + (' (control)' if x['control'] else ''), x['label'], x['differs'],
+                x.get('basis') or '—'] for x in bt['arms']], widths=[1.4, 3, 3, 2.6])
+    doc.para('Measure: ' + '; '.join(
+        r['name'] + (f' ({r["unit"]})' if r.get('unit') else '')
+        + (f' — {r["when"]}' if r.get('when') else '') for r in bt['readouts'])
+        + (f'. {bt["replicates"]} replicate(s) per arm.' if bt.get('replicates') else '.'))
+    doc.para(f'If {bt["decision_rule"]["if"]}, then {bt["decision_rule"]["then"]}.')
+    x = bt.get('expected')
+    if x:
+        doc.heading('What it might do (a judgement, not a prediction)', 2)
+        doc.para(f'{x["metric"]}: {x["interval"]["lower"]:g} to {x["interval"]["upper"]:g} '
+                 f'{x["change_unit"]} over the control, {x["judgement"]["confidence"]} '
+                 f'confidence. {x["judgement"]["rationale"]}'
+                 + (f' ({", ".join(x["evidence_refs"])})' if x['evidence_refs'] else ''))
+    f = bt['feasibility']
+    doc.heading('What it takes', 2)
+    doc.para(f'{f["cost"]}. Time: {f["time"]}.'
+             + (f' Expertise: {f["expertise"]}.' if f.get('expertise') else ''))
+    for step in f['build_steps']:
+        doc.step(step)
+    doc.heading('Risks', 2)
+    for r in bt['risks']:
+        doc.bullet(f'{r["risk"]} — {r["mitigation"]}')
+    doc.para(f'Design confidence: {bt["confidence"]} ({bt["evidence_basis"]}'
+             + (f'; {", ".join(bt["refs"])}' if bt['refs'] else '') + ').')
+    doc.caveat(bt['does_not_change'])
+    return doc
+
+
+SECTIONS = {'literature': literature, 'bioinformatics': bioinformatics,
+            'breakthrough': breakthrough}
+
+
+TITLES = {'literature': 'Literature', 'bioinformatics': 'Bioinformatics',
+          'breakthrough': 'Beyond the apparatus'}
 
 
 def tobytes(section, run_dir, fmt='docx', **kw):
@@ -415,8 +497,8 @@ def tobytes(section, run_dir, fmt='docx', **kw):
         raise K.ContractError(f'section must be one of {", ".join(SECTIONS)}; got {section!r}')
     if fmt == 'pdf':
         from . import pdf as PDF
-        doc = PDF.Document(title=section.title(),
-                           footer=f'{section.title()} — run {kw.get("run_id") or ""}'.strip())
+        doc = PDF.Document(title=TITLES[section],
+                           footer=f'{TITLES[section]} — run {kw.get("run_id") or ""}'.strip())
     else:
-        doc = Document(title=section.title())
+        doc = Document(title=TITLES[section])
     return SECTIONS[section](run_dir, doc=doc, **kw).tobytes()

@@ -80,6 +80,8 @@ SCHEMAS = {
     'bench_setup': 'bench_setup.schema.json',
     # the other things worth testing, worked up as experiments at a person's request
     'alternate_plans': 'alternate_plans.schema.json',
+    # the experiment closest to the aim if the apparatus were not the limit
+    'breakthrough_design': 'breakthrough_design.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',
