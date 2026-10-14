@@ -59,13 +59,44 @@ def _plain(s):
     return s.strip()
 
 
+_INLINE = re.compile(r'\*\*(.+?)\*\*|__(.+?)__|(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])'
+                     r'|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)')
+
+
+def inline_runs(s):
+    """'a **bold** and *italic* word' -> [(text, {'bold': ..}), ...] for either writer.
+
+    The notes are Markdown, and their emphasis carries meaning — the cell
+    population a note is about, the word that turns a claim around — so it is
+    kept as weight rather than stripped. `code` and links read as plain text,
+    a link with its address after it.
+    """
+    s, runs, at = str(s or ''), [], 0
+    for m in _INLINE.finditer(s):
+        if m.start() > at:
+            runs.append((s[at:m.start()], {}))
+        bold, under, italic, code, label, url = m.groups()
+        if bold or under:
+            runs.append((bold or under, {'bold': True}))
+        elif italic:
+            runs.append((italic, {'italic': True}))
+        elif code:
+            runs.append((code, {}))
+        else:
+            runs.append((f'{label} ({url})', {}))
+        at = m.end()
+    if at < len(s):
+        runs.append((s[at:], {}))
+    return [(t, kw) for t, kw in runs if t]
+
+
 def markdown(doc, text, *, level=2):
     """A specialist's notes, as headings, paragraphs, bullets and tables."""
     para, table = [], []
 
     def flush_para():
         if para:
-            doc.para(_plain(' '.join(para)))
+            doc.para(runs=inline_runs(' '.join(para)))
             para.clear()
 
     def flush_table():
@@ -92,7 +123,7 @@ def markdown(doc, text, *, level=2):
             doc.heading(_plain(h.group(2)), min(3, level + len(h.group(1)) - 1))
         elif b:
             flush_para()
-            doc.bullet(_plain(b.group(1)))
+            doc.bullet(runs=inline_runs(b.group(1)))
         elif not line.strip() or re.match(r'^-{3,}$', line.strip()):
             flush_para()
         else:

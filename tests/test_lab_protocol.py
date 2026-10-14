@@ -354,12 +354,38 @@ class PdfTests(unittest.TestCase):
         n = int(re.search(rb'/Size (\d+)', data).group(1))
         self.assertEqual(n - 1, len(offsets))
 
-    def test_characters_outside_the_encoding_are_spelled_not_dropped(self):
+    def test_a_scientific_documents_own_characters_print_as_written(self):
+        """The built-in PDF fonts held Windows-1252 only, so MARCO⁺ printed as
+        'MARCO?' and ≥ as '>='. The embedded fonts carry them."""
         from biosense.production import pdf as PDF
         d = PDF.Document(title='t')
         d.para('seed ≥ 0.3 → harvest ☐ µM 37 °C (a) \\ b')
-        t = PDF.text_of(d.tobytes())[0]
-        self.assertEqual('seed >= 0.3 -> harvest [ ] µM 37 °C (a) \\ b', t)
+        d.para('MARCO⁺ ≥ x %, PODXL⁻ ≤ y %, CD34⁺CD45⁻, IL-1α, TGF-β1, Δ 2 × 10⁶, §3d, ⇌')
+        t = PDF.text_of(d.tobytes())
+        self.assertEqual('seed ≥ 0.3 → harvest ☐ µM 37 °C (a) \\ b', t[0])
+        self.assertEqual('MARCO⁺ ≥ x %, PODXL⁻ ≤ y %, CD34⁺CD45⁻, IL-1α, TGF-β1, Δ 2 × 10⁶, '
+                         '§3d, ⇌', t[1])
+
+    def test_a_character_no_embedded_font_holds_is_visible_not_dropped(self):
+        from biosense.production import pdf as PDF
+        d = PDF.Document(title='t')
+        d.para('a \U0001F9EA b')                 # a test-tube emoji: in neither font
+        self.assertEqual('a ? b', PDF.text_of(d.tobytes())[0])
+
+    def test_bold_inside_a_paragraph_keeps_its_weight(self):
+        from biosense.production import pdf as PDF
+        d = PDF.Document(title='t')
+        d.para(runs=[('plain ', {}), ('strong', {'bold': True}), (' end', {})])
+        data = d.tobytes()
+        self.assertEqual('plain strong end', PDF.text_of(data)[0])
+        self.assertIn(b'Carlito-Bold', data)
+        self.assertIn(b'Carlito-Regular', data)
+
+    def test_fonts_are_embedded_as_subsets(self):
+        from biosense.production import pdf as PDF
+        data = PDF.Document(title='t').para('small').tobytes()
+        self.assertIn(b'/FontFile2', data)
+        self.assertLess(len(data), 60_000, 'subset to the glyphs used, not the whole font')
 
     def test_a_long_table_breaks_across_pages_with_its_header(self):
         from biosense.production import pdf as PDF

@@ -141,11 +141,19 @@ class LiteratureReportTests(Fixture):
         self.assertIn('2 paper(s) found; 1 read in full', t)
         self.assertIn('The evidence the hypotheses rest on', t)
         self.assertIn('Leads, not findings', t)
-        self.assertIn('GM-CSF is required for alveolar identity (PMC111).', t,
-                      'markdown emphasis off, words kept')
+        # The emphasis is kept as weight: **GM-CSF** is its own bold run.
+        self.assertIn('GM-CSF\n is required for alveolar identity (PMC111).', t,
+                      'markdown emphasis as bold, words kept')
+        body = zipfile.ZipFile(io.BytesIO(SR.tobytes('literature', self.run, 'docx',
+                                                     run_id='abcdef'))).read(
+            'word/document.xml').decode()
+        self.assertRegex(body, r'<w:b/>.{0,80}>GM-CSF</w:t>', 'the bold run is bold')
         self.assertIn('Stage: myeloid', t)
         self.assertIn('10 ng/mL', t, 'a table in the notes stays a table')
         self.assertNotIn('**', t)
+        pdf = ' '.join(PDF.text_of(SR.tobytes('literature', self.run, 'pdf', run_id='abcdef')))
+        self.assertIn('GM-CSF is required for alveolar identity (PMC111).', pdf,
+                      'in the PDF the bold run sits inline in its sentence')
 
 
 class BioinformaticsReportTests(Fixture):

@@ -59,26 +59,29 @@ DOC_RELS = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 STYLES = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="%s">
 <w:docDefaults><w:rPrDefault><w:rPr>
-<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/>
+<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="20"/>
+<w:color w:val="1B2420"/>
 </w:rPr></w:rPrDefault></w:docDefaults>
 <w:style w:type="paragraph" w:styleId="Normal" w:default="1"><w:name w:val="Normal"/>
-<w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/></w:pPr></w:style>
+<w:pPr><w:spacing w:after="120" w:line="300" w:lineRule="auto"/></w:pPr></w:style>
 <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/>
-<w:pPr><w:spacing w:after="200"/></w:pPr>
-<w:rPr><w:b/><w:sz w:val="40"/></w:rPr></w:style>
+<w:pPr><w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6"
+w:color="0F7A45"/></w:pBdr><w:spacing w:after="80"/></w:pPr>
+<w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:b/><w:sz w:val="44"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>
-<w:pPr><w:outlineLvl w:val="0"/><w:spacing w:before="320" w:after="120"/>
-<w:keepNext/></w:pPr><w:rPr><w:b/><w:sz w:val="30"/></w:rPr></w:style>
+<w:pPr><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="3"
+w:color="0F7A45"/></w:pBdr><w:spacing w:before="320" w:after="140"/><w:outlineLvl w:val="0"/>
+</w:pPr><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:b/><w:sz w:val="30"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/>
-<w:pPr><w:outlineLvl w:val="1"/><w:spacing w:before="240" w:after="100"/>
-<w:keepNext/></w:pPr><w:rPr><w:b/><w:sz w:val="26"/></w:rPr></w:style>
+<w:pPr><w:keepNext/><w:spacing w:before="220" w:after="80"/><w:outlineLvl w:val="1"/>
+</w:pPr><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:b/><w:sz w:val="24"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/>
-<w:pPr><w:outlineLvl w:val="2"/><w:spacing w:before="200" w:after="80"/>
-<w:keepNext/></w:pPr><w:rPr><w:b/><w:i/><w:sz w:val="23"/></w:rPr></w:style>
+<w:pPr><w:keepNext/><w:spacing w:before="160" w:after="40"/><w:outlineLvl w:val="2"/>
+</w:pPr><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:b/><w:color w:val="3D4843"/><w:sz w:val="21"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Caveat"><w:name w:val="Caveat"/>
-<w:pPr><w:spacing w:after="120"/><w:pBdr><w:left w:val="single" w:sz="12" w:space="6"
-w:color="999999"/></w:pBdr><w:ind w:left="200"/></w:pPr>
-<w:rPr><w:i/><w:color w:val="555555"/></w:rPr></w:style>
+<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="C8E1D3"/></w:pBdr>
+<w:spacing w:after="140" w:line="264" w:lineRule="auto"/><w:ind w:left="220"/></w:pPr>
+<w:rPr><w:i/><w:color w:val="616D68"/><w:sz w:val="18"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="ListBullet"><w:name w:val="List Bullet"/>
 <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>
 <w:spacing w:after="60"/></w:pPr></w:style>
@@ -86,11 +89,19 @@ w:color="999999"/></w:pBdr><w:ind w:left="200"/></w:pPr>
 <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>
 <w:spacing w:after="60"/></w:pPr></w:style>
 <w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/>
+<w:rPr><w:sz w:val="18"/></w:rPr>
 <w:tblPr><w:tblBorders>
-<w:top w:val="single" w:sz="4" w:color="BBBBBB"/><w:left w:val="single" w:sz="4" w:color="BBBBBB"/>
-<w:bottom w:val="single" w:sz="4" w:color="BBBBBB"/><w:right w:val="single" w:sz="4" w:color="BBBBBB"/>
-<w:insideH w:val="single" w:sz="4" w:color="BBBBBB"/><w:insideV w:val="single" w:sz="4" w:color="BBBBBB"/>
-</w:tblBorders></w:tblPr></w:style>
+<w:top w:val="single" w:sz="8" w:color="1B2420"/><w:bottom w:val="single" w:sz="8" w:color="1B2420"/>
+<w:insideH w:val="single" w:sz="2" w:color="E0E6E3"/>
+</w:tblBorders><w:tblCellMar><w:top w:w="50" w:type="dxa"/><w:left w:w="90" w:type="dxa"/>
+<w:bottom w:w="50" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>
+<w:style w:type="table" w:styleId="KeyValue"><w:name w:val="Key Value"/>
+<w:rPr><w:sz w:val="18"/></w:rPr>
+<w:tblPr><w:tblBorders>
+<w:top w:val="single" w:sz="4" w:color="CCD5D0"/><w:bottom w:val="single" w:sz="4" w:color="CCD5D0"/>
+<w:insideH w:val="single" w:sz="2" w:color="E0E6E3"/>
+</w:tblBorders><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="90" w:type="dxa"/>
+<w:bottom w:w="40" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>
 </w:styles>''' % W
 
 NUMBERING = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -181,8 +192,8 @@ class Document:
         return self.para(text, style='Caveat')
 
     def text_width(self):
-        # A4 with 2 cm margins, in twentieths of a point.
-        return 14570 if self.landscape else 9070
+        # A4 less two 2 cm margins, in twentieths of a point.
+        return 14570 if self.landscape else 9638
 
     def table(self, headers, rows, widths=None, fills=None, head_fills=None):
         """A grid. *widths* are relative; they are normalised to the page.
@@ -198,31 +209,40 @@ class Document:
         page = self.text_width()
         grid = ''.join(f'<w:gridCol w:w="{int(page * w / total)}"/>' for w in widths)
 
-        def cell(content, *, bold=False, w=1, fill=None):
+        def cell(content, *, bold=False, w=1, fill=None, color=None, rule=False):
             width = int(page * w / total)
             shade = (f'<w:shd w:val="clear" w:color="auto" w:fill="{fill}"/>' if fill else '')
+            under = ('<w:tcBorders><w:bottom w:val="single" w:sz="4" w:color="616D68"/>'
+                     '</w:tcBorders>' if rule else '')
             # A cell given as lines keeps each line's own weight: a header's day
             # range under its bold stage name is not bold.
             lines = content if isinstance(content, list) else [(content, bold)]
             paras = ''.join(
-                f'<w:p><w:pPr><w:spacing w:after="40"/></w:pPr>'
-                f'{_run(t, bold=b)}</w:p>' for t, b in (lines or [('', False)]))
-            return (f'<w:tc><w:tcPr><w:tcW w:w="{width}" w:type="dxa"/>{shade}</w:tcPr>'
-                    f'{paras}</w:tc>')
+                f'<w:p><w:pPr><w:spacing w:after="20" w:line="252" w:lineRule="auto"/></w:pPr>'
+                f'{_run(t, bold=b, color=color)}</w:p>' for t, b in (lines or [('', False)]))
+            return (f'<w:tc><w:tcPr><w:tcW w:w="{width}" w:type="dxa"/>{under}{shade}'
+                    f'</w:tcPr>{paras}</w:tc>')
 
-        out = [f'<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/>'
+        # Blank headers make a list of labels and values (Run, Project, Status):
+        # no header row, the label in grey, as in the PDF.
+        plain = not any(str(h).strip() if not isinstance(h, list) else
+                        any(str(t).strip() for t, _ in h) for h in headers)
+        style = 'KeyValue' if plain else 'TableGrid'
+        out = [f'<w:tbl><w:tblPr><w:tblStyle w:val="{style}"/>'
                f'<w:tblW w:w="{page}" w:type="dxa"/></w:tblPr><w:tblGrid>{grid}</w:tblGrid>']
         hf = list(head_fills or []) + [None] * cols
-        out.append('<w:tr><w:trPr><w:tblHeader/></w:trPr>'
-                   + ''.join(cell(h, bold=True, w=w, fill=f)
-                             for h, w, f in zip(headers, widths, hf))
-                   + '</w:tr>')
+        if not plain:
+            tint = None if any(head_fills or []) else 'EEF3F0'
+            out.append('<w:tr><w:trPr><w:tblHeader/></w:trPr>'
+                       + ''.join(cell(h, bold=True, w=w, fill=f or tint, rule=True)
+                                 for h, w, f in zip(headers, widths, hf))
+                       + '</w:tr>')
         for i, r in enumerate(rows):
             cells = list(r) + [''] * (cols - len(r))
             rf = list((fills or [])[i] if fills and i < len(fills) else []) + [None] * cols
-            out.append('<w:tr>' + ''.join(cell(c, w=w, fill=f)
-                                          for c, w, f in zip(cells, widths, rf))
-                       + '</w:tr>')
+            out.append('<w:tr>' + ''.join(
+                cell(c, w=w, fill=f, color='616D68' if plain and j == 0 else None)
+                for j, (c, w, f) in enumerate(zip(cells, widths, rf))) + '</w:tr>')
         out.append('</w:tbl>')
         # Word runs two adjacent tables together; an empty paragraph after one
         # keeps them apart and gives the next heading its spacing.
