@@ -10,6 +10,19 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="brand.css">
 <style>
+/* The card frame the other pages give their cards; this page never had it, so
+   every title and paragraph sat against the card's edge. */
+.card{padding:20px 22px}
+.card > .head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  flex-wrap:wrap;margin-bottom:12px}
+.card h3{font-size:16.5px}
+.card .hint{font-size:13.5px;color:var(--ink-3);font-weight:400;letter-spacing:0}
+.caveat{font-size:12.5px;line-height:1.55;color:var(--ink-3);margin:8px 0 0;max-width:78ch}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.foot{margin-top:18px;font-size:12.5px;color:var(--ink-3)}
+#trashEmpty{margin-left:0}
+.card select{font:inherit;font-size:14px;padding:7px 11px;border-radius:9px;
+  border:1px solid var(--line);background:var(--glass-2);color:var(--ink)}
 .runs{display:flex;flex-direction:column;gap:14px;margin-top:4px}
 .grp{margin-top:6px}
 .grp > h3{font-size:13px;font-family:var(--mono);letter-spacing:.09em;text-transform:uppercase;
@@ -24,6 +37,16 @@
 .run .right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;white-space:nowrap}
 .run .hyp{grid-column:1/-1;font-size:13.5px;color:var(--ink-2);margin-top:2px}
 .empty{color:var(--ink-3);font-size:14px;padding:18px 0}
+.trash-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:center;
+  padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:var(--glass-2)}
+.trash-row .obj{font-size:14.5px;font-weight:600;line-height:1.4;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.trash-row .meta{grid-column:1;font-size:12px;color:var(--ink-3);font-family:var(--mono)}
+.trash-row .acts{grid-column:2;grid-row:1/span 2;display:flex;gap:8px;align-items:center}
+.trash-row .kind{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);margin-right:8px}
+@media (max-width:40rem){.trash-row{grid-template-columns:1fr}
+  .trash-row .acts{grid-column:1;grid-row:auto}}
 </style>
 </head>
 <body>
@@ -73,6 +96,23 @@
     <span class="hint" id="detailHint"></span>
   </div>
   <div id="detail"></div>
+</section>
+
+<!-- What was deleted: kept, restorable, until its owner removes it for good. -->
+<section class="glass card" id="trashCard">
+  <div class="head">
+    <h3>Trash</h3>
+    <span class="hint" id="trashHint"></span>
+  </div>
+  <p class="caveat">Deleting a run or a project moves it here: it is no longer listed or
+    served, and nothing in it is lost. <b>Restore</b> puts it back as it was.
+    <b>Delete forever</b> removes its files from this server's storage — that frees the space
+    and cannot be undone.</p>
+  <div class="row" style="margin-top:12px">
+    <button class="btn stop" id="trashEmpty" type="button" hidden>Empty trash</button>
+    <span class="dim" id="trashMsg"></span>
+  </div>
+  <div class="runs" id="trashList"><p class="empty">Loading…</p></div>
 </section>
 
 <!-- Operators only: the server answers 403 to anyone else, and the card stays hidden. -->

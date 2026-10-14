@@ -389,6 +389,68 @@ def delete(identity, project_id):
     return True
 
 
+def _project_bin(identity):
+    return WS.workspace_root(identity) / '.trash' / 'projects'
+
+
+def trashed_projects(identity):
+    """This workspace's deleted projects, newest first."""
+    from . import run_store as RS
+    bin_ = _project_bin(identity)
+    if not bin_.is_dir():
+        return []
+    rows = []
+    for p in bin_.glob('*.json'):
+        if p.is_symlink() or not RS._TRASHED.match(p.stem):
+            continue
+        try:
+            doc = K.read_json(p)
+        except (OSError, ValueError):
+            doc = {}
+        rows.append({'trash_id': p.stem, 'kind': 'project',
+                     'project_id': RS._TRASHED.match(p.stem).group('name'),
+                     'name': (doc or {}).get('name'), 'deleted_at': RS.trashed_at(p.stem),
+                     'bytes': p.stat().st_size})
+    rows.sort(key=lambda r: r['deleted_at'] or 0, reverse=True)
+    return rows
+
+
+def _trashed_project(identity, trash_id):
+    from . import run_store as RS
+    if not RS._TRASHED.match(trash_id or ''):
+        return None
+    p = _project_bin(identity) / f'{trash_id}.json'
+    if p.is_symlink() or not p.is_file():
+        return None
+    WS.assert_owned(identity, p)
+    return p
+
+
+def restore_project(identity, trash_id):
+    """Put a deleted project back in the workspace. Returns its id, or None."""
+    from . import run_store as RS
+    p = _trashed_project(identity, trash_id)
+    if p is None:
+        return None
+    pid = RS._TRASHED.match(trash_id).group('name')
+    dst = WS.projects_dir(identity, create=True) / f'{pid}.json'
+    if dst.exists():
+        raise K.ContractError(f'a project {pid!r} already exists in this workspace; it was not '
+                              f'overwritten')
+    p.rename(dst)
+    return pid
+
+
+def purge_project(identity, trash_id):
+    """Remove a deleted project for good. Returns the bytes freed, or None."""
+    p = _trashed_project(identity, trash_id)
+    if p is None:
+        return None
+    freed = p.stat().st_size
+    p.unlink()
+    return freed
+
+
 def workspace_projects(identity):
     """The projects this workspace owns. Templates are listed separately."""
     d = WS.projects_dir(identity)

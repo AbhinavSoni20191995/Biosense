@@ -30,6 +30,9 @@ artifacts at the time, and the artifacts stay the durable truth.
 from __future__ import annotations
 
 import json
+import os
+import re
+import shutil
 import time
 from pathlib import Path
 
@@ -230,6 +233,115 @@ def trash(runs_dir, run_dir):
     dst = dst_dir / f'{src.name}-{time.strftime("%Y%m%d-%H%M%S")}'
     src.rename(dst)
     return dst
+
+
+_TRASHED = re.compile(r'^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)-(?P<at>\d{8}-\d{6})$')
+
+
+def dir_bytes(path):
+    """Bytes a directory (or file) takes on disk, following no symlink."""
+    p = Path(path)
+    if p.is_symlink():
+        return 0
+    if p.is_file():
+        return p.stat().st_size
+    total = 0
+    for root, dirs, files in os.walk(p, followlinks=False):
+        for f in files:
+            fp = Path(root) / f
+            try:
+                if not fp.is_symlink():
+                    total += fp.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def trashed_at(name):
+    """When an item was moved to the trash, from the stamp `trash` put on its name."""
+    m = _TRASHED.match(name)
+    if not m:
+        return None
+    try:
+        return time.mktime(time.strptime(m.group('at'), '%Y%m%d-%H%M%S'))
+    except ValueError:
+        return None
+
+
+def trashed(runs_dir, *, owner=None, operator=False):
+    """The runs in the trash this caller may see: their own, and — for an operator —
+    the ones nobody owns. Newest first, each with what it takes on disk."""
+    bin_ = Path(runs_dir) / TRASH
+    if not bin_.is_dir():
+        return []
+    rows = []
+    for d in bin_.iterdir():
+        if not d.is_dir() or d.is_symlink() or not _TRASHED.match(d.name):
+            continue
+        state = _read_state(state_path(d)) or {}
+        who = state.get('owner')
+        if not _may(who, owner, operator):
+            continue
+        rows.append({'trash_id': d.name, 'kind': 'run', 'run_id': state.get('run_id'),
+                     'title': state.get('title'), 'objective': state.get('objective'),
+                     'project_id': state.get('project_id'), 'status': state.get('status'),
+                     'started_at': state.get('started_at'), 'deleted_at': trashed_at(d.name),
+                     'bytes': dir_bytes(d), 'owner_known': who is not None})
+    rows.sort(key=lambda r: r['deleted_at'] or 0, reverse=True)
+    return rows
+
+
+def _may(item_owner, owner, operator):
+    """The same rule as deleting: the owner, or an operator for an item nobody owns."""
+    if item_owner is not None:
+        return item_owner == owner
+    return bool(operator)
+
+
+def _trashed_dir(runs_dir, trash_id, *, owner=None, operator=False):
+    """The trashed run *trash_id* if this caller may act on it, else None.
+
+    A trash id is a name, never a path: it must match the stamp `trash` writes,
+    resolve to a directory directly inside the trash, and not be a symlink — so
+    nothing outside the trash can ever be restored over or removed through it.
+    """
+    if not _TRASHED.match(trash_id or ''):
+        return None
+    bin_ = (Path(runs_dir) / TRASH).resolve()
+    d = bin_ / trash_id
+    if d.is_symlink() or not d.is_dir() or d.resolve().parent != bin_:
+        return None
+    state = _read_state(state_path(d)) or {}
+    if not _may(state.get('owner'), owner, operator):
+        return None
+    return d
+
+
+def restore_trashed(runs_dir, trash_id, *, owner=None, operator=False):
+    """Put a trashed run back where it was. Returns its directory, or None."""
+    d = _trashed_dir(runs_dir, trash_id, owner=owner, operator=operator)
+    if d is None:
+        return None
+    dst = Path(runs_dir).resolve() / _TRASHED.match(trash_id).group('name')
+    if dst.exists():
+        raise ValueError(f'a run directory named {dst.name} already exists; it was not '
+                         f'overwritten')
+    d.rename(dst)
+    return dst
+
+
+def purge_trashed(runs_dir, trash_id, *, owner=None, operator=False):
+    """Remove a trashed run for good. Returns the bytes freed, or None.
+
+    This is the only unlink of a run anywhere in BioSense, and it acts only on
+    something already in the trash: deleting a run still moves it there first.
+    """
+    d = _trashed_dir(runs_dir, trash_id, owner=owner, operator=operator)
+    if d is None:
+        return None
+    freed = dir_bytes(d)
+    shutil.rmtree(d)
+    return freed
 
 
 def find(runs_dir, run_id):

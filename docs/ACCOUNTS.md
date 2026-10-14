@@ -21,6 +21,28 @@ characters and it is **not a capability**: guessing one gets a 404, from the
 run endpoint, the event stream, the protocol export, the benchmark builder and
 the cancel route alike. The run list holds your own runs and nobody else's.
 
+### Deleting, the trash, and freeing storage
+
+Deleting a run or a project moves it to a trash folder — `<runs>/.trash/` for
+runs, `private_data/workspaces/u-<hash>/.trash/projects/` for projects — so a
+mistaken click loses nothing. The **Trash** card on the Runs page lists what
+*you* deleted, with what each item takes on disk, and offers two things:
+
+| | What it does | Undo? |
+|---|---|---|
+| **Restore** | puts the run or project back where it was; refused, never overwritten, if one of the same name exists | — |
+| **Delete forever** | removes its files from the server's storage (on a hosted deployment, the volume), and reports the space freed | **no** |
+
+**Empty trash** does the second for everything of yours at once. Both ask
+first, and the server refuses either without `{"confirm": true}` in the
+request (`POST /api/trash/<run|project>/<id>/purge`, `POST /api/trash/empty`),
+so nothing is removed by a stray click or a replayed request. The rules are
+the deleting rules: only an item's owner may restore or remove it, an operator
+alone for a run nobody owns, and a trash id is a name, never a path — it cannot
+reach outside the trash or follow a link out of it. Deleting forever is the
+only place BioSense unlinks a run, and it acts only on something already in
+the trash.
+
 ## The three roles
 
 | Role | Who | Real AI | Demo caps |

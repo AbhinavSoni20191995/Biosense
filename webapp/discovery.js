@@ -371,7 +371,7 @@ async function showProject() {
 function currentProject() { const s = $('#project'); return s ? s.value : null; }
 
 /* Deleting moves the run to the server's trash: no longer listed or served,
-   recoverable by whoever runs the server. Asked once, by name. */
+   recoverable from the Trash on the Runs page. Asked once, by name. */
 /* A name a person can change at any time. It is a label on the run, never a
    change to what the agents were asked. */
 async function renameRun(r) {
@@ -387,8 +387,8 @@ async function renameRun(r) {
 
 async function deleteRun(r) {
   const what = (r.objective || r.run_id).slice(0, 120);
-  if (!confirm(`Delete this run?\n\n"${what}"\n\nIt disappears from your lists. Whoever runs `
-    + 'the server can still recover it from the trash.')) return;
+  if (!confirm(`Delete this run?\n\n"${what}"\n\nIt moves to the Trash (Runs page), `
+    + 'where you can restore it or remove it for good.')) return;
   try {
     await post(`/api/discovery/${r.run_id}/delete`);
     if (state.run && state.run.run_id === r.run_id) forgetRun();
@@ -399,7 +399,7 @@ async function deleteRun(r) {
 async function deleteProject(id, name, runCount) {
   const msg = `Delete the project "${name || id}"?`
     + (runCount ? `\n\nIts ${runCount} run${runCount === 1 ? '' : 's'} will be deleted with it.` : '')
-    + '\n\nWhoever runs the server can still recover it from the trash.';
+    + '\n\nIt moves to the Trash (Runs page), where you can restore it or remove it for good.';
   if (!confirm(msg)) return;
   try {
     await post(`/api/projects/${encodeURIComponent(id)}/delete`, { delete_runs: true });

@@ -179,7 +179,110 @@ async function cont(runId) {
   } catch (e) { alert(e.message || 'that run cannot be continued'); }
 }
 
+/* ── the trash ────────────────────────────────────────────────────────────
+   Deleting moves a run or a project here; nothing is lost until its owner
+   says so. Restore puts it back. Delete forever is the only way storage is
+   given back, so it says exactly what goes and asks first. */
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+
+function fmtWhen(at) {
+  return at ? new Date(at * 1000).toLocaleString([], { month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit' }) : 'unknown';
+}
+
+const trashName = t => t.kind === 'run'
+  ? (t.title || t.objective || t.run_id || t.trash_id)
+  : (t.name || t.project_id || t.trash_id);
+
+async function loadTrash() {
+  const list = $('#trashList'); if (!list) return;
+  let d;
+  try { d = await BS.json('/api/trash'); }
+  catch (e) { list.textContent = ''; list.append(el('p', 'empty', e.message || String(e))); return; }
+  const items = [...(d.runs || []), ...(d.projects || [])]
+    .sort((a, b) => (b.deleted_at || 0) - (a.deleted_at || 0));
+  $('#trashHint').textContent = items.length
+    ? `${items.length} item${items.length === 1 ? '' : 's'} · ${fmtBytes(d.total_bytes)} on disk`
+    : 'empty';
+  $('#trashEmpty').hidden = !items.length;
+  list.textContent = '';
+  if (!items.length) {
+    list.append(el('p', 'empty', 'Nothing deleted. A run or project you delete waits here '
+      + 'until you restore it or delete it forever.'));
+    return;
+  }
+  items.forEach(t => list.append(trashRow(t)));
+}
+
+function trashRow(t) {
+  const row = el('div', 'trash-row');
+  const name = trashName(t);
+  const obj = el('div', 'obj');
+  obj.append(el('span', 'kind', t.kind), document.createTextNode(name));
+  obj.title = t.objective || name;
+  row.append(obj);
+  const acts = el('div', 'acts');
+  const restore = el('button', 'btn', 'Restore');
+  restore.type = 'button';
+  restore.addEventListener('click', () => trashAct(t, 'restore', restore));
+  const purge = el('button', 'btn stop', 'Delete forever');
+  purge.type = 'button';
+  purge.addEventListener('click', () => {
+    if (!confirm(`Delete this ${t.kind} forever?\n\n"${String(name).slice(0, 120)}"\n\n`
+      + `${fmtBytes(t.bytes)} of files will be removed from this server's storage. `
+      + 'This cannot be undone.')) return;
+    trashAct(t, 'purge', purge);
+  });
+  acts.append(restore, purge);
+  row.append(acts);
+  const meta = [`deleted ${fmtWhen(t.deleted_at)}`, fmtBytes(t.bytes)];
+  if (t.kind === 'run' && t.project_id) meta.push(t.project_id);
+  if (t.kind === 'run' && t.status) meta.push(t.status);
+  row.append(el('div', 'meta', meta.join(' · ')));
+  return row;
+}
+
+async function trashAct(t, action, btn) {
+  btn.disabled = true;
+  try {
+    const d = await BS.json(`/api/trash/${t.kind}/${encodeURIComponent(t.trash_id)}/${action}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(action === 'purge' ? { confirm: true } : {}) });
+    $('#trashMsg').textContent = action === 'purge'
+      ? `Deleted forever · ${fmtBytes(d.bytes_freed)} freed.`
+      : `Restored "${String(trashName(t)).slice(0, 60)}".`;
+    await loadTrash();
+    if (action === 'restore') await load();
+  } catch (e) {
+    btn.disabled = false;
+    $('#trashMsg').textContent = e.message || String(e);
+  }
+}
+
+function mountTrash() {
+  const empty = $('#trashEmpty'); if (!empty) return;
+  empty.addEventListener('click', async () => {
+    if (!confirm('Empty the trash?\n\nEvery deleted run and project of yours listed here will be '
+      + 'removed from this server\'s storage. This cannot be undone.')) return;
+    empty.disabled = true;
+    try {
+      const d = await BS.json('/api/trash/empty', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true }) });
+      $('#trashMsg').textContent = `Trash emptied · ${fmtBytes(d.bytes_freed)} freed.`;
+    } catch (e) { $('#trashMsg').textContent = e.message || String(e); }
+    empty.disabled = false;
+    await loadTrash();
+  });
+  loadTrash();
+}
+
 boot();
+mountTrash();
 
 /* The system check. Shown only when the server says this caller may run it;
    the page never decides that itself. */

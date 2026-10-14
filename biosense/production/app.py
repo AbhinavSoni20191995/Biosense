@@ -63,6 +63,10 @@ Endpoints
     POST /api/discovery/<id>/delete   move a finished run of yours to the server's trash
     POST /api/discovery/<id>/promote-reference   an admin adds a run's reference draft, named
     POST /api/projects/<id>/delete    move a project of yours (and optionally its runs) to the trash
+    GET  /api/trash                   your deleted runs and projects, with what each takes on disk
+    POST /api/trash/<kind>/<id>/restore   put one back (kind: run | project)
+    POST /api/trash/<kind>/<id>/purge     remove one for good ({"confirm": true}); cannot be undone
+    POST /api/trash/empty             remove everything of yours in the trash ({"confirm": true})
     POST /api/projects/<id>/parameters/<pid>/model   state how a parameter acts (a declared
                                   response) so the simulator can play it as an assumed effect
     POST /api/sim/project-effects  the assumed effects a project's modelled parameters imply
@@ -1985,6 +1989,11 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/delete', path)
             if m:
                 return self._delete_discovery(m.group(1))
+            if path == '/api/trash/empty':
+                return self._trash_empty(self._body())
+            m = re.fullmatch(r'/api/trash/(run|project)/([^/]+)/(restore|purge)', path)
+            if m:
+                return self._trash_act(m.group(1), m.group(2), m.group(3), self._body())
             m = re.fullmatch(r'/api/projects/([^/]+)/delete', path)
             if m:
                 return self._delete_project(m.group(1), self._body())
@@ -2375,7 +2384,68 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {'error': 'no such run of yours'})
         return self._send(200, {'run_id': rid, 'deleted': True,
                                 'note': 'Moved to the server\'s trash: no longer listed or '
-                                        'served, and recoverable by whoever runs the server.'})
+                                        'served. Restore it, or remove it for good, from the Trash on '
+                                        'the Runs page.'})
+
+    # ── the trash: what was deleted, and removing it for good ──────────────
+    def _trash_listing(self):
+        """The caller's deleted runs and projects, and the space they take."""
+        identity = self._identity()
+        runs = RS.trashed(self.discovery.runs_dir, owner=identity.owner,
+                          operator=self._is_operator(identity))
+        projects = PB.trashed_projects(identity)
+        return self._send(200, {
+            'runs': runs, 'projects': projects,
+            'total_bytes': sum(r['bytes'] for r in runs + projects),
+            'note': ('Deleted items stay here, recoverable, until you remove them for good. '
+                     'Removing one deletes its files from this server\'s storage and cannot '
+                     'be undone.')})
+
+    def _trash_act(self, kind, trash_id, action, body):
+        """Restore one deleted item, or remove it for good."""
+        identity = self._identity()
+        op = self._is_operator(identity)
+        if action == 'purge' and body.get('confirm') is not True:
+            return self._send(400, {'error': 'removing for good cannot be undone; send '
+                                             '{"confirm": true} to do it'})
+        try:
+            if kind == 'run':
+                fn = RS.restore_trashed if action == 'restore' else RS.purge_trashed
+                r = fn(self.discovery.runs_dir, trash_id, owner=identity.owner, operator=op)
+            else:
+                fn = PB.restore_project if action == 'restore' else PB.purge_project
+                r = fn(identity, trash_id)
+        except (ValueError, K.ContractError) as e:
+            return self._send(409, {'error': str(e)})
+        if r is None:
+            return self._send(404, {'error': f'no deleted {kind} of yours with that id'})
+        if action == 'restore':
+            return self._send(200, {'restored': trash_id, 'kind': kind,
+                                    'note': 'Back in its list, as it was when deleted.'})
+        return self._send(200, {'purged': trash_id, 'kind': kind, 'bytes_freed': r,
+                                'note': 'Removed from this server\'s storage for good.'})
+
+    def _trash_empty(self, body):
+        """Remove everything of the caller's in the trash, for good."""
+        if body.get('confirm') is not True:
+            return self._send(400, {'error': 'emptying the trash cannot be undone; send '
+                                             '{"confirm": true} to do it'})
+        identity = self._identity()
+        op = self._is_operator(identity)
+        freed, purged = 0, []
+        for r in RS.trashed(self.discovery.runs_dir, owner=identity.owner, operator=op):
+            n = RS.purge_trashed(self.discovery.runs_dir, r['trash_id'], owner=identity.owner,
+                                 operator=op)
+            if n is not None:
+                freed += n
+                purged.append(r['trash_id'])
+        for p in PB.trashed_projects(identity):
+            n = PB.purge_project(identity, p['trash_id'])
+            if n is not None:
+                freed += n
+                purged.append(p['trash_id'])
+        return self._send(200, {'purged': purged, 'bytes_freed': freed,
+                                'note': 'Removed from this server\'s storage for good.'})
 
     def _add_parameter(self, project_id, body):
         """Register a lever a hypothesis named into the caller's own project.
@@ -2522,8 +2592,8 @@ class Handler(BaseHTTPRequestHandler):
         PB.delete(identity, project_id)
         return self._send(200, {'project_id': project_id, 'deleted': True,
                                 'runs_deleted': deleted, 'runs_kept': kept,
-                                'note': 'Moved to the server\'s trash and recoverable by whoever '
-                                        'runs the server.'})
+                                'note': 'Moved to the trash. Restore it, or remove it for good, '
+                                        'from the Trash on the Runs page.'})
 
     def _extend_discovery(self, rid):
         """Give a live run more time, within the bounds the deployment sets."""
@@ -3361,6 +3431,8 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r'/api/discovery/([^/]+)/events', path)
         if m:
             return self._sse_discovery(m.group(1), int((q.get('after') or ['-1'])[0] or -1))
+        if path == '/api/trash':
+            return self._trash_listing()
         if path == '/api/identity':
             return self._send(200, self._identity_payload())
         m = re.fullmatch(r'/api/discovery/([^/]+)/protocol', path)
