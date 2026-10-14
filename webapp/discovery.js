@@ -414,10 +414,21 @@ async function deleteProject(id, name, runCount) {
    project to see what it already found, so that is one click, not three. Fed
    by the same listing as the Runs page, scoped to the account. */
 const RUN_LIST_MAX = 8;
+/* The runs poll every few seconds. Rebuilding the list on every poll threw
+   away whatever the person was doing in it: the Compare pickers snapped back
+   to their defaults and a comparison that came back landed in a box that had
+   already been replaced, so pressing Compare looked like nothing happened.
+   So the list is rebuilt only when what it shows changed, and the comparison
+   lives outside the rebuild. */
+let runListSig = null;
 function renderProjectRunList(snapshot) {
   const host = $('#projectRunList'); if (!host) return;
   const id = currentProject();
   const runs = ((snapshot && snapshot.runs) || []).filter(r => !id || r.project_id === id);
+  const sig = JSON.stringify([id, runs.map(r => [r.run_id, r.live, r.group, BS.fmt.status(r),
+    r.title, r.objective, r.hypothesis, r.hypothesis_count, r.started_at])]);
+  if (sig === runListSig && host.firstChild) return;
+  runListSig = sig;
   host.textContent = '';
   if (!runs.length) return;
   /* Folded by default once there are more than a couple: the list is for
@@ -609,42 +620,66 @@ const AGREE_CLS = { agreed: 'ok', same_direction: 'warn', opposed: 'bad',
 const AGREE_WORD = { agreed: 'agreed', same_direction: 'same way, different dose',
   opposed: 'opposite ways', only_a: 'run A only', only_b: 'run B only', differs: 'differs' };
 
+/* What the person picked and what came back, kept outside the run list so a
+   rebuild of the list redraws it rather than losing it. */
+const cmpState = { a: null, b: null, busy: false, result: null, error: null, out: null, go: null };
+
+function drawComparison() {
+  const out = cmpState.out; if (!out) return;
+  out.textContent = '';
+  if (cmpState.busy) out.append(el('p', 'dim', 'Comparing…'));
+  else if (cmpState.error) out.append(el('p', 'dim', cmpState.error));
+  else if (cmpState.result) renderComparison(out, cmpState.result);
+  if (cmpState.go) cmpState.go.disabled = cmpState.busy;
+}
+
 function compareBar(host, runs) {
   if (runs.length < 2) return;
+  const ids = runs.map(r => r.run_id);
   const bar = el('div', 'cmpbar');
   bar.append(el('span', 'dim', 'Compare two runs'));
-  const pick = n => {
+  const pick = (n, want, fallback) => {
     const sel = el('select', 'cmpsel');
     sel.setAttribute('aria-label', `Run ${n}`);
-    runs.forEach((r, i) => {
+    runs.forEach(r => {
       const o = el('option', null, (r.title || r.objective || r.run_id).slice(0, 60));
       o.value = r.run_id;
       sel.append(o);
     });
+    sel.value = ids.includes(want) ? want : ids[fallback];
     return sel;
   };
-  const a = pick('A'), b = pick('B');
-  if (runs.length > 1) b.selectedIndex = 1;
+  const a = pick('A', cmpState.a, 0), b = pick('B', cmpState.b, 1);
+  cmpState.a = a.value; cmpState.b = b.value;
+  const forget = () => { cmpState.result = null; cmpState.error = null; drawComparison(); };
+  a.addEventListener('change', () => { cmpState.a = a.value; forget(); });
+  b.addEventListener('change', () => { cmpState.b = b.value; forget(); });
   const go = el('button', 'btn', 'Compare');
+  go.type = 'button';
   const out = el('div', 'cmpout');
+  cmpState.out = out; cmpState.go = go;
   go.addEventListener('click', async () => {
-    if (a.value === b.value) {
-      out.textContent = ''; out.append(el('p', 'dim', 'Pick two different runs.')); return;
+    cmpState.result = null; cmpState.error = null;
+    if (cmpState.a === cmpState.b) {
+      cmpState.error = 'Pick two different runs.'; drawComparison(); return;
     }
-    go.disabled = true; out.textContent = '';
-    out.append(el('p', 'dim', 'Comparing…'));
+    cmpState.busy = true; drawComparison();
+    const pair = [cmpState.a, cmpState.b];
     try {
-      const d = await get(`/api/discovery/compare?a=${encodeURIComponent(a.value)}`
-        + `&b=${encodeURIComponent(b.value)}`);
-      out.textContent = '';
-      renderComparison(out, d);
+      const d = await get(`/api/discovery/compare?a=${encodeURIComponent(pair[0])}`
+        + `&b=${encodeURIComponent(pair[1])}`);
+      // Only if the pickers still show the pair that was asked about.
+      if (cmpState.a === pair[0] && cmpState.b === pair[1]) cmpState.result = d;
     } catch (e) {
-      out.textContent = '';
-      out.append(el('p', 'dim', e.message || 'Those two runs could not be compared.'));
-    } finally { go.disabled = false; }
+      cmpState.error = e.message || 'Those two runs could not be compared.';
+    } finally {
+      cmpState.busy = false;
+      drawComparison();
+    }
   });
   bar.append(a, el('span', 'dim', 'and'), b, go);
   host.append(bar, out);
+  drawComparison();
 }
 
 function renderComparison(host, c) {
@@ -3813,10 +3848,19 @@ function renderFlow(fp) {
       const row = svg('g', { class: `fl-item act-${it.action}` + (it.registered ? '' : ' new') });
       row.append(svg('rect', { x: x, y: y, width: colW, height: 19, rx: 6, class: 'fl-pill' }));
       const verb = it.action === 'keep' ? '' : PLAN_VERB[it.action] + ' ';
+      /* The label and the value share one pill. The value is right-aligned, so
+         an unclipped one ("3 1e6 cells/mL of working volume") grew leftwards
+         over the label and out of the column into the next stage. Both are
+         budgeted against the pill's width; the full text is in the tooltip. */
+      const full = it.value == null ? (it.registered ? '—' : 'dose?')
+        : `${typeof it.value === 'number' ? num(it.value) : it.value}${it.unit ? ' ' + it.unit : ''}`;
+      const val = clipText(full, 14);
+      // Widths per character: the mono value, and the bold sans label.
+      const room = Math.max(6, Math.floor((colW - 30 - val.length * 6.9) / 7.4));
       row.append(svg('text', { x: x + 8, y: y + 13, class: 'fl-pill-t' },
-        clipText(`${verb}${it.label}`, 24)));
+        clipText(`${verb}${it.label}`, room)));
       row.append(svg('text', { x: x + colW - 8, y: y + 13, class: 'fl-pill-v', 'text-anchor': 'end' },
-        it.value == null ? (it.registered ? '—' : 'dose?') : `${num(it.value)}${it.unit ? ' ' + it.unit : ''}`));
+        val));
       const t = svg('title');
       t.textContent = it.text + (it.hypothesis_id ? ` — ${it.hypothesis_id}` : '');
       row.append(t);
