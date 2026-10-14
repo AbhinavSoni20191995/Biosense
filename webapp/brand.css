@@ -26,10 +26,12 @@
 
   /* surfaces — light */
   --bg:#eef3f0; --bg-2:#e2ebe6;
-  --glass:rgba(255,255,255,.62); --glass-2:rgba(255,255,255,.44);
-  --glass-brd:rgba(255,255,255,.75); --glass-hi:rgba(255,255,255,.9);
-  --shadow:0 1px 2px rgba(10,30,20,.05), 0 8px 24px rgba(10,40,25,.07),
-           0 24px 60px rgba(10,40,25,.06);
+  --glass:rgba(255,255,255,.64); --glass-2:rgba(255,255,255,.46);
+  --glass-brd:rgba(255,255,255,.78); --glass-hi:rgba(255,255,255,.9);
+  --shadow:0 1px 2px rgba(10,30,20,.05), 0 5px 14px rgba(10,40,25,.055),
+           0 14px 34px rgba(10,40,25,.05);
+  --shadow-lift:0 2px 4px rgba(10,30,20,.06), 0 10px 24px rgba(10,40,25,.09),
+           0 22px 52px rgba(10,40,25,.07);
   --surface-solid:#f4f8f6;
 
   /* ink */
@@ -48,8 +50,10 @@
   --bg:#070b0e; --bg-2:#0c1216;
   --glass:rgba(23,31,36,.58); --glass-2:rgba(30,40,46,.42);
   --glass-brd:rgba(255,255,255,.1); --glass-hi:rgba(255,255,255,.16);
-  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45),
-           0 30px 70px rgba(0,0,0,.4);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.4),
+           0 18px 42px rgba(0,0,0,.36);
+  --shadow-lift:0 2px 4px rgba(0,0,0,.45), 0 12px 28px rgba(0,0,0,.5),
+           0 26px 60px rgba(0,0,0,.42);
   --surface-solid:#151a1e;
   --brand:#2bb96c; --brand-bright:#3ddc84; --brand-deep:#1d9a57;
   --ink:#e9f1ed; --ink-2:#a7b8b0; --ink-3:#7c8d86; --line:rgba(255,255,255,.1);
@@ -60,8 +64,10 @@
   --bg:#070b0e; --bg-2:#0c1216;
   --glass:rgba(23,31,36,.58); --glass-2:rgba(30,40,46,.42);
   --glass-brd:rgba(255,255,255,.1); --glass-hi:rgba(255,255,255,.16);
-  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45),
-           0 30px 70px rgba(0,0,0,.4);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.4),
+           0 18px 42px rgba(0,0,0,.36);
+  --shadow-lift:0 2px 4px rgba(0,0,0,.45), 0 12px 28px rgba(0,0,0,.5),
+           0 26px 60px rgba(0,0,0,.42);
   --surface-solid:#151a1e;
   --brand:#2bb96c; --brand-bright:#3ddc84; --brand-deep:#1d9a57;
   --ink:#e9f1ed; --ink-2:#a7b8b0; --ink-3:#7c8d86; --line:rgba(255,255,255,.1);
@@ -76,24 +82,27 @@ body{
   color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased;
   min-height:100vh; position:relative; overflow-x:hidden;
 }
-/* The ground: brand gradient wash plus the node field from the brand film. */
+/* The ground: brand gradient wash plus the node field from the brand film.
+   The wash carries the brand; the dot field is a whisper of texture, kept
+   well under the content so cards, not the backdrop, lead the eye. */
 body::before{
   content:""; position:fixed; inset:0; z-index:-2; pointer-events:none;
   background:
-    radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--brand) 22%, transparent), transparent 62%),
-    radial-gradient(900px 560px at 94% 4%, color-mix(in srgb, var(--sage) 20%, transparent), transparent 58%),
-    radial-gradient(760px 520px at 60% 100%, color-mix(in srgb, var(--brand-deep) 14%, transparent), transparent 60%),
+    radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 60%),
+    radial-gradient(900px 560px at 94% 4%, color-mix(in srgb, var(--sage) 16%, transparent), transparent 56%),
+    radial-gradient(760px 520px at 60% 100%, color-mix(in srgb, var(--brand-deep) 11%, transparent), transparent 58%),
     linear-gradient(170deg, var(--bg) 0%, var(--bg-2) 100%);
 }
+/* A single soft dot field. The two overlaid grid lines it used to carry read
+   as graph paper under every card; the dots alone give depth without the
+   noise, and the mask fades them before they reach the footer. */
 body::after{
-  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.5;
-  background-image:
-    radial-gradient(currentColor 1px, transparent 1.4px),
-    linear-gradient(to right, currentColor 1px, transparent 1px),
-    linear-gradient(to bottom, currentColor 1px, transparent 1px);
-  background-size:38px 38px, 152px 152px, 152px 152px;
-  color:color-mix(in srgb, var(--ink) 9%, transparent);
-  mask-image:radial-gradient(ellipse 110% 85% at 50% 0%, #000 35%, transparent 78%);
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.4;
+  background-image:radial-gradient(currentColor .9px, transparent 1.3px);
+  background-size:40px 40px;
+  color:color-mix(in srgb, var(--ink) 7%, transparent);
+  mask-image:radial-gradient(ellipse 120% 70% at 50% -5%, #000 20%, transparent 70%);
+  -webkit-mask-image:radial-gradient(ellipse 120% 70% at 50% -5%, #000 20%, transparent 70%);
 }
 
 .wrap{max-width:1360px;margin:0 auto;padding:0 20px 72px}
@@ -118,7 +127,30 @@ a:hover{text-decoration:underline}
   border-radius:var(--r);
   box-shadow:var(--shadow);
   position:relative;
+  /* Only the properties that change on interaction — never left/top, which the
+     canvas sets every frame of a drag. */
+  transition:box-shadow .2s ease, border-color .18s ease;
 }
+/* Sections arrive, rather than snapping in: a short rise as the page loads, and
+   again when a panel the run fills later (a detail, a result) is unhidden. */
+@keyframes bs-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:no-preference){
+  .wrap > section.card,
+  .cols:not(.canvas) > .stack > section.card{
+    animation:bs-rise .34s cubic-bezier(.22,.61,.36,1) both;
+  }
+}
+/* On the pages whose cards are plain siblings under .wrap (runs, data,
+   simulator, the loop tracker) they carry no column gap, so give them the same
+   vertical rhythm the two-column pages get — otherwise a card sits flush under
+   the one above and the two shadows collide. No effect on the console and quick
+   loop, whose .wrap child is the .cols grid, not a section. */
+.wrap > section.card ~ section.card{margin-top:20px}
+/* A foldable panel's title is a control: it should answer the cursor. The caret
+   itself already rotates (page-local); this gives the whole header a quiet tint
+   on hover so it reads as clickable before you click it. */
+.fold > .head{border-radius:9px;transition:color .15s ease}
+.fold > .head:hover h3,.fold > .head:hover h3::before{color:var(--brand)}
 /* top highlight: the thing that makes glass read as glass */
 .glass::before{
   content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;

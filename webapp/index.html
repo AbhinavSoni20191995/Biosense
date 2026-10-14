@@ -85,7 +85,11 @@ svg.graph { width: 100%; height: auto; display: block; overflow: visible; paddin
 .msg { font-family: var(--mono); font-size: 11.5px; font-weight: 600; }
 .msgbg { rx: 5; }
 .pulse { opacity: .5; }
-.elabel { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-3); }
+/* A halo in the page colour, painted behind the glyphs, keeps an edge label
+   readable where the line it sits on, a node box, or a live message bubble
+   crosses underneath it — instead of the two colliding into noise. */
+.elabel { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-3);
+  paint-order: stroke; stroke: var(--bg); stroke-width: 3.5px; stroke-linejoin: round; }
 
 /* lanes */
 .lane { padding: 11px 15px; border-top: 1px solid var(--line); }
