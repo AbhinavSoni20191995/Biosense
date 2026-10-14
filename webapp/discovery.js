@@ -2968,6 +2968,7 @@ function renderQuestions(snap) {
     if (q.kind === 'alternate') qline.append(el('span', 'chip', 'alternate plan'));
     if (q.kind === 'protocol') qline.append(el('span', 'chip', 'protocol change'));
     if (q.kind === 'breakthrough') qline.append(el('span', 'chip', 'past the apparatus'));
+    if (q.kind === 'report') qline.append(el('span', 'chip', 'write-up'));
     qline.append(document.createTextNode(q.question));
     box.append(qline);
     box.append(el('div', 'dim ask-who', [q.asked_by, BS.fmt.ago(Date.parse(q.asked_at) / 1000)]
@@ -2981,6 +2982,8 @@ function renderQuestions(snap) {
         ? 'The orchestrator is writing the changes… '
         : q.kind === 'breakthrough'
         ? 'The orchestrator is designing past the apparatus… '
+        : q.kind === 'report'
+        ? 'The communication agent is writing the run up… '
         : 'The orchestrator is reading its run and answering… ')
         + `(${BS.fmt.elapsed(since)} so far; a long answer is a few minutes)`));
     } else if (q.answer) {
@@ -2995,6 +2998,14 @@ function renderQuestions(snap) {
     if (q.kind === 'breakthrough' && q.wrote && q.wrote.breakthrough) {
       box.append(el('p', 'dim', `Wrote \u201c${q.wrote.breakthrough}\u201d \u2014 under `
         + 'Beyond the apparatus.'));
+    }
+    if (q.kind === 'report' && q.wrote && q.wrote.communication) {
+      box.append(el('p', 'dim', 'Wrote the narrative (captions for '
+        + q.wrote.communication.join(', ') + '). It is carried by the final report:'));
+      const row = el('div', 'row');
+      row.append(exportLink(snap.run_id, 'pdf', 'Final report (PDF)', '&view=report'),
+        exportLink(snap.run_id, 'docx', 'Final report (Word)', '&view=report'));
+      box.append(row);
     }
     if (q.kind === 'protocol' && q.wrote && q.wrote.edits) {
       const e = q.wrote.edits;
@@ -3018,6 +3029,8 @@ function renderQuestions(snap) {
           ? 'It also changed these, and it was asked to write only the protocol edits: '
           : q.kind === 'breakthrough'
           ? 'It also changed these, and it was asked to write only the design: '
+          : q.kind === 'report'
+          ? 'It also changed these, and it was asked to write only the narrative: '
           : 'While answering, these files changed (it was asked not to change anything): ')
         + q.files_changed.join(', ')));
     }
@@ -3032,6 +3045,7 @@ function renderQuestions(snap) {
   if ($('#altBtn')) $('#altBtn').disabled = busy;
   if ($('#editBtn')) $('#editBtn').disabled = busy;
   if ($('#btBtn')) $('#btBtn').disabled = busy;
+  if ($('#repBtn')) $('#repBtn').disabled = busy;
   clearTimeout(askTimer);
   if (busy) {
     askTimer = setTimeout(() => get(`/api/discovery/${snap.run_id}`)
@@ -3223,6 +3237,10 @@ async function askQuestion(ev, kind) {
   if (kind === 'breakthrough' && text.length < 3) {
     text = 'Design the experiment past the apparatus that gets closest to the aim.';
   }
+  if (kind === 'report' && text.length < 3) {
+    text = 'Write the run up for reading: an executive summary and what each stage looks '
+      + 'like at the bench.';
+  }
   if (!snap || text.length < 3) {
     if (kind === 'alternate') {
       $('#askMsg').textContent = 'Say which of the run\u2019s leads to work up.';
@@ -3235,6 +3253,7 @@ async function askQuestion(ev, kind) {
   if ($('#altBtn')) $('#altBtn').disabled = true;
   if ($('#editBtn')) $('#editBtn').disabled = true;
   if ($('#btBtn')) $('#btBtn').disabled = true;
+  if ($('#repBtn')) $('#repBtn').disabled = true;
   $('#askMsg').textContent = '';
   try {
     await post(`/api/discovery/${snap.run_id}/ask`,
@@ -3247,6 +3266,7 @@ async function askQuestion(ev, kind) {
     if ($('#altBtn')) $('#altBtn').disabled = false;
     if ($('#editBtn')) $('#editBtn').disabled = false;
     if ($('#btBtn')) $('#btBtn').disabled = false;
+    if ($('#repBtn')) $('#repBtn').disabled = false;
   }
 }
 
@@ -4210,9 +4230,25 @@ function renderExports(snap) {
       + 'process on one page, materials, each stage as lines to tick off with every dose and '
       + 'its letter, the vessel settings, what to measure, the round one vessel per row, and '
       + 'an approval block for a named person to sign. Nothing in it is approved.'));
+    /* Everything at the end, as one document: cover, executive summary, the
+       process stage by stage as it looks at the bench, then the protocol and
+       each specialist's section as chapters. The narrative layer appears in it
+       once the communication agent has written one ("Write the run up" in the
+       Ask box); the report renders without it too. */
+    const rep = el('div', 'row');
+    rep.append(exportLink(id, 'pdf', 'Final report (PDF)', '&view=report'),
+      exportLink(id, 'docx', 'Final report (Word)', '&view=report'));
+    host.append(rep);
+    host.append(el('div', 'note', 'The whole run as one document a reader outside the loop '
+      + 'can follow: summary, the process at the bench stage by stage, the round, the full '
+      + 'protocol, and the literature and bioinformatics sections as chapters. Nothing in it '
+      + 'is approved.'));
     renderProtocolEdits(host, snap);
     mk('Export protocol (Markdown)', `/api/discovery/${id}/protocol?format=md`,
       'The recommended protocol, its provenance tags and the hypothesis ledger.');
+    mk('Process figure (SVG)', `/api/discovery/${id}/protocol?format=svg`,
+      'The stages to scale with what goes into each, as a picture; add &theme=dark for the '
+      + 'dark variant.');
   }
   const b = el('button', 'btn go', 'Create benchmark from this run');
   b.addEventListener('click', async () => {
@@ -4289,6 +4325,8 @@ function wire() {
   if (edit) edit.addEventListener('click', () => askQuestion(null, 'protocol'));
   const beyond = $('#btBtn');
   if (beyond) beyond.addEventListener('click', () => askQuestion(null, 'breakthrough'));
+  const rep = $('#repBtn');
+  if (rep) rep.addEventListener('click', () => askQuestion(null, 'report'));
   const np = $('#newProjectBtn');
   if (np) {
     np.addEventListener('click', () => {

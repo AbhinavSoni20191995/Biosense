@@ -609,7 +609,8 @@ def cmd_simulate(a):
 
 KINDS_BY_NAME = {'analysis_plan': 'analysis_plan', 'analysis_result': 'analysis_result',
                  'quantified_hypothesis': 'quantified_hypothesis',
-                 'research_context': 'research_context', 'discovery_request': 'discovery_request'}
+                 'research_context': 'research_context', 'discovery_request': 'discovery_request',
+                 'communication': 'communication'}
 
 
 def kind_of(path):
@@ -837,6 +838,30 @@ def cmd_protocol_edits(a):
     return 0
 
 
+def cmd_communication(a):
+    """The run told plainly for the final report, checked against the protocol's numbers."""
+    from . import communication as CM
+    PJ.load(a.project, a.projects_dir)          # the project must exist
+    here = Path(a.out).parent
+    try:
+        protocol = K.read_json(a.protocol if a.protocol else here / 'protocol_summary.json')
+    except (OSError, ValueError):
+        raise K.ContractError('communication needs the validated protocol to check its '
+                              'numbers against: pass --protocol, or write --out beside the '
+                              'run\'s protocol_summary.json')
+    doc = CM.build(K.read_json(a.draft), protocol=protocol, project_id=a.project,
+                   run_id=a.run_id, created_by=a.created_by or 'communication agent',
+                   requested_by=a.requested_by, ask=a.request)
+    K.write_json_atomic(a.out, doc)
+    print(json.dumps({'written': a.out, 'audience': doc['audience'],
+                      'paragraphs': len(doc['executive_summary']),
+                      'stage_captions': [s['stage_id'] for s in doc['stages']],
+                      'next': 'Carried by the final report (Word, PDF) when it is exported. '
+                              'The run\'s own files are unchanged; nothing here is approved '
+                              'and every value still prints from the protocol.'}, indent=1))
+    return 0
+
+
 def cmd_data_request(a):
     """What this run could not get, asked of the person who can supply it."""
     from . import datareq as DR
@@ -890,8 +915,9 @@ def cmd_template(a):
     from . import alternates as AL
     from . import breakthrough as BT
     from . import protocol_edits as PE
+    from . import communication as CM
     shape = {'breakthrough': BT.TEMPLATE, 'design-choices': DESIGN_TEMPLATE, 'term': TERM_TEMPLATE,
-             'protocol-edits': PE.TEMPLATE,
+             'protocol-edits': PE.TEMPLATE, 'communication': CM.TEMPLATE,
              'round-plan': RP.TEMPLATE, 'devmap': DM.TEMPLATE,
              'sota': SO.TEMPLATE, 'route-select': RS.TEMPLATE,
              'fidelity': FD.TEMPLATE, 'baseline': BL.TEMPLATE, 'bench': BN.TEMPLATE,
@@ -1029,6 +1055,15 @@ def main(argv=None):
     p.add_argument('--request', help="what the person asked for, in their words")
     p.add_argument('--run-id'); p.add_argument('--created-by'); p.add_argument('--requested-by')
     p.set_defaults(fn=cmd_protocol_edits)
+    p = sub.add_parser('communication', help='the run told plainly for the final report; '
+                                             'every number checked against the protocol')
+    p.add_argument('--project', required=True); p.add_argument('--projects-dir')
+    p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
+    p.add_argument('--protocol', help='the validated protocol_summary.json to check numbers '
+                                      'against (default: beside --out)')
+    p.add_argument('--request', help="what the person asked for, in their words")
+    p.add_argument('--run-id'); p.add_argument('--created-by'); p.add_argument('--requested-by')
+    p.set_defaults(fn=cmd_communication)
     p = sub.add_parser('data-request', help='ask the person for what this run could not '
                                            'fetch, so the next round can use it')
     p.add_argument('--draft', required=True); p.add_argument('--out', required=True)
@@ -1041,7 +1076,7 @@ def main(argv=None):
     p.add_argument('what', choices=['hypothesis', 'design-choices', 'term', 'round-plan',
                                     'devmap', 'sota', 'route-select', 'fidelity',
                                     'baseline', 'bench', 'alternates', 'data-request',
-                                    'protocol-edits', 'breakthrough'])
+                                    'protocol-edits', 'breakthrough', 'communication'])
     p.set_defaults(fn=cmd_template)
     a = ap.parse_args(argv)
     try:

@@ -82,6 +82,8 @@ SCHEMAS = {
     'alternate_plans': 'alternate_plans.schema.json',
     # the experiment closest to the aim if the apparatus were not the limit
     'breakthrough_design': 'breakthrough_design.schema.json',
+    # the run told plainly for the final report; numbers only the protocol carries
+    'communication': 'communication.schema.json',
     # what the model said, what was measured, and the gap: where the loop closes
     'prediction_residual': 'prediction_residual.schema.json',
     'expert_knowledge': 'expert_knowledge.schema.json',

@@ -39,6 +39,12 @@ People run the bioreactor. Nothing here touches an actuator.
   cannot be settled in this machine at all.
 - `analysis`: turns a returned bioreactor run into a verdict, per-arm target and
   QC status, a genotype comparison and diagnosis hypotheses.
+- `communicator`: after the work is done, writes the run up for reading — an
+  executive summary and one plain-language caption per protocol stage saying
+  what the stage looks like at the bench — as `communication.json`, which the
+  final-report export (Word, PDF, the process figure) then carries. It never
+  invents a number: the CLI refuses prose with a number the protocol does not
+  carry. Dispatch it once, at the end, when the protocol summary exists.
 - `biosimulator`, `outcome`: the older in-silico cardiac campaign. Use only if
   the person asks for it.
 
@@ -187,6 +193,11 @@ the allowed set each decision was validated against — which is why those field
 are worth writing properly as you go, rather than filling them in to pass
 validation. It also shows, beside your choice, what the deterministic policy
 would have done, so a reader can see where you departed from it and why.
+
+Then, when a protocol summary exists, dispatch `communicator` once with the
+run directory, so the exported final report carries the plain-language layer
+beside the validated numbers. Its file changes nothing and is optional: the
+final report renders without it, with an assembled summary instead.
 
 ## Rules
 

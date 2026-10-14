@@ -148,6 +148,59 @@ def cmd_report(a):
     return 0
 
 
+def cmd_final_report(a):
+    """The whole run as one document: cover, summary, the process at the bench, chapters.
+
+    Reads only what the run already wrote: the protocol summary, the narrative
+    the communication agent wrote (when one passed its contract), the person's
+    protocol edits, the alternate plans, and the specialists' files. Writes
+    <out>/final_report.docx and .pdf and the process figure as SVG.
+    """
+    from ..evidence import alternates as AL
+    from ..evidence import protocol_edits as PE
+    from . import final_report as FR
+    run = Path(a.run)
+    try:
+        doc = K.read_json(run / 'protocol_summary.json')
+    except (OSError, ValueError):
+        raise K.ContractError(f'{run} has no readable protocol_summary.json; the final report '
+                              f'is written from a finished run\'s own files')
+    for name, key in (('bench_setup.json', 'bench_setup'),):
+        try:
+            doc[key] = K.read_json(run / name)
+        except (OSError, ValueError):
+            pass
+    alts = AL.load(run)
+    if alts:
+        doc['alternate_plans'] = alts
+    if not a.no_edits:
+        doc = PE.apply(doc, PE.load(run))
+    out = Path(a.out or run)
+    out.mkdir(parents=True, exist_ok=True)
+    run_id = a.run_id or run.name
+    formats = ('docx', 'pdf', 'svg') if a.format == 'all' else (a.format,)
+    written = {}
+    if 'docx' in formats:
+        p = out / 'final_report.docx'
+        p.write_bytes(FR.tobytes(doc, run_dir=run, run_id=run_id))
+        written['docx'] = str(p)
+    if 'pdf' in formats:
+        p = out / 'final_report.pdf'
+        p.write_bytes(FR.tobytes_pdf(doc, run_dir=run, run_id=run_id))
+        written['pdf'] = str(p)
+    if 'svg' in formats:
+        for name, dark in (('process_flow.svg', False), ('process_flow.dark.svg', True)):
+            (out / name).write_text(FR.flow_svg(doc, dark=dark), encoding='utf-8')
+            written.setdefault('svg', []).append(str(out / name))
+    from ..evidence import communication as CM
+    _print({'run': str(run), 'written': written,
+            'narrative': bool(CM.load(run)),
+            'note': 'Rendered from the run\'s own files; nothing in it is approved. Without a '
+                    'communication.json the report carries an assembled summary instead of '
+                    'the narrative.'})
+    return 0
+
+
 def cmd_demo(a):
     """Fixed offline loop on the synthetic fixtures (no LLM): it0 -> revise -> it1 -> complete_qc -> release tests -> success."""
     from analysis_agent.protocol_runner import simulate_protocol
@@ -303,6 +356,16 @@ def main(argv=None):
     p.add_argument('--out', required=True, help='output .html path')
     p.add_argument('--pdf', help='also print a PDF here (needs headless Chromium)')
     p.add_argument('--title'); p.set_defaults(fn=cmd_report)
+    p = sub.add_parser('final-report', help='the whole run as one Word/PDF document plus the '
+                                            'process figure (SVG), from the run\'s own files')
+    p.add_argument('--run', required=True, help='a finished discovery run directory '
+                                                '(holds protocol_summary.json)')
+    p.add_argument('--out', help='output directory (default: the run directory)')
+    p.add_argument('--format', choices=['all', 'docx', 'pdf', 'svg'], default='all')
+    p.add_argument('--run-id')
+    p.add_argument('--no-edits', action='store_true',
+                   help='render the protocol as the run wrote it, without the person\'s edits')
+    p.set_defaults(fn=cmd_final_report)
     p = sub.add_parser('autonomy', help='show the effective human-in-the-loop gates for a request')
     p.add_argument('--request', required=True); p.set_defaults(fn=cmd_autonomy)
     p = sub.add_parser('advise', help='what the orchestrator may choose for this analysis, and what the policy advises')

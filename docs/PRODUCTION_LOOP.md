@@ -43,6 +43,7 @@ bioreactor; nothing here touches an actuator.
 | `bench_setup` | literature agent | media per stage, reagents, handling, consumables, safety, do's and don'ts with their reasons; a supplier or catalogue number only where a source states it, everything else "use your own qualified stock" |
 | `baseline_protocol` | literature agent | the published route stage by stage: every stage of the project, what goes in the medium, the dose where a source gives one with the sentence quoted; `reported` / `adapted` / `design_choice` / `gap` per factor, and a stage nobody addressed stated rather than missing |
 | `loop_decision` | orchestrator agent, or the policy | type, `authored_by`, `reasoning`, `considered` alternatives, `hypotheses` with their basis, `tool_calls`, `consult_ids`, the `allowed_actions` it was validated against, the `policy_advice` it may have overridden, `advances_iteration`, `status` |
+| `communication` | communication agent | the run told plainly for the final report: executive-summary paragraphs, one caption per protocol stage (what it is for, what it looks like at the bench, what to watch for), closing; **every number in the prose must already stand in the protocol** — the builder refuses one that does not — and it changes nothing and claims no approval |
 
 ## The whole route, two runs compared, and a copy for the bench
 
@@ -89,6 +90,38 @@ blocks onto A4 with the built-in fonts, so neither is a dependency.
 
 **The bench copy can be changed from the Ask conversation**
 (`biosense/evidence/protocol_edits.py`, the third kind of turn, below).
+
+## The final report: everything at the end, as one document
+
+The run's record is exact and scattered — the bench copy, the landscape page,
+the specialists' sections — and the person taking the result to a lab meeting
+or a collaborator was assembling it by hand. `biosense/production/final_report.py`
+composes it (`?format=docx|pdf&view=report`, or
+`production.cli final-report --run <run-dir>`): a cover with the provenance
+key, an executive summary, the process stage by stage as it looks at the
+bench, the round, then the full bench protocol and the literature and
+bioinformatics sections as chapters, from the same blocks the standalone
+exports write. It computes nothing, upgrades no provenance letter, says
+PROPOSED — NOT APPROVED where the bench copy says it, and ends in the same
+empty approval block. `?format=svg` (and `final-report`'s `process_flow.svg`)
+is the process as a picture: the stages to scale, what goes into each, a gap
+drawn as a gap — for the run page and anywhere that can show an image, which
+the Word and PDF writers deliberately cannot.
+
+The words between the tables come from the **communication agent**
+(`discovery_loop/agents/communicator/`, `biosense/evidence/communication.py`;
+the fifth kind of Ask turn, "Write the run up", or a dispatch at the end of a
+live run). It writes exactly one file, `communication.json`: executive-summary
+paragraphs and one plain-language caption per protocol stage — what the stage
+is for, what somebody actually does in it, what to watch for. Its hard rule is
+that **a number in the prose must already stand in the protocol**: every
+numeric token is checked against the numbers the validated protocol carries
+(identifiers like PMC123 and a DOI keep their digits; small counting numbers
+pass), and a caption with any other number is refused by name — the checker
+also refuses overclaiming ("proves", "optimal") and any claim of approval. The
+narrative is optional and never load-bearing: the report renders without it
+with an assembled summary instead, and every value prints from the protocol's
+own rows beside the prose, never from the prose.
 
 ## From a recommendation to something somebody can run
 

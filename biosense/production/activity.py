@@ -45,12 +45,12 @@ from . import stages as ST
 # The specialists the orchestrator dispatches to, in the order a run uses them.
 # `orchestrator` is first because it is the one that is working whenever nothing
 # else is.
-AGENTS = ('orchestrator', 'literature', 'bioinformatics', 'analyst', 'analysis', 'biosimulator',
-          'outcome')
+AGENTS = ('orchestrator', 'literature', 'bioinformatics', 'analyst', 'analysis', 'communicator',
+          'biosimulator', 'outcome')
 AGENT_LABEL = {
     'orchestrator': 'Orchestrator', 'literature': 'Literature',
     'bioinformatics': 'Bioinformatics', 'analyst': 'Data analyst', 'analysis': 'Analysis',
-    'biosimulator': 'BioSimulator', 'outcome': 'Outcome',
+    'communicator': 'Communication', 'biosimulator': 'BioSimulator', 'outcome': 'Outcome',
 }
 QUEUED, RUNNING, COMPLETE, FAILED, CANCELLED = (
     'queued', 'running', 'complete', 'failed', 'cancelled')

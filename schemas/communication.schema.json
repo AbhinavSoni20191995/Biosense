@@ -1,0 +1,132 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://example.org/biosense/communication-v1.0",
+ "title": "Communication 1.0: the run's result told plainly, beside the validated numbers",
+ "description": "The plain-language layer of the final report: what the run concluded and what each stage looks like at the bench, written for the person who was not in the loop. It is narrative only. Every number a caption uses must already stand in the validated protocol -- the builder refuses one that does not -- and the rendered report prints every value from the protocol's own rows, never from this prose. It changes no hypothesis, no protocol value and no round plan, and it may not claim approval.",
+ "type": "object",
+ "required": [
+  "kind",
+  "schema_version",
+  "project_id",
+  "executive_summary",
+  "stages",
+  "does_not_change",
+  "note"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "kind": {
+   "const": "communication"
+  },
+  "schema_version": {
+   "type": "string"
+  },
+  "project_id": {
+   "type": "string"
+  },
+  "run_id": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "created_at": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "created_by": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "requested_by": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "request": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "description": "What the person asked for, in their own words, kept as data."
+  },
+  "audience": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 200,
+   "description": "Who the narrative is written for, when the request named one (a lab meeting, a collaborator, a sponsor)."
+  },
+  "executive_summary": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 6,
+   "items": {
+    "type": "string",
+    "minLength": 40,
+    "maxLength": 900
+   },
+   "description": "What the run asked, what it found and what happens next, as paragraphs a reader outside the project follows. Claims stay in the evidence language of the run."
+  },
+  "stages": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 12,
+   "items": {
+    "type": "object",
+    "required": [
+     "stage_id",
+     "headline",
+     "at_the_bench"
+    ],
+    "additionalProperties": false,
+    "properties": {
+     "stage_id": {
+      "type": "string",
+      "description": "A stage the protocol's timeline carries; the builder refuses any other."
+     },
+     "headline": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 200,
+      "description": "The stage in one sentence: what it is for and what changes in it."
+     },
+     "at_the_bench": {
+      "type": "string",
+      "minLength": 40,
+      "maxLength": 1200,
+      "description": "What the work looks like on the bench during this stage: what is in the vessel, what somebody does on a given day, what it should look like. Plain words; the doses print from the protocol rows beside it."
+     },
+     "watch_for": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 600,
+      "description": "What goes wrong in this stage and how it shows, when the run's evidence says."
+     }
+    }
+   }
+  },
+  "closing": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 900,
+   "description": "Where this leaves the project: what the round can settle and what it cannot."
+  },
+  "does_not_change": {
+   "type": "string"
+  },
+  "note": {
+   "type": "string"
+  }
+ }
+}

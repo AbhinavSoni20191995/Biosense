@@ -2839,6 +2839,9 @@ class Handler(BaseHTTPRequestHandler):
                                          'The orchestrator is writing the changes; export '
                                          'the Word or PDF copy when it has replied.'
                                          if kind == 'protocol' else
+                                         'The communication agent is writing the run up; '
+                                         'export the final report when it has replied.'
+                                         if kind == 'report' else
                                          'The orchestrator is answering; the run page shows '
                                          'the answer when it arrives.')})
 
@@ -2856,13 +2859,15 @@ class Handler(BaseHTTPRequestHandler):
         from . import ask as ASK
         from . import omnigent_runtime as OMNI
         from ..evidence import breakthrough as BT
+        from ..evidence import communication as CM
         alt = item.get('kind') == 'alternate'
         edit = item.get('kind') == 'protocol'
         beyond = item.get('kind') == 'breakthrough'
+        telling = item.get('kind') == 'report'
         try:
             before = ASK.fingerprint(d)
             prior = (AL.load(d) if alt else PE.load(d) if edit else BT.load(d) if beyond
-                     else None)
+                     else CM.load(d) if telling else None)
             res = None
             for sid in ([session, None] if session else [None]):
                 if edit:
@@ -2886,6 +2891,14 @@ class Handler(BaseHTTPRequestHandler):
                         python=DRUN.agent_python(target), fresh=sid is None,
                         in_force=BT.constraints_in_force(req), existing=prior)
                     title = f'Breakthrough design: {item["question"][:50]}'
+                elif telling:
+                    state = RS._read_state(RS.state_path(d)) or {}
+                    text = CM.framed(
+                        item['question'], loop_dir=loop_dir,
+                        project_id=state.get('project_id') or '',
+                        projects_dir=(f' --projects-dir {projects_dir}' if projects_dir else ''),
+                        python=DRUN.agent_python(target), fresh=sid is None, existing=prior)
+                    title = f'Write-up: {item["question"][:50]}'
                 elif alt:
                     state = RS._read_state(RS.state_path(d)) or {}
                     text = AL.framed(
@@ -2923,8 +2936,16 @@ class Handler(BaseHTTPRequestHandler):
                                            != prior.get('created_at'))
                 wrote = {'breakthrough': doc['title']} if fresh_doc else None
                 moved = [f for f in moved if f not in (BT.NAME, BT.DRAFT)]
+            if telling:
+                doc = CM.load(d)
+                fresh_doc = bool(doc) and (not prior or doc.get('created_at')
+                                           != prior.get('created_at'))
+                wrote = ({'communication': [s['stage_id'] for s in doc['stages']]}
+                         if fresh_doc else None)
+                moved = [f for f in moved if f not in (CM.NAME, CM.DRAFT)]
             ok = bool(res.get('answer')) and (not alt or (wrote and wrote['alt_ids'])) \
-                and (not edit or bool(wrote)) and (not beyond or bool(wrote))
+                and (not edit or bool(wrote)) and (not beyond or bool(wrote)) \
+                and (not telling or bool(wrote))
             ASK.finish(d, item['id'],
                        status='answered' if ok else 'failed',
                        answer=res.get('answer'), files_changed=moved, wrote=wrote,
@@ -2938,7 +2959,9 @@ class Handler(BaseHTTPRequestHandler):
                                    'it wrote no breakthrough design that passed its contract'
                                    if beyond else
                                    'it wrote no protocol change that passed its contract'
-                                   if edit else 'the orchestrator said nothing'))))
+                                   if edit else
+                                   'it wrote no narrative that passed its contract'
+                                   if telling else 'the orchestrator said nothing'))))
         except Exception as e:  # noqa: BLE001 - a failed answer is recorded, never lost
             ASK.finish(d, item['id'], status='failed', error=f'{type(e).__name__}: {str(e)[:300]}')
         finally:
@@ -3357,6 +3380,14 @@ class Handler(BaseHTTPRequestHandler):
                 doc = {k: v for k, v in protocol.items()
                        if k not in ('summary_counts', 'changed_parameters', 'badge')}
                 return self._send(200, PSUM.markdown(doc), 'text/markdown; charset=utf-8')
+            if fmt == 'svg':
+                # The process as a picture: the stages to scale, what goes
+                # into each, a gap shaded as a gap.
+                from . import final_report as FR
+                return self._send(
+                    200, FR.flow_svg(protocol,
+                                     dark=(q.get('theme') or [''])[0] == 'dark'),
+                    'image/svg+xml; charset=utf-8')
             if fmt in ('docx', 'pdf'):
                 # The bench copy: the same protocol, in the order the work
                 # happens, as a file somebody can print and sign. `as` lays it
@@ -3399,6 +3430,22 @@ class Handler(BaseHTTPRequestHandler):
                         return self._send(400, {'error': str(e)})
                 name = re.sub(r'[^A-Za-z0-9._-]+', '-',
                               (protocol.get('title') or 'protocol'))[:60].strip('-') or 'protocol'
+                if (q.get('view') or [''])[0] == 'report':
+                    # The whole run as one document: cover, summary, the
+                    # process at the bench, then the protocol and each
+                    # specialist's section as chapters. The narrative is read
+                    # from the run's own communication.json when one exists.
+                    from . import final_report as FR
+                    stem = f'{name}-{m.group(1)[:8]}-final-report'
+                    kw = dict(run_dir=here, run_id=m.group(1), translation=translation)
+                    if fmt == 'pdf':
+                        return self._send(
+                            200, FR.tobytes_pdf(protocol, **kw), 'application/pdf',
+                            extra=[('Content-Disposition', f'attachment; filename="{stem}.pdf"')])
+                    return self._send(
+                        200, FR.tobytes(protocol, **kw),
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        extra=[('Content-Disposition', f'attachment; filename="{stem}.docx"')])
                 if (q.get('view') or [''])[0] == 'plan':
                     # The round on one landscape page: the arms, the vessel and
                     # the stages, each arm's change from control shaded.

@@ -71,7 +71,8 @@ COMMAND_STAGES = (
     (re.compile(r'bioinformatics\.cli\s+analyse\s+plan\b|analysis-plan'), 'planning_analysis'),
     (re.compile(r'bioinformatics\.cli\s+(annotate|datasets|search|plan|sets|tools)\b'),
      'searching_datasets'),
-    (re.compile(r'production\.cli\s+report\b|reasoning_report|evidence\.cli\s+round-(plan|compare)\b'
+    (re.compile(r'production\.cli\s+(report|final-report)\b|reasoning_report'
+                r'|evidence\.cli\s+(round-(plan|compare)|communication)\b'
                 r'|RUN_SUMMARY|landscape_summary'), 'generating_report'),
     # `evidence.cli simulate` and `term` are how a discovery run reaches the
     # reactor; the older names are kept so a recorded run still maps.
@@ -92,6 +93,7 @@ AGENT_STAGES = (
     (re.compile(r'\banalysis\b'), 'running_analysis'),
     (re.compile(r'\bbiosimulator\b'), 'testing_simulator'),
     (re.compile(r'\boutcome\b'), 'synthesizing_evidence'),
+    (re.compile(r'\bcommunicator\b'), 'generating_report'),
 )
 DISPATCH_TOOLS = ('sys_session_send', 'session_send', 'sys_subagent_send')
 
