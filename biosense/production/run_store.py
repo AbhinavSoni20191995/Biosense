@@ -183,6 +183,47 @@ def summarise(state, *, live_ids=()):
     }
 
 
+# Summary rows by state file, keyed on the file's size and mtime. Every page
+# polls the listing every few seconds and every poll walked every run on disk,
+# parsing each state file (tens of kilobytes) again — hundreds of finished runs
+# on a hosted volume meant tens of megabytes of JSON per poll per open tab, and
+# the app answered slowly for everyone. A finished run's record never changes,
+# so its row is computed once; a live run's file changes as it goes and is
+# re-read when it does. The row is cached as if its run were live, and the
+# "nothing is running it" rule is applied on the way out, because that depends
+# on the caller, not the file.
+_ROWS = {}
+_ROWS_MAX = 5000
+
+
+def _row_from_disk(path, live_ids=()):
+    key = str(path)
+    try:
+        st = os.stat(path)
+    except OSError:
+        _ROWS.pop(key, None)
+        return None
+    sig = (st.st_mtime_ns, st.st_size)
+    hit = _ROWS.get(key)
+    if hit is None or hit[0] != sig:
+        state = _read_state(path)
+        if state is None:
+            _ROWS.pop(key, None)
+            return None
+        _settle_counts(state)
+        if len(_ROWS) >= _ROWS_MAX:
+            for stale in list(_ROWS)[:_ROWS_MAX // 2]:
+                _ROWS.pop(stale, None)
+        hit = (sig, summarise(state, live_ids={state.get('run_id')}))
+        _ROWS[key] = hit
+    row = dict(hit[1])
+    if row['status'] in LIVE_STATUSES and row['run_id'] not in live_ids:
+        row['status'] = 'interrupted'
+        row['group'] = group_for('interrupted')
+        row['live'] = False
+    return row
+
+
 def listing(runs_dir, *, owner=None, project_id=None, live_ids=(), limit=200):
     """Every run on disk this caller may see, newest first.
 
@@ -198,15 +239,14 @@ def listing(runs_dir, *, owner=None, project_id=None, live_ids=(), limit=200):
                   key=lambda d: d.stat().st_mtime if d.exists() else 0, reverse=True)
     rows = []
     for d in dirs[:limit * 2]:
-        state = _read_state(state_path(d))
-        if state is None:
+        row = _row_from_disk(state_path(d), live_ids)
+        if row is None:
             continue
-        if owner is not None and state.get('owner') and state['owner'] != owner:
+        if owner is not None and row.get('owner') and row['owner'] != owner:
             continue
-        if project_id and state.get('project_id') != project_id:
+        if project_id and row.get('project_id') != project_id:
             continue
-        _settle_counts(state)
-        rows.append(summarise(state, live_ids=live_ids))
+        rows.append(row)
         if len(rows) >= limit:
             break
     rows.sort(key=lambda r: r.get('started_at') or 0, reverse=True)

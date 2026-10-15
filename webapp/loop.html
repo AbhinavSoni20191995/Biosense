@@ -218,6 +218,11 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   .bar .btn{font-size:11px;padding:7px 10px}
   .hero h1{letter-spacing:-.03em}
   .card{padding:17px 17px}
+  /* An effect row is label left, figure right, on one line. A figure such as
+     "+0.1234 fraction (+12%) SIMULATED" is wider than a phone's column, and
+     held to one line it ran out of the card and the page scrolled sideways. */
+  .eff{flex-wrap:wrap}
+  .eff .amt{white-space:normal;text-align:right;margin-left:auto}
 }
 </style>
 </head>

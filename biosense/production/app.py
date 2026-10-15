@@ -97,6 +97,7 @@ the durable record; this memory is a view of them.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import re
@@ -1730,15 +1731,16 @@ class DiscoveryRegistry:
         rows.sort(key=lambda r: r.get('started_at') or 0, reverse=True)
         return rows[:limit]
 
-    def project_counts(self, *, owner=None):
+    def project_counts(self, *, owner=None, rows=None):
         """Active and total runs per project, for the selector and the detail panel.
 
         So switching project can say what is still working in the one being left
         behind — which is the question somebody is actually asking when they
-        hesitate before switching.
+        hesitate before switching. A caller that already holds the unfiltered
+        listing passes it as *rows*, so one poll scans the disk once, not twice.
         """
         out = {}
-        for row in self.listing(owner=owner):
+        for row in (self.listing(owner=owner) if rows is None else rows):
             pid = row.get('project_id') or '—'
             slot = out.setdefault(pid, {'active': 0, 'total': 0, 'last_at': None})
             slot['total'] += 1
@@ -1893,16 +1895,30 @@ class Handler(BaseHTTPRequestHandler):
             pending = self._cookies = []
         pending.append(cookie)
 
-    def _send(self, code, body, ctype='application/json; charset=utf-8', extra=()):
+    # Response bodies of these types are compressed for a client that accepts
+    # it. The console's scripts are a few hundred kilobytes and a run listing
+    # with hundreds of runs is two hundred; sent raw on every page view and
+    # every poll, they were most of what a slow connection waited for.
+    COMPRESSIBLE = ('text/', 'application/json', 'image/svg+xml')
+    COMPRESS_MIN = 1024
+
+    def _send(self, code, body, ctype='application/json; charset=utf-8', extra=(),
+              cache='no-store'):
         extra = list(extra) + [('Set-Cookie', c) for c in getattr(self, '_cookies', [])]
         if isinstance(body, (dict, list)):
             body = json.dumps(body, indent=2, default=str).encode()
         elif isinstance(body, str):
             body = body.encode()
+        accepts = (getattr(self, 'headers', None) or {}).get('Accept-Encoding') or ''
+        if (len(body) >= self.COMPRESS_MIN and 'gzip' in accepts
+                and ctype.startswith(self.COMPRESSIBLE)):
+            body = gzip.compress(body, compresslevel=5)
+            extra.append(('Content-Encoding', 'gzip'))
         self.send_response(code)
         self.send_header('Content-Type', ctype)
         self.send_header('Content-Length', str(len(body)))
-        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Cache-Control', cache)
+        self.send_header('Vary', 'Accept-Encoding')
         self.send_header('X-Content-Type-Options', 'nosniff')
         for k, v in extra:
             self.send_header(k, v)
@@ -3389,7 +3405,8 @@ class Handler(BaseHTTPRequestHandler):
                 'runs': rows,
                 'counts': {g: len(ids) for g, ids in groups.items()},
                 'active': len(groups.get('active', [])),
-                'projects': self.discovery.project_counts(owner=owner),
+                'projects': self.discovery.project_counts(
+                    owner=owner, rows=None if pid else rows),
                 'note': 'Every run you have started, live or finished, from this process and '
                         'from its records on disk. A run keeps going whether or not this page '
                         'is open: closing the browser observes less, it does not stop work.'})
@@ -3799,8 +3816,24 @@ class Handler(BaseHTTPRequestHandler):
                  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
                  '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2',
                  '.pdf': 'application/pdf'}
+        # Static files were sent with `no-store`, so every page view downloaded
+        # the whole interface again. They are now validated instead: the browser
+        # keeps its copy and asks whether the file changed, and an unchanged
+        # file is answered with a 304 and no body. `no-cache` (revalidate, not
+        # "do not keep") rather than a max-age, because a deploy changes the
+        # page and its scripts together and a stale script under a new page is
+        # worse than one round trip per file.
+        st = target.stat()
+        etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+        if self.headers.get('If-None-Match') == etag:
+            self.send_response(304)
+            self.send_header('ETag', etag)
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            return None
         return self._send(200, target.read_bytes(),
-                          types.get(target.suffix, 'application/octet-stream'))
+                          types.get(target.suffix, 'application/octet-stream'),
+                          extra=[('ETag', etag)], cache='no-cache')
 
 
 def main(argv=None):

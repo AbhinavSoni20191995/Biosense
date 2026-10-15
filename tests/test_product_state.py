@@ -455,6 +455,37 @@ class RunStoreTests(unittest.TestCase):
         self.assertEqual('interrupted', snap['status'])
         self.assertTrue(snap['finished_at'])
 
+    def test_a_record_is_read_again_only_when_it_changed(self):
+        """Every page polls the listing every few seconds and every poll parsed
+        every state file on disk. A finished run's record never changes, so it is
+        read once; a record that changes is read again; a record that goes is gone."""
+        reads = []
+        real = RS._read_state
+        RS._read_state = lambda path: (reads.append(str(path)), real(path))[1]
+        try:
+            self._write('g' * 16, title='first')
+            self.assertEqual('first', RS.listing(self.tmp, owner='me@lab.example')[0]['title'])
+            n = len(reads)
+            RS.listing(self.tmp, owner='me@lab.example')
+            RS.listing(self.tmp, owner='me@lab.example')
+            self.assertEqual(n, len(reads), 'an unchanged record was parsed again')
+            time.sleep(0.01)
+            self._write('g' * 16, title='second')
+            self.assertEqual('second', RS.listing(self.tmp, owner='me@lab.example')[0]['title'])
+            # The "nothing is running it" rule is the caller's, not the record's,
+            # so a cached row still answers it for whoever is asking.
+            self._write('h' * 16, status='running')
+            rows = {r['run_id']: r for r in RS.listing(self.tmp, owner='me@lab.example')}
+            self.assertEqual('interrupted', rows['h' * 16]['status'])
+            rows = {r['run_id']: r for r in RS.listing(self.tmp, owner='me@lab.example',
+                                                        live_ids={'h' * 16})}
+            self.assertEqual('running', rows['h' * 16]['status'])
+            shutil.rmtree(self.tmp / f'run-{"g" * 16}')
+            self.assertEqual({'h' * 16},
+                             {r['run_id'] for r in RS.listing(self.tmp, owner='me@lab.example')})
+        finally:
+            RS._read_state = real
+
 
 class ApiTests(unittest.TestCase):
     """The product behaviour, against a live server on a loopback port."""
@@ -525,6 +556,51 @@ class ApiTests(unittest.TestCase):
                            'run_dir': d.name, 'started_at': time.time() - 60,
                            'finished_at': time.time()})
         return d
+
+    def _raw(self, path, **headers):
+        """Status, headers and body of a GET, with a 304 as an answer rather than an error."""
+        r = urllib.request.Request(f'http://127.0.0.1:{self.port}{path}', headers=headers)
+        try:
+            with urllib.request.urlopen(r, timeout=30) as resp:
+                return resp.status, dict(resp.headers), resp.read()
+        except urllib.error.HTTPError as e:
+            return e.code, dict(e.headers), e.read()
+
+    def test_the_interface_is_validated_not_redownloaded_and_sent_compressed(self):
+        """Static files went out with `no-store`, so every page view fetched the
+        whole interface again, uncompressed. Now the browser keeps its copy and
+        asks whether it changed; a client that accepts gzip gets text and JSON
+        compressed; an image is left as it is."""
+        import gzip
+        code, h, body = self._raw('/discovery.js')
+        self.assertEqual(200, code)
+        self.assertEqual('no-cache', h['Cache-Control'])
+        self.assertTrue(h.get('ETag'))
+        self.assertNotIn('Content-Encoding', h)
+        self.assertTrue(body.startswith(b"'use strict'") or b'function' in body[:2000])
+        code, h2, body2 = self._raw('/discovery.js', **{'If-None-Match': h['ETag']})
+        self.assertEqual(304, code)
+        self.assertEqual(b'', body2)
+        self.assertEqual(h['ETag'], h2['ETag'])
+        code, h3, body3 = self._raw('/discovery.js', **{'Accept-Encoding': 'gzip'})
+        self.assertEqual(200, code)
+        self.assertEqual('gzip', h3['Content-Encoding'])
+        self.assertEqual('Accept-Encoding', h3['Vary'])
+        self.assertLess(len(body3), len(body) // 2)
+        self.assertEqual(body, gzip.decompress(body3))
+        code, h4, body4 = self._raw('/assets/biosense-mark.png', **{'Accept-Encoding': 'gzip'})
+        self.assertEqual(200, code)
+        self.assertNotIn('Content-Encoding', h4)
+        self.assertTrue(body4.startswith(b'\x89PNG'))
+        # The run listing every page polls is JSON, and is compressed too; the
+        # listing itself stays `no-store`, because it changes as runs run.
+        code, h5, body5 = self._raw('/api/discovery', **{'Accept-Encoding': 'gzip'})
+        self.assertEqual(200, code)
+        self.assertEqual('no-store', h5['Cache-Control'])
+        if len(body5) >= 1024 or 'Content-Encoding' in h5:
+            self.assertEqual('gzip', h5['Content-Encoding'])
+            body5 = gzip.decompress(body5)
+        self.assertIn('runs', json.loads(body5))
 
     def test_a_finished_run_comes_back_with_results_as_the_next_round(self):
         """The person ran the round plan; the results start round 2 from this
