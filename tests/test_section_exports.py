@@ -63,6 +63,76 @@ class VisualProtocolTests(unittest.TestCase):
         self.assertEqual(VP.GAP, gap['fill'])
         self.assertTrue(any('rocki_hours 24' in t for t, _ in rows[1]['cells'][-1]['lines']))
 
+    def _published_route(self):
+        """A protocol whose maturation stage comes from the published route, and
+        an arm that changes one of those factors. The factor reaches the page
+        under the baseline's own id and name, the arm sets it by the project's
+        parameter id, and the page has to see that they are one lever."""
+        from biosense.production import first_pass as FP
+        doc = {
+            'timeline': {'stages': [
+                {'stage_id': 'differentiation', 'label': 'Differentiation',
+                 'day_start': 7, 'days': 10},
+                {'stage_id': 'maturation', 'label': 'Maturation / harvest',
+                 'day_start': 17, 'days': 5}], 'candidates': []},
+            'stages': [{'stage_id': 'differentiation', 'parameters': [
+                {'parameter_id': 'mcsf_ng_ml', 'label': 'M-CSF (CSF1)', 'unit': 'ng/mL',
+                 'recommended_value': 50, 'control_value': 50, 'changed': False,
+                 'provenance': 'reported'}]}],
+            'hypothesis_ledger': [],
+        }
+        baseline = {'stages': [{'stage_id': 'maturation', 'factors': [
+            {'factor_id': 'gmcsf_csf2', 'name': 'GM-CSF (CSF2)', 'unit': 'ng/mL', 'value': 10,
+             'role': 'essential', 'provenance': 'reported', 'sources': [], 'in_project': True},
+            {'factor_id': 'surfactant', 'name': 'Pulmonary surfactant', 'unit': 'ug/mL',
+             'value': 100, 'role': 'essential', 'provenance': 'reported', 'sources': [],
+             'in_project': False}]}]}
+        doc['first_pass'] = FP.plan(doc, baseline=baseline)
+        doc['round_plan'] = {'arms': [
+            {'arm_id': 'A0', 'label': 'control: the published route', 'control': True,
+             'setpoints': {}},
+            {'arm_id': 'A1', 'label': 'GM-CSF raised in maturation', 'control': False,
+             'setpoints': {'gmcsf_ng_ml': 100}}]}
+        return doc
+
+    def test_an_arm_changes_the_stage_that_carries_the_factor(self):
+        """The arm's change belongs in the stage it happens in. Matching a
+        setpoint to a stage line by string equality missed every line merged
+        from the published route, so the arm row read identically to the
+        control and the change was filed under "Whole run" as a lever the
+        protocol did not carry — which it did, in maturation."""
+        cols, rows = VP.grid(self._published_route())
+        self.assertNotIn('Whole run', [c['label'] for c in cols],
+                         'the change belongs to a stage, so there is nothing loose to show')
+        maturation = cols.index(next(c for c in cols if c['id'] == 'maturation'))
+        control, arm = rows
+        self.assertIn(('GM-CSF (CSF2) 10 ng/mL [PUB]', False),
+                      control['cells'][maturation]['lines'])
+        self.assertIsNone(control['cells'][maturation]['fill'])
+        self.assertIn(('GM-CSF (CSF2) 100 ng/mL  (control 10) [D]', True),
+                      arm['cells'][maturation]['lines'])
+        self.assertEqual(VP.CHANGED, arm['cells'][maturation]['fill'],
+                         'the stage the arm changes is shaded in that arm\'s row')
+        # What the arm leaves alone still reads as the published route's.
+        self.assertIn(('Pulmonary surfactant 100 ug/mL [PUB]', False),
+                      arm['cells'][maturation]['lines'])
+        # And the stage it does not touch is identical to the control's.
+        diff = cols.index(next(c for c in cols if c['id'] == 'differentiation'))
+        self.assertEqual(control['cells'][diff]['lines'], arm['cells'][diff]['lines'])
+
+    def test_a_lever_no_line_carries_says_that_and_not_that_it_is_unknown(self):
+        """A lever the page cannot place still goes under "Whole run", but the
+        page does not claim the protocol lacks it: not finding a line for a
+        lever is not the same as knowing nothing carries it."""
+        doc = self._published_route()
+        doc['round_plan']['arms'][1]['setpoints']['some_unplaced_lever'] = 3
+        cols, rows = VP.grid(doc)
+        self.assertEqual('Whole run', cols[-1]['label'])
+        text = ' '.join(t for t, _ in rows[1]['cells'][-1]['lines'])
+        self.assertIn('some_unplaced_lever 3', text)
+        self.assertIn('no stage line on this page carries it', text)
+        self.assertNotIn('not in the protocol', text)
+
     def test_without_a_round_the_page_is_the_protocol_as_written(self):
         cols, rows = VP.grid(dict(PROTOCOL, round_plan=None))
         self.assertEqual(1, len(rows))

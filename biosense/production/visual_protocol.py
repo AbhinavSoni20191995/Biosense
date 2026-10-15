@@ -22,6 +22,8 @@ but the layout. Word and PDF are written from the same blocks.
 """
 from __future__ import annotations
 
+import re
+
 from . import first_pass as FP
 from .docx import Document
 
@@ -83,6 +85,53 @@ def _line(item, value, tag, changed=False, control=None):
     return (f'{label} {_v(value)}{unit} [{tag}]', False)
 
 
+def _keys(item):
+    """Every name one stage line answers to, so an arm's setpoint finds it.
+
+    A line can reach the page under more than one id. The protocol's own
+    parameters carry the project's parameter id (`gmcsf_ng_ml`); a line merged
+    from the published route carries the baseline's factor id (`gmcsf_csf2`)
+    and the factor's printed name. A round plan sets levers by the project's
+    id, so matching the two by string equality missed every baseline line —
+    the arm's change then vanished from the stage that carries the factor.
+    `first_pass._norm` is the identity rule this repository already uses for
+    exactly that ("M-CSF", "mcsf_ng_ml" and "M-CSF concentration" agree); an
+    alias in brackets ("GM-CSF (CSF2)") is matched on either part, since both
+    are names for the one factor.
+    """
+    out = set()
+    for raw in (item.get('parameter_id'), item.get('label')):
+        text = str(raw or '')
+        if not text:
+            continue
+        out.add(text)
+        for part in [text] + re.findall(r'\(([^()]*)\)', text) + [
+                re.sub(r'\([^()]*\)', ' ', text)]:
+            key = FP._norm(part)
+            if key:
+                out.add(key)
+    return out
+
+
+def _placements(arms, by_stage):
+    """Which stage line each arm's setpoint speaks about: {lever: (stage_id, index)}.
+
+    Decided once for the whole page, so every arm reads the same line as the
+    same lever. A lever that matches more than one line binds to the first, in
+    stage order; a lever that matches none is placed nowhere and the caller
+    says so rather than guessing a stage for it.
+    """
+    wanted = {k for a in arms for k in (a.get('setpoints') or {})}
+    placed = {}
+    for sid, items in by_stage.items():
+        for n, item in enumerate(items):
+            keys = _keys(item)
+            for lever in wanted - set(placed):
+                if lever in keys or FP._norm(lever) in keys:
+                    placed[lever] = (sid, n)
+    return placed
+
+
 def grid(protocol):
     """(columns, rows) for the arms x stages page. Pure.
 
@@ -104,8 +153,8 @@ def grid(protocol):
         sid = i.get('stage_id') or 'all'
         by_stage.setdefault(sid if sid in by_stage else 'all', []).append(i)
     by_stage.setdefault('all', [])
-    known = {i.get('parameter_id') for items in by_stage.values() for i in items}
-    loose = sorted({k for a in arms for k in (a.get('setpoints') or {}) if k not in known})
+    placed = _placements(arms, by_stage)
+    loose = sorted({k for a in arms for k in (a.get('setpoints') or {}) if k not in placed})
     cols = [{'id': s['stage_id'], 'label': s.get('label') or s['stage_id'],
              'days': s.get('days'), 'start': s.get('day_start') or 0,
              'fill': STAGE_FILLS[n % len(STAGE_FILLS)]} for n, s in enumerate(stages)]
@@ -118,11 +167,14 @@ def grid(protocol):
         cells = []
         for c in cols:
             lines, fill = [], None
-            for item in by_stage.get(c['id'], []):
-                pid = item.get('parameter_id')
+            for n, item in enumerate(by_stage.get(c['id'], [])):
                 value, tag = _base(item, round_mode)
-                if not a.get('control') and pid in sp and not _same(sp[pid], value):
-                    lines.append(_line(item, sp[pid], 'D', changed=True, control=value))
+                # The levers this arm sets that belong to this line, by the
+                # page-wide placement rather than by this line's own id.
+                mine = [k for k, at in placed.items()
+                        if at == (c['id'], n) and k in sp and not _same(sp[k], value)]
+                if not a.get('control') and mine:
+                    lines.append(_line(item, sp[mine[0]], 'D', changed=True, control=value))
                     fill = CHANGED
                 else:
                     lines.append(_line(item, value, tag))
@@ -131,8 +183,11 @@ def grid(protocol):
             if c['id'] == 'all':
                 for pid in loose:
                     if pid in sp and not a.get('control'):
-                        lines.append((f'{pid} {_v(sp[pid])}  (not in the protocol; this arm '
-                                      f'adds it) [D]', True))
+                        # Not "not in the protocol": the page could not find a
+                        # line for this lever, which is not the same as knowing
+                        # the protocol does not carry it. Say only what is true.
+                        lines.append((f'{pid} {_v(sp[pid])}  (this arm sets it; no stage line '
+                                      f'on this page carries it) [D]', True))
                         fill = CHANGED
             cells.append({'lines': lines or [('—', False)], 'fill': fill})
         aid = str(a.get('arm_id', ''))
