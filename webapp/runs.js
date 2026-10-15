@@ -92,7 +92,11 @@ function runRow(r) {
   /* The name the person gave it, with the objective underneath; without a
      name, the objective is the heading. */
   card.append(el('div', 'obj', r.title || r.objective || '(no objective recorded)'));
-  if (r.title && r.objective) card.append(el('div', 'dim run-obj', r.objective));
+  if (r.title && r.objective) {
+    const o = el('div', 'dim run-obj', r.objective);
+    o.title = r.objective;
+    card.append(o);
+  }
   const right = el('div', 'right');
   right.append(el('span', 'rv-status ' + (r.group === 'active' ? 'go'
     : r.group === 'complete' ? 'ok' : r.group === 'cancelled' ? 'warn' : 'bad'),
