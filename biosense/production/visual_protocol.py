@@ -85,6 +85,42 @@ def _line(item, value, tag, changed=False, control=None):
     return (f'{label} {_v(value)}{unit} [{tag}]', False)
 
 
+# A factor is written with the Greek letter spelled out or abbreviated, and the
+# two spellings are one name: "TGF-beta1" is the factor "tgfb1_ng_ml" sets,
+# "IL-1alpha" is "il1a", "PPARgamma" is "pparg". Only a whole word is replaced
+# (nothing before it, no letter after it), so "betaine" and "alphabet" are left
+# alone. This widens what a setpoint can match and narrows nothing.
+GREEK = {'alpha': 'a', 'beta': 'b', 'gamma': 'g', 'delta': 'd', 'epsilon': 'e',
+         'zeta': 'z', 'theta': 't', 'kappa': 'k', 'lambda': 'l', 'sigma': 's',
+         'omega': 'w'}
+_GREEK_RE = re.compile('(' + '|'.join(GREEK) + ')(?![a-z])', re.I)
+
+
+def _ids(text):
+    """Every key one name answers to: itself, normalised, and its aliases.
+
+    `first_pass._norm` is the identity rule this repository already uses for
+    this question ("M-CSF", "mcsf_ng_ml" and "M-CSF concentration" agree). On
+    top of it: a name in brackets ("GM-CSF (CSF2)") is matched on either part,
+    since both name the one factor, and a Greek letter is matched spelled out
+    or abbreviated.
+    """
+    text = str(text or '')
+    if not text:
+        return set()
+    out = {text}
+    parts = [text] + re.findall(r'\(([^()]*)\)', text) + [re.sub(r'\([^()]*\)', ' ', text)]
+    for part in list(parts):
+        swapped = _GREEK_RE.sub(lambda m: GREEK[m.group(1).lower()], part)
+        if swapped != part:
+            parts.append(swapped)
+    for part in parts:
+        key = FP._norm(part)
+        if key:
+            out.add(key)
+    return out
+
+
 def _keys(item):
     """Every name one stage line answers to, so an arm's setpoint finds it.
 
@@ -94,23 +130,8 @@ def _keys(item):
     and the factor's printed name. A round plan sets levers by the project's
     id, so matching the two by string equality missed every baseline line —
     the arm's change then vanished from the stage that carries the factor.
-    `first_pass._norm` is the identity rule this repository already uses for
-    exactly that ("M-CSF", "mcsf_ng_ml" and "M-CSF concentration" agree); an
-    alias in brackets ("GM-CSF (CSF2)") is matched on either part, since both
-    are names for the one factor.
     """
-    out = set()
-    for raw in (item.get('parameter_id'), item.get('label')):
-        text = str(raw or '')
-        if not text:
-            continue
-        out.add(text)
-        for part in [text] + re.findall(r'\(([^()]*)\)', text) + [
-                re.sub(r'\([^()]*\)', ' ', text)]:
-            key = FP._norm(part)
-            if key:
-                out.add(key)
-    return out
+    return _ids(item.get('parameter_id')) | _ids(item.get('label'))
 
 
 def _placements(arms, by_stage):
@@ -127,7 +148,7 @@ def _placements(arms, by_stage):
         for n, item in enumerate(items):
             keys = _keys(item)
             for lever in wanted - set(placed):
-                if lever in keys or FP._norm(lever) in keys:
+                if _ids(lever) & keys:
                     placed[lever] = (sid, n)
     return placed
 
