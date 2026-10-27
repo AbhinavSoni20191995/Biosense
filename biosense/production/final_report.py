@@ -78,12 +78,24 @@ def _item_line(i):
 
 def _executive(doc, p, fp, narrative):
     doc.heading('Executive summary', 1)
+    # The key points first and in full, whoever wrote them: they are the part a
+    # reader who stops after one page will have read.
+    from . import plain_plan as PP
+    points = (PP.key_points(p, narrative) or {}).get('points') or []
+    if points:
+        doc.heading('In short', 2)
+        for line in points:
+            doc.bullet(line)
     if narrative:
         if narrative.get('audience'):
             doc.caveat(f'Written for {narrative["audience"]}.')
+        if points:
+            doc.heading('In full', 2)
         for para in narrative.get('executive_summary') or []:
             doc.para(para)
         return
+    if points:
+        doc.heading('In full', 2)
     # No narrative written: the summary is assembled, not phrased.
     if p.get('objective'):
         doc.para(f'The question: {p["objective"]}')

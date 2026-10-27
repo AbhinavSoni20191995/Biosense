@@ -346,7 +346,11 @@ def _lenses(out_dir):
                             ('sota', 'sota_comparison.json', 'sota_comparison'),
                             ('baseline', 'baseline_protocol.json', 'baseline_protocol'),
                             ('bench', 'bench_setup.json', 'bench_setup'),
-                            ('alternates', 'alternate_plans.json', 'alternate_plans')):
+                            ('alternates', 'alternate_plans.json', 'alternate_plans'),
+                            # The plain-language layer, when the communication
+                            # agent wrote one: its key points lead the summary
+                            # in place of the assembled ones.
+                            ('narrative', 'communication.json', 'communication')):
         try:
             doc = K.read_json(Path(out_dir) / name)
         except (OSError, ValueError):

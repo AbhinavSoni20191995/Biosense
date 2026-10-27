@@ -56,6 +56,13 @@ NOTE = ('Written by the communication agent for the final report: what the run c
 
 TEMPLATE = {
     'audience': 'the lab meeting deciding whether to run round 1',
+    'key_points': [
+        'Three to six short sentences somebody can act on, in plain words: what this round '
+        'does and why now.',
+        'What each arm changes about the recipe, named as a person would say it rather than '
+        'as a parameter id.',
+        'What is still undecided, and what it blocks.',
+    ],
     'executive_summary': [
         'What the run asked and of which process, in two or three sentences a reader outside '
         'the project follows.',
@@ -200,6 +207,18 @@ def build(draft, *, protocol, project_id, run_id=None, created_by=None, requeste
             _check_numbers(item[key], f'stages[{i}].{key}', allowed)
         stages.append(item)
 
+    # The plain-language summary that leads the recommendation. Optional: a
+    # write-up without one still validates, and the page assembles its own
+    # from the plan rather than going without.
+    raw_points = draft.get('key_points')
+    if isinstance(raw_points, str):
+        raw_points = [raw_points]
+    points = []
+    for i, line in enumerate((raw_points or [])[:6]):
+        item = _text(line, f'key_points[{i}]', minimum=15, limit=240)
+        _check_numbers(item, f'key_points[{i}]', allowed)
+        points.append(item)
+
     closing = _text(draft.get('closing'), 'closing', minimum=20, limit=900, optional=True)
     _check_numbers(closing, 'closing', allowed)
     audience = _text(draft.get('audience'), 'audience', minimum=3, limit=200, optional=True)
@@ -209,7 +228,8 @@ def build(draft, *, protocol, project_id, run_id=None, created_by=None, requeste
         'project_id': project_id, 'run_id': run_id, 'created_at': K.now_iso(),
         'created_by': created_by, 'requested_by': requested_by,
         'request': str(ask) if ask else None, 'audience': audience,
-        'executive_summary': summary, 'stages': stages, 'closing': closing,
+        'executive_summary': summary, 'key_points': points or None,
+        'stages': stages, 'closing': closing,
         'does_not_change': DOES_NOT_CHANGE, 'note': NOTE,
     }
     K.require_valid('communication', doc)

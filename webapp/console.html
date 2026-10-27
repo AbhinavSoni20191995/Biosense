@@ -120,27 +120,44 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 </header>
 
 <section class="glass card" id="signinCard" hidden>
-  <div class="head"><h3>Sign in</h3>
-    <span class="hint">through your Omnigent account</span></div>
+  <div class="head"><h3 id="signinTitle">Sign in</h3>
+    <span class="hint" id="signinHint">with the account you made on this BioSense</span></div>
+  <div class="row" role="tablist" style="margin-bottom:10px">
+    <button class="btn sm" type="button" id="signinTabIn" aria-selected="true">Sign in</button>
+    <button class="btn sm" type="button" id="signinTabUp" aria-selected="false">Create account</button>
+  </div>
   <form id="signinForm" class="fields">
-    <div class="fld">
-      <label for="signinServer">Omnigent server</label>
-      <input type="text" id="signinServer" placeholder="https://your-omnigent-server">
-      <p class="hint">The server you run <code>omnigent login</code> against. BioSense forwards
-        your password to it once and never stores it; the session token stays on the server side
-        of this application and never reaches your browser.</p>
-    </div>
     <div class="two">
-      <div class="fld"><label for="signinUser">Email or username</label>
-        <input type="text" id="signinUser" autocomplete="username"></div>
+      <div class="fld"><label for="signinUser">Email</label>
+        <input type="email" id="signinUser" autocomplete="username" required></div>
       <div class="fld"><label for="signinPass">Password</label>
-        <input type="password" id="signinPass" autocomplete="current-password"
+        <input type="password" id="signinPass" autocomplete="current-password" required
           style="width:100%;font-size:15px;padding:10px 13px;border-radius:10px;
                  border:1px solid var(--line);background:var(--glass-2);color:var(--ink)"></div>
     </div>
     <div class="row">
       <button class="btn go" type="submit">Sign in</button>
       <span class="dim" id="signinMsg"></span>
+    </div>
+  </form>
+  <form id="signupForm" class="fields" hidden>
+    <p class="hint" id="signupHint">An email address and a password of at least 8 characters.
+      Your projects, runs and reports are kept under your account.</p>
+    <div class="two">
+      <div class="fld"><label for="signupUser">Email</label>
+        <input type="email" id="signupUser" autocomplete="username" required></div>
+      <div class="fld"><label for="signupPass">Password</label>
+        <input type="password" id="signupPass" autocomplete="new-password" minlength="8" required
+          style="width:100%;font-size:15px;padding:10px 13px;border-radius:10px;
+                 border:1px solid var(--line);background:var(--glass-2);color:var(--ink)"></div>
+    </div>
+    <div class="fld" id="signupCodeFld" hidden><label for="signupCode">Sign-up code</label>
+      <input type="text" id="signupCode" autocomplete="off">
+      <p class="hint">This instance asks for a code from the person running it.</p>
+    </div>
+    <div class="row">
+      <button class="btn go" type="submit">Create account and sign in</button>
+      <span class="dim" id="signupMsg"></span>
     </div>
   </form>
   <p class="caveat" id="identityNote"></p>
@@ -367,6 +384,16 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
     <!-- The answer, in the order a person acts on it: what the run thinks is
          true, then the experiment that settles it, then the numbers to set. -->
+    <!-- What to do, before anything that explains why. The reference recipe
+         stage by stage, then what each arm changes about it — the two things
+         somebody needs to set a round up. Everything below this panel is the
+         reasoning behind it, and folds. -->
+    <section class="glass card" id="plainPanel" hidden>
+      <div class="head"><h3 id="plainTitle">What to run</h3>
+        <span class="hint" id="plainSum"></span></div>
+      <div id="plainPlan"></div>
+    </section>
+
     <section class="glass card" id="resultPanel" hidden>
       <div class="head"><h3>The hypothesis</h3><span class="hint" id="resultHead"></span></div>
       <div id="hypothesis"></div>
@@ -376,7 +403,9 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
          has weighed it: leads for the scientist watching, labelled as such.
          Beside the hypothesis, because it is what the hypothesis came from. -->
     <section class="glass card" id="insightsPanel" hidden>
-      <div class="head"><h3>Insights as they come</h3><span class="hint" id="insightsHead"></span></div>
+      <div class="head"><h3>Supporting detail</h3><span class="hint" id="insightsHead"></span></div>
+      <p class="caveat">What the specialists read and wrote, behind the recommendation above.
+        Each section opens on its own.</p>
       <!-- One foldable section per source, each remembering whether it is open.
            Every paper's note folds on its own, so a long run stays scannable. -->
       <details class="ins-sec" id="litSec" data-key="lit">

@@ -93,6 +93,38 @@ class CommunicationContractTests(unittest.TestCase):
         self.assertIn('freezer', str(ctx.exception))
         self.assertIn('expansion', str(ctx.exception))
 
+    def test_the_key_points_are_optional_and_checked_like_every_other_field(self):
+        """They lead the recommendation on the page, so they are the sentences
+        most likely to be read and the ones an invented number would do most
+        damage in. Same rule: a number must already stand in the protocol."""
+        self.assertIsNone(narrative()['key_points'], 'a write-up without them validates')
+        ok = dict(DRAFT, key_points=[
+            'Raise M-CSF to 100 ng/mL through the myeloid harvest stage.',
+            'Everything else runs as the process runs now.',
+            'The GM-CSF dose is still undecided and blocks the wet lab.'])
+        doc = narrative(draft=ok)
+        self.assertEqual(3, len(doc['key_points']))
+        self.assertEqual([], K.schema_errors('communication', doc))
+        bad = dict(DRAFT, key_points=['Raise M-CSF to 77 ng/mL in the harvest stage.'])
+        with self.assertRaises(K.ContractError) as ctx:
+            narrative(draft=bad)
+        self.assertIn('key_points[0]', str(ctx.exception))
+        self.assertIn('77', str(ctx.exception))
+
+    def test_the_agents_key_points_lead_the_recommendation_in_place_of_ours(self):
+        from biosense.production import plain_plan as PP
+        doc = narrative(draft=dict(DRAFT, key_points=[
+            'Raise M-CSF to 100 ng/mL through the myeloid harvest stage.',
+            'Everything else runs as the process runs now.']))
+        points = PP.key_points(PROTOCOL, doc)
+        self.assertEqual('communication_agent', points['source'])
+        self.assertEqual(doc['key_points'], points['points'])
+        # And the report prints them where a reader who stops early sees them.
+        t = '\n'.join(text_of(FR.tobytes(PROTOCOL, narrative=doc)))
+        self.assertIn('In short', t)
+        self.assertLess(t.index('Raise M-CSF to 100 ng/mL through the myeloid harvest stage.'),
+                        t.index('This run asked how to raise viable macrophage yield'))
+
     def test_the_write_up_is_the_fifth_kind_of_ask_turn(self):
         self.assertIn('report', ASK.KINDS)
 

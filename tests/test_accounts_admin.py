@@ -82,13 +82,30 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(policy().has_admins)
 
     def test_naming_admins_without_a_trusted_issuer_refuses_to_start(self):
+        """Only with this instance's own accounts turned off: then the issuer
+        has to be named, because nothing here checks a password."""
         with self.assertRaises(K.ContractError) as e:
-            AZ.from_env({AZ.ENV_ADMIN_IDS: 'boss@lab.example'})
+            AZ.from_env({AZ.ENV_ADMIN_IDS: 'boss@lab.example', 'BIOSENSE_ACCOUNTS': 'off'})
         self.assertIn(AZ.ENV_AUTH_SERVER, str(e.exception))
+
+    def test_with_local_accounts_the_instance_is_its_own_issuer(self):
+        """The default. An admin id names an account this instance keeps and
+        authenticates itself; an identity any other server vouched for is not
+        an admin here even with the same id."""
+        from biosense import accounts as AC
+        p = AZ.from_env({AZ.ENV_ADMIN_IDS: 'boss@lab.example'})
+        self.assertEqual(AC.ISSUER, p.auth_server)
+        self.assertTrue(p.has_admins)
+        self.assertTrue(p.is_admin(signed_in('boss@lab.example', server=AC.ISSUER)))
+        self.assertFalse(p.is_admin(signed_in('boss@lab.example', server=ISSUER)))
+        # An Omnigent accounts server named beside local accounts is set aside,
+        # not half-used: sign-in stays local, and so does the admin match.
+        p = AZ.from_env({AZ.ENV_ADMIN_IDS: 'boss@lab.example', AZ.ENV_AUTH_SERVER: ISSUER})
+        self.assertEqual(AC.ISSUER, p.auth_server)
 
     def test_ids_are_matched_the_way_the_account_system_stores_them(self):
         p = AZ.from_env({AZ.ENV_ADMIN_IDS: ' Boss@Lab.Example , second@lab.example ',
-                         AZ.ENV_AUTH_SERVER: ISSUER + '/'})
+                         AZ.ENV_AUTH_SERVER: ISSUER + '/', 'BIOSENSE_ACCOUNTS': 'off'})
         self.assertTrue(p.is_admin(signed_in('boss@lab.example')))
         self.assertTrue(p.is_admin(signed_in('second@lab.example')))
         self.assertFalse(p.is_admin(signed_in('third@lab.example')))

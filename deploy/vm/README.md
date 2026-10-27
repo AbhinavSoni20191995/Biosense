@@ -47,9 +47,12 @@ It asks four questions:
    DNS. (A domain of your own also works: point its A record at the IP first.)
 2. **ANTHROPIC_API_KEY.** Paste your key; nothing is shown as you type. It is
    stored in `/opt/biosense/deploy/vm/.env`, readable by root only.
-3. **BIOSENSE_AUTH_SERVER** and 4. **BIOSENSE_ADMIN_USER_IDS.** Copy both from
-   your Railway service's *Variables* tab to keep the same sign-in and the same
-   admin account. Press Enter to skip if you don't use sign-in.
+3. **BIOSENSE_ADMIN_USER_IDS.** The email address(es) that should be the
+   operator account(s) — create the account with that address on the site
+   afterwards and it is an admin. Press Enter to skip. (Accounts are kept by
+   BioSense itself on the VM's volume; nothing else is needed for sign-in.)
+   4. **BIOSENSE_SIGNUP_CODE**, optional: a word new accounts must quote, so
+   only your lab can sign up on a public address.
 
 It then installs Docker, allows the sandbox's user namespaces, builds and starts
 BioSense, installs auto-redeploy, waits for the site, and prints the `[sandbox]`
@@ -102,7 +105,7 @@ Projects and runs made on Railway stay there; they are not copied to the VM.
 | The site does not load at all | ports 80/443 are closed, or the address does not point at the VM | open 80/443 in the provider's firewall; for your own domain, check its A record |
 | `[sandbox] ... UNAVAILABLE (user_namespaces)` | the kernel still blocks user namespaces | `cat /etc/sysctl.d/60-biosense-agent-sandbox.conf`, then `sudo sysctl --system` and `sudo biosense-update --force`; send the `[sandbox]` line if it persists |
 | Real AI says the model has no credentials | the key is missing or mistyped | fix `ANTHROPIC_API_KEY` in `.env`, then `sudo biosense-update --force` |
-| Sign-in fails | the accounts server address differs from Railway's | copy `BIOSENSE_AUTH_SERVER` exactly from Railway |
+| Sign-in fails | the account was made on another deployment (accounts live on each deployment's own volume) | create the account on this site; an operator can reset a password with `python -m biosense.accounts reset-password` inside the container |
 
 ## Why the compose file lifts two Docker defaults
 

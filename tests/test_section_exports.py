@@ -138,15 +138,47 @@ class VisualProtocolTests(unittest.TestCase):
         self.assertEqual(1, len(rows))
         self.assertIn(('M-CSF & GM-CSF <mix> 100 ng/mL [A]', False), rows[0]['cells'][1]['lines'])
 
-    def test_one_landscape_page_in_both_formats_that_never_reads_as_approved(self):
+    def test_the_page_leads_with_the_recipe_and_then_what_each_arm_changes(self):
+        """The order a person reads it in: what this round is, what goes into
+        the vessel, then — per arm — only what that arm changes. The recipe is
+        printed once, as the control's, because repeating it in every arm's
+        column hid the one line that differed and read as though each arm set
+        every value in it."""
+        t = '\n'.join(PDF.text_of(VP.tobytes_pdf(PROTOCOL, run_id='ai-x')))
+        self.assertLess(t.index('In short'), t.index('The recipe every arm starts from'))
+        self.assertLess(t.index('The recipe every arm starts from'),
+                        t.index('What each arm changes about it'))
+        self.assertIn('M-CSF & GM-CSF <mix> 50 ng/mL', t, 'the recipe is the control\'s')
+        # The arm's line says the change and names the stage it happens in.
+        self.assertIn('M-CSF & GM-CSF <mix>: 50 ng/mL → 100 ng/mL', t)
+        self.assertIn('Myeloid harvest', t)
+        # And the recipe is written once, not once per arm.
+        self.assertEqual(1, t.count('M-CSF & GM-CSF <mix> 50 ng/mL [current]'),
+                         'the appendix carries the control row; the recipe is not repeated')
+
+    def test_an_arm_that_matches_the_reference_is_not_drawn_as_a_change(self):
+        """A setpoint equal to the control's is not a change. Listing it made
+        an arm look as though it were testing a value it was holding."""
+        p = json.loads(json.dumps(PROTOCOL))
+        p['round_plan']['arms'][1]['setpoints']['agitation_rpm'] = 50   # the control's value
+        plain = VP.PP.build(p)
+        arm = next(a for a in plain['arms'] if not a['control'])
+        self.assertEqual(['mcsf_ng_ml'], [c['parameter_id'] for c in arm['changes']])
+        t = '\n'.join(PDF.text_of(VP.tobytes_pdf(p)))
+        self.assertNotIn('Agitation: 50 rpm → 50 rpm', t)
+
+    def test_both_formats_are_real_files_that_never_read_as_approved(self):
         pdf = VP.tobytes_pdf(PROTOCOL, run_id='ai-x')
         self.assertIn(b'/MediaBox [0 0 842 595]', pdf, 'landscape A4')
         t = '\n'.join(PDF.text_of(pdf))
         self.assertIn('round 1 at a glance', t)
         self.assertIn('The stages, to scale', t)
         self.assertIn('2 arm(s) × 3 replicate(s) = 6 vessels', t)
-        self.assertEqual(2, t.count('PROPOSED — NOT APPROVED.'))
-        self.assertIn('page 1 of 1', t)
+        # Top of the page, after the arms, and again on the detail page: every
+        # page a reader could print on its own says it.
+        self.assertEqual(3, t.count('PROPOSED — NOT APPROVED.'))
+        self.assertIn('Every value, arm by arm', t)
+        self.assertNotIn('page 1 of 1', t, 'the detail table starts on a page of its own')
         z = docx_ok(VP.tobytes(PROTOCOL, run_id='ai-x'))
         body = z.read('word/document.xml').decode()
         self.assertIn('w:orient="landscape"', body)

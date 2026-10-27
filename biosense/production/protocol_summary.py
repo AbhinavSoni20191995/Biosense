@@ -31,6 +31,7 @@ from .. import projects as PJ
 from ..evidence import limitations as LIM
 from ..evidence import process_reference as PREF
 from . import first_pass as FP
+from . import plain_plan as PP
 from ..evidence import options as OPT
 from . import response_model as RM
 from . import runtime as RT
@@ -573,7 +574,7 @@ def _effect_line(e):
 
 
 def display(doc, *, devmap=None, sota=None, baseline=None, culture_format=None,
-            bench=None, alternates=None):
+            bench=None, alternates=None, narrative=None):
     """The payload the interface renders: the document plus a few derived counts."""
     changed = [p for st in doc['stages'] for p in st['parameters'] if p['changed']]
     ledger = doc['hypothesis_ledger']
@@ -594,6 +595,12 @@ def display(doc, *, devmap=None, sota=None, baseline=None, culture_format=None,
         # The same protocol laid out stage by stage for the bench, and each
         # hypothesis as the one action it asks for.
         'first_pass': FP.plan(doc, baseline=baseline),
+        # The recommendation in plain words: the reference recipe once, then
+        # what each arm changes about it. Computed here so the page and the
+        # exported document read the same shape and cannot disagree about
+        # which stage a change happens in.
+        'plain_plan': PP.build({**doc, 'first_pass': FP.plan(doc, baseline=baseline)},
+                               narrative=narrative),
         # Carried through so the plan can say which empty stage is "no
         # parameter registered" and which is "nothing was found".
         'baseline_protocol': baseline,

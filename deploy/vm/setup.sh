@@ -77,13 +77,13 @@ else
   while [ -z "$key" ]; do
     read -rsp 'ANTHROPIC_API_KEY (typing is hidden): ' key </dev/tty; echo
   done
-  read -rp 'BIOSENSE_AUTH_SERVER, from Railway (Enter to skip): ' auth </dev/tty
-  read -rp 'BIOSENSE_ADMIN_USER_IDS, from Railway (Enter to skip): ' admins </dev/tty
+  read -rp 'BIOSENSE_ADMIN_USER_IDS, the operator email(s) (Enter to skip): ' admins </dev/tty
+  read -rp 'BIOSENSE_SIGNUP_CODE, a word new accounts must quote (Enter for open sign-up): ' auth </dev/tty
   (
     umask 077
     {
       printf '%s=%s\n' BIOSENSE_DOMAIN "$domain"
-      [ -n "$auth" ] && printf '%s=%s\n' BIOSENSE_AUTH_SERVER "$auth"
+      [ -n "$auth" ] && printf '%s=%s\n' BIOSENSE_SIGNUP_CODE "$auth"
       [ -n "$admins" ] && printf '%s=%s\n' BIOSENSE_ADMIN_USER_IDS "$admins"
       printf '%s=%s\n' ANTHROPIC_API_KEY "$key"
     } > "$envf"

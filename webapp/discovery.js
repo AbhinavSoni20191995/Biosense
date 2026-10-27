@@ -171,13 +171,37 @@ function renderIdentity() {
     });
     box.append(out);
   } else if (id.sign_in_available) {
-    const inBtn = el('button', 'btn', 'Sign in');
-    inBtn.addEventListener('click', () => $('#signinCard').hidden = !$('#signinCard').hidden);
+    const acc = id.accounts || {};
+    const inBtn = el('button', 'btn', acc.signup_open ? 'Sign in / create account' : 'Sign in');
+    inBtn.addEventListener('click', () => {
+      const card = $('#signinCard'); card.hidden = !card.hidden;
+      if (!card.hidden) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     box.append(inBtn);
+    showSignupTab(acc.signup_open, acc.signup_code_required);
   }
   const note = $('#identityNote');
   if (note) note.textContent = id.note || '';
   renderAllowance(id);
+}
+
+/* The sign-in card has two forms behind two tabs. The create-account tab is
+   offered only where the server says sign-up is open; a sign-up code field
+   only where it says one is required. Nothing here is a check — the server
+   refuses what it refuses — it is just not asking for what cannot be used. */
+function showSignupTab(open, codeRequired) {
+  const tab = $('#signinTabUp'); if (!tab) return;
+  tab.hidden = !open;
+  const fld = $('#signupCodeFld'); if (fld) fld.hidden = !codeRequired;
+  const code = $('#signupCode'); if (code) code.required = !!codeRequired;
+}
+function switchSignin(up) {
+  $('#signinForm').hidden = !!up; $('#signupForm').hidden = !up;
+  $('#signinTabIn').setAttribute('aria-selected', String(!up));
+  $('#signinTabUp').setAttribute('aria-selected', String(!!up));
+  $('#signinTitle').textContent = up ? 'Create an account' : 'Sign in';
+  $('#signinHint').textContent = up ? 'on this BioSense; you are signed in at once'
+    : 'with the account you made on this BioSense';
 }
 
 /* What is left, and only where the server actually knows. A page that invents a
@@ -195,6 +219,14 @@ function renderAllowance(id) {
     return;
   }
   if (!a.capped) { host.hidden = true; return; }
+  if (a.kind === 'account') {
+    /* An account's own allowance: runs in all, not per day. */
+    const left = a.runs_remaining;
+    host.append(el('span', 'rt-badge ' + (left > 0 ? 'demo-limits' : 'admin'), 'YOUR RUNS'),
+      el('span', 'dim', `${left} of ${a.runs_limit} real AI run${a.runs_limit === 1 ? '' : 's'} left `
+        + 'on this account \u00b7 the demonstration path is not counted'));
+    return;
+  }
   const bits = [];
   if (a.real_runs_remaining_today != null) {
     bits.push(`${a.real_runs_remaining_today} Real AI run`
@@ -982,7 +1014,8 @@ function fail(e) {
   const w = el('div', 'state');
   w.append(el('h4', null,
     e.reason === 'not_configured' ? 'Runtime not offered'
-      : e.reason === 'budget' ? 'Run limit reached'
+      : e.reason === 'budget' || e.reason === 'account_runs' ? 'Run limit reached'
+      : e.reason === 'account_required' ? 'Sign in to run real AI'
       : e.reason === 'cancelled' || e.reason === 'timed_out' ? 'Run stopped'
       : e.reason === 'interrupted' ? 'Run interrupted'
       : e.headline ? 'Real AI runtime unavailable' : 'Refused'));
@@ -1004,8 +1037,8 @@ async function start() {
   }
   $('#runBtn').disabled = true;
   $('#runState').hidden = true;
-  ['resultPanel', 'protocolPanel', 'otherPanel', 'askDataPanel', 'askPanel', 'evidencePanel',
-   'anaSec', 'benchPanel']
+  ['plainPanel', 'resultPanel', 'protocolPanel', 'otherPanel', 'askDataPanel', 'askPanel',
+   'evidencePanel', 'anaSec', 'benchPanel']
     .forEach(i => { const n = $('#' + i); if (n) n.hidden = true; });
   try {
     const run = await post('/api/discovery', body);
@@ -1013,6 +1046,11 @@ async function start() {
   } catch (e) {
     fail(e);
     $('#runBtn').disabled = false;
+    if (e.reason === 'account_required') {
+      /* The way in, right where the refusal was read. */
+      const card = $('#signinCard');
+      if (card) { card.hidden = false; card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }
   }
 }
 
@@ -1090,7 +1128,8 @@ function focusTheAnswer(snap) {
   const head = panel.querySelector('.head');
   if (head) head.setAttribute('aria-expanded', 'false');
   setTimeout(() => {
-    const target = $('#resultPanel');
+    const plain = $('#plainPanel');
+    const target = (plain && !plain.hidden) ? plain : $('#resultPanel');
     if (target && !target.hidden) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 350);
 }
@@ -2433,6 +2472,7 @@ function renderResult(snap) {
   const key = snap.run_id + ':' + JSON.stringify(r);
   if (key === resultSeen) { $('#resultPanel').hidden = false; return; }
   resultSeen = key;
+  if (r.protocol) renderPlainPlan(r.protocol, snap);
   renderEvidence(r.bundle.evidence);
   renderAnalyses(r.bundle.analyses);
   renderHypothesis(r.bundle.selected_hypothesis, r.bundle.hypotheses, r.protocol);
@@ -2451,6 +2491,115 @@ function renderResult(snap) {
       'This run produced no hypothesis that passed its contract. Nothing is shown rather than '
       + 'a summary of what it might have found.'));
   }
+}
+
+/* The recommendation in plain words, and the first thing on the page: what
+   this round is, the recipe every arm starts from, and — per arm — only what
+   that arm changes about it. The dense panels below explain why; this one says
+   what to do. Everything shown is the protocol's own, laid out by the server
+   (`plain_plan`), so this panel and the exported page cannot disagree. */
+function renderPlainPlan(p, snap) {
+  const host = $('#plainPlan'); if (!host) return;
+  const d = p.plain_plan;
+  const panel = $('#plainPanel');
+  if (!d || !(d.recipe || []).length) { panel.hidden = true; return; }
+  panel.hidden = false;
+  host.textContent = '';
+  $('#plainTitle').textContent = `What to run — round ${d.round || 1}`;
+  $('#plainSum').textContent = [
+    d.vessels ? `${d.arms_count} arms × ${d.replicates} = ${d.vessels} vessels` : null,
+    d.total_days ? `${num(d.total_days)} days` : null,
+    'PROPOSED'].filter(Boolean).join(' \u00b7 ');
+
+  const head = el('div', 'ev-row');
+  head.append(el('span', 'flag', 'PROPOSED — NOT APPROVED'));
+  if (d.key_points && d.key_points.source === 'communication_agent') {
+    head.append(el('span', 'tag', 'WRITTEN BY THE COMMUNICATION AGENT'));
+  }
+  host.append(head);
+
+  /* In short: a few sentences, before any table. */
+  const points = (d.key_points || {}).points || [];
+  if (points.length) {
+    host.append(el('div', 'lab', 'In short'));
+    const ul = el('ul', 'tight');
+    points.forEach(t => ul.append(el('li', null, t)));
+    host.append(ul);
+  }
+
+  /* The recipe, once: what goes in at each stage. */
+  host.append(el('div', 'lab', 'The recipe every arm starts from'));
+  host.append(el('p', 'dim', 'The control: the process as it runs now, and what every other '
+    + 'arm is compared with.'));
+  host.append(foldTable(['Stage', 'When', 'What goes in'], d.recipe.map(s => {
+    const what = el('div', 'ft-chips');
+    s.lines.forEach(l => what.append(el('span', 'chip' + (l.gap ? ' gap' : ''), l.text)));
+    if (!s.lines.length) what.append(el('span', 'dim', s.empty_because || 'nothing set'));
+    const body = el('div', 'ft-body');
+    s.lines.forEach(l => {
+      const row = kv(l.label || l.parameter_id || '', [
+        l.value == null ? (l.gap ? 'not decided yet' : 'no dose published')
+          : `${num(l.value)}${l.unit ? ' ' + l.unit : ''}`,
+        l.timing ? ` \u00b7 ${l.timing}` : '', l.why ? ` \u00b7 ${l.why}` : ''].join(''));
+      if (row) body.append(row);
+    });
+    return { cells: [el('b', null, s.label), s.window, what], detail: body,
+      key: `pp:${snap.run_id}:${s.stage_id}` };
+  }), 'ft-rp'));
+
+  /* Then, per arm, only the difference. */
+  if ((d.arms || []).length) {
+    host.append(el('div', 'lab', 'What each arm changes about it'));
+    host.append(foldTable(['Arm', 'In which stage', 'What changes', 'Tests'],
+      d.arms.map(a => {
+        const where = a.control ? 'the reference'
+          : [...new Set(a.changes.map(c => c.stage_label))].join(', ') || '\u2014';
+        const what = el('div');
+        if (a.control) {
+          what.append(el('span', 'dim', 'nothing: every other arm is read against it'));
+        } else if (a.changes.length || a.unplaced.length) {
+          a.changes.forEach(c => what.append(el('div', 'chip on', c.text)));
+          a.unplaced.forEach(u => what.append(el('div', 'chip on',
+            `${u.parameter_id} \u2192 ${num(u.to)} (no stage on this page carries it)`)));
+        } else {
+          what.append(el('span', 'dim', 'nothing: every setpoint it names matches the reference'));
+        }
+        const body = el('div', 'ft-body');
+        appendAll(body, [kv('What it does', a.basis || a.summary),
+          kv('Reads against', d.reference_arm || 'the control'),
+          kv('Tests', (a.tests || []).join(', '))]);
+        const label = el('span');
+        label.append(el('b', null, a.arm_id));
+        if (a.label && a.label.toLowerCase() !== a.arm_id.toLowerCase()) {
+          label.append(' ', el('span', 'clip', a.label));
+        }
+        return { cells: [label, where, what, (a.tests || []).join(', ') || '\u2014'],
+          detail: body, key: `ppa:${snap.run_id}:${a.arm_id}` };
+      }), 'ft-rp'));
+  }
+
+  if ((d.measure || []).length) {
+    const meas = el('div', 'ft-chips');
+    d.measure.forEach(m => meas.append(el('span', 'chip',
+      [m.name, m.unit, m.when].filter(Boolean).join(' \u00b7 '))));
+    host.append(kv('Measure', meas));
+  }
+  if ((d.decide_first || []).length) {
+    host.append(el('div', 'lab', 'Decide these before the round starts'));
+    const ul = el('ul', 'tight');
+    d.decide_first.forEach(g => ul.append(el('li', null,
+      `${g.parameter_id}: ${g.why || 'not established'}`)));
+    host.append(ul);
+  }
+
+  /* The same page as a file, from where it is read. */
+  if (snap && snap.run_id) {
+    const act = el('div', 'rv-actions');
+    act.append(exportLink(snap.run_id, 'pdf', 'This round on one page (PDF)', '&view=plan'),
+      exportLink(snap.run_id, 'docx', 'Word', '&view=plan'));
+    host.append(act);
+  }
+  host.append(el('p', 'caveat', d.note));
 }
 
 function renderEvidence(groups) {
@@ -4412,13 +4561,32 @@ function wire() {
       const msg = $('#signinMsg'); msg.textContent = 'signing in…';
       try {
         await post('/api/auth/login', {
-          server: $('#signinServer').value.trim(),
-          username: $('#signinUser').value.trim(),
+          email: $('#signinUser').value.trim(),
           password: $('#signinPass').value,
         });
         location.reload();
       } catch (e) { msg.textContent = e.message || 'sign-in failed'; }
     });
+  }
+  const signup = $('#signupForm');
+  if (signup) {
+    signup.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const msg = $('#signupMsg'); msg.textContent = 'creating your account…';
+      try {
+        await post('/api/auth/signup', {
+          email: $('#signupUser').value.trim(),
+          password: $('#signupPass').value,
+          signup_code: ($('#signupCode') || {}).value || '',
+        });
+        location.reload();
+      } catch (e) { msg.textContent = e.message || 'could not create the account'; }
+    });
+  }
+  const tabIn = $('#signinTabIn'), tabUp = $('#signinTabUp');
+  if (tabIn && tabUp) {
+    tabIn.addEventListener('click', () => switchSignin(false));
+    tabUp.addEventListener('click', () => switchSignin(true));
   }
 }
 

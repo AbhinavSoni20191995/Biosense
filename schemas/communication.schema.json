@@ -74,6 +74,19 @@
    },
    "description": "What the run asked, what it found and what happens next, as paragraphs a reader outside the project follows. Claims stay in the evidence language of the run."
   },
+  "key_points": {
+   "type": [
+    "array",
+    "null"
+   ],
+   "maxItems": 6,
+   "items": {
+    "type": "string",
+    "minLength": 15,
+    "maxLength": 240
+   },
+   "description": "Three to six short sentences a scientist can act on: what this round does, what each arm changes, what is still undecided. Plain words, one idea per sentence, no jargon a newcomer to the project would not have. They lead the recommendation on the page and in the exported round page, in place of the ones assembled from the plan. Same rule as every other field: a number here must already stand in the validated protocol."
+  },
   "stages": {
    "type": "array",
    "minItems": 1,

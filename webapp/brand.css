@@ -814,6 +814,10 @@ section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !importan
 .chip{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;
   border:1px solid var(--line);color:var(--ink-2, inherit)}
 .chip.on{border-color:color-mix(in srgb,var(--brand) 60%,transparent);color:var(--brand)}
+/* A value nobody has settled, in the plain plan: shown as a gap rather than
+   left out, because an absent line reads as "nothing needed here". */
+.chip.gap{border-color:color-mix(in srgb,var(--bad) 55%,transparent);color:var(--bad);
+  border-style:dashed}
 @media (max-width:640px){
   .ft-kv{grid-template-columns:1fr;gap:2px}
   .ft-an th:nth-child(5),.ft-an td:nth-child(5){display:none}

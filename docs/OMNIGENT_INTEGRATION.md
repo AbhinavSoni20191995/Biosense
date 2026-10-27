@@ -714,9 +714,10 @@ protocol; the docs.
   how far. The arithmetic is four closed-form shapes in code; what a proposal
   supplies is a shape name and some constants, bounded by contract and clamped
   again in code.
-- **Workspaces and sign-in** — through Omnigent's own accounts, because real AI
-  already requires one. BioSense stores no password and holds the session token
-  server-side.
+- **Workspaces and sign-in** — accounts BioSense keeps itself
+  (`biosense/accounts.py`, see docs/ACCOUNTS.md): the Omnigent runtime inside
+  the service runs as a loopback single user and nobody signs in to it. An
+  Omnigent accounts server is used only when local accounts are turned off.
 - **Campaign authorisation** — one named person, a bounded number of iterations,
   a stated envelope, checked every round. A closed loop is a loop; a signature
   between every round would not make it safer.

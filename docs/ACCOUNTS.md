@@ -48,7 +48,7 @@ the trash.
 | Role | Who | Real AI | Demo caps |
 |---|---|---|---|
 | `public` | not signed in | where the deployment offers it | yes |
-| `user` | signed in | where the deployment offers it | yes |
+| `user` | signed in | where the deployment offers it, from the account's allowance of runs | yes |
 | `admin` | signed in, and listed by this deployment | yes | **no** |
 
 A browser that has not signed in still gets a workspace of its own on a hosted
@@ -58,38 +58,83 @@ says "not signed in" because nothing checked who they are.
 
 ## How somebody signs in
 
-BioSense has **no password database**. `POST /api/auth/login` forwards the
-credentials once to an Omnigent accounts server, which does the authenticating
-(argon2 hashes, signed session JWTs, first-user-is-admin, invite-only
-registration). The JWT it returns is held server-side; the browser gets an opaque
-`HttpOnly` session cookie and nothing else.
+BioSense keeps its own accounts (`biosense/accounts.py`). A person opens the
+page, presses **Sign in / create account**, and makes one with an email address
+and a password of at least eight characters. They are signed in at once. The
+browser gets an opaque `HttpOnly` session cookie and nothing else; the session
+lives in memory on the server.
 
-Two rules make that safe to build a role on:
+What is stored, in one JSON file under the private data root
+(`private_data/accounts/accounts.json`, mode 0600, never served, never
+committed): the email address, a per-account salt and an **scrypt hash** of the
+password, when the account was made and last signed in, how many real AI runs
+it has started, and any per-account run limit an operator set. A password is
+never written anywhere, and a wrong password reads the same as an unknown
+account.
 
-* **One issuer.** `BIOSENSE_AUTH_SERVER` names the one Omnigent accounts server
-  this deployment trusts to say who somebody is. Without it, sign-in still works
-  against a server the caller names — useful on a laptop — but **no such identity
-  can ever be an administrator**, because anyone can run an Omnigent server and
-  return any id they like.
-* **The id comes from the server.** If a server authenticates somebody without
-  saying who they are, sign-in is refused. BioSense never falls back to the
-  username that was typed: that would let a caller choose their own account id,
-  and on a deployment with administrators, choose to be one.
+### Runs per account
+
+Each account may start **five real AI runs** in all (`BIOSENSE_RUNS_PER_ACCOUNT`
+changes the default for everybody). A run is counted when it starts — after
+every other check that could still refuse it, so a refused start costs nothing —
+and deleting a run later gives nothing back. The synthetic demonstration path is
+not counted and has no limit. The page shows "*n* of 5 real AI runs left" from
+the server's own count, and the sixth start is refused by name, with the counts,
+rather than failing. The per-address demo cap and cooldown do not apply to a
+signed-in account (it is counted by name instead); the deployment-wide daily cap
+still does.
+
+On a hosted deployment a real AI run **needs an account**: a browser that has not
+signed in is told to sign in or create one, before the runtime is even probed.
+On a laptop (no hosted posture) nothing changes: one local workspace, no sign-in
+needed.
+
+### What the person running the deployment can set
+
+| | Default | |
+|---|---|---|
+| `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs per account, in all; `0` means no limit of that kind |
+| `BIOSENSE_SIGNUP` | `open` | `closed` refuses new accounts; existing ones still sign in |
+| `BIOSENSE_SIGNUP_CODE` | unset | when set, sign-up asks for this code once, so a public address is open to your lab only. Never shown to the page. |
+| `BIOSENSE_ACCOUNTS` | `on` | `off` turns local accounts off (see below) |
+
+And from the command line, inside the deployment:
+
+```bash
+python -m biosense.accounts list                                   # who, runs used, runs left
+python -m biosense.accounts grant alice@lab.example 20             # a different limit for one account
+python -m biosense.accounts reset-password alice@lab.example '…'   # there is no reset e-mail
+python -m biosense.accounts disable alice@lab.example              # and enable
+python -m biosense.accounts create alice@lab.example '…'           # bypasses a closed sign-up
+```
+
+### Sign-in through an Omnigent accounts server (only with local accounts off)
+
+The earlier design, kept for a deployment that already runs an Omnigent server
+in accounts mode and would rather not keep accounts here: set
+`BIOSENSE_ACCOUNTS=off` and `BIOSENSE_AUTH_SERVER=<that server>`. Then
+`POST /api/auth/login` forwards the credentials once, holds the JWT it gets back
+server-side, and the id comes from the server, never from the form. With local
+accounts on (the default) `BIOSENSE_AUTH_SERVER` is ignored and the page never
+asks for a server address: the Omnigent runtime inside a hosted service is a
+loopback single user that nobody signs in to.
 
 ## Designating an administrator
 
-Two environment variables, set where the deployment's secrets are set — never in
+One environment variable, set where the deployment's secrets are set — never in
 source, and never anything a request can carry:
 
 ```
-BIOSENSE_AUTH_SERVER=https://your-omnigent-accounts-server
 BIOSENSE_ADMIN_USER_IDS=alice@lab.example,bob@lab.example
 ```
 
-Ids are matched as the account system stores them (trimmed, lower-cased) and are
-compared **only** for identities issued by `BIOSENSE_AUTH_SERVER`. Naming
-administrators without naming the issuer refuses to start, with that reason:
-an id alone is not an identity.
+Ids are matched as the account system stores them (trimmed, lower-cased) and
+only for identities **this instance authenticated** — the issuer written into
+an identity by `biosense.accounts` is the instance itself. Create the account
+with a listed email and it is an operator; an identity any other server vouched
+for is never one, however it is named. (With local accounts off, the issuer is
+`BIOSENSE_AUTH_SERVER`, and naming administrators without naming it refuses to
+start: an id alone is not an identity.)
 
 `authz.Policy` is the single place any of this is decided. Everything privileged
 asks it; nothing re-implements the check.
@@ -99,6 +144,7 @@ asks it; nothing re-implements the check.
 Demo policy — the caps that exist to bound what strangers can spend on BioSense's
 own provider key:
 
+* the per-account allowance of real AI runs
 * the per-caller daily Real AI run cap
 * the deployment-wide daily Real AI run cap
 * the cooldown between one caller's runs
@@ -174,8 +220,12 @@ of every run already recorded.
   Per-account dataset ownership is not implemented.
 * **An anonymous workspace is a cookie.** Clearing it loses the link to those
   runs. It partitions strangers; it does not authenticate them.
-* **Sessions are in memory.** A restart signs everybody out, which is the right
-  trade for a process that is not a credential store.
+* **Sessions are in memory.** A restart signs everybody out; the accounts
+  themselves are on disk and survive it.
+* **No e-mail is sent.** Addresses are not verified and there is no reset link;
+  an operator resets a password from the command line.
+* **The accounts file is one machine's.** An account made on one deployment does
+  not exist on another.
 * **BioSense admin is not Omnigent admin.** The two are different roles with
   different configuration, and neither grants the other. Omnigent's own
   `is_admin` is kept for display as `provider_is_admin` and authorises nothing

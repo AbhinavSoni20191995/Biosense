@@ -729,9 +729,15 @@ not a copy. Not signed in, on a hosted instance, your browser still gets a
 workspace of its own — it just has no name and does not follow you to another
 machine.
 
-Sign-in is an **Omnigent account**: BioSense forwards your credentials to the
-configured accounts server once, keeps only the session it returns, server-side,
-and stores no password of its own.
+Sign-in is an **account on this BioSense**: anyone who can reach the page creates
+one with an email address and a password (`Sign in / create account`, top
+right), and from then on their work is theirs. Each account gets an allowance
+of real AI runs — five by default, `BIOSENSE_RUNS_PER_ACCOUNT` — and the
+demonstration path is not counted. Passwords are stored only as scrypt hashes
+under the private data root; sessions stay server-side. The person running the
+deployment can close sign-up, require a sign-up code, or give an account more
+runs (`python -m biosense.accounts grant you@lab.example 20`); see
+[docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
 Hosted Real AI currently runs on **BioSense-managed demo access** — this
 deployment's own model credentials, under the caps above. A later version may let
@@ -925,10 +931,10 @@ and each arrives with a declared relationship to the simulator:
 model, and no dropdown can confer it.
 
 Projects you create are stored in your workspace under the private data root —
-never written into this repository, never served as files. Sign in through your
-own Omnigent account and they belong to you; without a server configured there is
-one local workspace, private because the machine is, and the interface says so in
-those words rather than implying more.
+never written into this repository, never served as files. Sign in with your
+account and they belong to you; not signed in, on a laptop, there is one local
+workspace, private because the machine is, and the interface says so in those
+words rather than implying more.
 
 </details>
 
@@ -995,7 +1001,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1694 tests
+uv run --frozen python -m unittest     # 1735 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip
@@ -1117,9 +1123,9 @@ An evaluator should know the limits before the features.
   reports `no_simulator` rather than borrowing one. A candidate parameter the
   model cannot predict is labelled `not_modelled`, never dropped and never
   predicted anyway.
-- **Sign-in is Omnigent's, and a local instance has none.** Signing in through
-  an Omnigent account gives you a workspace that is yours, because that server
-  checked a password. Without one there is a single local workspace, private
+- **Sign-in is an account this instance keeps.** Signing in gives you a
+  workspace that is yours, because this server checked a password it never
+  stored. Not signed in, on a laptop, there is a single local workspace, private
   because the machine is private and not because anything verified it — which is
   what the interface says, rather than implying more.
 - **A closed loop is authorised, not unattended.** A campaign authorisation is

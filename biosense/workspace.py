@@ -1,12 +1,13 @@
 """Who is asking, and where their projects live.
 
-BioSense does not have a password database, and this module is the reason it does
-not need one. Real AI already requires an Omnigent account — a person who wants
-it runs `omnigent login <server>` or signs in through BioSense, and Omnigent's
-own accounts system (first-user-is-admin, invite-only, argon2 hashes, signed
-session JWTs) does the authenticating. BioSense forwards the credentials once,
-keeps the token it gets back **server-side**, and asks `GET /auth/me` who that
-token belongs to. The answer is the workspace owner.
+Two ways to be somebody here. The usual one is an account this instance keeps
+itself (`biosense.accounts`): an email address and a password, hashed and
+stored under the private data root, with an allowance of real AI runs. The
+other — only when accounts are turned off — is an Omnigent accounts server: a
+person who wants it signs in through BioSense, Omnigent's own accounts system
+does the authenticating, BioSense forwards the credentials once, keeps the
+token it gets back **server-side**, and asks `GET /auth/me` who that token
+belongs to. Either way the answer is the workspace owner.
 
 What that buys, stated precisely, because the difference matters:
 
@@ -137,15 +138,15 @@ class WorkspaceIdentity:
             'server': self.server,
             'role': role,
             'note': (
-                'Signed in through Omnigent. Your projects, runs and reports are stored under '
-                'your account and are not listed for anyone else.' if self.authenticated else
+                'Signed in. Your projects, runs and reports are stored under your account '
+                'and are not listed for anyone else.' if self.authenticated else
                 'Not signed in. This browser has its own unnamed workspace on this instance: '
                 'its runs are not listed for anyone else, and nothing here checked who you '
                 'are. Sign in for an account that keeps your work across browsers.'
                 if self.anonymous else
                 'Not signed in. This instance has one local workspace, private because this '
-                'machine is private — nothing here checked who you are. Sign in through an '
-                'Omnigent server for an account-owned workspace.'),
+                'machine is private — nothing here checked who you are. Sign in for an '
+                'account-owned workspace.'),
         }
 
 

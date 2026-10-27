@@ -110,6 +110,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .. import accounts as AC
 from .. import contracts as K
 from .. import glossary as GL
 from .. import workspace as WS
@@ -1273,11 +1274,16 @@ class DiscoveryRun:
 class DiscoveryRegistry:
     """Discovery runs in this process, and the caps that bound them."""
 
-    def __init__(self, runs_dir, runtime_config, limits=None, policy=None):
+    def __init__(self, runs_dir, runtime_config, limits=None, policy=None, accounts=None):
         self.runs_dir = Path(runs_dir)
         self.cfg = runtime_config
         self.limits = limits or BU.Limits()
         self.policy = policy or AZ.Policy()
+        # The deployment's own accounts, when it keeps them: a signed-in user's
+        # real runs are counted against their account rather than against the
+        # per-address demo bucket, and on a hosted instance a real run needs
+        # an account at all. None means no accounts (a laptop, or a test).
+        self.accounts = accounts
         self.ledger = BU.Ledger(self.limits)
         self.runs = {}
         self.order = []
@@ -1311,7 +1317,21 @@ class DiscoveryRegistry:
             raise RT.RuntimeUnavailable('not_configured', hosted=self.cfg.hosted)
         role = self.policy.role_for(identity)
         credential_mode = self.policy.credential_mode(identity)
+        # A signed-in account on an instance that keeps accounts spends its own
+        # allowance of real runs; the per-address demo bucket is for strangers.
+        on_account = bool(self.accounts is not None and self.accounts.settings.enabled
+                          and role == AZ.ROLE_USER
+                          and getattr(identity, 'server', None) == AC.ISSUER)
         if target.is_real:
+            if (self.accounts is not None and self.accounts.settings.enabled
+                    and self.cfg.hosted and role == AZ.ROLE_PUBLIC):
+                # A hosted instance with accounts runs real AI for people it
+                # knows. Said before the runtime is probed: this is about the
+                # caller, not the service, and it costs nothing to say.
+                raise AC.AccountError(
+                    'sign in, or create an account, to start a real AI run. Each account '
+                    f'gets {self.accounts.settings.run_limit} real AI runs; the demonstration '
+                    'path runs without signing in.', reason='account_required', status=401)
             # Checked before anything is written, so a run that cannot possibly
             # work never appears in the list as if it might.
             from . import omnigent_runtime as OMNI
@@ -1319,8 +1339,12 @@ class DiscoveryRegistry:
             # And then the demo budget, which refuses by name and never
             # downgrades the request into a synthetic run. An operator account is
             # exempt here and nowhere else: the concurrency gate below, the
-            # deadline, and every size limit apply to them unchanged.
-            self.ledger.authorise(client or 'unknown', is_real=True, role=role)
+            # deadline, and every size limit apply to them unchanged. An account
+            # with its own allowance skips the per-address cap and cooldown,
+            # which are for callers nobody can name; the deployment-wide cap
+            # still applies to it.
+            self.ledger.authorise(client or 'unknown', is_real=True, role=role,
+                                  per_client_exempt=on_account)
         with self.lock:
             self._evict()
             if target.is_real and self.active_real >= MAX_CONCURRENT_REAL:
@@ -1333,6 +1357,10 @@ class DiscoveryRegistry:
                 raise K.ContractError(
                     f'{self.active_synthetic} runs are already going and the limit is '
                     f'{MAX_CONCURRENT}.')
+            if target.is_real and on_account:
+                # Last, after every check that could still refuse: a run that
+                # is refused by the gate above must not have cost an allowance.
+                self.accounts.authorise_run(identity.owner)
             rid = uuid.uuid4().hex[:16]
             stamp = time.strftime('%Y%m%d-%H%M%S')
             prefix = 'ai' if target.is_real else 'demo'
@@ -1863,6 +1891,7 @@ class Handler(BaseHTTPRequestHandler):
     default_identity = None
     limits = BU.Limits()
     policy = AZ.Policy()
+    accounts = None      # an accounts.Store when this instance keeps accounts
     _ready = {'at': 0.0, 'body': None, 'code': 503}
     _ready_lock = threading.Lock()
 
@@ -2033,6 +2062,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._create_project(self._body(MAX_BODY_DISCOVERY))
             if path == '/api/auth/login':
                 return self._login(self._body())
+            if path == '/api/auth/signup':
+                return self._signup(self._body())
             if path == '/api/auth/logout':
                 return self._logout()
             if path == '/api/admin/selfcheck':
@@ -2067,6 +2098,18 @@ class Handler(BaseHTTPRequestHandler):
                                     'limit': e.limit, 'retry_after_s': e.retry_after_s,
                                     'headline': 'Run limit reached',
                                     'limits': self.limits.describe()}, extra=extra)
+        except AC.RunsExhausted as e:
+            return self._send(429, {'error': str(e), 'refused': True, 'reason': 'account_runs',
+                                    'limit': 'account', 'runs_used': e.used,
+                                    'run_limit': e.run_limit,
+                                    'headline': 'This account has used its runs'})
+        except WS.AuthError as e:
+            # Sign-in, sign-up, or a run that needs an account: the status says
+            # which (401 to sign in, 403 refused, 409 already exists, 400 shape).
+            return self._send(e.status, {'error': str(e), 'refused': True,
+                                         'reason': e.reason,
+                                         'headline': ('Sign in to continue'
+                                                      if e.status == 401 else 'Not accepted')})
         except K.ContractError as e:
             return self._send(400, {'error': str(e), 'refused': True})
         except Exception as e:  # noqa: BLE001
@@ -2241,10 +2284,55 @@ class Handler(BaseHTTPRequestHandler):
         out['is_admin'] = role == AZ.ROLE_ADMIN
         out['credential_mode'] = self.policy.credential_mode(identity)
         out['allowance'] = self.discovery.ledger.allowance(self._client(), role=role)
-        out['sign_in_available'] = bool(self.policy.auth_server or self.runtime_cfg.is_real)
+        local = self._accounts_on()
+        if local and role == AZ.ROLE_USER and getattr(identity, 'server', None) == AC.ISSUER:
+            # An account's own allowance, from the file, not the per-address
+            # bucket: it is what the run will actually be counted against.
+            mine = self.accounts.allowance(identity.owner)
+            if mine:
+                out['allowance'] = mine
+        out['sign_in_available'] = bool(local or self.policy.auth_server
+                                        or self.runtime_cfg.is_real)
+        out['accounts'] = (self.accounts.settings.describe() if local
+                           else {'enabled': False, 'signup_open': False})
+        if local and not identity.authenticated and self.runtime_cfg.hosted:
+            out['note'] = ('Not signed in. Create an account or sign in to run real AI: each '
+                           f'account gets {self.accounts.settings.run_limit} runs, kept under '
+                           'your name. The demonstration path runs without signing in.')
         return out
 
+    def _accounts_on(self):
+        return bool(self.accounts is not None and self.accounts.settings.enabled)
+
+    def _session_cookie(self, identity):
+        sid = self.sessions.create(identity)
+        # HttpOnly so a script on the page cannot read it; SameSite=Lax so it is
+        # not sent from another site. Secure only on https, or a local http
+        # instance could never sign in at all.
+        secure = '; Secure' if (self.headers.get('X-Forwarded-Proto') == 'https') else ''
+        return (f'{WS.SESSION_COOKIE}={sid}; Path=/; HttpOnly; SameSite=Lax'
+                f'; Max-Age={WS.SESSION_TTL_S}{secure}')
+
+    def _signup(self, body):
+        """A new account on this instance, signed in at once."""
+        if not self._accounts_on():
+            raise WS.AuthError('this instance keeps no accounts, so there is nothing to sign '
+                               'up for', reason='accounts_off', status=400)
+        identity = self.accounts.create(body.get('email') or body.get('username'),
+                                        body.get('password'),
+                                        signup_code=body.get('signup_code'),
+                                        display=body.get('display'))
+        return self._send(200, {'identity': self._identity_payload(identity), 'created': True},
+                          extra=[('Set-Cookie', self._session_cookie(identity))])
+
     def _login(self, body):
+        if self._accounts_on():
+            # This instance authenticates its own people. Whatever `server`
+            # the form may still send is ignored: there is no other issuer.
+            identity = self.accounts.sign_in(body.get('email') or body.get('username'),
+                                             body.get('password'))
+            return self._send(200, {'identity': self._identity_payload(identity)},
+                              extra=[('Set-Cookie', self._session_cookie(identity))])
         asked = (body.get('server') or '').strip()
         trusted = self.policy.auth_server
         if trusted:
@@ -2265,15 +2353,8 @@ class Handler(BaseHTTPRequestHandler):
                 'sign in to. It runs one local workspace.',
                 reason='no_server_configured', status=400)
         identity = WS.sign_in(server, body.get('username'), body.get('password'))
-        sid = self.sessions.create(identity)
-        # HttpOnly so a script on the page cannot read it; SameSite=Lax so it is
-        # not sent from another site. Secure only on https, or a local http
-        # instance could never sign in at all.
-        secure = '; Secure' if (self.headers.get('X-Forwarded-Proto') == 'https') else ''
-        cookie = (f'{WS.SESSION_COOKIE}={sid}; Path=/; HttpOnly; SameSite=Lax'
-                  f'; Max-Age={WS.SESSION_TTL_S}{secure}')
         return self._send(200, {'identity': self._identity_payload(identity)},
-                          extra=[('Set-Cookie', cookie)])
+                          extra=[('Set-Cookie', self._session_cookie(identity))])
 
     def _logout(self):
         raw = self.headers.get('Cookie') or ''
@@ -3650,6 +3731,7 @@ class Handler(BaseHTTPRequestHandler):
         out['agent_sandbox'] = RT.agent_sandbox_state()
         out['identity'] = self._identity_payload()
         out['limits'] = self.limits.describe()
+        out['accounts'] = out['identity'].get('accounts')
         out['usage'] = self.discovery.ledger.state()
         out['note'] = (
             'A synthetic run and a real one are different claims about the same question. '
@@ -3855,13 +3937,18 @@ def main(argv=None):
     cfg = RT.from_env(runs_dir=runs)
     limits = BU.from_env()
     policy = AZ.from_env()
+    # The deployment's own accounts: sign-up, sign-in and an allowance of real
+    # runs per person, in one file under the private data root.
+    acct_settings = AC.settings_from_env()
+    accounts = AC.Store(settings=acct_settings) if acct_settings.enabled else None
     Handler.runs_dir = runs
     Handler.static_dir = Path(a.static) if a.static else None
     Handler.registry = Registry(runs)
     Handler.runtime_cfg = cfg
     Handler.limits = limits
     Handler.policy = policy
-    Handler.discovery = DiscoveryRegistry(runs, cfg, limits, policy)
+    Handler.accounts = accounts
+    Handler.discovery = DiscoveryRegistry(runs, cfg, limits, policy, accounts=accounts)
     # A run in flight when the last process stopped (a redeploy, a crash) is
     # finished from what its agents had written, and kept, labelled partial.
     from . import salvage as SV
@@ -3877,7 +3964,12 @@ def main(argv=None):
              + ('  (token configured)' if cfg.token else '  (no token: loopback single-user)')
              if cfg.is_real else
              'synthetic stand-in only; nothing on this path calls a model')
-          + (f'\ncaps: {limits.describe()}' if limits.any_cap else ''),
+          + (f'\ncaps: {limits.describe()}' if limits.any_cap else '')
+          + (f'\naccounts: {accounts.count()} on file, sign-up '
+             f'{"open" if acct_settings.signup_open else "closed"}'
+             f'{" (code required)" if acct_settings.signup_code else ""}, '
+             f'{acct_settings.run_limit} real AI runs each; stored at {accounts.path}'
+             if accounts else '\naccounts: off (BIOSENSE_ACCOUNTS=off)'),
           flush=True)
     try:
         srv.serve_forever()

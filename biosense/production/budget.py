@@ -203,7 +203,7 @@ class Ledger:
             else:
                 del self._by_client[key]
 
-    def authorise(self, client, *, is_real=True, role=None):
+    def authorise(self, client, *, is_real=True, role=None, per_client_exempt=False):
         """Record one real-run start, or refuse it by name.
 
         Called before anything is written, so a run that is not allowed never
@@ -213,6 +213,11 @@ class Ledger:
         configuration and a server-verified identity. An administrator is
         recorded and exempted; nothing a request can carry reaches this
         argument, which is the property that makes the exemption safe.
+
+        *per_client_exempt* is set by the app for an account that spends its
+        own allowance (`accounts.Store.authorise_run`): the per-address cap and
+        cooldown exist for callers nobody can name, and a named account is
+        counted by name instead. The deployment-wide daily cap still applies.
         """
         lim = self.limits
         if not is_real:
@@ -229,7 +234,7 @@ class Ledger:
         # "no caps" means nothing is refused, not that nothing is counted.
         with self._lock:
             self._prune(now)
-            mine = self._by_client.get(client, [])
+            mine = [] if per_client_exempt else self._by_client.get(client, [])
             if lim.cooldown_s and mine:
                 wait = lim.cooldown_s - (now - mine[-1])
                 if wait > 0:
@@ -257,7 +262,8 @@ class Ledger:
                     f'cap: ./scripts/start_local_ai.sh',
                     retry_after_s=(oldest + DAY_S) - now)
             self._all.append(now)
-            self._by_client.setdefault(client, []).append(now)
+            if not per_client_exempt:
+                self._by_client.setdefault(client, []).append(now)
 
     def state(self):
         """Counts, for /readyz and the interface. No client keys leave here."""

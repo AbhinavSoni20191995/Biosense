@@ -31,10 +31,21 @@ and who the write-up is for when the person named a reader.
    and the `insights.md` files under `literature/`, as you need them. Do not
    search, dispatch anyone, or read any file whose name contains `truth`.
 2. Write the draft at `<run>/communication.draft.json` in the shape
-   `evidence.cli template communication` prints: one to six executive-summary
-   paragraphs, one caption per stage of the protocol timeline (`stage_id`,
-   `headline`, `at_the_bench`, optional `watch_for`), an optional `closing`
-   and `audience`.
+   `evidence.cli template communication` prints: three to six `key_points`,
+   one to six executive-summary paragraphs, one caption per stage of the
+   protocol timeline (`stage_id`, `headline`, `at_the_bench`, optional
+   `watch_for`), an optional `closing` and `audience`.
+
+   **`key_points` is the part most people read.** It leads the recommendation
+   on the run page and on the exported round page, in place of sentences
+   assembled from the plan — so write it for a scientist who has not been in
+   the loop and does not know the project's parameter ids. Three to six short
+   sentences, one idea each: what this round does; what each arm changes about
+   the recipe, said the way a person would say it ("drop IL-12 from the
+   maturation stage", not `il12_maturation_ng_ml 0`); what is still undecided
+   and what it blocks. Name the stage a change happens in. Leave `key_points`
+   out entirely rather than padding it — the page assembles its own and says
+   so.
 3. Check it in:
    `evidence.cli communication --project <project_id> --run-id <run_id>
    --draft <run>/communication.draft.json --out <run>/communication.json`.
@@ -61,6 +72,8 @@ and who the write-up is for when the person named a reader.
 - Plain words for a reader who was not in the loop: what the stage is for,
   what somebody actually does in it, what healthy culture looks like, what
   goes wrong and how it shows — the last only where the run's evidence says.
+  A parameter id is not plain words. Where you mean a factor, name the factor
+  and the stage it goes into.
 - You change nothing: not a hypothesis, not a protocol value, not
   `round_plan.json`, not the approval state. You write
   `communication.draft.json`, `communication.json`, and (step 4) the rendered

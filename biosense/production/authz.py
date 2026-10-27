@@ -6,11 +6,13 @@ to spend, never in what science means:
     public    nobody signed in. One shared local workspace on a laptop; an
               opaque per-browser workspace on a hosted deployment. Demo policy
               applies in full.
-    user      signed in through the configured Omnigent accounts server. Owns
-              their projects, their runs and their reports. Demo policy applies.
+    user      signed in: an account this instance keeps (`biosense.accounts`,
+              the default), or — with accounts off — one the configured
+              Omnigent accounts server vouched for. Owns their projects, runs
+              and reports. Spends their account's allowance of real runs.
     admin     a signed-in user whose id the deployment lists in
-              BIOSENSE_ADMIN_USER_IDS. Demo policy does not apply. Every system
-              safety limit still does.
+              BIOSENSE_ADMIN_USER_IDS. Demo policy and the run allowance do not
+              apply. Every system safety limit still does.
 
 Three rules this module exists to hold, and each is a thing that would otherwise
 be got wrong somewhere:
@@ -165,6 +167,14 @@ def from_env(env=None):
     raw = (env.get(ENV_ADMIN_IDS) or '').replace('\n', ',')
     ids = [part.strip() for part in raw.split(',') if part.strip()]
     server = (env.get(ENV_AUTH_SERVER) or '').strip() or None
+    from .. import accounts as AC
+    if AC.settings_from_env(env).enabled:
+        # This deployment keeps its own accounts, so it is its own issuer: an
+        # admin id names an account on this instance, authenticated by this
+        # instance's password file. An Omnigent accounts server named beside
+        # it is not consulted for sign-in — accounts would be two places at
+        # once — so it is set aside here rather than half-used.
+        return Policy(admin_ids=ids, auth_server=AC.ISSUER)
     if server:
         from . import runtime as RT
         mode = 'local_real_ai' if RT.is_loopback(server) else 'remote_real_ai'

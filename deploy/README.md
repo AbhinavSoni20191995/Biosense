@@ -179,53 +179,68 @@ Worth knowing:
 - A stopped or timed-out run is recorded as `stopped`, with whatever the agents
   had written. It is never reported as a finished answer.
 
-### Designating an operator account
+### Accounts, and designating an operator
+
+BioSense keeps its own accounts: a person opens the page, presses **Sign in /
+create account**, and makes one with an email address and a password. Each
+account gets an allowance of real AI runs — **five by default** — and the
+demonstration path is not counted. The file lives under the private data root
+(`/app/data/private/accounts/accounts.json` on the volume), holds scrypt hashes
+and never a password, and is neither served nor committed.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs each account may start, in all |
+| `BIOSENSE_SIGNUP` | `open` | `closed` stops new accounts; existing ones still sign in |
+| `BIOSENSE_SIGNUP_CODE` | unset | when set, sign-up asks for this code once — a public address stays open to your lab only |
+| `BIOSENSE_ADMIN_USER_IDS` | unset | comma-separated emails that are operators once they sign up here |
+| `BIOSENSE_ACCOUNTS` | `on` | `off` turns local accounts off; sign-in then needs an Omnigent accounts server (below) |
+
+An operator looks after accounts from inside the container:
+
+```bash
+python -m biosense.accounts list
+python -m biosense.accounts grant you@yourlab.example 20     # more runs for one account
+python -m biosense.accounts reset-password you@yourlab.example '<new password>'
+python -m biosense.accounts disable someone@elsewhere.example
+```
 
 A deployment that you develop against will hit its own demo caps, which is
-correct for strangers and tiresome for you. Two variables fix that, and both are
+correct for strangers and tiresome for you. One variable fixes that, and it is
 server-side configuration a request can never reach:
 
 ```bash
-railway variables set BIOSENSE_AUTH_SERVER=https://your-omnigent-accounts-server
 railway variables set BIOSENSE_ADMIN_USER_IDS=you@yourlab.example
 ```
 
-`BIOSENSE_AUTH_SERVER` is the one Omnigent accounts server this deployment trusts
-to say who somebody is; `BIOSENSE_ADMIN_USER_IDS` is a comma-separated list of
-ids on that server. **Both are required**: naming administrators without naming
-the issuer refuses to start, because anyone can run an Omnigent server and return
-any id they like, so an id alone is not an identity.
+Create the account with that email on the site and the page reads
+`ADMIN · REAL AI — ONLINE`: the demo caps and the run allowance do not apply —
+not the per-caller daily cap, not the deployment daily cap, not the cooldown.
+The run timeout, the one-at-a-time gate, the size limits, the fixed agent
+bundle and every data boundary still do, and **other accounts' runs and
+projects remain invisible**: an exemption from spending caps is not a key to
+anybody's science. Operator runs are counted as `admin_real_runs_today`,
+separately from the public ones, because they are not free.
 
-Signed in as a listed account, the page reads `ADMIN · REAL AI — ONLINE` and the
-demo caps do not apply — not the per-caller daily cap, not the deployment daily
-cap, not the cooldown. The run timeout, the one-at-a-time gate, the size limits,
-the fixed agent bundle and every data boundary still do, and **other accounts'
-runs and projects remain invisible**: an exemption from spending caps is not a
-key to anybody's science. Operator runs are counted as
-`admin_real_runs_today`, separately from the public ones, because they are not
-free.
-
-Nothing needs an admin identifier in source, and nothing needs editing to add or
-remove one: change the variable and redeploy. The full model, and the planned
-user-provided-key design that is **not** implemented, are in
+An admin id is matched only against an account **this instance** authenticated:
+an identity any other server vouches for is never an operator here, however it
+is named. Nothing needs an admin identifier in source, and nothing needs
+editing to add or remove one: change the variable and redeploy. The full model,
+and the planned user-provided-key design that is **not** implemented, are in
 [docs/ACCOUNTS.md](../docs/ACCOUNTS.md).
 
-### Running an accounts server for sign-in
+### Sign-in through an Omnigent accounts server (only with local accounts off)
 
 The runtime server inside the container is a loopback single-user server, so it
-has no accounts and no `/auth/login`. Sign-in therefore needs an Omnigent server
-running in **accounts** mode, which is a separate process (a second small service,
-or one you already run):
-
-```bash
-OMNIGENT_AUTH_ENABLED=1 OMNIGENT_AUTH_PROVIDER=accounts OMNIGENT_ACCOUNTS_ENABLED=1 OMNIGENT_ACCOUNTS_COOKIE_SECRET="$(openssl rand -hex 32)" OMNIGENT_ACCOUNTS_BASE_URL=https://your-omnigent-accounts-server OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD='<first-boot admin password>'   omnigent server --host 0.0.0.0 --port "$PORT" --no-open
-```
-
-On first boot that creates one admin account (named `root` unless the accounts
-store says otherwise) and invites are issued from there. Point
-`BIOSENSE_AUTH_SERVER` at it. Verified in this repository against a real accounts
-server: `POST /auth/login` returns `{"token": ..., "user": {"id": ..., "is_admin": ...}}`
-and `GET /auth/me` returns the same id, which is exactly the shape BioSense reads.
+has no accounts and no `/auth/login`; nobody signs in to it, and the page never
+asks for its address. If a deployment would rather authenticate against an
+Omnigent server it already runs in **accounts** mode, set `BIOSENSE_ACCOUNTS=off`
+and point `BIOSENSE_AUTH_SERVER` at that server (then `BIOSENSE_ADMIN_USER_IDS`
+names ids on it, and both are required together). Verified in this repository
+against a real accounts server: `POST /auth/login` returns
+`{"token": ..., "user": {"id": ..., "is_admin": ...}}` and `GET /auth/me`
+returns the same id, which is exactly the shape BioSense reads. With local
+accounts on (the default), `BIOSENSE_AUTH_SERVER` is ignored.
 
 ### What a visitor can and cannot do
 
@@ -269,8 +284,10 @@ Still enforced in code, exactly as in the synthetic image:
 | | `BIOSENSE_PAUSE_HOLD_S` | `1800` | how long a paused run waits for an answer before it finishes with what the agents wrote |
 | | `BIOSENSE_ORCHESTRATOR_MODEL` | no | the orchestrator's own model, when it should differ from `ANTHROPIC_MODEL` |
 | Remote | `BIOSENSE_OMNIGENT_TOKEN` / `_TOKEN_FILE` | no | only for `remote` mode |
-| Accounts | `BIOSENSE_AUTH_SERVER` | **no — you set it** | the one issuer sign-in is accepted from |
-| | `BIOSENSE_ADMIN_USER_IDS` | **no — you set it** | operator ids on that server |
+| Accounts | `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs each account may start |
+| | `BIOSENSE_SIGNUP` / `BIOSENSE_SIGNUP_CODE` | `open` / unset | close sign-up, or ask for a code |
+| | `BIOSENSE_ADMIN_USER_IDS` | **no — you set it** | operator emails (accounts made here) |
+| | `BIOSENSE_ACCOUNTS` / `BIOSENSE_AUTH_SERVER` | `on` / unset | `off` + an Omnigent accounts server, only if you would rather not keep accounts here |
 
 `tests/test_cloud_runtime.py` asserts that no image or script bakes in a
 credential.
