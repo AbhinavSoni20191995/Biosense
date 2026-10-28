@@ -431,6 +431,25 @@ def _settle_counts(snap):
         snap['stage_counts'] = counts
 
 
+def _backfill_plain_plan(snap):
+    """A run that finished before the plain plan existed gets one when it is read.
+
+    The plan is computed from the protocol the record already holds (its
+    first pass is stored with it), so an older run opens in the same layout as
+    a new one — the finding on top, the recipe once, each arm's change — with
+    nothing rewritten on disk. A record whose protocol cannot be laid out is
+    shown as it was rather than refused.
+    """
+    protocol = ((snap.get('result') or {}).get('protocol')) if isinstance(snap, dict) else None
+    if not isinstance(protocol, dict) or protocol.get('plain_plan'):
+        return
+    try:
+        from . import plain_plan as PP
+        protocol['plain_plan'] = PP.build(protocol)
+    except Exception:  # noqa: BLE001 — an old record is shown as it was, never refused
+        pass
+
+
 def restore(runs_dir, run_id, *, after=-1):
     """A snapshot for *run_id* read back from disk, or None if there is no record.
 
@@ -448,6 +467,7 @@ def restore(runs_dir, run_id, *, after=-1):
     snap['events'] = read_events(d, after=after)
     snap['event_count'] = len(read_events(d, after=-1))
     snap['recovered'] = True
+    _backfill_plain_plan(snap)
     # Questions are answered after the state was last written; read them live.
     from . import ask as ASK
     snap['questions'] = ASK.load(d)['items'] or None

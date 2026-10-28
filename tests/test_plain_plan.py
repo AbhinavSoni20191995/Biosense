@@ -211,3 +211,29 @@ class BuildTests(unittest.TestCase):
         d = PP.build({})
         self.assertEqual('plain_plan', d['kind'])
         self.assertEqual([], d['arms'])
+
+
+class OlderRunTests(unittest.TestCase):
+    """A run that finished before the plain plan existed opens in the new layout."""
+
+    def test_a_record_without_a_plain_plan_gets_one_when_read_back(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from biosense.production import run_store as RS
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        d = tmp / 'ai-20260901-oldrun'
+        d.mkdir()
+        protocol = {k: v for k, v in NK.items()}       # as display() stored it, minus plain_plan
+        RS.write_state(d, {'run_id': 'a' * 16, 'status': 'done', 'is_real': True,
+                           'runtime_mode': 'local_real_ai', 'owner': 'ivy@lab.example',
+                           'project_id': 'p', 'objective': 'o', 'run_dir': d.name,
+                           'started_at': 1.0, 'finished_at': 2.0,
+                           'result': {'protocol': protocol}})
+        snap = RS.restore(tmp, 'a' * 16)
+        plan = snap['result']['protocol']['plain_plan']
+        self.assertEqual('plain_plan', plan['kind'])
+        self.assertEqual(['A0', 'A1', 'A3'], [a['arm_id'] for a in plan['arms']])
+        # Nothing was rewritten on disk: the record is read, not migrated.
+        self.assertNotIn('plain_plan', RS.state_path(d).read_text())
