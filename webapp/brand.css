@@ -951,12 +951,57 @@ section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !importan
    of the page is still there under it. */
 body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
 
+/* ── The run as a piece of software: the finding, then tabs ──
+   The finding is always on screen. Below it one section at a time, chosen
+   from a tab bar: the highlighted tabs are what a person acts on, the small
+   ones the supplementary record. A section's own renderer decides whether
+   it exists (`hidden`); the tabs decide which existing one is shown
+   (`tab-off`). On the canvas every box is free, so tabs stand down. */
+.tabs{display:flex;flex-direction:column;gap:6px;padding:2px 2px 0}
+.tabs-main,.tabs-more{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tab{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.04em;
+  padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--glass-2);
+  color:var(--ink-2);cursor:pointer;display:inline-flex;gap:7px;align-items:center;
+  transition:border-color .15s ease,color .15s ease}
+.tab:hover{border-color:color-mix(in srgb,var(--brand) 55%,transparent);color:var(--ink)}
+.tab[aria-selected="true"]{border-color:var(--brand);color:var(--brand);
+  background:color-mix(in srgb,var(--brand) 10%,var(--glass-2))}
+.tab .tab-n{font-weight:500;color:var(--ink-3);letter-spacing:0;font-size:11px;max-width:16em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab[aria-selected="true"] .tab-n{color:inherit;opacity:.8}
+.tabs-more .tab{font-size:10.5px;font-weight:600;padding:3px 9px;border-color:transparent;
+  background:transparent;color:var(--ink-3)}
+.tabs-more .tab:hover{color:var(--ink)}
+.tabs-more .tab[aria-selected="true"]{border-color:var(--line);color:var(--ink);background:var(--glass-2)}
+.tabs-more::before{content:'more';font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);margin-right:4px}
+.tabs-more:empty{display:none}
+.cols:not(.canvas) > .stack > section.card.tab-off{display:none}
+.cols.canvas > #resultNav,.cols.canvas .tabs{display:none}
+/* Widen: any section may take the whole width; Escape narrows them all. */
+.head .widen{margin-left:auto;font-size:11px;padding:3px 9px;flex:none}
+.cols > .stack > section.card > .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+section.card.wide{grid-column:1 / -1}
+#protocolPanel.wide .flow-wrap{margin:14px 0 18px}
+#protocolPanel.wide .plan-stages{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+/* The comparison: the field in one table, this recommendation as its last row. */
+.cmp{width:100%;border-collapse:collapse;font-size:13px}
+.cmp th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-3);padding:6px 8px;border-bottom:1px solid var(--line)}
+.cmp td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.cmp tr.ours td{background:color-mix(in srgb,var(--brand) 8%,transparent);font-weight:600}
+.cmp tr.bench td:first-child::after{content:' benchmark';font-family:var(--mono);font-size:9.5px;
+  color:var(--brand);letter-spacing:.06em;text-transform:uppercase}
+.runinfo .ft-kv{margin:4px 0}
+.runinfo blockquote{margin:6px 0 10px;padding:8px 12px;border-left:3px solid var(--brand);
+  background:var(--glass-2);border-radius:6px;font-size:14px;line-height:1.5}
+.runinfo pre{font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;overflow:auto;
+  max-height:22rem;background:var(--glass-2);padding:10px;border-radius:8px}
+
 /* The answer panels stay one per row. Side by side was tried and the columns
    came out too narrow to read: a hypothesis paragraph at 350px is a column of
    two words, which is worse than scrolling.
    The page keeps the two columns it always had. */
-#protocolPanel.wide .flow-wrap{margin:14px 0 18px}
-#protocolPanel.wide .plan-stages{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 
 /* ── Which route the run researched ── */
 .route-chosen{border:1px solid var(--line);border-left:4px solid var(--brand);

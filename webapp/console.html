@@ -411,15 +411,39 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div id="plainPlan"></div>
     </section>
 
-    <section class="glass card" id="resultPanel" hidden>
+    <!-- Everything below the finding is one section at a time. The tabs are
+         the map: the highlighted ones are what a person acts on, the small ones
+         are the supplementary record. Every section keeps its own renderer;
+         the tabs only decide which one is on screen. -->
+    <nav id="resultNav" class="tabs" aria-label="Parts of this run" hidden>
+      <div class="tabs-main" id="tabsMain"></div>
+      <div class="tabs-more" id="tabsMore"></div>
+    </nav>
+
+    <section class="glass card" id="resultPanel" data-tab="hyp" hidden>
       <div class="head"><h3>The hypothesis</h3><span class="hint" id="resultHead"></span></div>
       <div id="hypothesis"></div>
+    </section>
+
+    <!-- The leading published protocols beside this recommendation. The
+         overview is one table; what each difference rests on opens beneath it. -->
+    <section class="glass card" id="comparePanel" data-tab="compare" hidden>
+      <div class="head"><h3>Top protocols vs this recommendation</h3>
+        <span class="hint" id="compareHead"></span></div>
+      <div id="compare"></div>
+    </section>
+
+    <!-- What this run was asked, with what, and under which settings — the
+         things a person could not find afterwards. -->
+    <section class="glass card" id="runInfoPanel" data-tab="run" hidden>
+      <div class="head"><h3>This run</h3><span class="hint" id="runInfoHead"></span></div>
+      <div id="runInfo"></div>
     </section>
 
     <!-- What the literature agent writes as it reads, before the orchestrator
          has weighed it: leads for the scientist watching, labelled as such.
          Beside the hypothesis, because it is what the hypothesis came from. -->
-    <section class="glass card" id="insightsPanel" hidden>
+    <section class="glass card" id="insightsPanel" data-tab="detail" hidden>
       <div class="head"><h3>Supporting detail</h3><span class="hint" id="insightsHead"></span></div>
       <p class="caveat">What the specialists read and wrote, behind the recommendation above.
         Each section opens on its own.</p>
@@ -490,19 +514,19 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
     <!-- Round 1 is the next thing that happens, so it is a section rather than
          a fold: the arms, and everything somebody needs to actually run them. -->
-    <section class="glass card" id="roundPanel" hidden>
+    <section class="glass card" id="roundPanel" data-tab="round" hidden>
       <div class="head"><h3 id="roundTitle">Round 1 at the bench</h3>
         <span class="hint" id="roundSum"></span></div>
       <div id="roundInsights"></div>
     </section>
 
-    <section class="glass card" id="protocolPanel" hidden>
+    <section class="glass card" id="protocolPanel" data-tab="params" hidden>
       <div class="head"><h3>Current estimated parameters</h3>
         <span class="hint" id="protocolHint">the protocol this run recommends, stage by stage</span></div>
       <div id="protocol"></div>
     </section>
 
-    <section class="glass card" id="otherPanel" hidden>
+    <section class="glass card" id="otherPanel" data-tab="other" hidden>
       <div class="head"><h3>Other hypotheses</h3>
         <span class="hint">every one, and what became of it</span></div>
       <div id="otherHyps"></div>
@@ -510,7 +534,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
     <!-- What the run could not fetch, asked of the person who can supply it.
          Answering changes nothing here; the next round reads the answers. -->
-    <section class="glass card" id="askDataPanel" hidden>
+    <section class="glass card" id="askDataPanel" data-tab="help" hidden>
       <div class="head"><h3>The run needs your help</h3>
         <span class="hint" id="askDataHead"></span></div>
       <div id="askDataList"></div>
@@ -518,7 +542,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
     <!-- Challenge the result before acting on it: the orchestrator answers from
          what this run wrote. Read-only; new evidence is a follow-up run's job. -->
-    <section class="glass card" id="askPanel" hidden>
+    <section class="glass card" id="askPanel" data-tab="ask" hidden>
       <div class="head"><h3>Ask the orchestrator</h3>
         <span class="hint">about this run, before you take it to the bench</span></div>
       <div id="askList"></div>
@@ -563,7 +587,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
     <!-- The other leads, worked up as experiments at a person's request. Beside
          round 1, never inside it: round 1's rules were fixed before any result. -->
-    <section class="glass card" id="altPanel" hidden>
+    <section class="glass card" id="altPanel" data-tab="alt" hidden>
       <div class="head"><h3>Alternate and extended plans</h3>
         <span class="hint" id="altHead"></span></div>
       <div id="altList"></div>
@@ -571,14 +595,19 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
     <!-- The experiment past the apparatus: what it lifts, the stages, the arms,
          and a judgement range. A concept beside round 1, never in it. -->
-    <section class="glass card" id="btPanel" hidden>
+    <section class="glass card" id="btPanel" data-tab="bt" hidden>
       <div class="head"><h3>Beyond the apparatus</h3>
         <span class="hint" id="btHead"></span></div>
       <div class="sec-export" data-section="breakthrough" hidden></div>
       <div id="btBody"></div>
     </section>
 
-    <section class="glass card" id="benchPanel" hidden>
+    <section class="glass card" id="evidencePanel" data-tab="evidence" hidden>
+      <div class="head"><h3>Evidence record</h3><span class="hint">by what it is</span></div>
+      <div id="evidence"></div>
+    </section>
+
+    <section class="glass card" id="benchPanel" data-tab="bench" hidden>
       <div class="head"><h3>Benchmark</h3>
         <span class="hint">system capability, not biological truth</span></div>
       <div id="benchmark"></div>
@@ -606,11 +635,6 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div class="head"><h3>Candidate parameters</h3>
         <span class="hint">what to turn next</span></div>
       <div id="candidates" class="dim">Nothing proposed yet.</div>
-    </section>
-
-    <section class="glass card fold" id="evidencePanel" data-open="1" hidden>
-      <div class="head"><h3>Evidence</h3><span class="hint">by what it is</span></div>
-      <div id="evidence"></div>
     </section>
 
     <section class="glass card fold" data-open="0">

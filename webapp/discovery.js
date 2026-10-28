@@ -108,6 +108,7 @@ async function post(path, body) {
 }
 
 async function boot() {
+  wireWiden();
   try { state.glossary = await get('/api/glossary'); } catch (_) { /* badges degrade */ }
   await Promise.all([loadRuntime(), loadProjects(), loadDatasets(), loadBenchmarks()]);
   wire();
@@ -1160,8 +1161,8 @@ async function start() {
   }
   $('#runBtn').disabled = true;
   $('#runState').hidden = true;
-  ['plainPanel', 'resultPanel', 'protocolPanel', 'otherPanel', 'askDataPanel', 'askPanel',
-   'evidencePanel', 'anaSec', 'benchPanel']
+  ['plainPanel', 'resultPanel', 'comparePanel', 'runInfoPanel', 'protocolPanel', 'otherPanel',
+   'askDataPanel', 'askPanel', 'evidencePanel', 'anaSec', 'benchPanel', 'resultNav']
     .forEach(i => { const n = $('#' + i); if (n) n.hidden = true; });
   try {
     const run = await post('/api/discovery', body);
@@ -1206,6 +1207,8 @@ function watchRun(runId) {
       renderAlternates(snap);
       renderBreakthrough(snap);
       renderDataRequests(snap);
+      renderCompare(snap);
+      renderRunInfo(snap);
       renderStages(snap.progress);
       (snap.events || []).forEach(seedEvent);
       $('#runBtn').disabled = RV.isLive(snap);
@@ -1226,6 +1229,7 @@ function watchRun(runId) {
         fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
           message: snap.error });
       }
+      renderTabs(snap);
       BS.runs(currentProject()).catch(() => {});
     },
     event(e) { pushEvent(e); },
@@ -3958,12 +3962,8 @@ function renderProtocol(p) {
   const sim = el('button', 'btn go', 'Simulate this protocol');
   sim.title = 'Open the Simulator with every recommended setpoint as the candidate';
   sim.addEventListener('click', () => simulateProtocol(p));
-  const fs = el('button', 'btn sm', 'Widen');
-  fs.type = 'button';
-  fs.title = 'Give the plan the full width of the page; everything else stays, below it';
-  fs.addEventListener('click', () => toggleFocus());
   host.append(el('div', 'rv-actions', null));
-  host.lastChild.append(sim, fs);
+  host.lastChild.append(sim);
 
   const head = el('div', 'ev-row');
   head.append(el('span', 'rt-badge ' + p.runtime_mode, p.badge));
@@ -4213,17 +4213,252 @@ function addInducer(p, stageId, stages) {
 /* The plan across the full width of the page. Not an overlay: the two-column
    layout becomes one column, so the plan gets the whole width and everything
    else is still there, below it. */
-function toggleFocus(on) {
-  const panel = $('#protocolPanel'); if (!panel) return;
+/* Any section may take the whole width: the page drops to one column while
+   one is wide, and Escape narrows them all. The control sits in every
+   section's title bar, added once at boot (`wireWiden`), so the parameters
+   are no longer the one box that could be read at full width. */
+function toggleFocus(panel, on) {
+  if (typeof panel === 'boolean' || panel == null) { on = panel; panel = $('#protocolPanel'); }
+  if (!panel) return;
   const want = on == null ? !panel.classList.contains('wide') : !!on;
   panel.classList.toggle('wide', want);
-  document.body.classList.toggle('plan-wide', want);
-  const btn = panel.querySelector('.rv-actions .btn.sm');
+  const any = !!document.querySelector('section.card.wide');
+  document.body.classList.toggle('plan-wide', any);
+  const btn = panel.querySelector('.head .widen');
   if (btn) btn.textContent = want ? 'Narrow' : 'Widen';
-  try { localStorage.setItem('bs-plan-wide', want ? '1' : '0'); } catch (_) {}
   if (want) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleFocus(false); });
+function narrowAll() {
+  $$('section.card.wide').forEach(p => toggleFocus(p, false));
+}
+function wireWiden() {
+  $$('.cols > .stack > section.card[data-tab], #plainPanel').forEach(panel => {
+    const head = panel.querySelector(':scope > .head');
+    if (!head || head.querySelector('.widen')) return;
+    const b = el('button', 'btn sm widen', 'Widen');
+    b.type = 'button';
+    b.title = 'Give this section the full width of the page; Escape narrows it again';
+    b.addEventListener('click', e => { e.stopPropagation(); toggleFocus(panel); });
+    head.append(b);
+  });
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') narrowAll(); });
+
+/* ── The run as a piece of software: the finding on top, then tabs ──
+   The highlighted tabs are what a person acts on; the small ones are the
+   supplementary record. A section's own renderer says whether it exists
+   (`hidden`); the tabs decide which existing one is on screen. The chosen
+   tab is remembered per run for this browser. */
+const TABS = [
+  { key: 'hyp', id: 'resultPanel', label: 'Hypothesis', main: true },
+  { key: 'compare', id: 'comparePanel', label: 'Top protocols vs this', main: true },
+  { key: 'round', id: 'roundPanel', label: 'Round at the bench', main: true },
+  { key: 'params', id: 'protocolPanel', label: 'Parameters', main: true },
+  { key: 'help', id: 'askDataPanel', label: 'Needs your help', main: true },
+  { key: 'ask', id: 'askPanel', label: 'Ask the orchestrator', main: true },
+  { key: 'run', id: 'runInfoPanel', label: 'This run', main: true },
+  { key: 'detail', id: 'insightsPanel', label: 'Supporting detail' },
+  { key: 'other', id: 'otherPanel', label: 'Other hypotheses' },
+  { key: 'alt', id: 'altPanel', label: 'Alternate plans' },
+  { key: 'bt', id: 'btPanel', label: 'Beyond the apparatus' },
+  { key: 'evidence', id: 'evidencePanel', label: 'Evidence record' },
+  { key: 'bench', id: 'benchPanel', label: 'Benchmark' },
+];
+const tabState = { run: null, key: null };
+function tabKeyFor(run) { return `bs-tab:${run || ''}`; }
+function renderTabs(snap) {
+  const nav = $('#resultNav'); if (!nav) return;
+  const run = snap && snap.run_id;
+  if (tabState.run !== run) {
+    tabState.run = run;
+    let saved = null; try { saved = localStorage.getItem(tabKeyFor(run)); } catch (_) {}
+    tabState.key = saved;
+  }
+  const avail = TABS.filter(t => { const n = $('#' + t.id); return n && !n.hidden; });
+  nav.hidden = !avail.length;
+  if (!avail.length) return;
+  if (!avail.some(t => t.key === tabState.key)) {
+    tabState.key = (avail.find(t => t.main) || avail[0]).key;
+  }
+  const main = $('#tabsMain'), more = $('#tabsMore');
+  main.textContent = ''; more.textContent = '';
+  avail.forEach(t => {
+    const sec = $('#' + t.id);
+    const b = el('button', 'tab', t.label);
+    b.type = 'button'; b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(t.key === tabState.key));
+    const hint = sec.querySelector(':scope > .head .hint');
+    const note = hint ? hint.textContent.trim() : '';
+    if (note) b.append(el('span', 'tab-n', note.length > 44 ? note.slice(0, 43) + '\u2026' : note));
+    b.addEventListener('click', () => showTab(t.key));
+    (t.main ? main : more).append(b);
+  });
+  TABS.forEach(t => { const n = $('#' + t.id); if (n) n.classList.toggle('tab-off', t.key !== tabState.key); });
+}
+function showTab(key, scroll) {
+  tabState.key = key;
+  try { localStorage.setItem(tabKeyFor(tabState.run), key); } catch (_) {}
+  renderTabs(state.run || {});
+  const t = TABS.find(x => x.key === key);
+  const sec = t && $('#' + t.id);
+  if (sec && scroll !== false) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* The leading published protocols beside this recommendation: the field in
+   one table, this recommendation as its last row, then where it differs and
+   what each difference rests on, one line each with the detail beneath. Every
+   value comes from the state-of-the-art comparison the run wrote and the
+   plain plan; a difference carries an expected effect, never a measured gain. */
+let compareSeen = '';
+function renderCompare(snap) {
+  const panel = $('#comparePanel'); if (!panel) return;
+  const s = snap.sota_comparison;
+  const refs = (s && s.references) || [], comps = (s && s.comparisons) || [];
+  panel.hidden = !(refs.length || comps.length);
+  if (panel.hidden) return;
+  const plan = snap.result && snap.result.protocol && snap.result.protocol.plain_plan;
+  const key = JSON.stringify([s, plan && plan.key_points, snap.run_id]);
+  if (key === compareSeen) return;
+  compareSeen = key;
+  const host = $('#compare'); host.textContent = '';
+  const st = s.standing || {};
+  $('#compareHead').textContent = [STANDING_LABEL[st.verdict] || st.verdict || '',
+    `${refs.length} published protocol${refs.length === 1 ? '' : 's'}`].filter(Boolean).join(' \u00b7 ');
+  if (st.summary) host.append(el('p', null, st.summary));
+
+  const route = snap.route_selection || {};
+  const chosen = (route.candidates || []).find(c => c.route_id === (route.chosen || {}).route_id);
+  const t = el('table', 'cmp');
+  const hr = el('tr');
+  ['Protocol', 'Route', 'Yield', 'Purity', 'Timeline'].forEach(h => hr.append(el('th', null, h)));
+  t.append(hr);
+  refs.forEach(r => {
+    const rep = r.reported || {};
+    const tr = el('tr', r.is_benchmark ? 'bench' : '');
+    tr.append(el('td', null, r.citation), el('td', null, ROUTE_LABEL[r.route] || r.route || ''),
+      el('td', null, rep.yield || '\u2014'), el('td', null, rep.purity || '\u2014'),
+      el('td', null, rep.timeline || '\u2014'));
+    t.append(tr);
+  });
+  const ours = el('tr', 'ours');
+  const varied = plan ? (plan.arms || []).filter(a => !a.control) : [];
+  const change = varied.length
+    ? varied.map(a => `${a.arm_id}: ${a.summary}`).join('; ')
+    : 'the reference recipe, unchanged';
+  ours.append(el('td', null, 'This recommendation (BioSense, round ' + ((plan && plan.round) || 1) + ')'),
+    el('td', null, chosen ? chosen.label : (ROUTE_LABEL[(refs.find(r => r.is_benchmark) || {}).route] || 'as the benchmark')),
+    el('td', null, 'to be measured in round 1'), el('td', null, 'to be measured in round 1'),
+    el('td', null, plan && plan.total_days ? `${num(plan.total_days)} days` : '\u2014'));
+  t.append(ours);
+  host.append(t);
+  host.append(el('p', 'dim', 'What this recommendation changes against the reference: ' + change + '.'));
+
+  if (comps.length) {
+    host.append(el('div', 'lab', 'Where it differs from the field'));
+    const order = { novel: 0, differs: 1, not_comparable: 2, same: 3 };
+    const rows = comps.slice().sort((a, b) => (order[a.verdict] ?? 9) - (order[b.verdict] ?? 9));
+    host.append(foldTable(['', 'Top protocols', 'This recommendation', ''], rows.map(c => {
+      const v = el('span', 'tag ' + (VERDICT_CLS[c.verdict] || ''), c.verdict);
+      const e = c.expected_effect;
+      const detail = appendAll(el('div', 'ft-body'), [
+        c.difference ? kv('What differs', c.difference) : null,
+        kv('The field does', c.state_of_the_art + ((c.ref_ids || []).length ? ` [${c.ref_ids.join(', ')}]` : '')),
+        e ? kv('Expected effect', `${e.readout}: ${e.direction} (${e.confidence} confidence) \u2014 `
+          + e.basis + ((e.refs || []).length ? ' [' + e.refs.join(', ') + ']' : '')) : null,
+        e && e.hypothesis_id ? kv('Became hypothesis', e.hypothesis_id) : null,
+      ]);
+      return { key: 'cmp:' + (snap.run_id || '') + ':' + c.dimension,
+        cells: [c.dimension, oneLineClip(c.state_of_the_art, 48), c.this_protocol, v], detail };
+    }), 'ft-rp'));
+  }
+  const det = el('details', 'ins-sub');
+  det.append(el('summary', null, 'The published protocols in detail'));
+  refs.forEach(r => {
+    const rep = r.reported || {};
+    const box = el('div', 'm');
+    box.append(el('b', null, r.citation), r.is_benchmark ? el('span', 'tag brand', ' benchmark') : '');
+    appendAll(box, [kv('Summary', r.summary),
+      (r.key_factors || []).length ? kv('Factors', r.key_factors.join(', ')) : null,
+      kv('Reported', [rep.yield && `yield: ${rep.yield}`, rep.purity && `purity: ${rep.purity}`,
+        rep.timeline && `timeline: ${rep.timeline}`, rep.scale && `scale: ${rep.scale}`,
+        rep.format && `format: ${rep.format}`].filter(Boolean).join('; ')),
+      kv('Cites', (r.refs || []).join(', '))]);
+    det.append(box);
+  });
+  host.append(det);
+  (s.limitations || []).forEach(l => host.append(el('p', 'caveat', l)));
+  host.append(el('p', 'caveat', 'Reported numbers are the papers\u2019 own, in their own vessels and '
+    + 'formats; this recommendation has not been run, so its yield and purity are what round 1 '
+    + 'measures. A difference carries an expected effect \u2014 a hypothesis with its basis \u2014 '
+    + 'never a measured gain.'));
+}
+
+/* What this run was asked, with what, and under which settings. The things a
+   person could not find afterwards: the prompt, the scope, the datasets, the
+   runtime and model, the account, the times. Read from the run's own record. */
+let runInfoSeen = '';
+function renderRunInfo(snap) {
+  const panel = $('#runInfoPanel'); if (!panel) return;
+  panel.hidden = !(snap && snap.run_id);
+  if (panel.hidden) return;
+  const r = snap.result || {};
+  const req = r.request || {};
+  const key = JSON.stringify([snap.run_id, snap.status, snap.finished_at, req, r.summary_text]);
+  if (key === runInfoSeen) return;
+  runInfoSeen = key;
+  $('#runInfoHead').textContent = [snap.runtime_label, snap.model || snap.engine,
+    snap.started_at ? new Date(snap.started_at * 1000).toLocaleString() : null]
+    .filter(Boolean).join(' \u00b7 ');
+  const host = $('#runInfo'); host.textContent = '';
+  host.className = 'runinfo';
+  host.append(el('div', 'lab', 'What was asked'));
+  host.append(el('blockquote', null, snap.objective || req.objective || ''));
+  const when = [snap.started_at ? 'started ' + new Date(snap.started_at * 1000).toLocaleString() : null,
+    snap.finished_at ? 'ended ' + new Date(snap.finished_at * 1000).toLocaleString() : null,
+    snap.elapsed_s != null ? BS.fmt.elapsed(snap.started_at, snap.finished_at) : null].filter(Boolean).join(' \u00b7 ');
+  const ctx = req.research_context || {};
+  const scope = ['species', 'cell_types', 'states', 'tissues', 'disease_context']
+    .filter(k => (ctx[k] || []).length).map(k => `${k.replace(/_/g, ' ')}: ${ctx[k].join(', ')}`).join('; ');
+  const cons = req.process_constraints || {};
+  const bounds = (cons.parameter_bounds || []).map(b =>
+    `${b.parameter_id} within ${b.minimum ?? '?'}\u2013${b.maximum ?? '?'} (${b.source})`).join('; ');
+  appendAll(host, [
+    kv('Project', snap.project_id || req.project_id),
+    kv('Name', snap.title),
+    kv('Runtime', [snap.runtime_label, snap.engine, snap.model].filter(Boolean).join(' \u00b7 ')),
+    kv('When', when),
+    kv('Status', snap.status),
+    kv('Account', snap.owner || 'not signed in'),
+    kv('Run', [snap.run_id, snap.run_dir].filter(Boolean).join(' \u00b7 ')),
+    kv('Scope', scope ? `${scope}${ctx.strictness ? ` (${ctx.strictness})` : ''}`
+      : (req.project_id ? 'none declared: evidence from any species, cell type or state may be used' : null)),
+    kv('Datasets', (req.dataset_ids || []).join(', ')),
+    kv('Expert knowledge', (req.expert_knowledge_ids || []).join(', ')),
+    kv('Uncertainty', req.uncertainty && req.uncertainty.statement),
+    kv('Constraints', [bounds, cons.notes].filter(Boolean).join(' \u00b7 ')),
+    kv('Vessel', req.culture_format),
+    kv('Candidates', req.candidate_values ? Object.entries(req.candidate_values).map(([k, v]) => `${k} ${v}`).join(', ') : null),
+    kv('Literature', req.literature_mode), kv('Bioinformatics', req.bioinformatics_mode),
+    kv('Effort', req.effort), kv('Purpose', req.purpose),
+    kv('Add-ons', (req.addons || []).join(', ')),
+    kv('Continued from', snap.continued_from && snap.continued_from.run_id
+      ? `${snap.continued_from.run_id} (${snap.continued_from.kind || 'continued'})` : null),
+    kv('Requested by', req.requested_by),
+    kv('Notes', req.notes),
+  ]);
+  if (r.summary_text) {
+    const d = el('details', 'ins-sub');
+    d.append(el('summary', null, 'As the orchestrator was told it'));
+    d.append(el('pre', null, r.summary_text));
+    host.append(d);
+  }
+  if (Object.keys(req).length) {
+    const d = el('details', 'ins-sub');
+    d.append(el('summary', null, 'The full request record'));
+    d.append(el('pre', null, JSON.stringify(req, null, 1)));
+    host.append(d);
+  }
+}
 
 /* The plan a person takes to the bench: one box per stage with the inducers
    given in it, then the physical settings. Built by the server from the
@@ -4413,7 +4648,7 @@ function renderBenchmark(b) {
   });
   tbl.append(tb); host.append(tbl);
   if (b.privacy.refusal_reason) host.append(el('p', 'caveat', b.privacy.refusal_reason));
-  $('#benchPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  showTab('bench');
 }
 
 /* Each specialist's section as a document of its own, from where it is read:
