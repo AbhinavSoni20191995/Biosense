@@ -2064,6 +2064,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._login(self._body())
             if path == '/api/auth/signup':
                 return self._signup(self._body())
+            if path == '/api/account/request-runs':
+                return self._request_runs(self._body())
+            m = re.fullmatch(r'/api/admin/requests/([A-Za-z0-9]+)/(grant|decline)', path)
+            if m:
+                return self._decide_request(m.group(1), m.group(2) == 'grant', self._body())
+            m = re.fullmatch(r'/api/admin/accounts/([^/]+)/(grant|limit)', path)
+            if m:
+                return self._account_grant(m.group(1), m.group(2), self._body())
             if path == '/api/auth/logout':
                 return self._logout()
             if path == '/api/admin/selfcheck':
@@ -2099,10 +2107,12 @@ class Handler(BaseHTTPRequestHandler):
                                     'headline': 'Run limit reached',
                                     'limits': self.limits.describe()}, extra=extra)
         except AC.RunsExhausted as e:
+            extra = [('Retry-After', str(e.retry_after_s))] if e.retry_after_s else []
             return self._send(429, {'error': str(e), 'refused': True, 'reason': 'account_runs',
-                                    'limit': 'account', 'runs_used': e.used,
-                                    'run_limit': e.run_limit,
-                                    'headline': 'This account has used its runs'})
+                                    'limit': 'account', 'runs_used_today': e.used,
+                                    'run_limit': e.run_limit, 'retry_after_s': e.retry_after_s,
+                                    'headline': 'Today\'s runs on this account are used up'},
+                              extra=extra)
         except WS.AuthError as e:
             # Sign-in, sign-up, or a run that needs an account: the status says
             # which (401 to sign in, 403 refused, 409 already exists, 400 shape).
@@ -2295,6 +2305,8 @@ class Handler(BaseHTTPRequestHandler):
                                         or self.runtime_cfg.is_real)
         out['accounts'] = (self.accounts.settings.describe() if local
                            else {'enabled': False, 'signup_open': False})
+        if local and role == AZ.ROLE_ADMIN:
+            out['open_requests'] = len(self.accounts.requests(open_only=True))
         if local and not identity.authenticated and self.runtime_cfg.hosted:
             out['note'] = ('Not signed in. Create an account or sign in to run real AI: each '
                            f'account gets {self.accounts.settings.run_limit} runs, kept under '
@@ -2324,6 +2336,72 @@ class Handler(BaseHTTPRequestHandler):
                                         display=body.get('display'))
         return self._send(200, {'identity': self._identity_payload(identity), 'created': True},
                           extra=[('Set-Cookie', self._session_cookie(identity))])
+
+    def _my_account(self, what):
+        """The signed-in local account behind this request, or a refusal."""
+        identity = self._identity()
+        if not (self._accounts_on() and identity.authenticated
+                and getattr(identity, 'server', None) == AC.ISSUER):
+            raise WS.AuthError(f'sign in to {what}', reason='account_required', status=401)
+        return identity
+
+    def _request_runs(self, body):
+        """An account asks the person running this BioSense for extra runs."""
+        identity = self._my_account('ask for extra runs')
+        req = self.accounts.request_runs(identity.owner, body.get('runs'), body.get('reason'))
+        return self._send(201, {'request': req, 'identity': self._identity_payload(identity),
+                                'note': ('Your request is waiting for the person running this '
+                                         'BioSense. When they grant it, the extra runs appear '
+                                         'in your account area and are spent only once today\'s '
+                                         'runs are gone.')})
+
+    def _my_requests(self):
+        identity = self._my_account('see your requests')
+        return self._send(200, {'requests': self.accounts.requests(owner=identity.owner)})
+
+    def _admin_accounts(self):
+        """Every account with its counts, and every open request. Operators only.
+
+        Deliberately a spending view, not a reading one: it names accounts and
+        counts runs so an operator can grant more, and shows nothing of
+        anybody's projects, runs or reports.
+        """
+        identity = self._identity()
+        self.policy.require_admin(identity, 'managing accounts')
+        if not self._accounts_on():
+            return self._send(200, {'accounts': [], 'requests': [], 'enabled': False})
+        return self._send(200, {'enabled': True,
+                                'accounts': self.accounts.listing(),
+                                'requests': self.accounts.requests(open_only=True),
+                                'recent': [r for r in self.accounts.requests()
+                                           if r.get('status') != 'open'][-20:],
+                                'settings': self.accounts.settings.describe()})
+
+    def _decide_request(self, request_id, grant, body):
+        identity = self._identity()
+        self.policy.require_admin(identity, 'granting runs')
+        if not self._accounts_on():
+            raise K.ContractError('this instance keeps no accounts')
+        who = str(getattr(identity, 'display', None) or identity.owner)[:80]
+        runs = body.get('runs')
+        req = self.accounts.decide_request(request_id, grant=grant, decided_by=who,
+                                           runs=(int(runs) if runs not in (None, '') else None),
+                                           note=body.get('note'))
+        return self._send(200, {'request': req, 'account': self.accounts.get(req['email'])})
+
+    def _account_grant(self, email, what, body):
+        identity = self._identity()
+        self.policy.require_admin(identity, 'granting runs')
+        if not self._accounts_on():
+            raise K.ContractError('this instance keeps no accounts')
+        who = str(getattr(identity, 'display', None) or identity.owner)[:80]
+        try:
+            n = int(body.get('runs'))
+        except (TypeError, ValueError):
+            raise K.ContractError('runs: a whole number') from None
+        if what == 'grant':
+            return self._send(200, {'account': self.accounts.grant_runs(email, n, granted_by=who)})
+        return self._send(200, {'account': self.accounts.set_run_limit(email, n)})
 
     def _login(self, body):
         if self._accounts_on():
@@ -3533,6 +3611,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._trash_listing()
         if path == '/api/identity':
             return self._send(200, self._identity_payload())
+        if path in ('/api/account/requests', '/api/admin/accounts'):
+            try:
+                return (self._my_requests() if path == '/api/account/requests'
+                        else self._admin_accounts())
+            except AZ.Forbidden as e:
+                return self._send(403, {'error': str(e), 'refused': True, 'reason': 'forbidden',
+                                        'required_role': e.required_role})
+            except WS.AuthError as e:
+                return self._send(e.status, {'error': str(e), 'refused': True,
+                                             'reason': e.reason})
         m = re.fullmatch(r'/api/discovery/([^/]+)/protocol', path)
         if m:
             owner = self._identity().owner

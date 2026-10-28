@@ -3,7 +3,7 @@
 A lab wants its people to open the page, make an account, and try a few
 discovery runs. Nothing in that sentence needs a second server, so this module
 is the account system: one JSON file under the private data root, a password
-hash per person, and a counter of the real AI runs each account has started.
+hash per person, and a count of the real AI runs each account has started.
 
 What it is, stated precisely:
 
@@ -14,12 +14,15 @@ What it is, stated precisely:
 * **A password is never stored.** `hashlib.scrypt` with a per-account salt,
   compared in constant time. The standard library does it, so sign-in works on
   an installation that has installed nothing optional.
-* **An allowance, not a meter.** Each account may start `run_limit` real AI runs
-  in all (`BIOSENSE_RUNS_PER_ACCOUNT`, default 5). A run is counted when it
-  starts; deleting it gives nothing back; an operator may raise one account's
-  limit with the CLI. The synthetic demonstration path costs nothing and is not
-  counted. Administrators (`BIOSENSE_ADMIN_USER_IDS`) are exempt, as they are
-  from every demo cap.
+* **A daily allowance, and a bank of extra runs.** Each account may start
+  `run_limit` real AI runs in any rolling 24 hours (`BIOSENSE_RUNS_PER_ACCOUNT`,
+  default 5). A run is counted when it starts; the synthetic demonstration path
+  costs nothing and is not counted. When the day's allowance is spent, an
+  account may ask for more: the request is kept here, and an operator —
+  signed in as an administrator, on the page or at the CLI — grants extra runs
+  into the account's bank, which are spent only once the daily allowance is.
+  Administrators (`BIOSENSE_ADMIN_USER_IDS`) are exempt, as they are from every
+  demo cap.
 * **The id is the email address**, normalised the way `workspace.normalise_owner`
   does, so an account and its workspace are one name.
 
@@ -38,6 +41,7 @@ import hmac
 import os
 import secrets
 import threading
+import time
 from pathlib import Path
 
 from . import contracts as K
@@ -47,12 +51,15 @@ from .data import roots as DR
 ENV_ACCOUNTS = 'BIOSENSE_ACCOUNTS'            # on (default) | off
 ENV_SIGNUP = 'BIOSENSE_SIGNUP'                # open (default) | closed
 ENV_SIGNUP_CODE = 'BIOSENSE_SIGNUP_CODE'      # optional: a code sign-up must quote
-ENV_RUN_LIMIT = 'BIOSENSE_RUNS_PER_ACCOUNT'   # real AI runs per account, default 5
+ENV_RUN_LIMIT = 'BIOSENSE_RUNS_PER_ACCOUNT'   # real AI runs per account per day, default 5
 
 DEFAULT_RUN_LIMIT = 5
+DAY_S = 24 * 60 * 60
 MIN_PASSWORD = 8
 MAX_PASSWORD = 256
 MAX_ACCOUNTS = 10000
+MAX_REQUEST_RUNS = 100
+MAX_REASON = 600
 # The issuer written into an identity this module signs in. `authz.Policy`
 # compares it to the trusted issuer, so an admin id listed for this deployment
 # matches an account this deployment itself authenticated — and nothing else.
@@ -70,20 +77,39 @@ class AccountError(WS.AuthError):
 
 
 class RunsExhausted(K.ContractError):
-    """The account has started every real AI run it was given.
+    """The account has started every real AI run it may start today.
 
     A ContractError so the HTTP layer answers it as a refusal; it carries the
-    counts so the page can say exactly what was used rather than "no".
+    counts and when the next run opens, so the page can say exactly that rather
+    than "no".
     """
 
-    def __init__(self, owner, used, limit):
+    def __init__(self, owner, used, limit, retry_after_s=None):
         self.limit = 'account'
         self.used, self.run_limit = used, limit
+        self.retry_after_s = int(retry_after_s) if retry_after_s else None
+        wait = _wait_words(retry_after_s)
         super().__init__(
-            f'This account has started {used} of its {limit} real AI run(s), which is all it '
-            f'was given for now. The demonstration path still works without limit. Ask the '
-            f'person running this BioSense for more runs; nothing is lost, every run you '
-            f'started stays in your run list.')
+            f'This account has started {used} real AI run(s) in the last 24 hours, and its '
+            f'daily allowance is {limit}. '
+            + (f'The next one opens in {wait}. ' if wait else '')
+            + 'The demonstration path still works without limit. To run more today, ask for '
+              'extra runs from the account area: the person running this BioSense can grant '
+              'them while you wait. Nothing is lost; every run you started stays in your '
+              'run list.')
+
+
+def _wait_words(seconds):
+    if not seconds or seconds <= 0:
+        return ''
+    seconds = int(seconds)
+    if seconds < 90:
+        return 'about a minute'
+    if seconds < 3600:
+        return f'{(seconds + 59) // 60} minutes'
+    hours, rest = divmod(seconds, 3600)
+    mins = (rest + 59) // 60
+    return f'{hours} h' + (f' {mins} min' if mins else '')
 
 
 def _norm_email(value):
@@ -100,7 +126,7 @@ def _hash(password, salt, params=SCRYPT):
 
 
 class Settings:
-    """Whether accounts are on, whether sign-up is open, and the allowance."""
+    """Whether accounts are on, whether sign-up is open, and the daily allowance."""
 
     def __init__(self, enabled=True, signup='open', signup_code=None, run_limit=DEFAULT_RUN_LIMIT):
         self.enabled = bool(enabled)
@@ -116,10 +142,12 @@ class Settings:
         """What the page may be told. Never the code."""
         return {'enabled': self.enabled, 'signup_open': self.signup_open,
                 'signup_code_required': bool(self.signup_code), 'run_limit': self.run_limit,
+                'per': 'day',
                 'note': (f'Create an account with your email address and a password, sign in, and '
-                         f'start up to {self.run_limit} real AI runs. The demonstration path is '
-                         f'not counted. Your projects, runs and reports are kept under your '
-                         f'account.' if self.enabled else
+                         f'start up to {self.run_limit} real AI runs a day. The demonstration '
+                         f'path is not counted. Your projects, runs and reports are kept under '
+                         f'your account, and you can ask for extra runs when the day\'s are '
+                         f'spent.' if self.enabled else
                          'Accounts are off on this instance.')}
 
 
@@ -140,9 +168,10 @@ def settings_from_env(env=None):
 class Store:
     """The accounts file, read and written under one lock."""
 
-    def __init__(self, path=None, settings=None):
+    def __init__(self, path=None, settings=None, now=time.time):
         self.path = Path(path) if path else DR.private_root() / 'accounts' / FILE
         self.settings = settings or Settings()
+        self._now = now
         self._lock = threading.Lock()
 
     # ── file ────────────────────────────────────────────────
@@ -150,9 +179,14 @@ class Store:
         try:
             doc = K.read_json(self.path)
         except (OSError, ValueError):
-            return {'kind': 'accounts', 'accounts': {}}
-        if not isinstance(doc, dict) or not isinstance(doc.get('accounts'), dict):
-            return {'kind': 'accounts', 'accounts': {}}
+            doc = {}
+        if not isinstance(doc, dict):
+            doc = {}
+        if not isinstance(doc.get('accounts'), dict):
+            doc['accounts'] = {}
+        if not isinstance(doc.get('requests'), list):
+            doc['requests'] = []
+        doc['kind'] = 'accounts'
         return doc
 
     def _write(self, doc):
@@ -202,7 +236,8 @@ class Store:
             accounts[owner] = {
                 'email': owner, 'display': (display or '').strip()[:80] or owner,
                 'salt': salt.hex(), 'hash': digest.hex(), 'scrypt': dict(SCRYPT),
-                'created_at': K.now_iso(), 'runs_used': 0, 'run_limit': None,
+                'created_at': K.now_iso(), 'runs_used': 0, 'run_times': [],
+                'extra_runs': 0, 'run_limit': None,
                 'disabled': False, 'last_sign_in': K.now_iso(),
             }
             self._write(doc)
@@ -256,22 +291,45 @@ class Store:
         except K.ContractError:
             return None
         with self._lock:
-            row = self._read()['accounts'].get(owner)
-        return self._public(row) if row else None
+            doc = self._read()
+            row = doc['accounts'].get(owner)
+            return self._public(row, doc) if row else None
 
-    def _public(self, row):
+    def _limit_of(self, row):
         limit = row.get('run_limit')
-        limit = self.settings.run_limit if limit is None else int(limit)
-        used = int(row.get('runs_used') or 0)
-        return {'email': row['email'], 'display': row.get('display') or row['email'],
-                'created_at': row.get('created_at'), 'last_sign_in': row.get('last_sign_in'),
-                'runs_used': used, 'run_limit': limit,
-                'runs_remaining': max(0, limit - used), 'disabled': bool(row.get('disabled'))}
+        return self.settings.run_limit if limit is None else int(limit)
+
+    def _today(self, row, now):
+        """The starts inside the rolling day, pruned in place."""
+        cut = now - DAY_S
+        times = [float(t) for t in (row.get('run_times') or []) if float(t) > cut]
+        row['run_times'] = times
+        return times
+
+    def _public(self, row, doc=None):
+        now = self._now()
+        limit = self._limit_of(row)
+        today = self._today(row, now)
+        extra = int(row.get('extra_runs') or 0)
+        out = {'email': row['email'], 'display': row.get('display') or row['email'],
+               'created_at': row.get('created_at'), 'last_sign_in': row.get('last_sign_in'),
+               'runs_used': int(row.get('runs_used') or 0),
+               'runs_used_today': len(today), 'run_limit': limit,
+               'runs_remaining_today': (max(0, limit - len(today)) if limit else None),
+               'extra_runs': extra, 'disabled': bool(row.get('disabled'))}
+        if limit and len(today) >= limit:
+            out['next_run_in_s'] = int(min(today) + DAY_S - now) + 1
+        if doc is not None:
+            mine = [r for r in doc['requests'] if r.get('email') == row['email']
+                    and r.get('status') == 'open']
+            out['open_request'] = mine[-1] if mine else None
+        return out
 
     def listing(self):
         with self._lock:
-            rows = list(self._read()['accounts'].values())
-        return sorted((self._public(r) for r in rows), key=lambda r: r['email'])
+            doc = self._read()
+            rows = list(doc['accounts'].values())
+            return sorted((self._public(r, doc) for r in rows), key=lambda r: r['email'])
 
     def count(self):
         with self._lock:
@@ -283,21 +341,32 @@ class Store:
         row = self.get(owner)
         if row is None:
             return None
-        return {'role': 'user', 'capped': True, 'kind': 'account',
-                'runs_limit': row['run_limit'], 'runs_used': row['runs_used'],
-                'runs_remaining': row['runs_remaining'],
-                'note': (f'{row["runs_remaining"]} of {row["run_limit"]} real AI runs left on '
-                         f'this account. The demonstration path is not counted.')}
+        left, limit, extra = row['runs_remaining_today'], row['run_limit'], row['extra_runs']
+        out = {'role': 'user', 'capped': bool(limit), 'kind': 'account', 'per': 'day',
+               'runs_limit': limit, 'runs_used_today': row['runs_used_today'],
+               'runs_remaining_today': left, 'extra_runs': extra,
+               'open_request': row.get('open_request')}
+        if row.get('next_run_in_s'):
+            out['next_run_in_s'] = row['next_run_in_s']
+        if not limit:
+            out['note'] = 'No daily limit on this account.'
+        else:
+            out['note'] = (f'{left} of {limit} real AI runs left today'
+                           + (f', plus {extra} extra run(s) granted' if extra else '')
+                           + '. The demonstration path is not counted.')
+        return out
 
     def authorise_run(self, owner):
         """Count one real AI run against the account, or refuse by name.
 
         Called before anything is written, so a run that is not allowed never
-        appears in the run list as though it might have worked. Deleting a run
-        later gives nothing back: the allowance is what was spent, not what
-        was kept.
+        appears in the run list as though it might have worked. The day's
+        allowance is spent first; an extra run granted by an operator is spent
+        only once the day's are gone. Deleting a run later gives nothing back:
+        the allowance is what was spent, not what was kept.
         """
         owner = WS.normalise_owner(owner)
+        now = self._now()
         with self._lock:
             doc = self._read()
             row = doc['accounts'].get(owner)
@@ -306,18 +375,130 @@ class Store:
                                    reason='no_account', status=401)
             if row.get('disabled'):
                 raise AccountError('this account is disabled', reason='disabled', status=403)
-            limit = row.get('run_limit')
-            limit = self.settings.run_limit if limit is None else int(limit)
-            used = int(row.get('runs_used') or 0)
-            if limit and used >= limit:
-                raise RunsExhausted(owner, used, limit)
-            row['runs_used'] = used + 1
+            limit = self._limit_of(row)
+            today = self._today(row, now)
+            spent = 'day'
+            if limit and len(today) >= limit:
+                extra = int(row.get('extra_runs') or 0)
+                if extra <= 0:
+                    raise RunsExhausted(owner, len(today), limit,
+                                        retry_after_s=min(today) + DAY_S - now)
+                row['extra_runs'] = extra - 1
+                spent = 'extra'
+            else:
+                today.append(now)
+            row['runs_used'] = int(row.get('runs_used') or 0) + 1
             self._write(doc)
-            return {'runs_used': used + 1, 'run_limit': limit}
+            return {'spent': spent, 'runs_used_today': len(today), 'run_limit': limit,
+                    'extra_runs': int(row.get('extra_runs') or 0)}
 
-    # ── operator actions (CLI) ──────────────────────────────
+    # ── asking for more ─────────────────────────────────────
+    def request_runs(self, owner, runs, reason):
+        """An account asks for extra runs. Kept here until an operator decides.
+
+        One open request per account: a second one replaces nothing and is
+        refused with the first still standing, so an operator sees one ask per
+        person rather than a pile.
+        """
+        owner = WS.normalise_owner(owner)
+        try:
+            runs = int(runs)
+        except (TypeError, ValueError):
+            raise K.ContractError('say how many extra runs you are asking for, as a number') from None
+        if runs < 1 or runs > MAX_REQUEST_RUNS:
+            raise K.ContractError(f'ask for between 1 and {MAX_REQUEST_RUNS} extra runs')
+        reason = str(reason or '').strip()
+        if len(reason) < 10:
+            raise K.ContractError('say in a sentence what the extra runs are for; the person '
+                                  'granting them reads it')
+        reason = reason[:MAX_REASON]
+        with self._lock:
+            doc = self._read()
+            row = doc['accounts'].get(owner)
+            if row is None:
+                raise AccountError('no account by that name on this instance', reason='no_account',
+                                   status=401)
+            for r in doc['requests']:
+                if r.get('email') == owner and r.get('status') == 'open':
+                    raise K.ContractError(
+                        f'you already have a request open for {r["runs"]} run(s), made '
+                        f'{r["created_at"]}; it is waiting for the person running this '
+                        f'BioSense to decide.')
+            req = {'request_id': secrets.token_hex(6), 'email': owner, 'runs': runs,
+                   'reason': reason, 'created_at': K.now_iso(), 'status': 'open',
+                   'decided_at': None, 'decided_by': None, 'granted_runs': None, 'note': None}
+            doc['requests'].append(req)
+            # Keep the file bounded: decided requests older than the newest
+            # two hundred are history nobody reads here.
+            decided = [r for r in doc['requests'] if r.get('status') != 'open']
+            if len(decided) > 200:
+                drop = {id(r) for r in decided[:-200]}
+                doc['requests'] = [r for r in doc['requests'] if id(r) not in drop]
+            self._write(doc)
+            return dict(req)
+
+    def requests(self, *, owner=None, open_only=False):
+        """Requests, newest last. For one owner, or — for an operator — all."""
+        with self._lock:
+            rows = list(self._read()['requests'])
+        if owner is not None:
+            owner = WS.normalise_owner(owner)
+            rows = [r for r in rows if r.get('email') == owner]
+        if open_only:
+            rows = [r for r in rows if r.get('status') == 'open']
+        return [dict(r) for r in rows]
+
+    def decide_request(self, request_id, *, grant, decided_by, runs=None, note=None):
+        """An operator grants (adding runs to the account's bank) or declines."""
+        decided_by = str(decided_by or '').strip() or 'operator'
+        note = (str(note or '').strip() or None)
+        with self._lock:
+            doc = self._read()
+            req = next((r for r in doc['requests'] if r.get('request_id') == request_id), None)
+            if req is None:
+                raise K.ContractError('no such request')
+            if req.get('status') != 'open':
+                raise K.ContractError(f'that request was already {req["status"]} by '
+                                      f'{req.get("decided_by")} at {req.get("decided_at")}')
+            row = doc['accounts'].get(req['email'])
+            if grant:
+                n = int(req['runs'] if runs is None else runs)
+                if n < 0 or n > MAX_REQUEST_RUNS:
+                    raise K.ContractError(f'grant between 0 and {MAX_REQUEST_RUNS} runs')
+                if row is None:
+                    raise K.ContractError('the account that asked no longer exists')
+                row['extra_runs'] = int(row.get('extra_runs') or 0) + n
+                req['granted_runs'] = n
+                req['status'] = 'granted'
+            else:
+                req['status'] = 'declined'
+            req['decided_at'] = K.now_iso()
+            req['decided_by'] = decided_by
+            req['note'] = note
+            self._write(doc)
+            return dict(req)
+
+    # ── operator actions (page and CLI) ─────────────────────
+    def grant_runs(self, owner, runs, *, granted_by='operator'):
+        """Extra runs straight into one account's bank, with no request behind it."""
+        owner = WS.normalise_owner(owner)
+        runs = int(runs)
+        if runs < 0 or runs > MAX_REQUEST_RUNS:
+            raise K.ContractError(f'grant between 0 and {MAX_REQUEST_RUNS} runs')
+        with self._lock:
+            doc = self._read()
+            row = doc['accounts'].get(owner)
+            if row is None:
+                raise K.ContractError(f'no account {owner}')
+            row['extra_runs'] = int(row.get('extra_runs') or 0) + runs
+            row.setdefault('grants', []).append({'runs': runs, 'by': str(granted_by)[:80],
+                                                 'at': K.now_iso()})
+            row['grants'] = row['grants'][-50:]
+            self._write(doc)
+            return self._public(row, doc)
+
     def set_run_limit(self, owner, limit):
-        """An operator gives one account more (or fewer) runs. None restores the default."""
+        """An operator sets one account's daily limit. None restores the default; 0 means none."""
         owner = WS.normalise_owner(owner)
         if limit is not None and int(limit) < 0:
             raise K.ContractError('a run limit cannot be negative')
@@ -328,7 +509,7 @@ class Store:
                 raise K.ContractError(f'no account {owner}')
             row['run_limit'] = None if limit is None else int(limit)
             self._write(doc)
-            return self._public(row)
+            return self._public(row, doc)
 
     def reset_password(self, owner, password):
         owner = WS.normalise_owner(owner)
@@ -342,7 +523,7 @@ class Store:
                 raise K.ContractError(f'no account {owner}')
             row['salt'], row['hash'], row['scrypt'] = salt.hex(), _hash(password, salt).hex(), dict(SCRYPT)
             self._write(doc)
-            return self._public(row)
+            return self._public(row, doc)
 
     def set_disabled(self, owner, disabled):
         owner = WS.normalise_owner(owner)
@@ -353,20 +534,31 @@ class Store:
                 raise K.ContractError(f'no account {owner}')
             row['disabled'] = bool(disabled)
             self._write(doc)
-            return self._public(row)
+            return self._public(row, doc)
 
 
 def main(argv=None):
-    """`python -m biosense.accounts` — list accounts, give runs, reset a password."""
+    """`python -m biosense.accounts` — list accounts, grant runs, decide requests."""
     import argparse
     import json
     ap = argparse.ArgumentParser(description='BioSense accounts on this machine')
     sub = ap.add_subparsers(dest='cmd', required=True)
-    sub.add_parser('list', help='every account with its runs used and left')
-    g = sub.add_parser('grant', help="set one account's run limit")
+    sub.add_parser('list', help='every account with its runs today, its daily limit and its extra runs')
+    g = sub.add_parser('grant', help='add extra runs to one account, spent once the day\'s are')
     g.add_argument('email')
-    g.add_argument('runs', type=int, help='total real AI runs the account may start')
-    r = sub.add_parser('reset-password', help="set a new password for an account")
+    g.add_argument('runs', type=int)
+    lim = sub.add_parser('limit', help="set one account's daily limit (0 = no limit)")
+    lim.add_argument('email')
+    lim.add_argument('runs', type=int)
+    sub.add_parser('requests', help='every open request for extra runs')
+    ok = sub.add_parser('approve', help='grant a request (its asked-for runs, or --runs)')
+    ok.add_argument('request_id')
+    ok.add_argument('--runs', type=int, default=None)
+    ok.add_argument('--note', default=None)
+    no = sub.add_parser('decline', help='decline a request')
+    no.add_argument('request_id')
+    no.add_argument('--note', default=None)
+    r = sub.add_parser('reset-password', help='set a new password for an account')
     r.add_argument('email')
     r.add_argument('password')
     d = sub.add_parser('disable', help='refuse sign-in for an account')
@@ -381,7 +573,17 @@ def main(argv=None):
     if a.cmd == 'list':
         print(json.dumps(store.listing(), indent=1))
     elif a.cmd == 'grant':
+        print(json.dumps(store.grant_runs(a.email, a.runs, granted_by='cli'), indent=1))
+    elif a.cmd == 'limit':
         print(json.dumps(store.set_run_limit(a.email, a.runs), indent=1))
+    elif a.cmd == 'requests':
+        print(json.dumps(store.requests(open_only=True), indent=1))
+    elif a.cmd == 'approve':
+        print(json.dumps(store.decide_request(a.request_id, grant=True, decided_by='cli',
+                                              runs=a.runs, note=a.note), indent=1))
+    elif a.cmd == 'decline':
+        print(json.dumps(store.decide_request(a.request_id, grant=False, decided_by='cli',
+                                              note=a.note), indent=1))
     elif a.cmd == 'reset-password':
         print(json.dumps(store.reset_password(a.email, a.password), indent=1))
     elif a.cmd == 'disable':

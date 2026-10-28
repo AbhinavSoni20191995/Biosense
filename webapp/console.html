@@ -163,6 +163,23 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   <p class="caveat" id="identityNote"></p>
 </section>
 
+<!-- Operators only: who has an account, how many runs each has today, and the
+     requests for more that are waiting. A spending view, deliberately: it
+     names accounts and counts runs so an operator can grant more, and shows
+     nothing of anybody's projects, runs or reports. -->
+<section class="glass card" id="adminCard" hidden>
+  <div class="head"><h3>Accounts and requests for runs</h3>
+    <span class="hint" id="adminSum"></span></div>
+  <div id="adminRequests"></div>
+  <details class="ins-sub" id="adminAccountsFold">
+    <summary>Every account <span class="dim" id="adminAccountsSum"></span></summary>
+    <div id="adminAccounts"></div>
+  </details>
+  <p class="caveat">Extra runs are spent only once an account's daily runs are gone, and a
+    daily limit of 0 means no limit for that account. Nothing here reaches anybody's
+    projects, runs or reports.</p>
+</section>
+
 <div class="cols">
   <div class="stack">
 

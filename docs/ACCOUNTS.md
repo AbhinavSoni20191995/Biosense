@@ -48,7 +48,7 @@ the trash.
 | Role | Who | Real AI | Demo caps |
 |---|---|---|---|
 | `public` | not signed in | where the deployment offers it | yes |
-| `user` | signed in | where the deployment offers it, from the account's allowance of runs | yes |
+| `user` | signed in | where the deployment offers it, from the account's daily allowance of runs | yes |
 | `admin` | signed in, and listed by this deployment | yes | **no** |
 
 A browser that has not signed in still gets a workspace of its own on a hosted
@@ -72,17 +72,34 @@ it has started, and any per-account run limit an operator set. A password is
 never written anywhere, and a wrong password reads the same as an unknown
 account.
 
-### Runs per account
+### Runs per account, per day
 
-Each account may start **five real AI runs** in all (`BIOSENSE_RUNS_PER_ACCOUNT`
-changes the default for everybody). A run is counted when it starts — after
-every other check that could still refuse it, so a refused start costs nothing —
-and deleting a run later gives nothing back. The synthetic demonstration path is
-not counted and has no limit. The page shows "*n* of 5 real AI runs left" from
-the server's own count, and the sixth start is refused by name, with the counts,
-rather than failing. The per-address demo cap and cooldown do not apply to a
-signed-in account (it is counted by name instead); the deployment-wide daily cap
-still does.
+Each account may start **five real AI runs a day** — a rolling 24 hours, like
+the demo caps — and `BIOSENSE_RUNS_PER_ACCOUNT` changes that default for
+everybody. A run is counted when it starts — after every other check that could
+still refuse it, so a refused start costs nothing — and deleting a run later
+gives nothing back. The synthetic demonstration path is not counted and has no
+limit. The page shows "*n* of 5 real AI runs left today" from the server's own
+count, and the sixth start in a day is refused by name, with when the next one
+opens, rather than failing. The per-address demo cap and cooldown do not apply
+to a signed-in account (it is counted by name instead); the deployment-wide
+daily cap still does.
+
+### Asking for more, and granting it
+
+When the day's runs are gone, the account area offers **Ask for more runs**: a
+number and a sentence saying what for. The request is kept in the accounts file,
+one open request per account, and shown to every signed-in operator as a count
+on their ADMIN badge and in a card at the top of the page listing who asked, for
+how many, why, and what they have used today. The operator grants (the number
+asked for, or another) or declines, from their own account on the page or at
+the CLI, and the decision is recorded with their name.
+
+Granted runs go into the account's **bank of extra runs**, which is spent only
+once the day's allowance is — so a grant is never lost to the clock, and the
+day's allowance still returns on its own. An operator can also give extra runs
+or set a different daily limit for one account directly, without a request.
+A daily limit of `0` means no limit for that account.
 
 On a hosted deployment a real AI run **needs an account**: a browser that has not
 signed in is told to sign in or create one, before the runtime is even probed.
@@ -93,7 +110,7 @@ needed.
 
 | | Default | |
 |---|---|---|
-| `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs per account, in all; `0` means no limit of that kind |
+| `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs per account per day; `0` means no limit of that kind |
 | `BIOSENSE_SIGNUP` | `open` | `closed` refuses new accounts; existing ones still sign in |
 | `BIOSENSE_SIGNUP_CODE` | unset | when set, sign-up asks for this code once, so a public address is open to your lab only. Never shown to the page. |
 | `BIOSENSE_ACCOUNTS` | `on` | `off` turns local accounts off (see below) |
@@ -101,8 +118,11 @@ needed.
 And from the command line, inside the deployment:
 
 ```bash
-python -m biosense.accounts list                                   # who, runs used, runs left
-python -m biosense.accounts grant alice@lab.example 20             # a different limit for one account
+python -m biosense.accounts list                                   # who, runs today, daily limit, extra runs
+python -m biosense.accounts requests                               # open requests for extra runs
+python -m biosense.accounts approve <request_id> [--runs N]        # grant one (and decline)
+python -m biosense.accounts grant alice@lab.example 20             # extra runs, no request needed
+python -m biosense.accounts limit alice@lab.example 10             # a different daily limit (0 = none)
 python -m biosense.accounts reset-password alice@lab.example '…'   # there is no reset e-mail
 python -m biosense.accounts disable alice@lab.example              # and enable
 python -m biosense.accounts create alice@lab.example '…'           # bypasses a closed sign-up
@@ -144,7 +164,7 @@ asks it; nothing re-implements the check.
 Demo policy — the caps that exist to bound what strangers can spend on BioSense's
 own provider key:
 
-* the per-account allowance of real AI runs
+* the per-account daily allowance of real AI runs
 * the per-caller daily Real AI run cap
 * the deployment-wide daily Real AI run cap
 * the cooldown between one caller's runs

@@ -79,21 +79,76 @@ class StoreTests(unittest.TestCase):
         coded.create('alice@lab.example', 'correct horse battery', signup_code='lab-2026')
         self.assertNotIn('lab-2026', json.dumps(coded.settings.describe()))
 
-    def test_five_real_runs_and_then_a_refusal_that_says_so(self):
-        self.store.create('alice@lab.example', 'correct horse battery')
+    def test_five_real_runs_a_day_and_then_a_refusal_that_says_when(self):
+        clock = {'t': 1_000_000.0}
+        store = AC.Store(self.tmp / 'daily.json', AC.Settings(run_limit=5), now=lambda: clock['t'])
+        store.create('alice@lab.example', 'correct horse battery')
         for n in range(5):
-            self.assertEqual(5 - n, self.store.allowance('alice@lab.example')['runs_remaining'])
-            self.store.authorise_run('alice@lab.example')
-        self.assertEqual(0, self.store.allowance('alice@lab.example')['runs_remaining'])
+            self.assertEqual(5 - n, store.allowance('alice@lab.example')['runs_remaining_today'])
+            store.authorise_run('alice@lab.example')
+            clock['t'] += 600
+        self.assertEqual(0, store.allowance('alice@lab.example')['runs_remaining_today'])
         with self.assertRaises(AC.RunsExhausted) as e:
-            self.store.authorise_run('alice@lab.example')
+            store.authorise_run('alice@lab.example')
         self.assertEqual((5, 5), (e.exception.used, e.exception.run_limit))
-        self.assertIn('5 of its 5', str(e.exception))
-        # An operator gives more; a limit of 0 means no limit of that kind.
-        self.store.set_run_limit('alice@lab.example', 7)
-        self.assertEqual(2, self.store.allowance('alice@lab.example')['runs_remaining'])
-        self.store.set_run_limit('alice@lab.example', 0)
-        self.store.authorise_run('alice@lab.example')
+        self.assertIn('daily allowance is 5', str(e.exception))
+        self.assertIn('ask for extra runs', str(e.exception))
+        # The oldest run was 50 minutes ago, so the next opens in 23 h 10 min.
+        self.assertAlmostEqual(AC.DAY_S - 3000, e.exception.retry_after_s, delta=2)
+        self.assertIn('23 h 10 min', str(e.exception))
+        # A day later the allowance is back, without anybody granting anything.
+        clock['t'] += AC.DAY_S
+        self.assertEqual(5, store.allowance('alice@lab.example')['runs_remaining_today'])
+        store.authorise_run('alice@lab.example')
+        # An operator raises the daily limit; a limit of 0 means none.
+        store.set_run_limit('alice@lab.example', 7)
+        self.assertEqual(6, store.allowance('alice@lab.example')['runs_remaining_today'])
+        store.set_run_limit('alice@lab.example', 0)
+        self.assertFalse(store.allowance('alice@lab.example')['capped'])
+
+    def test_extra_runs_are_spent_only_once_the_days_are_gone(self):
+        clock = {'t': 1_000_000.0}
+        store = AC.Store(self.tmp / 'extra.json', AC.Settings(run_limit=2), now=lambda: clock['t'])
+        store.create('alice@lab.example', 'correct horse battery')
+        store.grant_runs('alice@lab.example', 3, granted_by='boss')
+        self.assertEqual('day', store.authorise_run('alice@lab.example')['spent'])
+        self.assertEqual('day', store.authorise_run('alice@lab.example')['spent'])
+        a = store.allowance('alice@lab.example')
+        self.assertEqual((0, 3), (a['runs_remaining_today'], a['extra_runs']))
+        self.assertIn('plus 3 extra', a['note'])
+        self.assertEqual('extra', store.authorise_run('alice@lab.example')['spent'])
+        self.assertEqual(2, store.allowance('alice@lab.example')['extra_runs'])
+        # Tomorrow the day's two come first again, and the bank waits.
+        clock['t'] += AC.DAY_S
+        self.assertEqual('day', store.authorise_run('alice@lab.example')['spent'])
+        self.assertEqual(2, store.allowance('alice@lab.example')['extra_runs'])
+
+    def test_a_request_for_more_runs_waits_for_an_operator_and_then_counts(self):
+        self.store.create('alice@lab.example', 'correct horse battery')
+        with self.assertRaisesRegex(K.ContractError, 'what the extra runs are for'):
+            self.store.request_runs('alice@lab.example', 5, 'more')
+        req = self.store.request_runs('alice@lab.example', 5,
+                                      'Two more arms for the Friday round.')
+        self.assertEqual('open', req['status'])
+        with self.assertRaisesRegex(K.ContractError, 'already have a request open'):
+            self.store.request_runs('alice@lab.example', 2, 'And one more for luck.')
+        self.assertEqual(req['request_id'],
+                         self.store.get('alice@lab.example')['open_request']['request_id'])
+        self.assertEqual([req['request_id']],
+                         [r['request_id'] for r in self.store.requests(open_only=True)])
+        done = self.store.decide_request(req['request_id'], grant=True, decided_by='boss',
+                                         runs=3, note='three is plenty')
+        self.assertEqual(('granted', 3, 'boss'),
+                         (done['status'], done['granted_runs'], done['decided_by']))
+        self.assertEqual(3, self.store.get('alice@lab.example')['extra_runs'])
+        self.assertIsNone(self.store.get('alice@lab.example')['open_request'])
+        with self.assertRaisesRegex(K.ContractError, 'already granted'):
+            self.store.decide_request(req['request_id'], grant=False, decided_by='boss')
+        # Declining adds nothing.
+        req2 = self.store.request_runs('alice@lab.example', 50, 'Everything, please, today.')
+        self.store.decide_request(req2['request_id'], grant=False, decided_by='boss',
+                                  note='ask again next week')
+        self.assertEqual(3, self.store.get('alice@lab.example')['extra_runs'])
 
     def test_a_disabled_account_can_neither_sign_in_nor_run(self):
         self.store.create('alice@lab.example', 'correct horse battery')
@@ -108,8 +163,8 @@ class StoreTests(unittest.TestCase):
         self.store.authorise_run('alice@lab.example')
         rows = self.store.listing()
         self.assertEqual([('alice@lab.example', 1, 5, 4)],
-                         [(r['email'], r['runs_used'], r['run_limit'], r['runs_remaining'])
-                          for r in rows])
+                         [(r['email'], r['runs_used_today'], r['run_limit'],
+                           r['runs_remaining_today']) for r in rows])
         self.assertNotIn('hash', json.dumps(rows))
         self.assertNotIn('salt', json.dumps(rows))
 
@@ -124,8 +179,10 @@ class StoreTests(unittest.TestCase):
             with contextlib.redirect_stdout(out):
                 AC.main(['create', 'bob@lab.example', 'correct horse battery'])
                 AC.main(['grant', 'bob@lab.example', '9'])
+                AC.main(['limit', 'bob@lab.example', '7'])
                 AC.main(['list'])
-            self.assertIn('"run_limit": 9', out.getvalue())
+            self.assertIn('"extra_runs": 9', out.getvalue())
+            self.assertIn('"run_limit": 7', out.getvalue())
             self.assertTrue((self.tmp / 'private' / 'accounts' / AC.FILE).is_file())
         finally:
             for k, v in old.items():
@@ -234,10 +291,11 @@ class HttpAccountTests(unittest.TestCase):
         code, me, _ = self._req('GET', '/api/identity', cookie=cookie)
         self.assertEqual('user', me['role'])
         self.assertEqual('carol@lab.example', me['owner'])
-        self.assertEqual({'kind': 'account', 'runs_limit': 5, 'runs_used': 0,
-                          'runs_remaining': 5},
-                         {k: me['allowance'][k] for k in ('kind', 'runs_limit', 'runs_used',
-                                                          'runs_remaining')})
+        self.assertEqual({'kind': 'account', 'runs_limit': 5, 'runs_used_today': 0,
+                          'runs_remaining_today': 5, 'extra_runs': 0, 'per': 'day'},
+                         {k: me['allowance'][k] for k in ('kind', 'runs_limit', 'runs_used_today',
+                                                          'runs_remaining_today', 'extra_runs',
+                                                          'per')})
         self.assertTrue(me['accounts']['signup_open'])
         blob = json.dumps(me)
         for secret in ('correct horse battery', 'hash', 'salt'):
@@ -291,7 +349,58 @@ class HttpAccountTests(unittest.TestCase):
                 break
             time.sleep(0.25)
         me = self._req('GET', '/api/identity', cookie=cookie)[1]
-        self.assertEqual(5, me['allowance']['runs_remaining'])
+        self.assertEqual(5, me['allowance']['runs_remaining_today'])
+
+    def test_a_person_asks_for_more_runs_and_the_operator_grants_them_on_the_page(self):
+        code, d, h = self._req('POST', '/api/auth/signup',
+                               {'email': 'hana@lab.example', 'password': 'correct horse battery'})
+        user = self._session(h)
+        # The operator's account may already exist from another test; either way in.
+        code, d, h = self._req('POST', '/api/auth/signup',
+                               {'email': 'boss@lab.example', 'password': 'correct horse battery'})
+        if code == 409:
+            code, d, h = self._req('POST', '/api/auth/login',
+                                   {'email': 'boss@lab.example', 'password': 'correct horse battery'})
+        boss = self._session(h)
+        # A stranger cannot ask, and an ordinary account cannot grant.
+        self.assertEqual(401, self._req('POST', '/api/account/request-runs',
+                                        {'runs': 3, 'reason': 'x' * 20})[0])
+        self.assertEqual(403, self._req('GET', '/api/admin/accounts', cookie=user)[0])
+        # The ask.
+        code, d, _ = self._req('POST', '/api/account/request-runs',
+                               {'runs': 3, 'reason': 'A second round before the group meeting.'},
+                               cookie=user)
+        self.assertEqual(201, code, d)
+        rid = d['request']['request_id']
+        self.assertEqual(rid, d['identity']['allowance']['open_request']['request_id'])
+        self.assertEqual(1, self._req('GET', '/api/identity', cookie=boss)[1]['open_requests'])
+        # What the operator sees: accounts and counts, never a hash, never a run.
+        code, d, _ = self._req('GET', '/api/admin/accounts', cookie=boss)
+        self.assertEqual(200, code)
+        self.assertEqual([rid], [r['request_id'] for r in d['requests']])
+        self.assertIn('hana@lab.example', [a['email'] for a in d['accounts']])
+        blob = json.dumps(d)
+        for secret in ('hash', 'salt', 'correct horse battery'):
+            self.assertNotIn(secret, blob)
+        # The grant, and what the person now has.
+        code, d, _ = self._req('POST', f'/api/admin/requests/{rid}/grant',
+                               {'runs': 2, 'note': 'two for now'}, cookie=boss)
+        self.assertEqual(200, code, d)
+        self.assertEqual('granted', d['request']['status'])
+        self.assertEqual('boss@lab.example', d['request']['decided_by'])
+        me = self._req('GET', '/api/identity', cookie=user)[1]
+        self.assertEqual(2, me['allowance']['extra_runs'])
+        self.assertIsNone(me['allowance']['open_request'])
+        mine = self._req('GET', '/api/account/requests', cookie=user)[1]['requests']
+        self.assertEqual(['granted'], [r['status'] for r in mine])
+        # A direct grant and a new daily limit, with no request behind them.
+        code, d, _ = self._req('POST', '/api/admin/accounts/hana@lab.example/grant',
+                               {'runs': 1}, cookie=boss)
+        self.assertEqual(3, d['account']['extra_runs'])
+        code, d, _ = self._req('POST', '/api/admin/accounts/hana@lab.example/limit',
+                               {'runs': 8}, cookie=boss)
+        self.assertEqual(8, d['account']['run_limit'])
+        self.assertEqual(8, self._req('GET', '/api/identity', cookie=user)[1]['allowance']['runs_limit'])
 
     def test_the_runtime_payload_says_how_accounts_work_here(self):
         code, d, _ = self._req('GET', '/api/runtime')
@@ -335,6 +444,6 @@ class RealRunGateTests(unittest.TestCase):
         with self.assertRaises((RT.RuntimeUnavailable, K.ContractError)) as e:
             self.reg.start(self.req, identity=who, client='c')
         self.assertNotIsInstance(e.exception, AC.RunsExhausted)
-        self.assertEqual(0, self.store.allowance('gina@lab.example')['runs_remaining'])
+        self.assertEqual(0, self.store.allowance('gina@lab.example')['runs_remaining_today'])
         self.assertEqual(1, self.store.get('gina@lab.example')['runs_used'],
                          'a refused start costs nothing')

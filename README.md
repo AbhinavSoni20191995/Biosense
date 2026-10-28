@@ -731,9 +731,10 @@ machine.
 
 Sign-in is an **account on this BioSense**: anyone who can reach the page creates
 one with an email address and a password (`Sign in / create account`, top
-right), and from then on their work is theirs. Each account gets an allowance
-of real AI runs — five by default, `BIOSENSE_RUNS_PER_ACCOUNT` — and the
-demonstration path is not counted. Passwords are stored only as scrypt hashes
+right), and from then on their work is theirs. Each account gets five real AI
+runs a day (`BIOSENSE_RUNS_PER_ACCOUNT`), the demonstration path is not
+counted, and when the day's are gone they can ask for more from the account
+area; an operator grants or declines on the page. Passwords are stored only as scrypt hashes
 under the private data root; sessions stay server-side. The person running the
 deployment can close sign-up, require a sign-up code, or give an account more
 runs (`python -m biosense.accounts grant you@lab.example 20`); see
@@ -1001,7 +1002,7 @@ Not conventions — things the software refuses to do:
 | A public benchmark export refuses when private lineage exists, rather than anonymising | `benchmark/privacy.py` |
 
 ```bash
-uv run --frozen python -m unittest     # 1735 tests
+uv run --frozen python -m unittest     # 1738 tests
 bash scripts/check.sh                  # + offline loop smoke tests + agent-spec validation
 uv run --frozen python -m biosense.production.selfcheck          # a prompt's whole chain, no model
 uv run --frozen python -m biosense.production.selfcheck --live   # + a real agent round trip

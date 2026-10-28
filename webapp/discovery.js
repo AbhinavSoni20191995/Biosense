@@ -162,7 +162,10 @@ function renderIdentity() {
   const id = state.runtime && state.runtime.identity;
   box.textContent = '';
   if (!id) return;
-  if (id.is_admin) box.append(el('span', 'rt-badge admin', 'ADMIN'));
+  if (id.is_admin) {
+    box.append(el('span', 'rt-badge admin', 'ADMIN'
+      + (id.open_requests ? ` \u00b7 ${id.open_requests} request${id.open_requests === 1 ? '' : 's'}` : '')));
+  }
   if (id.authenticated) {
     box.append(el('span', 'mono dim', id.display_name || id.display), ' ');
     const out = el('button', 'btn', 'Sign out');
@@ -183,6 +186,7 @@ function renderIdentity() {
   const note = $('#identityNote');
   if (note) note.textContent = id.note || '';
   renderAllowance(id);
+  renderAdminAccounts();
 }
 
 /* The sign-in card has two forms behind two tabs. The create-account tab is
@@ -220,11 +224,16 @@ function renderAllowance(id) {
   }
   if (!a.capped) { host.hidden = true; return; }
   if (a.kind === 'account') {
-    /* An account's own allowance: runs in all, not per day. */
-    const left = a.runs_remaining;
-    host.append(el('span', 'rt-badge ' + (left > 0 ? 'demo-limits' : 'admin'), 'YOUR RUNS'),
-      el('span', 'dim', `${left} of ${a.runs_limit} real AI run${a.runs_limit === 1 ? '' : 's'} left `
-        + 'on this account \u00b7 the demonstration path is not counted'));
+    /* An account's own allowance: so many a day, plus any extra runs an
+       operator granted, and the way to ask for more. */
+    const left = a.runs_remaining_today, extra = a.extra_runs || 0;
+    const bits = [`${left} of ${a.runs_limit} real AI run${a.runs_limit === 1 ? '' : 's'} left today`];
+    if (extra) bits.push(`${extra} extra run${extra === 1 ? '' : 's'} granted`);
+    if (a.next_run_in_s && !extra) bits.push(`next one opens in ${waitWords(a.next_run_in_s)}`);
+    bits.push('the demonstration path is not counted');
+    host.append(el('span', 'rt-badge ' + (left > 0 || extra ? 'demo-limits' : 'admin'), 'YOUR RUNS'),
+      el('span', 'dim', bits.join(' \u00b7 ')));
+    host.append(askForRuns(a));
     return;
   }
   const bits = [];
@@ -238,6 +247,120 @@ function renderAllowance(id) {
   }
   host.append(el('span', 'rt-badge demo-limits', 'BIOSENSE DEMO AI'),
     el('span', 'dim', bits.join(' \u00b7 ')));
+}
+
+function waitWords(s) {
+  if (!s || s <= 0) return 'a moment';
+  if (s < 90) return 'about a minute';
+  if (s < 3600) return `${Math.ceil(s / 60)} minutes`;
+  const h = Math.floor(s / 3600), m = Math.ceil((s % 3600) / 60);
+  return `${h} h${m ? ' ' + m + ' min' : ''}`;
+}
+
+/* Asking for more runs: a number and a sentence, sent to the person running
+   this BioSense, who grants or declines from their own account. One open
+   request at a time, and its state is shown here from the server's record. */
+function askForRuns(a) {
+  const box = el('div', 'note');
+  box.style.cssText = 'flex:0 0 100%;margin-top:6px';
+  const open = a.open_request;
+  if (open) {
+    box.append(el('span', 'dim', `You asked for ${open.runs} extra run${open.runs === 1 ? '' : 's'} `
+      + `(${open.reason}) \u00b7 waiting for the person running this BioSense to decide.`));
+    return box;
+  }
+  const btn = el('button', 'btn sm', 'Ask for more runs');
+  btn.type = 'button';
+  const form = el('form', 'fields'); form.hidden = true;
+  form.style.marginTop = '8px';
+  const runs = el('input'); runs.type = 'number'; runs.min = '1'; runs.max = '100'; runs.value = '5';
+  runs.className = 'select'; runs.style.width = '6em';
+  const why = el('input'); why.type = 'text'; why.className = 'select';
+  why.placeholder = 'What the extra runs are for (one sentence)'; why.style.flex = '1';
+  const send = el('button', 'btn go sm', 'Send request'); send.type = 'submit';
+  const msg = el('span', 'dim');
+  const row = el('div', 'row'); row.append(runs, why, send, msg);
+  form.append(row);
+  btn.addEventListener('click', () => { form.hidden = !form.hidden; if (!form.hidden) why.focus(); });
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    msg.textContent = 'sending\u2026';
+    try {
+      await post('/api/account/request-runs', { runs: Number(runs.value), reason: why.value });
+      await loadRuntime();
+    } catch (e) { msg.textContent = e.message || 'could not send the request'; }
+  });
+  box.append(btn, form);
+  return box;
+}
+
+/* The operator's card: open requests first, each with grant and decline, then
+   every account with its counts and a way to give runs or set a daily limit. */
+async function renderAdminAccounts() {
+  const card = $('#adminCard'); if (!card) return;
+  const id = state.runtime && state.runtime.identity;
+  if (!id || !id.is_admin || !(id.accounts || {}).enabled) { card.hidden = true; return; }
+  let d;
+  try { d = await get('/api/admin/accounts'); } catch (_) { card.hidden = true; return; }
+  card.hidden = false;
+  const reqs = d.requests || [], accts = d.accounts || [];
+  $('#adminSum').textContent = [`${reqs.length} waiting`, `${accts.length} account${accts.length === 1 ? '' : 's'}`]
+    .join(' \u00b7 ');
+  const host = $('#adminRequests'); host.textContent = '';
+  if (!reqs.length) host.append(el('p', 'dim', 'No request for extra runs is waiting.'));
+  reqs.forEach(r => {
+    const row = el('div', 'm');
+    const acct = accts.find(a => a.email === r.email) || {};
+    row.append(el('b', null, r.email), ' asks for ', el('b', null, `${r.runs} extra run${r.runs === 1 ? '' : 's'}`),
+      el('div', null, r.reason),
+      el('div', 'dim', `${BS.fmt.ago ? BS.fmt.ago(Date.parse(r.created_at) / 1000) : r.created_at} \u00b7 `
+        + `today ${acct.runs_used_today || 0} of ${acct.run_limit} used, ${acct.extra_runs || 0} extra in hand`));
+    const act = el('div', 'row'); act.style.marginTop = '6px';
+    const n = el('input'); n.type = 'number'; n.min = '0'; n.max = '100'; n.value = String(r.runs);
+    n.className = 'select'; n.style.width = '6em';
+    const grant = el('button', 'btn go sm', 'Grant'); grant.type = 'button';
+    const decline = el('button', 'btn sm', 'Decline'); decline.type = 'button';
+    const msg = el('span', 'dim');
+    const decide = async (which, body) => {
+      msg.textContent = '\u2026';
+      try { await post(`/api/admin/requests/${r.request_id}/${which}`, body); await renderAdminAccounts(); await loadRuntime(); }
+      catch (e) { msg.textContent = e.message || 'refused'; }
+    };
+    grant.addEventListener('click', () => decide('grant', { runs: Number(n.value) }));
+    decline.addEventListener('click', () => decide('decline', {}));
+    act.append(n, grant, decline, msg);
+    row.append(act);
+    host.append(row);
+  });
+  $('#adminAccountsSum').textContent = `(${accts.length})`;
+  const tbl = $('#adminAccounts'); tbl.textContent = '';
+  const t = el('table', 'ft ft-rp');
+  const hr = el('tr'); ['Account', 'Today', 'Daily limit', 'Extra', 'Give'].forEach(h => hr.append(el('th', null, h)));
+  t.append(hr);
+  accts.forEach(a => {
+    const tr = el('tr');
+    tr.append(el('td', null, a.email + (a.disabled ? ' (disabled)' : '')),
+      el('td', null, `${a.runs_used_today} of ${a.run_limit || '\u221e'}`),
+      el('td', null, a.run_limit === 0 ? 'none' : String(a.run_limit)),
+      el('td', null, String(a.extra_runs || 0)));
+    const td = el('td');
+    const n = el('input'); n.type = 'number'; n.min = '0'; n.max = '100'; n.value = '5';
+    n.className = 'select'; n.style.width = '5em';
+    const give = el('button', 'btn sm', 'extra runs'); give.type = 'button';
+    const lim = el('button', 'btn sm', 'as daily limit'); lim.type = 'button';
+    const msg = el('span', 'dim');
+    const act = async which => {
+      msg.textContent = '\u2026';
+      try { await post(`/api/admin/accounts/${encodeURIComponent(a.email)}/${which}`, { runs: Number(n.value) }); await renderAdminAccounts(); }
+      catch (e) { msg.textContent = e.message || 'refused'; }
+    };
+    give.addEventListener('click', () => act('grant'));
+    lim.addEventListener('click', () => act('limit'));
+    td.append(n, ' ', give, ' ', lim, ' ', msg);
+    tr.append(td);
+    t.append(tr);
+  });
+  tbl.append(t);
 }
 
 function renderRuntimePicker() {

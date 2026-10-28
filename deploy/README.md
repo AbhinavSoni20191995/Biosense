@@ -183,14 +183,17 @@ Worth knowing:
 
 BioSense keeps its own accounts: a person opens the page, presses **Sign in /
 create account**, and makes one with an email address and a password. Each
-account gets an allowance of real AI runs — **five by default** — and the
-demonstration path is not counted. The file lives under the private data root
+account gets **five real AI runs a day** by default (a rolling 24 hours), and
+the demonstration path is not counted. When the day's are gone the account
+area offers **Ask for more runs**; you, signed in as an operator, see every
+request in a card at the top of the page and grant or decline it there. Granted
+runs are spent only once the day's allowance is. The file lives under the private data root
 (`/app/data/private/accounts/accounts.json` on the volume), holds scrypt hashes
 and never a password, and is neither served nor committed.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs each account may start, in all |
+| `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs each account may start per day |
 | `BIOSENSE_SIGNUP` | `open` | `closed` stops new accounts; existing ones still sign in |
 | `BIOSENSE_SIGNUP_CODE` | unset | when set, sign-up asks for this code once — a public address stays open to your lab only |
 | `BIOSENSE_ADMIN_USER_IDS` | unset | comma-separated emails that are operators once they sign up here |
@@ -200,7 +203,10 @@ An operator looks after accounts from inside the container:
 
 ```bash
 python -m biosense.accounts list
-python -m biosense.accounts grant you@yourlab.example 20     # more runs for one account
+python -m biosense.accounts requests                          # who is asking for more
+python -m biosense.accounts approve <request_id>              # or decline
+python -m biosense.accounts grant you@yourlab.example 20      # extra runs for one account
+python -m biosense.accounts limit you@yourlab.example 10      # a different daily limit
 python -m biosense.accounts reset-password you@yourlab.example '<new password>'
 python -m biosense.accounts disable someone@elsewhere.example
 ```
@@ -284,7 +290,7 @@ Still enforced in code, exactly as in the synthetic image:
 | | `BIOSENSE_PAUSE_HOLD_S` | `1800` | how long a paused run waits for an answer before it finishes with what the agents wrote |
 | | `BIOSENSE_ORCHESTRATOR_MODEL` | no | the orchestrator's own model, when it should differ from `ANTHROPIC_MODEL` |
 | Remote | `BIOSENSE_OMNIGENT_TOKEN` / `_TOKEN_FILE` | no | only for `remote` mode |
-| Accounts | `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs each account may start |
+| Accounts | `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs each account may start per day |
 | | `BIOSENSE_SIGNUP` / `BIOSENSE_SIGNUP_CODE` | `open` / unset | close sign-up, or ask for a code |
 | | `BIOSENSE_ADMIN_USER_IDS` | **no — you set it** | operator emails (accounts made here) |
 | | `BIOSENSE_ACCOUNTS` / `BIOSENSE_AUTH_SERVER` | `on` / unset | `off` + an Omnigent accounts server, only if you would rather not keep accounts here |
