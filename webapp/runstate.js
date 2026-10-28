@@ -35,8 +35,13 @@ const BS = (() => {
 
   /* The authoritative list: live runs and durable ones, already merged and
      already scoped to whoever is asking. */
-  async function runs(projectId) {
-    const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+  async function runs(projectId, opts) {
+    const parts = [];
+    if (projectId) parts.push(`project_id=${encodeURIComponent(projectId)}`);
+    // Every account's runs: honoured by the server only for an operator on a
+    // deployment with oversight on; anyone else gets their own list back.
+    if (opts && opts.everyone) parts.push('all=1');
+    const q = parts.length ? '?' + parts.join('&') : '';
     const d = await json('/api/discovery' + q);
     state.runs = d.runs || [];
     state.counts = d.counts || {};

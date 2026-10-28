@@ -92,6 +92,11 @@
     none of them stops it. Only <b>Stop run</b> does.</p>
   <div class="row" style="margin-top:12px">
     <select id="projectFilter" style="max-width:22rem"></select>
+    <!-- Shown only to an operator on a deployment with oversight on: every
+         account's runs, to open and download. Nothing here deletes or stops
+         another account's run. -->
+    <label id="everyoneWrap" class="dim" style="display:inline-flex;gap:6px;align-items:center" hidden>
+      <input type="checkbox" id="everyone"> every account's runs</label>
     <span class="dim" id="counts"></span>
   </div>
   <div class="runs" id="runs"><p class="empty">Loading…</p></div>

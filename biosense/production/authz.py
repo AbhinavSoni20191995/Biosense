@@ -32,10 +32,14 @@ is the correct default for a deployment that has not thought about it.
 admin is a BioSense operator, and the two are deliberately different roles.
 
 **Admin is a spending privilege, not a reading privilege.** Nothing here grants
-an admin access to another account's projects, datasets, runs or reports. Those
-checks are ownership checks and they do not consult role at all. If a BioSense
-administrative function over other people's data is ever wanted, it should be
-added deliberately and visibly, not inherited from a quota exemption.
+an admin access to another account's projects, datasets, runs or reports by
+virtue of the role. Those checks are ownership checks and they do not consult
+role at all. The one administrative function over other people's data is
+added deliberately and visibly, as this file said it should be:
+`BIOSENSE_ADMIN_OVERSIGHT` lets an operator **view and download** every
+account's runs (`Policy.can_read_all`). It is off by default, it is reported in
+the public policy description so the people it reaches can see it is on, and
+it grants no write of any kind.
 """
 from __future__ import annotations
 
@@ -70,6 +74,14 @@ IMPLEMENTED_CREDENTIAL_MODES = ('platform_demo', 'admin_platform')
 
 ENV_ADMIN_IDS = 'BIOSENSE_ADMIN_USER_IDS'
 ENV_AUTH_SERVER = 'BIOSENSE_AUTH_SERVER'
+# The one deliberate exception to "admin is not a reading privilege": with this
+# set, an operator may VIEW and DOWNLOAD every account's runs — the run page,
+# the event stream, the protocol and section exports, and a run list across
+# accounts. Off by default; nothing about it is inherited from the admin role,
+# and it grants no write: deleting, cancelling, continuing or following up a
+# run stays its owner's. Meant for a lab whose operator oversees the
+# instance's use, and switchable off again without touching anything else.
+ENV_OVERSIGHT = 'BIOSENSE_ADMIN_OVERSIGHT'
 
 
 class Forbidden(K.ContractError):
@@ -94,9 +106,10 @@ class Policy:
     which is the property that makes the admin role worth having.
     """
 
-    def __init__(self, admin_ids=(), auth_server=None):
+    def __init__(self, admin_ids=(), auth_server=None, oversight=False):
         self.admin_ids = frozenset(i for i in (_norm(x) for x in admin_ids) if i)
         self.auth_server = (auth_server or '').rstrip('/') or None
+        self.oversight = bool(oversight)
 
     @property
     def has_admins(self):
@@ -110,6 +123,9 @@ class Policy:
             # A count, not a list: it tells an operator their configuration was
             # read without naming anybody to a visitor.
             'admin_count': len(self.admin_ids) if self.auth_server else 0,
+            # Said in public, because the people whose runs it reaches should
+            # be able to read that it is on.
+            'admin_oversight': self.has_admins and self.oversight,
         }
 
     def is_admin(self, identity):
@@ -126,6 +142,15 @@ class Policy:
         if (getattr(identity, 'server', None) or '').rstrip('/') != self.auth_server:
             return False
         return _norm(getattr(identity, 'owner', '')) in self.admin_ids
+
+    def can_read_all(self, identity):
+        """Whether *identity* may view and download every account's runs.
+
+        Only an operator, and only on a deployment that turned oversight on.
+        A reading privilege, granted here by name and nowhere else; the write
+        paths (delete, cancel, continue, follow up) never consult it.
+        """
+        return self.oversight and self.is_admin(identity)
 
     def role_for(self, identity):
         if self.is_admin(identity):
@@ -167,6 +192,7 @@ def from_env(env=None):
     raw = (env.get(ENV_ADMIN_IDS) or '').replace('\n', ',')
     ids = [part.strip() for part in raw.split(',') if part.strip()]
     server = (env.get(ENV_AUTH_SERVER) or '').strip() or None
+    oversight = (env.get(ENV_OVERSIGHT) or '').strip().lower() in ('1', 'on', 'true', 'yes')
     from .. import accounts as AC
     if AC.settings_from_env(env).enabled:
         # This deployment keeps its own accounts, so it is its own issuer: an
@@ -174,7 +200,7 @@ def from_env(env=None):
         # instance's password file. An Omnigent accounts server named beside
         # it is not consulted for sign-in — accounts would be two places at
         # once — so it is set aside here rather than half-used.
-        return Policy(admin_ids=ids, auth_server=AC.ISSUER)
+        return Policy(admin_ids=ids, auth_server=AC.ISSUER, oversight=oversight)
     if server:
         from . import runtime as RT
         mode = 'local_real_ai' if RT.is_loopback(server) else 'remote_real_ai'
@@ -185,4 +211,4 @@ def from_env(env=None):
             f'is no server this deployment trusts to say who somebody is. An id alone is not '
             f'an identity: anyone could sign in against their own Omnigent server and claim '
             f'it. Set {ENV_AUTH_SERVER} to the accounts server that authenticates your users.')
-    return Policy(admin_ids=ids, auth_server=server)
+    return Policy(admin_ids=ids, auth_server=server, oversight=oversight)

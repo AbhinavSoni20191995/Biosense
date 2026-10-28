@@ -447,3 +447,147 @@ class RealRunGateTests(unittest.TestCase):
         self.assertEqual(0, self.store.allowance('gina@lab.example')['runs_remaining_today'])
         self.assertEqual(1, self.store.get('gina@lab.example')['runs_used'],
                          'a refused start costs nothing')
+
+
+class OversightTests(unittest.TestCase):
+    """The one reading privilege an operator can be given, and its edges.
+
+    With BIOSENSE_ADMIN_OVERSIGHT on, an operator may open and download every
+    account's runs. Three edges hold it in place: it is off by default, it
+    reaches an operator and nobody else, and it grants no write — deleting or
+    stopping another account's run is refused exactly as before.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from biosense.production import app as APP
+        from biosense.production import runtime as RT
+        cls.APP = APP
+        cls.tmp = Path(tempfile.mkdtemp())
+        (cls.tmp / 'runs').mkdir()
+        cls._private = os.environ.get('BIOSENSE_PRIVATE_DATA')
+        os.environ['BIOSENSE_PRIVATE_DATA'] = str(cls.tmp / 'private')
+        cfg = RT.from_env(runs_dir=cls.tmp / 'runs', env={'BIOSENSE_HOSTED': '1'})
+        pol = AZ.from_env({AZ.ENV_ADMIN_IDS: 'boss@lab.example', AZ.ENV_OVERSIGHT: 'on'})
+        store = AC.Store(cls.tmp / 'accounts.json', AC.Settings(run_limit=5))
+        APP.Handler.runs_dir = cls.tmp / 'runs'
+        APP.Handler.static_dir = K.ROOT / 'webapp'
+        APP.Handler.registry = APP.Registry(cls.tmp / 'runs')
+        APP.Handler.runtime_cfg = cfg
+        APP.Handler.limits = BU.Limits()
+        APP.Handler.policy = pol
+        APP.Handler.accounts = store
+        APP.Handler.discovery = APP.DiscoveryRegistry(cls.tmp / 'runs', cfg, BU.Limits(), pol,
+                                                      accounts=store)
+        APP.Handler.sessions = WS.SessionStore()
+        APP.Handler.default_identity = WS.local_identity()
+        APP.Handler._ready = {'at': 0.0, 'body': None, 'code': 503}
+        cls.srv = ThreadingHTTPServer(('127.0.0.1', 0), APP.Handler)
+        cls.srv.daemon_threads = True
+        cls.port = cls.srv.server_address[1]
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        cls.boss = cls._signup('boss@lab.example')
+        cls.ivy = cls._signup('ivy@lab.example')
+        cls.jo = cls._signup('jo@lab.example')
+        cls.rid = cls._run(cls.ivy)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+        cls.APP.Handler.accounts = None
+        cls.APP.Handler.policy = AZ.Policy()
+        if cls._private is None:
+            os.environ.pop('BIOSENSE_PRIVATE_DATA', None)
+        else:
+            os.environ['BIOSENSE_PRIVATE_DATA'] = cls._private
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    @classmethod
+    def _req(cls, method, path, body=None, *, cookie=None):
+        import urllib.error
+        import urllib.request
+        h = {'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.11'}
+        if cookie:
+            h['Cookie'] = cookie
+        r = urllib.request.Request(
+            f'http://127.0.0.1:{cls.port}{path}', method=method,
+            data=json.dumps(body).encode() if body is not None else None, headers=h)
+        try:
+            with urllib.request.urlopen(r, timeout=60) as resp:
+                raw = resp.read()
+                ctype = resp.headers.get('Content-Type') or ''
+                return resp.status, (json.loads(raw or b'{}') if 'json' in ctype else raw), resp.headers
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read() or b'{}'), e.headers
+
+    @classmethod
+    def _signup(cls, email):
+        code, d, h = cls._req('POST', '/api/auth/signup',
+                              {'email': email, 'password': 'correct horse battery'})
+        assert code == 200, d
+        for part in h.get_all('Set-Cookie') or []:
+            if part.startswith(WS.SESSION_COOKIE + '='):
+                return part.split(';')[0]
+        raise AssertionError('no session cookie')
+
+    @classmethod
+    def _run(cls, cookie):
+        code, d, _ = cls._req('POST', '/api/discovery', {
+            'project_id': 'ipsc_macrophage', 'runtime_mode': 'synthetic_demo',
+            'objective': 'Increase viable macrophage yield while keeping identity.'},
+            cookie=cookie)
+        assert code == 202, d
+        rid = d['run_id']
+        for _ in range(240):
+            snap = cls._req('GET', f'/api/discovery/{rid}', cookie=cookie)[1]
+            if snap['status'] not in ('queued', 'running', 'finalizing'):
+                break
+            time.sleep(0.25)
+        return rid
+
+    def test_the_policy_says_in_public_that_oversight_is_on(self):
+        self.assertTrue(self.APP.Handler.policy.describe()['admin_oversight'])
+        self.assertFalse(AZ.from_env({AZ.ENV_ADMIN_IDS: 'boss@lab.example'}).oversight,
+                         'off unless the deployment turns it on')
+
+    def test_the_operator_can_open_and_download_another_accounts_run(self):
+        me = self._req('GET', '/api/identity', cookie=self.boss)[1]
+        self.assertTrue(me['oversight'])
+        code, snap, _ = self._req('GET', f'/api/discovery/{self.rid}', cookie=self.boss)
+        self.assertEqual(200, code)
+        self.assertEqual('ivy@lab.example', snap['owner'])
+        code, body, h = self._req('GET', f'/api/discovery/{self.rid}/protocol?format=pdf',
+                                  cookie=self.boss)
+        self.assertEqual(200, code)
+        self.assertTrue(body.startswith(b'%PDF'))
+        code, body, _ = self._req('GET', f'/api/discovery/{self.rid}/export?section=literature&format=docx',
+                                  cookie=self.boss)
+        self.assertEqual(200, code)
+
+    def test_the_operator_sees_every_accounts_runs_only_when_asking_for_them(self):
+        mine = self._req('GET', '/api/discovery', cookie=self.boss)[1]
+        self.assertNotIn(self.rid, [r['run_id'] for r in mine['runs']],
+                         'the operator\'s own list stays their own')
+        self.assertFalse(mine['everyone'])
+        everyone = self._req('GET', '/api/discovery?all=1', cookie=self.boss)[1]
+        self.assertTrue(everyone['everyone'])
+        row = next(r for r in everyone['runs'] if r['run_id'] == self.rid)
+        self.assertEqual('ivy@lab.example', row['owner'])
+
+    def test_another_account_is_not_given_it_even_with_oversight_on(self):
+        self.assertFalse(self._req('GET', '/api/identity', cookie=self.jo)[1]['oversight'])
+        self.assertEqual(404, self._req('GET', f'/api/discovery/{self.rid}', cookie=self.jo)[0])
+        listing = self._req('GET', '/api/discovery?all=1', cookie=self.jo)[1]
+        self.assertFalse(listing['everyone'])
+        self.assertNotIn(self.rid, [r['run_id'] for r in listing['runs']])
+
+    def test_oversight_is_reading_and_never_writing(self):
+        """Deleting, stopping, continuing or following up another account's
+        run is refused exactly as it was: those routes scope to the caller."""
+        for path in (f'/api/discovery/{self.rid}/delete', f'/api/discovery/{self.rid}/cancel',
+                     f'/api/discovery/{self.rid}/continue'):
+            code, d, _ = self._req('POST', path, {}, cookie=self.boss)
+            self.assertIn(code, (404, 409), (path, d))
+        # And the run is still there, untouched, for its owner.
+        self.assertEqual(200, self._req('GET', f'/api/discovery/{self.rid}', cookie=self.ivy)[0])

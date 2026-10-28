@@ -2275,6 +2275,18 @@ class Handler(BaseHTTPRequestHandler):
         with SELFCHECK_LOCK:
             return self._send(202, dict(SELFCHECK))
 
+    def _read_owner(self):
+        """The owner a READ of a run is scoped to: the caller, or nobody at all.
+
+        None means "any owner", which the registry and the run store already
+        understand, and it is given out in exactly one case: an operator on a
+        deployment that turned oversight on (`authz.Policy.can_read_all`). The
+        write routes — delete, cancel, extend, pause, continue, follow up, the
+        benchmark builder — never call this; they scope to the caller.
+        """
+        identity = self._identity()
+        return None if self.policy.can_read_all(identity) else identity.owner
+
     def _role(self, identity=None):
         return self.policy.role_for(identity if identity is not None else self._identity())
 
@@ -2293,6 +2305,9 @@ class Handler(BaseHTTPRequestHandler):
         out['role_label'] = AZ.LABELS[role]
         out['is_admin'] = role == AZ.ROLE_ADMIN
         out['credential_mode'] = self.policy.credential_mode(identity)
+        # Whether this caller may view and download every account's runs. The
+        # page shows the switch only to someone it is true for.
+        out['oversight'] = self.policy.can_read_all(identity)
         out['allowance'] = self.discovery.ledger.allowance(self._client(), role=role)
         local = self._accounts_on()
         if local and role == AZ.ROLE_USER and getattr(identity, 'server', None) == AC.ISSUER:
@@ -2834,7 +2849,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {'error': f'section must be one of {", ".join(SR.SECTIONS)}'})
         if fmt not in ('docx', 'pdf'):
             return self._send(400, {'error': 'format must be docx or pdf'})
-        owner = self._identity().owner
+        owner = self._read_owner()
         run = self.discovery.get(rid, owner=owner)
         if run is None and not self.discovery.restore(rid, owner=owner):
             return self._send(404, {'error': 'no such discovery run'})
@@ -3555,6 +3570,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._benchmark(m.group(1))
         if path == '/api/discovery':
             owner = self._identity().owner
+            # Every account's runs, for an operator with oversight who asked
+            # for them; their own list otherwise, so the page an operator
+            # usually works in stays theirs.
+            everyone = (q.get('all') or ['0'])[0] in ('1', 'true', 'yes')
+            if everyone and self._read_owner() is None:
+                owner = None
             pid = (q.get('project_id') or [None])[0]
             rows = self.discovery.listing(owner=owner, project_id=pid)
             groups = {}
@@ -3566,9 +3587,14 @@ class Handler(BaseHTTPRequestHandler):
                 'active': len(groups.get('active', [])),
                 'projects': self.discovery.project_counts(
                     owner=owner, rows=None if pid else rows),
-                'note': 'Every run you have started, live or finished, from this process and '
-                        'from its records on disk. A run keeps going whether or not this page '
-                        'is open: closing the browser observes less, it does not stop work.'})
+                'everyone': owner is None,
+                'note': ('Every account\'s runs, live or finished: this deployment has '
+                         'operator oversight on and you are an operator. You may open and '
+                         'download them; deleting, stopping or continuing one stays with the '
+                         'account that started it.' if owner is None else
+                         'Every run you have started, live or finished, from this process and '
+                         'from its records on disk. A run keeps going whether or not this page '
+                         'is open: closing the browser observes less, it does not stop work.')})
         if path == '/api/formats':
             from .. import formats as FMT
             return self._send(200, {
@@ -3591,7 +3617,7 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r'/api/discovery/([^/]+)', path)
         if m:
             after = int((q.get('after') or ['-1'])[0] or -1)
-            owner = self._identity().owner
+            owner = self._read_owner()
             run = self.discovery.get(m.group(1), owner=owner)
             if run:
                 return self._send(200, run.snapshot(after=after))
@@ -3623,7 +3649,7 @@ class Handler(BaseHTTPRequestHandler):
                                              'reason': e.reason})
         m = re.fullmatch(r'/api/discovery/([^/]+)/protocol', path)
         if m:
-            owner = self._identity().owner
+            owner = self._read_owner()
             run = self.discovery.get(m.group(1), owner=owner)
             # A finished run's protocol is in the record it wrote, so exporting
             # it works after a reload or a restart, not only while the process
@@ -3913,7 +3939,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {'error': f'that benchmark could not be read: {e}'})
 
     def _sse_discovery(self, rid, after):
-        run = self.discovery.get(rid, owner=self._identity().owner)
+        run = self.discovery.get(rid, owner=self._read_owner())
         if not run:
             return self._send(404, {'error': 'no such discovery run in this process'})
         return self._stream(run, after)

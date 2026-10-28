@@ -35,12 +35,22 @@ function renderIdentity() {
   const box = $('#identity'); if (!box || !page.identity) return;
   box.textContent = '';
   if (page.identity.is_admin) box.append(el('span', 'rt-badge admin', 'ADMIN'));
+  if (page.identity.oversight) box.append(el('span', 'rt-badge admin', 'OVERSIGHT'));
   if (page.identity.authenticated) box.append(el('span', 'mono dim', page.identity.display_name));
+  const wrap = $('#everyoneWrap');
+  if (wrap) {
+    wrap.hidden = !page.identity.oversight;
+    const cb = $('#everyone');
+    if (cb && !cb.dataset.wired) {
+      cb.dataset.wired = '1';
+      cb.addEventListener('change', () => { page.everyone = cb.checked; load().catch(() => {}); });
+    }
+  }
 }
 
 async function load() {
-  const d = await BS.runs(page.filter);
-  page.runs = d.runs; page.projects = d.projects;
+  const d = await BS.runs(page.filter, { everyone: page.everyone });
+  page.runs = d.runs; page.projects = d.projects; page.everyoneShown = !!d.everyone;
   render();
 }
 
@@ -104,7 +114,8 @@ function runRow(r) {
   right.append(el('span', 'dim mono', BS.fmt.elapsed(r.started_at, r.finished_at)));
   card.append(right);
   const meta = el('div', 'meta');
-  [[r.project_id, 'project'], [r.runtime_label, null],
+  [[page.everyoneShown ? (r.owner || 'no account') : null, 'account'],
+    [r.project_id, 'project'], [r.runtime_label, null],
     [r.engine ? (r.engine.includes('codex') ? 'Codex' : 'Claude') : null, 'engine'],
     [r.current_stage, 'stage'],
     [(r.active_agents || []).join(', ') || null, 'agent'],

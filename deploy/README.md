@@ -197,6 +197,7 @@ and never a password, and is neither served nor committed.
 | `BIOSENSE_SIGNUP` | `open` | `closed` stops new accounts; existing ones still sign in |
 | `BIOSENSE_SIGNUP_CODE` | unset | when set, sign-up asks for this code once — a public address stays open to your lab only |
 | `BIOSENSE_ADMIN_USER_IDS` | unset | comma-separated emails that are operators once they sign up here |
+| `BIOSENSE_ADMIN_OVERSIGHT` | unset | `on` lets an operator view and download every account's runs (never delete or stop one); off by default, see docs/ACCOUNTS.md |
 | `BIOSENSE_ACCOUNTS` | `on` | `off` turns local accounts off; sign-in then needs an Omnigent accounts server (below) |
 
 An operator looks after accounts from inside the container:
@@ -293,6 +294,7 @@ Still enforced in code, exactly as in the synthetic image:
 | Accounts | `BIOSENSE_RUNS_PER_ACCOUNT` | `5` | real AI runs each account may start per day |
 | | `BIOSENSE_SIGNUP` / `BIOSENSE_SIGNUP_CODE` | `open` / unset | close sign-up, or ask for a code |
 | | `BIOSENSE_ADMIN_USER_IDS` | **no — you set it** | operator emails (accounts made here) |
+| | `BIOSENSE_ADMIN_OVERSIGHT` | unset | `on`: operators may view and download every account's runs |
 | | `BIOSENSE_ACCOUNTS` / `BIOSENSE_AUTH_SERVER` | `on` / unset | `off` + an Omnigent accounts server, only if you would rather not keep accounts here |
 
 `tests/test_cloud_runtime.py` asserts that no image or script bakes in a

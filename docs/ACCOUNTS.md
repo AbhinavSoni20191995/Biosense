@@ -183,9 +183,28 @@ whoever the caller is. None of these consults role anywhere in the code:
 
 That last one is deliberate and worth stating twice. A quota exemption is not a
 key to anybody's science. An administrator asking for another account's run gets
-the same 404 a stranger gets. If an administrative view over other people's data
-is ever wanted, it should be built deliberately and visibly — not inherited from
-a spending privilege.
+the same 404 a stranger gets — unless the deployment turns on the one
+administrative view that exists, below, which is built deliberately and visibly
+rather than inherited from a spending privilege.
+
+### Oversight: an operator may view and download every account's runs
+
+```
+BIOSENSE_ADMIN_OVERSIGHT=on
+```
+
+With this set, an operator (and nobody else) may open any account's run page,
+follow its event stream, and download its protocol, its round page and its
+specialist sections. The Runs page gains an "every account's runs" box, and
+each run then shows the account that started it. The policy description
+reports `admin_oversight: true` in public, so the people it reaches can see it
+is on.
+
+What it does not do: it grants **no write**. Deleting, stopping, extending,
+pausing, continuing or following up another account's run is refused exactly
+as before; those routes scope to the caller and never consult this switch.
+Projects and private datasets are untouched by it. It is off by default and
+switches off again by removing the variable, with nothing else to change.
 
 **Administrator runs are not free.** They skip the caps that protect the
 deployment's budget; they still spend its model credits. They are counted
