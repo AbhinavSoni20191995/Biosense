@@ -123,6 +123,8 @@ narrative is optional and never load-bearing: the report renders without it
 with an assembled summary instead, and every value prints from the protocol's
 own rows beside the prose, never from the prose.
 
+What a person reads is written for a person. The run page and the exported round page lead with the communication agent's `key_points` when it wrote them; otherwise `plain_plan.key_points` assembles the summary from the plan, and either way a lever is named by its label ("dissolved oxygen"), never by its parameter id (`do_setpoint`), which is how the agents and the tools address it. The same holds for the "decide these before the round starts" list and for an arm's changes.
+
 ## From a recommendation to something somebody can run
 
 An arms table is not a protocol. "A2: GM-CSF 50 ng/mL replacing M-CSF" does not

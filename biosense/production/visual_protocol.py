@@ -273,10 +273,10 @@ def build(protocol, *, run_id=None, translation=None, doc=None, title=None, narr
         for u in a['unplaced']:
             # Said as what it is: the page could not place the lever, which is
             # not the same as knowing the protocol does not carry it.
-            what.append((f'{u["parameter_id"]} → {_v(u["to"])} (this arm sets it; no stage on '
-                         f'this page carries it)', True))
+            what.append((f'{u.get("label") or u["parameter_id"]} → {_v(u["to"])} (this arm sets '
+                         f'it; no stage on this page carries it)', True))
         if not what:
-            what = [('Nothing: every setpoint it names already matches the reference.', False)]
+            what = [('Nothing: every value it sets is already the reference\'s.', False)]
         rows.append([arm_cell(a), where, what, ', '.join(a['tests']) or '—'])
         fills.append([None, None, CHANGED if a['changes'] or a['unplaced'] else None, None])
     doc.table(['Arm', 'In which stage', 'What changes, against the reference', 'Tests'],
@@ -296,7 +296,8 @@ def build(protocol, *, run_id=None, translation=None, doc=None, title=None, narr
     if decide:
         doc.heading('Decide these before the round starts', 2)
         for g in decide:
-            doc.bullet(f'{g["parameter_id"]}: {g.get("why") or "not established"}')
+            doc.bullet(g.get('text') or f'{g.get("label") or g["parameter_id"]}: '
+                       f'{g.get("why") or "not established"}')
     doc.caveat(NOT_APPROVED)
 
     # The appendix: every value, arm by arm, for whoever wants one table.

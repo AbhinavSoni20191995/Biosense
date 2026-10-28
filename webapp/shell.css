@@ -47,7 +47,6 @@ body.shelled .card{padding:24px 26px}
    they are parts of the run now, reached from the rail, and a single column
    is what gives a paragraph room to be read. */
 body.shelled .cols{grid-template-columns:minmax(0,1fr);gap:24px}
-body.shelled .cols.canvas{display:block}
 body.shelled .stack{gap:24px}
 @media (max-width:64rem){
   body.shelled .shell-app{display:block}

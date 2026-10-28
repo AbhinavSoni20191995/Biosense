@@ -678,14 +678,6 @@ expected outcome is a judgement range. It is shown under "Beyond the
 apparatus", exports as Word or PDF, can be asked for again from the Ask box
 ("Design past the apparatus"), and is never runnable here or approved.
 
-**The run page can be laid out as a canvas.** "Arrange as a canvas" frees
-every box from the reading order: drag one by its title, widen it from either
-side, heighten it from the bottom. Any single box can also be detached into a
-floating window and docked back. Closing a box leaves it as a translucent title
-strip, and clicking the title brings it back. The arrangement is remembered in
-your browser for every run, "Reset layout" starts it again, and "Back to the
-page layout" returns to the reading order. A phone keeps the reading order.
-
 **You can change the bench copy in the same conversation.** "Change the
 protocol document" tells the orchestrator what you want in the copy you take
 to the bench — the vessel it is laid out for and its working volume, a value

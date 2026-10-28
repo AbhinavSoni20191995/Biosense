@@ -237,6 +237,52 @@ def _same(a, b):
         return str(a) == str(b)
 
 
+def names(protocol):
+    """{parameter_id: plain name} for every lever this protocol gives a name.
+
+    A parameter id (`do_setpoint`, `il12_maturation_ng_ml`) is how the agents
+    and the tools address a lever; it is not how a person reads one. The page
+    and the exports speak to the person, so wherever a plan would print an id
+    they print the name the protocol itself carries for it — the stage line's
+    label, or the project's parameter label.
+    """
+    p = protocol or {}
+    out = {}
+    for s in stages_of(p):
+        for item in s['items']:
+            pid = item.get('parameter_id')
+            if pid and pid not in out:
+                out[pid] = split_name(item.get('label') or pid)[0] or pid
+    for st in p.get('stages') or []:
+        for q in st.get('parameters') or []:
+            pid = q.get('parameter_id')
+            if pid and pid not in out and q.get('label'):
+                out[pid] = split_name(q['label'])[0] or pid
+    return out
+
+
+def plain_name(pid, protocol=None, table=None):
+    """The name a reader knows a lever by: never the id when a name exists.
+
+    Looked up in the protocol first (`names`), then in the parameter registry,
+    which is where the project defined the lever; an id nothing names is
+    written out as words rather than left as a token.
+    """
+    pid = str(pid or '')
+    table = names(protocol) if table is None else table
+    if pid in table:
+        return table[pid]
+    try:
+        from .. import parameters as PR
+        canonical = PR.resolve(pid, required=False)
+        if canonical:
+            return PR.BY_ID[canonical].label
+    except Exception:          # the registry is a convenience here, never a dependency
+        pass
+    words = UNIT_SUFFIX.sub('', pid).replace('_', ' ').strip()
+    return words or pid
+
+
 # A name long enough to be a sentence is a sentence. An agent proposing a
 # lever the project does not carry writes its whole rationale into the label
 # ("Activin A concentration across days 1-4 of mesoderm induction (ng/mL). The
@@ -364,6 +410,14 @@ def recipe(protocol):
     return out
 
 
+def span(stage):
+    """'days 7–17', for inside a sentence; `window` is the table's form."""
+    if stage.get('days') is None or stage.get('day_start') is None:
+        return 'every stage'
+    start = stage['day_start']
+    return f'days {_num(start)}–{_num(start + stage["days"])}'
+
+
 def window(stage):
     """'day 7–17 (10 d)', or 'every stage' for the settings that span the run."""
     if stage.get('days') is None or stage.get('day_start') is None:
@@ -395,6 +449,7 @@ def changes(protocol):
     levers = sorted({k for a in arms for k in (a.get('setpoints') or {})})
     placed = place(levers, stages)
     rules = plan.get('decision_rules') or []
+    known = names(p)
 
     out = []
     for a in arms:
@@ -408,8 +463,9 @@ def changes(protocol):
                 # Said as what it is: this page could not find a line for the
                 # lever, which is not the same as knowing the protocol has none.
                 if not a.get('control') and not _same(sp[lever], csp.get(lever)):
-                    unplaced.append({'parameter_id': lever, 'to': sp[lever],
-                                     'from': csp.get(lever)})
+                    unplaced.append({'parameter_id': lever,
+                                     'label': plain_name(lever, table=known),
+                                     'to': sp[lever], 'from': csp.get(lever)})
                 continue
             line = ref_lines.get(at) or {}
             was = line.get('value')
@@ -431,14 +487,75 @@ def changes(protocol):
         tests = sorted({r.get('unknown') for r in rules
                         if r.get('unknown') and re.search(rf'\b{re.escape(aid)}\b',
                                                           f'{r.get("if", "")} {r.get("then", "")}')})
+        # What the arm does, in one line. A lever this page could not place is
+        # still something the arm sets, so it is in the line, by its name.
+        shorts = ([r['short'] for r in rows]
+                  + [f'{u["label"]} {_num(u["to"])}'.strip() for u in unplaced])
         out.append({
             'arm_id': aid, 'label': a.get('label') or aid, 'control': bool(a.get('control')),
             'basis': a.get('basis'), 'changes': rows, 'unplaced': unplaced, 'tests': tests,
             'summary': ('The reference: the current process, unchanged. Every other arm is '
                         'read against it.' if a.get('control') else
-                        '; '.join(r['short'] for r in rows) if rows else
-                        'Every setpoint this arm names already matches the reference, so it '
-                        'changes nothing on this page.')})
+                        '; '.join(shorts) if shorts else
+                        'This arm changes nothing: every value it sets is already the '
+                        'reference\'s.')})
+    return out
+
+
+def said(label):
+    """A name as it reads inside a sentence: 'agitation', 'feed interval', 'IL-12'.
+
+    A plain word the protocol capitalised as a heading is lower-cased mid-
+    sentence; a factor's name ('IL-12', 'Y-27632', 'M-CSF') is left exactly as
+    it is, because case is part of it.
+    """
+    s = str(label or '').strip()
+    head = s.split(' ', 1)[0]
+    if len(head) > 1 and head[0].isupper() and head[1:].isalpha() and head[1:].islower():
+        return s[0].lower() + s[1:]
+    return s
+
+
+def _change_phrase(c):
+    """'IL-12 to 0 ng/mL in maturation (the reference uses 0.2 ng/mL)'."""
+    unit = f' {c["unit"]}' if c.get('unit') else ''
+    where = '' if c.get('stage_id') in (None, 'all') else f' in {said(c["stage_label"])}'
+    was = (f' (the reference uses {_num(c["from"])}{unit})' if c.get('from') is not None
+           else ' (the reference does not use it)')
+    return f'{said(c["label"])} to {_num(c["to"])}{unit}{where}{was}'
+
+
+def arm_sentences(rows):
+    """What the arms do, said as a person would: one clause per arm that
+    changes something, and the arms that change nothing named together.
+
+    'A3 sets Agitation to 0 rpm (the reference uses 60 rpm).' is what a reader
+    needs; 'A3 — Agitation 0 rpm' was a label, and an arm whose every value
+    matched the reference was described in a sentence of its own four times
+    over. An arm that changes nothing is a fact worth one plain sentence, not
+    a paragraph: as written it would repeat the reference.
+    """
+    varied = [r for r in rows if not r['control']]
+    out = []
+    changing = [a for a in varied if a['changes'] or a['unplaced']]
+    if changing:
+        clauses = []
+        for a in changing[:4]:
+            parts = [_change_phrase(c) for c in a['changes']]
+            parts += [f'{said(u["label"])} to {_num(u["to"])} (no stage on this page carries it)'
+                      for u in a['unplaced']]
+            shown, more = parts[:2], len(parts) - 2
+            clauses.append(f'{a["arm_id"]} sets ' + _join(shown)
+                           + (f' and {more} more' if more > 0 else ''))
+        out.append(('Each arm is the reference recipe with its own change: ' if len(changing) > 1
+                    else 'The one arm that differs from the reference is ')
+                   + '; '.join(clauses) + ('.' if len(changing) <= 4 else '; and so on.'))
+    same = [a['arm_id'] for a in varied if not (a['changes'] or a['unplaced'])]
+    if same:
+        out.append((f'{_join(same)} set no value that differs from the reference, so as '
+                    'written they would repeat it.') if len(same) > 1 else
+                   (f'{same[0]} sets no value that differs from the reference, so as '
+                    'written it would repeat it.'))
     return out
 
 
@@ -460,38 +577,85 @@ def key_points(protocol, narrative=None):
     total = (p.get('timeline') or {}).get('total_days')
     rows = changes(p)
     varied = [r for r in rows if not r['control']]
+    # (rank, sentence): when there are more sentences than a summary holds,
+    # the least needed go first — the timeline, then the readouts, then the
+    # arms that repeat the reference (an arm that repeats the reference is
+    # something the person should notice). What blocks the round is never
+    # dropped.
     points = []
     if arms and isinstance(reps, int):
-        points.append(f'{len(arms)} arms × {reps} replicates = {len(arms) * reps} vessels'
-                      + (f', {_num(total)} days from seeding to harvest.' if total else '.'))
+        points.append((0, f'{len(arms)} arms × {reps} replicates = {len(arms) * reps} vessels'
+                       + (f', {_num(total)} days from seeding to harvest.' if total else '.')))
     stages = [s for s in stages_of(p) if s['stage_id'] != 'all']
     if stages:
-        points.append('The process runs ' + ', then '.join(
-            f'{s["label"].lower()} ({window(s)})' for s in stages) + '.')
+        points.append((4, 'The process runs ' + ', then '.join(
+            f'{said(s["label"])} ({span(s)})' for s in stages) + '.'))
     if varied:
-        levers = sorted({c['label'] for a in varied for c in a['changes']})
+        levers = sorted({c['label'] for a in varied for c in a['changes']}
+                        | {u['label'] for a in varied for u in a['unplaced']})
         if levers:
-            points.append('Everything is held the same across arms except '
-                          + _join(levers) + '.')
-        points.append('Each arm is the reference recipe with its own change: '
-                      + '; '.join(f'{a["arm_id"]} — {a["summary"]}' for a in varied[:4])
-                      + ('.' if len(varied) <= 4 else '; and so on.'))
-    gaps = p.get('gaps') or []
-    if gaps:
-        points.append(('One value is' if len(gaps) == 1 else f'{len(gaps)} values are')
-                      + ' not decided yet, and the round cannot start until somebody decides '
-                      + ('it: ' if len(gaps) == 1 else 'them: ')
-                      + _join(sorted(g.get('parameter_id', '') for g in gaps)) + '.')
+            points.append((1, 'Everything is held the same across arms except '
+                           + _join(said(x) for x in levers) + '.'))
+        for n, sentence in enumerate(arm_sentences(rows)):
+            points.append((0 if n == 0 else 2, sentence))
+    undecided = decide_first(p)
+    if undecided:
+        one = len(undecided) == 1
+        points.append((0, ('One value is' if one else f'{len(undecided)} values are')
+                       + ' not decided yet: '
+                       + _join(said(g['label']) + (f' ({said(g["stage_label"])})'
+                                                   if g.get('stage_label') else '')
+                               for g in undecided)
+                       + '. The round cannot start until somebody decides '
+                       + ('it.' if one else 'them.')))
     readouts = plan.get('readouts') or []
     if readouts:
-        points.append('What decides the result: '
-                      + _join([r.get('name') or '' for r in readouts[:3]])
-                      + (f', and {len(readouts) - 3} more.' if len(readouts) > 3 else '.'))
+        points.append((3, 'What decides the result: '
+                       + _join([r.get('name') or '' for r in readouts[:3]])
+                       + (f', and {len(readouts) - 3} more.' if len(readouts) > 3 else '.')))
+    while len(points) > 5:
+        worst = max(range(len(points)), key=lambda i: points[i][0])
+        if points[worst][0] == 0:
+            break
+        points.pop(worst)
     # Always last, and never crowded out by the points above it: a reader who
     # stops after the summary must still have read this one.
     return {'source': 'computed',
-            'points': points[:5] + ['Nothing here is approved. A named person approves the '
-                                    'protocol before any of it is run.']}
+            'points': [s for _, s in points[:5]]
+            + ['Nothing here is approved. A named person approves the '
+               'protocol before any of it is run.']}
+
+
+def decide_first(protocol):
+    """The values nobody has settled, each by its name and with what it blocks.
+
+    The protocol records a gap by parameter id; a reader is told the lever's
+    name, the stage it belongs to, and what would settle it, in that order.
+    """
+    p = protocol or {}
+    table = names(p)
+    stages = stages_of(p)
+    placed = place([g.get('parameter_id') for g in p.get('gaps') or []
+                    if g.get('parameter_id')], stages)
+    by_stage = {s['stage_id']: s for s in stages}
+    out = []
+    for g in p.get('gaps') or []:
+        pid = g.get('parameter_id')
+        label = plain_name(pid, table=table)
+        at = placed.get(pid)
+        stage = by_stage.get(at[0]) if at else None
+        why = str(g.get('why') or '').strip()
+        if not why:
+            why = ('no source read in this run gives a value for it, no hypothesis set one, '
+                   'and nobody has proposed a starting value')
+        # The recorded reason usually opens with the lever's own name; when it
+        # does, saying the name twice reads as a stutter.
+        text = why if why.lower().startswith(label.lower()) else f'{label}: {why}'
+        out.append({'parameter_id': pid, 'label': label,
+                    'stage_id': stage['stage_id'] if stage else None,
+                    'stage_label': stage['label'] if stage else None,
+                    'why': g.get('why'), 'text': text})
+    return out
 
 
 def _join(items):
@@ -530,8 +694,7 @@ def build(protocol, *, narrative=None):
         'arms': rows,
         'measure': [{'name': r.get('name'), 'unit': r.get('unit'), 'when': r.get('when'),
                      'why': r.get('why')} for r in plan.get('readouts') or []],
-        'decide_first': [{'parameter_id': g.get('parameter_id'), 'why': g.get('why')}
-                         for g in p.get('gaps') or []],
+        'decide_first': decide_first(p),
         'note': ('The reference recipe is the current process, written out once. Each arm is '
                  'that recipe with the change(s) listed against it, and nothing else. Every '
                  'value here is the protocol\'s own; this page computes which stage a change '

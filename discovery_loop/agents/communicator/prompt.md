@@ -43,9 +43,12 @@ and who the write-up is for when the person named a reader.
    sentences, one idea each: what this round does; what each arm changes about
    the recipe, said the way a person would say it ("drop IL-12 from the
    maturation stage", not `il12_maturation_ng_ml 0`); what is still undecided
-   and what it blocks. Name the stage a change happens in. Leave `key_points`
-   out entirely rather than padding it — the page assembles its own and says
-   so.
+   and what it blocks, again by name ("the dissolved-oxygen setpoint is not
+   decided, and the round cannot start until it is", never `do_setpoint`).
+   Name the stage a change happens in. An arm whose values all match the
+   reference is worth one plain sentence saying so. Leave `key_points` out
+   entirely rather than padding it — the page assembles its own, by the same
+   rules (names, never ids), and says so.
 3. Check it in:
    `evidence.cli communication --project <project_id> --run-id <run_id>
    --draft <run>/communication.draft.json --out <run>/communication.json`.

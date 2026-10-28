@@ -127,8 +127,7 @@ a:hover{text-decoration:underline}
   border-radius:var(--r);
   box-shadow:var(--shadow);
   position:relative;
-  /* Only the properties that change on interaction — never left/top, which the
-     canvas sets every frame of a drag. */
+  /* Only the properties that change on interaction. */
   transition:box-shadow .2s ease, border-color .18s ease;
 }
 /* Sections arrive, rather than snapping in: a short rise as the page loads, and
@@ -136,7 +135,7 @@ a:hover{text-decoration:underline}
 @keyframes bs-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:no-preference){
   .wrap > section.card,
-  .cols:not(.canvas) > .stack > section.card{
+  .cols > .stack > section.card{
     animation:bs-rise .34s cubic-bezier(.22,.61,.36,1) both;
   }
 }
@@ -742,57 +741,6 @@ button{font-family:inherit}
    rest of the question. */
 .ft tr.open .clip{display:inline;-webkit-line-clamp:unset;overflow:visible}
 
-/* ── the run page's boxes, arranged by the reader (canvas.js) ── */
-.cv-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
-.cv-bar .hint{font-size:12.5px;color:var(--ink-3)}
-.cols > .stack > section.card > .head{padding-right:62px}
-.cv-ctl{position:absolute;top:10px;right:10px;display:flex;gap:4px;z-index:4}
-/* A folded box hides what follows its title; its controls are not content. */
-.cols > .stack > section.card > .cv-ctl{display:flex !important}
-.cv-body{display:contents}
-.cv-b{width:24px;height:24px;border-radius:7px;border:1px solid var(--line);padding:0;
-  background:var(--surface-solid);color:var(--ink-2);font-size:13px;line-height:20px;cursor:pointer}
-.cv-b:hover{color:var(--ink);border-color:var(--ink-3)}
-.cv-b[hidden]{display:none}
-/* Free boxes: on the canvas, or detached into a window over the page. */
-.cols.canvas{display:block;position:relative}
-.cols.canvas > .stack{display:contents}
-.cols.canvas > .stack > section.card{position:absolute;min-width:260px;
-  box-sizing:border-box;margin:0}
-.cols > .stack > section.card.cv-float{position:fixed;min-width:260px;
-  box-sizing:border-box;margin:0;max-height:calc(100vh - 16px);
-  box-shadow:0 22px 50px rgba(0,0,0,.22);background:var(--surface-solid)}
-/* A free box is its title over a body that scrolls. */
-.cols > .stack > section.card.cv-free{display:flex;flex-direction:column;overflow:hidden}
-.cols > .stack > section.card.cv-free[hidden]{display:none !important}
-.cv-free > .head{flex:none}
-.cv-free > .cv-body{display:block;flex:1 1 auto;min-height:0;overflow:auto}
-.cv-free > .head{cursor:grab;touch-action:none}
-.cv-drag{opacity:.97;box-shadow:0 18px 40px rgba(0,0,0,.18)}
-.cv-drag > .head{cursor:grabbing}
-/* Edges you can take hold of: either side to widen, the bottom to heighten. */
-.cv-h{display:none;position:absolute;z-index:3;touch-action:none}
-.cols > .stack > section.cv-free > .cv-h{display:block !important}
-/* Inside the edge: a free box clips what overflows it, handles included. */
-.cv-h-e{top:0;right:0;width:9px;height:100%;cursor:ew-resize}
-.cv-h-w{top:0;left:0;width:9px;height:100%;cursor:ew-resize}
-.cv-h-s{left:0;bottom:0;height:9px;width:100%;cursor:ns-resize}
-.cv-h-se{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
-.cv-h-sw{left:0;bottom:0;width:16px;height:16px;cursor:nesw-resize}
-.cv-free .cv-h-se::after{content:"";position:absolute;right:4px;bottom:4px;width:8px;height:8px;
-  border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);opacity:.7}
-.cv-free:hover .cv-h-e,.cv-free:hover .cv-h-w{background:linear-gradient(90deg,transparent 3px,
-  color-mix(in srgb,var(--brand) 35%,transparent) 3px,color-mix(in srgb,var(--brand) 35%,transparent) 5px,transparent 5px)}
-/* Minimised: the title as a translucent strip; click it to bring the box back. */
-section.card.cv-min{opacity:.6;background:color-mix(in srgb,var(--glass) 45%,transparent);
-  height:auto !important;overflow:hidden;padding-top:12px;padding-bottom:12px;
-  transition:opacity .15s}
-section.card.cv-min:hover{opacity:.9}
-section.card.cv-min > .head{margin-bottom:0;cursor:pointer}
-section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !important}
-.cols > .stack > section.card.cv-min > .cv-h-s,.cols > .stack > section.card.cv-min > .cv-h-se,
-.cols > .stack > section.card.cv-min > .cv-h-sw{display:none !important}
-@media (max-width:900px){.cv-bar{display:none}.cv-det{display:none}}
 .ft-an th:nth-child(2){width:44%}.ft-an th:nth-child(3){width:70px}.ft-an th:nth-child(5){width:74px}
 .ft-sub{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -964,10 +912,6 @@ section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !importan
    of the page is still there under it. */
 .rail-extra{display:flex;flex-direction:column;gap:2px;margin-top:18px}
 .rail-extra:empty{display:none}
-.rail .cv-bar{margin-top:auto;padding-top:16px;border-top:1px solid var(--line);
-  display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.rail .cv-bar .hint{flex:0 0 100%;font-size:11px;line-height:1.45;color:var(--ink-3)}
-.rail .cv-bar .btn{font-size:11px;padding:4px 9px}
 .rail-lab{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--ink-3);padding:0 12px;margin:16px 0 6px}
 .rail-item{display:flex;align-items:baseline;gap:8px;width:100%;text-align:left;
@@ -1006,18 +950,17 @@ section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !importan
 
 /* The live view, docked in the corner. A run in flight is something to glance
    at, not a column to scroll past: while one is live the panel sits in the
-   bottom-left, and clicking its title opens it. On the canvas every box is
-   free, so the dock stands down. */
-.cols:not(.canvas) > .stack > section.card#progressPanel.docked{position:fixed;
+   bottom-left, and clicking its title opens it. */
+.cols > .stack > section.card#progressPanel.docked{position:fixed;
   left:288px;bottom:18px;width:330px;max-height:min(62vh,560px);overflow:auto;z-index:35;
   box-shadow:0 18px 50px rgba(0,0,0,.22);padding:14px 16px}
-.cols:not(.canvas) > .stack > section.card#progressPanel.docked.shut{max-height:none;
+.cols > .stack > section.card#progressPanel.docked.shut{max-height:none;
   overflow:hidden}
-.cols:not(.canvas) > .stack > section.card#progressPanel.docked.shut > :not(.head){display:none}
+.cols > .stack > section.card#progressPanel.docked.shut > :not(.head){display:none}
 #progressPanel.docked > .head{margin-bottom:10px;cursor:pointer}
 #progressPanel.docked .lab{margin-top:10px}
 @media (max-width:64rem){
-  .cols:not(.canvas) > .stack > section.card#progressPanel.docked{left:12px;right:12px;
+  .cols > .stack > section.card#progressPanel.docked{left:12px;right:12px;
     width:auto}
 }
 
@@ -1028,7 +971,7 @@ body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
    from a tab bar: the highlighted tabs are what a person acts on, the small
    ones the supplementary record. A section's own renderer decides whether
    it exists (`hidden`); the tabs decide which existing one is shown
-   (`tab-off`). On the canvas every box is free, so tabs stand down. */
+   (`tab-off`). */
 .tabs{display:flex;flex-direction:column;gap:6px;padding:2px 2px 0}
 .tabs-main,.tabs-more{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .tab{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.04em;
@@ -1048,8 +991,7 @@ body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
 .tabs-more::before{content:'more';font-family:var(--mono);font-size:10px;letter-spacing:.08em;
   text-transform:uppercase;color:var(--ink-3);margin-right:4px}
 .tabs-more:empty{display:none}
-.cols:not(.canvas) > .stack > section.card.tab-off{display:none}
-.cols.canvas > #resultNav,.cols.canvas .tabs{display:none}
+.cols > .stack > section.card.tab-off{display:none}
 /* Widen: any section may take the whole width; Escape narrows them all. */
 .head .widen{margin-left:auto;font-size:11px;padding:3px 9px;flex:none}
 .cols > .stack > section.card > .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}

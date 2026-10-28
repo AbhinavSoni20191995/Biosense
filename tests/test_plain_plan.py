@@ -190,6 +190,89 @@ class KeyPointTests(unittest.TestCase):
         self.assertEqual(['Shorten the NK stage and drop IL-12.'], points['points'])
 
 
+class PlainWordsTests(unittest.TestCase):
+    """A parameter id is how the agents address a lever; a person reads its
+    name. The summary a scientist saw said `do_setpoint` was undecided and
+    listed, arm by arm, "Every setpoint this arm names already matches the
+    reference, so it changes nothing on this page." — four times."""
+
+    def _agitation(self):
+        doc = plan()
+        doc['gaps'] = [{'parameter_id': 'do_setpoint',
+                        'why': 'Dissolved oxygen has no recorded value for this process, no '
+                               'hypothesis set one, and no starting value was proposed for it.'}]
+        doc['first_pass']['physical'] += [
+            {'parameter_id': 'agitation_rpm', 'label': 'Agitation', 'unit': 'rpm', 'value': 60,
+             'letter': 'D', 'provenance': 'design_choice', 'stage_id': 'all'},
+            {'parameter_id': 'do_setpoint', 'label': 'Dissolved oxygen', 'unit': 'fraction',
+             'value': None, 'letter': 'GAP', 'provenance': 'gap', 'stage_id': 'all'}]
+        doc['round_plan']['arms'] = [
+            {'arm_id': 'A0', 'label': 'control', 'control': True, 'setpoints': {}},
+            {'arm_id': 'A1', 'label': 'a', 'setpoints': {'agitation_rpm': 60}},
+            {'arm_id': 'A2', 'label': 'b', 'setpoints': {'agitation_rpm': 60, 'mystery_lever_h': 4}},
+            {'arm_id': 'A3', 'label': 'c', 'setpoints': {'agitation_rpm': 0}},
+            {'arm_id': 'A4', 'label': 'd', 'setpoints': {'agitation_rpm': 60}}]
+        return doc
+
+    def test_a_lever_is_named_by_the_protocol_then_the_registry_then_in_words(self):
+        doc = self._agitation()
+        self.assertEqual('Dissolved oxygen', PP.plain_name('do_setpoint', doc))
+        self.assertEqual('Dissolved oxygen', PP.plain_name('do_setpoint', {}),
+                         'the registry knows the project\'s own parameters')
+        self.assertEqual('mystery lever', PP.plain_name('mystery_lever_h', doc),
+                         'an id nothing names is still written as words')
+        self.assertEqual('IL-12', PP.plain_name('il12', NK))
+
+    def test_an_undecided_value_is_said_by_name_and_stage_and_never_dropped(self):
+        points = PP.key_points(self._agitation())['points']
+        text = ' '.join(points)
+        self.assertNotIn('do_setpoint', text)
+        self.assertIn('One value is not decided yet: dissolved oxygen (every stage). The round '
+                      'cannot start until somebody decides it.', points)
+        self.assertLessEqual(len(points), 6)
+        self.assertEqual('Nothing here is approved. A named person approves the protocol '
+                         'before any of it is run.', points[-1])
+
+    def test_the_arms_are_one_sentence_each_way_not_a_label_per_arm(self):
+        points = PP.key_points(self._agitation())['points']
+        text = ' '.join(points)
+        self.assertIn('A3 sets agitation to 0 rpm (the reference uses 60 rpm)', text)
+        self.assertIn('A1 and A4 set no value that differs from the reference, so as written '
+                      'they would repeat it.', points)
+        self.assertNotIn('Every setpoint this arm names', text)
+        self.assertIn('mystery lever to 4 (no stage on this page carries it)', text,
+                      'a lever the page cannot place is still something the arm sets')
+
+    def test_no_parameter_id_reaches_the_summary(self):
+        import re
+        for doc in (NK, self._agitation()):
+            text = ' '.join(PP.key_points(doc)['points'])
+            self.assertFalse(re.search(r'\b[a-z0-9]+_[a-z0-9_]+\b', text), text)
+
+    def test_an_arms_one_line_summary_counts_what_it_could_not_place(self):
+        arms = {a['arm_id']: a for a in PP.changes(self._agitation())}
+        self.assertEqual('mystery lever 4', arms['A2']['summary'])
+        self.assertEqual('mystery lever', arms['A2']['unplaced'][0]['label'])
+        self.assertEqual('Agitation 0 rpm', arms['A3']['summary'])
+        self.assertIn('changes nothing', arms['A1']['summary'])
+
+    def test_decide_first_carries_the_name_the_stage_and_a_sentence(self):
+        d = PP.build(self._agitation())
+        gap = d['decide_first'][0]
+        self.assertEqual(('do_setpoint', 'Dissolved oxygen', 'Every stage'),
+                         (gap['parameter_id'], gap['label'], gap['stage_label']))
+        self.assertTrue(gap['text'].startswith('Dissolved oxygen has no recorded value'),
+                        'a reason that opens with the name is not prefixed with it again')
+        gap = PP.decide_first(NK)[0]
+        self.assertEqual('vitronectin coating: no source gives one', gap['text'])
+
+    def test_a_name_reads_as_itself_inside_a_sentence(self):
+        self.assertEqual('agitation', PP.said('Agitation'))
+        self.assertEqual('feed interval', PP.said('Feed interval'))
+        for kept in ('IL-12', 'Y-27632 (ROCK inhibitor)', 'M-CSF', 'TGF-beta1'):
+            self.assertEqual(kept, PP.said(kept))
+
+
 class BuildTests(unittest.TestCase):
     def test_the_whole_plan_is_one_json_shape_the_page_and_the_export_share(self):
         d = PP.build(NK)
@@ -199,6 +282,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(['CD16 positive fraction'], [m['name'] for m in d['measure']])
         self.assertEqual(['vitronectin_coating'],
                          [g['parameter_id'] for g in d['decide_first']])
+        self.assertEqual(['vitronectin coating'], [g['label'] for g in d['decide_first']])
         json.dumps(d)      # it travels to the browser as it stands
 
     def test_a_protocol_with_no_round_still_has_a_recipe(self):

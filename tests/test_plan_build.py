@@ -56,7 +56,7 @@ class TabsTests(unittest.TestCase):
         self.assertLess(HTML.index('id="plainPanel"'), HTML.index('id="resultNav"'))
         self.assertNotIn('data-tab', HTML[HTML.index('id="plainPanel"'):HTML.index('id="resultNav"')],
                          'the finding is not a tab; it is always shown')
-        self.assertIn('.cols:not(.canvas) > .stack > section.card.tab-off{display:none}', CSS)
+        self.assertIn('.cols > .stack > section.card.tab-off{display:none}', CSS)
 
     def test_the_highlighted_tabs_are_what_a_person_acts_on(self):
         tabs = JS[JS.index('const TABS = ['):JS.index('];', JS.index('const TABS = ['))]
@@ -72,8 +72,6 @@ class TabsTests(unittest.TestCase):
     def test_a_tab_exists_only_where_its_section_has_something_to_show(self):
         fn = JS[JS.index('function renderTabs'):JS.index('function showTab')]
         self.assertIn("return n && !n.hidden;", fn, 'the renderer decides, the tab bar reads')
-        # And on the canvas every box is free, so the tabs stand down.
-        self.assertIn('.cols.canvas > #resultNav', CSS)
 
     def test_each_tabbed_section_is_marked_and_the_record_moved_in_with_them(self):
         for sid in ('resultPanel', 'comparePanel', 'roundPanel', 'protocolPanel', 'askDataPanel',

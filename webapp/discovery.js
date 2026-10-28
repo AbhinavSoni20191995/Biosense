@@ -2626,6 +2626,22 @@ function renderResult(snap) {
   }
 }
 
+/* The name a protocol gives a lever, for the places the record only has its
+   id. An id is how the agents and the tools address a parameter; what a
+   person reads is its label. */
+function paramName(p, pid) {
+  for (const st of (p && p.stages) || []) {
+    const q = (st.parameters || []).find(x => x.parameter_id === pid);
+    if (q && q.label) return q.label;
+  }
+  for (const s of ((p && p.plain_plan) || {}).recipe || []) {
+    const l = (s.lines || []).find(x => x.parameter_id === pid);
+    if (l && (l.name || l.label)) return l.name || l.label;
+  }
+  return String(pid || '').replace(/_(ng_ml|ug_ml|um|nm|mm|pct|h|hr|hours|days?|rpm|fraction)$/i, '')
+    .replace(/_/g, ' ');
+}
+
 /* The recommendation in plain words, and the first thing on the page: what
    this round is, the recipe every arm starts from, and — per arm — only what
    that arm changes about it. The dense panels below explain why; this one says
@@ -2708,9 +2724,9 @@ function renderPlainPlan(p, snap) {
         } else if (a.changes.length || a.unplaced.length) {
           a.changes.forEach(c => what.append(el('div', 'chip on', c.text)));
           a.unplaced.forEach(u => what.append(el('div', 'chip on',
-            `${u.parameter_id} \u2192 ${num(u.to)} (no stage on this page carries it)`)));
+            `${u.label || u.parameter_id} \u2192 ${num(u.to)} (no stage on this page carries it)`)));
         } else {
-          what.append(el('span', 'dim', 'nothing: every setpoint it names matches the reference'));
+          what.append(el('span', 'dim', 'nothing: every value it sets is already the reference\'s'));
         }
         const body = el('div', 'ft-body');
         appendAll(body, [kv('What it does', a.basis || a.summary),
@@ -2736,7 +2752,7 @@ function renderPlainPlan(p, snap) {
     host.append(el('div', 'lab', 'Decide these before the round starts'));
     const ul = el('ul', 'tight');
     d.decide_first.forEach(g => ul.append(el('li', null,
-      `${g.parameter_id}: ${g.why || 'not established'}`)));
+      g.text || `${g.label || g.parameter_id}: ${g.why || 'not established'}`)));
     host.append(ul);
   }
 
@@ -4062,7 +4078,13 @@ function renderProtocol(p) {
   if ((p.gaps || []).length) {
     host.append(el('div', 'lab', 'Gaps — these block the wet lab'));
     const ul = el('ul', 'tight');
-    p.gaps.forEach(g => ul.append(el('li', null, `${g.parameter_id}: ${g.why}`)));
+    /* By the lever's name: the id is how the agents address it, not how a
+       person reads it. The plain plan carries the name for every gap. */
+    const named = new Map((((p.plain_plan || {}).decide_first) || []).map(g => [g.parameter_id, g]));
+    p.gaps.forEach(g => {
+      const n = named.get(g.parameter_id);
+      ul.append(el('li', null, n ? n.text : `${paramName(p, g.parameter_id)}: ${g.why}`));
+    });
     host.append(ul);
   }
   /* Grouped by what the reader can do about them, restatements folded. The
