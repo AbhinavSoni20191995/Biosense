@@ -685,15 +685,40 @@ class AppServerTests(unittest.TestCase):
             self.assertLess(text.index(panel), second,
                             f'{panel} is in the sidebar, not the wide column')
 
-    def test_the_sidebar_panels_fold(self):
-        """Four panels stacked open made the column a wall."""
+    def test_every_page_is_built_into_the_same_shell(self):
+        """One rail, built from each page's own header nodes, so a page's own
+        handlers keep working — and it brings its own stylesheet, because the
+        loop tracker does not load the shared one."""
+        shell = self._get('/shell.js')[1].decode()
+        self.assertIn("querySelectorAll('.bar')", shell)
+        self.assertIn("n.querySelector('.brand')", shell)
+        self.assertIn("link.href = 'shell.css'", shell)
+        self.assertIn("el('div', 'shell-app')", shell)
+        self.assertIn('body.shelled .shell-app{display:grid',
+                      self._get('/shell.css')[1].decode())
+        for page in ('console.html', 'runs.html', 'simulator.html', 'data.html',
+                     'loop.html', 'index.html'):
+            self.assertIn('shell.js', self._get('/' + page)[1].decode(), page)
+
+    def test_the_small_boxes_are_parts_of_the_run_not_a_second_column(self):
+        """They were four panels stacked in a sidebar, which made that column a
+        wall whatever folded. They are parts of the run now, reached from the
+        rail like every other part, so only the one being read is on screen."""
         text = self._get('/console.html')[1].decode()
-        self.assertGreaterEqual(text.count('glass card fold'), 4)
-        # the heading is the control, so the whole row is the hit target
+        for key in ('data-tab="export"', 'data-tab="cands"', 'data-tab="record"',
+                    'data-tab="benchmarks"'):
+            self.assertIn(key, text)
+        self.assertNotIn('class="glass card fold" data-open="0"', text,
+                         'nothing is left stacked-and-shut in a sidebar')
+
+    def test_what_still_folds_is_a_control_a_keyboard_can_reach(self):
+        """The form and the live view still fold, and the heading is the
+        control: the whole row is the hit target, and Enter works on it."""
+        text = self._get('/console.html')[1].decode()
+        self.assertIn('id="startPanel"', text)
         self.assertIn(".fold > .head{cursor:pointer", text)
         self.assertIn("head.setAttribute('role', 'button')", text)
         self.assertIn("aria-expanded", text)
-        # and it is reachable without a mouse
         self.assertIn("head.setAttribute('tabindex', '0')", text)
         self.assertIn("e.key === 'Enter'", text)
 

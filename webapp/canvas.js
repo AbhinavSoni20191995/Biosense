@@ -66,6 +66,8 @@
   /* ── the toolbar ─────────────────────────────────────────────────── */
   const bar = document.createElement('div');
   bar.className = 'cv-bar';
+  // The rail is where the chrome lives; the work above it stays the work.
+  bar.dataset.rail = '1';
   const toggle = button('btn sm', '');
   const reset = button('btn sm', 'Reset layout',
     'Put every box back where the page puts it, open, docked, at its own size');
@@ -73,7 +75,11 @@
   const hint = document.createElement('span');
   hint.className = 'hint';
   bar.append(toggle, reset, openAll, hint);
-  cols.parentNode.insertBefore(bar, cols);
+  // In the shell the layout controls belong in the rail, under everything a
+  // person navigates with; without a rail they sit above the work as before.
+  const rail = document.querySelector('#railExtra');
+  if (rail && rail.closest('.rail')) rail.closest('.rail').append(bar);
+  else cols.parentNode.insertBefore(bar, cols);
 
   function button(cls, text, title) {
     const b = document.createElement('button');

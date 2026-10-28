@@ -183,7 +183,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 <div class="cols">
   <div class="stack">
 
-    <section class="glass card">
+    <section class="glass card fold" id="startPanel" data-open="1">
       <div class="head">
         <h3>Run AI discovery</h3>
         <span class="rt-badge synthetic_demo" id="runtimeBadge"></span>
@@ -401,6 +401,17 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
 
     <!-- The answer, in the order a person acts on it: what the run thinks is
          true, then the experiment that settles it, then the numbers to set. -->
+    <!-- The run in hand, at the top of the work: what was asked on the left,
+         what it is doing (or did) on the right. Everything below it is the
+         answer; the rail is how to move around it. -->
+    <section class="glass card runtop" id="runTop" hidden>
+      <div class="runtop-l">
+        <div class="runtop-q" id="runTopQ"></div>
+        <div class="runtop-sub dim" id="runTopSub"></div>
+      </div>
+      <div class="runtop-r" id="runTopMeta"></div>
+    </section>
+
     <!-- What to do, before anything that explains why. The reference recipe
          stage by stage, then what each arm changes about it — the two things
          somebody needs to set a round up. Everything below this panel is the
@@ -631,27 +642,27 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
       <div class="lims" id="rvLims" hidden></div>
     </section>
 
-    <section class="glass card fold" data-open="1">
+    <section class="glass card" data-tab="cands">
       <div class="head"><h3>Candidate parameters</h3>
         <span class="hint">what to turn next</span></div>
       <div id="candidates" class="dim">Nothing proposed yet.</div>
     </section>
 
-    <section class="glass card fold" data-open="0">
+    <section class="glass card" data-tab="record">
       <div class="head"><h3>Record</h3><span class="hint" id="evCount"></span></div>
       <div class="feed" id="feed">
         <p class="dim">Nothing running yet.</p>
       </div>
     </section>
 
-    <section class="glass card fold" data-open="1">
+    <section class="glass card" data-tab="export">
       <div class="head"><h3>Export</h3><span class="hint">from this run</span></div>
       <div class="export" id="exports">
         <p class="dim">Available once a run has finished.</p>
       </div>
     </section>
 
-    <section class="glass card fold" data-open="0">
+    <section class="glass card" data-tab="benchmarks">
       <div class="head"><h3>Benchmarks</h3><span class="hint">read or re-run</span></div>
       <div id="benchList" class="dim">loading…</div>
       <div class="lab">Run one again</div>
@@ -702,6 +713,7 @@ ul.tight{margin:7px 0;padding-left:20px} ul.tight li{margin:4px 0}
   });
 })();
 </script>
+<script src="shell.js"></script>
 <script src="runstate.js"></script>
 <script src="curves.js"></script>
 <script src="runview.js"></script>

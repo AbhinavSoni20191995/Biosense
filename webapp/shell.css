@@ -1,0 +1,61 @@
+/* The application shell's own styles: a rail on the left, the work on the
+   right. Kept apart from brand.css and loaded by shell.js, because the loop
+   tracker is a self-contained page that does not use the shared stylesheet —
+   and a shell that only works where another file happens to be loaded is a
+   shell that breaks one page in six. Every custom property has a fallback
+   for exactly that reason. */
+/* ── The application shell: a rail on the left, the work on the right ──
+   Built by shell.js, which moves the page's own header nodes into it, so
+   every handler a page attached still works. A page without the header keeps
+   its old layout untouched. */
+body.shelled .shell-app{display:grid;grid-template-columns:272px minmax(0,1fr);
+  align-items:start;min-height:100vh}
+.rail{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  display:flex;flex-direction:column;gap:3px;padding:18px 12px 22px;
+  border-right:1px solid var(--line,rgba(127,127,127,.22));background:var(--glass-2,rgba(127,127,127,.06));
+  scrollbar-width:thin}
+.rail-brand{display:block;padding:4px 8px 14px;border-radius:10px}
+.rail-brand:hover{text-decoration:none}
+.rail-brand .brand img{height:30px;width:30px}
+.rail-brand .brand .nm{font-size:16.5px}
+.rail-new{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;
+  font-size:14.5px;font-weight:600;color:var(--ink,#1b241f);margin-bottom:10px}
+.rail-new:hover{text-decoration:none;background:var(--glass-3,rgba(127,127,127,.09))}
+.rail-ico{font-size:17px;line-height:1;color:var(--ink-3,#7b8a84);width:18px;text-align:center}
+.rail-nav{display:flex;flex-direction:column;gap:1px}
+.rail-link{display:block;padding:8px 12px;border-radius:9px;font-family:var(--sans);
+  font-size:14px;font-weight:500;letter-spacing:0;color:var(--ink-2,#44524c);
+  text-transform:none;background:none;border:0}
+.rail-link:hover{text-decoration:none;color:var(--ink,#1b241f);
+  background:var(--glass-3,rgba(127,127,127,.09))}
+.rail-link[aria-current]{background:var(--glass-3,rgba(127,127,127,.12));color:var(--ink,#1b241f);
+  font-weight:600}
+/* The layout controls, at the foot of the rail. */
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;
+  padding:10px 28px;border-bottom:1px solid var(--line,rgba(127,127,127,.22));
+  background:color-mix(in srgb,var(--bg,#fff) 82%,transparent);backdrop-filter:blur(14px)}
+.topbar-t{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3,#7b8a84)}
+.rail-toggle{display:none}
+body.shelled .main{min-width:0}
+/* Room to read: the work gets a comfortable measure and real margins, rather
+   than filling whatever width the window happens to have. */
+body.shelled .wrap{max-width:1180px;padding:26px 28px 96px}
+body.shelled .bar{display:none}
+body.shelled .card{padding:24px 26px}
+/* One column of work. The second column was where the small boxes lived;
+   they are parts of the run now, reached from the rail, and a single column
+   is what gives a paragraph room to be read. */
+body.shelled .cols{grid-template-columns:minmax(0,1fr);gap:24px}
+body.shelled .cols.canvas{display:block}
+body.shelled .stack{gap:24px}
+@media (max-width:64rem){
+  body.shelled .shell-app{display:block}
+  .rail{position:fixed;inset:0 auto 0 0;width:272px;z-index:60;transform:translateX(-100%);
+    transition:transform .18s ease;background:var(--bg,#fff)}
+  body.rail-open .rail{transform:none;box-shadow:0 18px 60px rgba(0,0,0,.28)}
+  .rail-toggle{display:inline-flex}
+  body.shelled .wrap{padding:20px 16px 80px}
+}
+
+

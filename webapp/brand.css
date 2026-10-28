@@ -822,6 +822,14 @@ section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !importan
    rationale into its label, and a paragraph set as a pill is unreadable — so
    a chip is cut to one line here and the full text is in the open row. */
 .chip.ln{max-width:min(26em,100%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The recipe: the stage and its days are short, and what goes into the vessel
+   is the column that needs the room — a dose cut to "0.5 1e…" is no use. */
+.ft-recipe th:nth-child(2){width:12em}
+.ft-recipe th:nth-child(3){width:9.5em}
+.ft-recipe td:nth-child(3){white-space:nowrap}
+.ft-recipe td:nth-child(4){width:auto}
+.ft-recipe .chip.ln{max-width:100%}
+.ft-recipe .ft-chips{gap:5px}
 .ln-desc{font-size:12.5px;line-height:1.5;margin-top:3px;max-width:62ch}
 @media (max-width:640px){
   .ft-kv{grid-template-columns:1fr;gap:2px}
@@ -954,6 +962,65 @@ section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !importan
 .fl-item.new .fl-pill{stroke-dasharray:4 3;stroke:var(--s3)} .fl-item.new .fl-pill-t{fill:var(--s3)}
 /* Widened in place: one column, so the plan has the page's width and the rest
    of the page is still there under it. */
+.rail-extra{display:flex;flex-direction:column;gap:2px;margin-top:18px}
+.rail-extra:empty{display:none}
+.rail .cv-bar{margin-top:auto;padding-top:16px;border-top:1px solid var(--line);
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.rail .cv-bar .hint{flex:0 0 100%;font-size:11px;line-height:1.45;color:var(--ink-3)}
+.rail .cv-bar .btn{font-size:11px;padding:4px 9px}
+.rail-lab{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);padding:0 12px;margin:16px 0 6px}
+.rail-item{display:flex;align-items:baseline;gap:8px;width:100%;text-align:left;
+  padding:7px 12px;border-radius:9px;border:0;background:none;cursor:pointer;
+  font-family:var(--sans);font-size:13.5px;color:var(--ink-2);line-height:1.4}
+.rail-item:hover{background:var(--glass-3,rgba(127,127,127,.09));color:var(--ink)}
+.rail-item[aria-selected="true"]{background:var(--glass-3,rgba(127,127,127,.12));
+  color:var(--ink);font-weight:600}
+.rail-item .n{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);
+  flex:none}
+.rail-item.sub{font-size:12.5px;color:var(--ink-3)}
+.rail-item .ttl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.rail-item .dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--ink-3)}
+.rail-item .dot.go{background:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 22%,transparent)}
+.rail-item .dot.ok{background:var(--ok)}
+.rail-item .dot.bad{background:var(--bad)}
+.rail-item .dot.warn{background:var(--warn)}
+
+/* The run in hand: what was asked, and what it is doing. Two columns so the
+   question reads as a sentence on the left and the facts line up on the
+   right, rather than both competing for the top of the page. */
+.runtop{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:start}
+.runtop-q{font-size:19px;line-height:1.45;font-weight:600;letter-spacing:-.01em;max-width:62ch}
+.runtop-sub{font-size:13px;margin-top:7px}
+.runtop-r{display:grid;gap:7px;justify-items:end;text-align:right;min-width:0}
+.runtop-kv{display:flex;gap:9px;align-items:baseline;font-size:13px}
+.runtop-kv .k{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);border:0;padding:0;margin:0}
+.runtop-kv .v{font-variant-numeric:tabular-nums}
+.runtop-act{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:4px}
+@media (max-width:46rem){
+  .runtop{grid-template-columns:1fr}
+  .runtop-r{justify-items:start;text-align:left}
+  .runtop-act{justify-content:flex-start}
+}
+
+/* The live view, docked in the corner. A run in flight is something to glance
+   at, not a column to scroll past: while one is live the panel sits in the
+   bottom-left, and clicking its title opens it. On the canvas every box is
+   free, so the dock stands down. */
+.cols:not(.canvas) > .stack > section.card#progressPanel.docked{position:fixed;
+  left:288px;bottom:18px;width:330px;max-height:min(62vh,560px);overflow:auto;z-index:35;
+  box-shadow:0 18px 50px rgba(0,0,0,.22);padding:14px 16px}
+.cols:not(.canvas) > .stack > section.card#progressPanel.docked.shut{max-height:none;
+  overflow:hidden}
+.cols:not(.canvas) > .stack > section.card#progressPanel.docked.shut > :not(.head){display:none}
+#progressPanel.docked > .head{margin-bottom:10px;cursor:pointer}
+#progressPanel.docked .lab{margin-top:10px}
+@media (max-width:64rem){
+  .cols:not(.canvas) > .stack > section.card#progressPanel.docked{left:12px;right:12px;
+    width:auto}
+}
+
 body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
 
 /* ── The run as a piece of software: the finding, then tabs ──

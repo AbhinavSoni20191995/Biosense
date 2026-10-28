@@ -109,6 +109,9 @@ async function post(path, body) {
 
 async function boot() {
   wireWiden();
+  const newRun = document.querySelector('.rail-new');
+  if (newRun) newRun.addEventListener('click', e => { e.preventDefault(); openStartForm(); });
+  BS.onChange(renderRecents);
   try { state.glossary = await get('/api/glossary'); } catch (_) { /* badges degrade */ }
   await Promise.all([loadRuntime(), loadProjects(), loadDatasets(), loadBenchmarks()]);
   wire();
@@ -1161,8 +1164,9 @@ async function start() {
   }
   $('#runBtn').disabled = true;
   $('#runState').hidden = true;
-  ['plainPanel', 'resultPanel', 'comparePanel', 'runInfoPanel', 'protocolPanel', 'otherPanel',
-   'askDataPanel', 'askPanel', 'evidencePanel', 'anaSec', 'benchPanel', 'resultNav']
+  ['runTop', 'plainPanel', 'resultPanel', 'comparePanel', 'runInfoPanel', 'protocolPanel',
+   'otherPanel', 'askDataPanel', 'askPanel', 'evidencePanel', 'anaSec', 'benchPanel',
+   'resultNav']
     .forEach(i => { const n = $('#' + i); if (n) n.hidden = true; });
   try {
     const run = await post('/api/discovery', body);
@@ -1229,8 +1233,10 @@ function watchRun(runId) {
         fail({ headline: snap.error, reason: snap.error_reason, next_step: snap.next_step,
           message: snap.error });
       }
+      renderRunTop(snap);
       renderTabs(snap);
-      BS.runs(currentProject()).catch(() => {});
+      dockLive(snap);
+      BS.runs(currentProject()).then(renderRecents).catch(() => {});
     },
     event(e) { pushEvent(e); },
     error() {
@@ -2687,7 +2693,7 @@ function renderPlainPlan(p, snap) {
     });
     return { cells: [el('b', null, s.label), s.window, what], detail: body,
       key: `pp:${snap.run_id}:${s.stage_id}` };
-  }), 'ft-rp'));
+  }), 'ft-recipe'));
 
   /* Then, per arm, only the difference. */
   if ((d.arms || []).length) {
@@ -4246,6 +4252,17 @@ function toggleFocus(panel, on) {
 function narrowAll() {
   $$('section.card.wide').forEach(p => toggleFocus(p, false));
 }
+/* "New run" in the rail opens the form, wherever the page had got to. */
+function openStartForm() {
+  const form = $('#startPanel'); if (!form) return;
+  form.dataset.open = '1';
+  const h = form.querySelector(':scope > .head');
+  if (h) h.setAttribute('aria-expanded', 'true');
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const obj = $('#objective');
+  if (obj) setTimeout(() => obj.focus(), 320);
+}
+
 function wireWiden() {
   $$('.cols > .stack > section.card[data-tab], #plainPanel').forEach(panel => {
     const head = panel.querySelector(':scope > .head');
@@ -4278,45 +4295,184 @@ const TABS = [
   { key: 'bt', id: 'btPanel', label: 'Beyond the apparatus' },
   { key: 'evidence', id: 'evidencePanel', label: 'Evidence record' },
   { key: 'bench', id: 'benchPanel', label: 'Benchmark' },
+  // The boxes that used to sit in a second column. They are parts of the run
+  // like any other, so they are reached the same way.
+  { key: 'export', sel: '[data-tab="export"]', label: 'Export' },
+  { key: 'cands', sel: '[data-tab="cands"]', label: 'Candidate parameters' },
+  { key: 'record', sel: '[data-tab="record"]', label: 'Record' },
+  { key: 'live', id: 'progressPanel', label: 'Live progress' },
+  { key: 'benchmarks', sel: '[data-tab="benchmarks"]', label: 'Benchmarks' },
 ];
-const tabState = { run: null, key: null };
+/* A part is named by its id, or — for the boxes that never had one — by what
+   it is. Either way the rail shows it only when it is there to show. */
+function tabNode(t) { return t.id ? $('#' + t.id) : document.querySelector(t.sel); }
+// `chosen` is true only where a person picked the part they are reading. A
+// part the page picked for them is re-picked as the run fills in, so the
+// first thing shown is the finding rather than whichever part existed first.
+const tabState = { run: null, key: null, chosen: false };
 function tabKeyFor(run) { return `bs-tab:${run || ''}`; }
+/* The parts of this run live in the rail, where "where am I" belongs: the
+   ones a person acts on first, then the supplementary record under its own
+   heading. A part exists only where its own renderer filled it. */
 function renderTabs(snap) {
-  const nav = $('#resultNav'); if (!nav) return;
+  const host = $('#railExtra'); if (!host) return;
   const run = snap && snap.run_id;
   if (tabState.run !== run) {
     tabState.run = run;
     let saved = null; try { saved = localStorage.getItem(tabKeyFor(run)); } catch (_) {}
     tabState.key = saved;
+    tabState.chosen = !!saved;
   }
-  const avail = TABS.filter(t => { const n = $('#' + t.id); return n && !n.hidden; });
-  nav.hidden = !avail.length;
-  if (!avail.length) return;
-  if (!avail.some(t => t.key === tabState.key)) {
+  const avail = TABS.filter(t => { const n = tabNode(t); return n && !n.hidden; });
+  const nav = $('#resultNav'); if (nav) nav.hidden = true;   // the rail replaced it
+  let box = $('#railSections');
+  if (!box) {
+    box = el('div', 'rail-group'); box.id = 'railSections';
+    host.prepend(box);
+  }
+  box.textContent = '';
+  box.hidden = !avail.length;
+  if (!avail.length) { paintTabs(); return; }
+  if (!tabState.chosen || !avail.some(t => t.key === tabState.key)) {
     tabState.key = (avail.find(t => t.main) || avail[0]).key;
   }
-  const main = $('#tabsMain'), more = $('#tabsMore');
-  main.textContent = ''; more.textContent = '';
+  box.append(el('div', 'rail-lab', 'This run'));
+  let saidMore = false;
   avail.forEach(t => {
-    const sec = $('#' + t.id);
-    const b = el('button', 'tab', t.label);
+    if (!t.main && !saidMore) { saidMore = true; box.append(el('div', 'rail-lab', 'Also in this run')); }
+    const b = el('button', 'rail-item' + (t.main ? '' : ' sub'));
     b.type = 'button'; b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', String(t.key === tabState.key));
-    const hint = sec.querySelector(':scope > .head .hint');
-    const note = hint ? hint.textContent.trim() : '';
-    if (note) b.append(el('span', 'tab-n', note.length > 44 ? note.slice(0, 43) + '\u2026' : note));
+    b.append(el('span', 'ttl', t.label));
+    const n = countFor(t.key, snap);
+    if (n) b.append(el('span', 'n', n));
     b.addEventListener('click', () => showTab(t.key));
-    (t.main ? main : more).append(b);
+    box.append(b);
   });
-  TABS.forEach(t => { const n = $('#' + t.id); if (n) n.classList.toggle('tab-off', t.key !== tabState.key); });
+  paintTabs();
+}
+function paintTabs() {
+  TABS.forEach(t => {
+    const n = tabNode(t);
+    // A docked live view is in the corner, not in the column: it is on
+    // screen whichever part a person is reading.
+    if (n) n.classList.toggle('tab-off',
+      t.key !== tabState.key && !n.classList.contains('docked'));
+  });
+}
+/* A number beside a part, where the number is one the server already knows.
+   A count nobody is keeping is left off rather than invented. */
+function countFor(key, snap) {
+  const p = snap.result && snap.result.protocol;
+  switch (key) {
+    case 'compare': return ((snap.sota_comparison || {}).references || []).length || null;
+    case 'round': return ((snap.round_plan || {}).arms || []).length || null;
+    case 'help': return (((snap.data_requests || {}).handover || {}).open) || null;
+    case 'ask': return (snap.questions || []).length || null;
+    case 'other': return ((p || {}).hypothesis_ledger || []).length || null;
+    case 'alt': return ((snap.alternate_plans || {}).items || []).length || null;
+    default: return null;
+  }
+}
+
+/* The runs before this one, in the rail: the way back to last week's work
+   without leaving the page. Read from the same listing the Runs page uses. */
+let recentsSeen = '';
+function renderRecents() {
+  const host = $('#railExtra'); if (!host) return;
+  const runs = (BS.state && BS.state.runs) || [];
+  const key = JSON.stringify(runs.slice(0, 12).map(r => [r.run_id, r.group, r.title, r.objective]));
+  if (key === recentsSeen) return;
+  recentsSeen = key;
+  let box = $('#railRecents');
+  if (!box) { box = el('div', 'rail-group'); box.id = 'railRecents'; host.append(box); }
+  box.textContent = '';
+  box.hidden = !runs.length;
+  if (!runs.length) return;
+  box.append(el('div', 'rail-lab', 'Recent runs'));
+  runs.slice(0, 12).forEach(r => {
+    const b = el('button', 'rail-item');
+    b.type = 'button';
+    b.setAttribute('aria-selected', String(!!state.run && state.run.run_id === r.run_id));
+    b.append(el('span', 'dot ' + (r.group === 'active' ? 'go' : r.group === 'complete' ? 'ok'
+      : r.group === 'cancelled' ? 'warn' : 'bad')));
+    const t = r.title || r.objective || r.run_id;
+    const ttl = el('span', 'ttl', t); ttl.title = t;
+    b.append(ttl);
+    b.addEventListener('click', () => { watchRun(r.run_id); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    box.append(b);
+  });
 }
 function showTab(key, scroll) {
   tabState.key = key;
+  tabState.chosen = true;
   try { localStorage.setItem(tabKeyFor(tabState.run), key); } catch (_) {}
   renderTabs(state.run || {});
   const t = TABS.find(x => x.key === key);
-  const sec = t && $('#' + t.id);
+  const sec = t && tabNode(t);
   if (sec && scroll !== false) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* The run in hand, at the top of the work. What was asked on the left; on
+   the right what it is doing now, or what it did and when. Every value is
+   the snapshot's own. */
+function renderRunTop(snap) {
+  const panel = $('#runTop'); if (!panel) return;
+  panel.hidden = !(snap && snap.run_id);
+  if (panel.hidden) return;
+  // The form has done its job: fold it once for this run, so the answer is
+  // what the page is about. "New run" in the rail opens it again, and a
+  // person who opens it themselves is not folded up a second time.
+  const form = $('#startPanel');
+  if (form && form.dataset.foldedFor !== snap.run_id) {
+    form.dataset.foldedFor = snap.run_id;
+    form.dataset.open = '0';
+    const h = form.querySelector(':scope > .head');
+    if (h) h.setAttribute('aria-expanded', 'false');
+  }
+  $('#runTopQ').textContent = snap.title || snap.objective || '(no objective recorded)';
+  $('#runTopSub').textContent = [snap.title && snap.objective ? snap.objective : null,
+    snap.project_id].filter(Boolean).join(' \u00b7 ');
+  const host = $('#runTopMeta'); host.textContent = '';
+  const kv2 = (k, v) => {
+    if (!v) return;
+    const d = el('div', 'runtop-kv');
+    d.append(el('span', 'k', k), el('span', 'v', v));
+    host.append(d);
+  };
+  const st = el('div', 'runtop-kv');
+  st.append(el('span', 'rv-status ' + (RV.isLive(snap) ? 'go'
+    : snap.status === 'done' ? 'ok' : snap.status === 'stopped' ? 'warn' : 'bad'),
+  BS.fmt.status(snap)));
+  host.append(st);
+  kv2('runtime', snap.runtime_label);
+  kv2('engine', [snap.engine, snap.model].filter(Boolean).join(' \u00b7 '));
+  kv2(RV.isLive(snap) ? 'running' : 'took', BS.fmt.elapsed(snap.started_at, snap.finished_at));
+  kv2('started', snap.started_at ? new Date(snap.started_at * 1000).toLocaleString() : null);
+  kv2('run', snap.run_id);
+  const act = el('div', 'runtop-act');
+  const more = el('button', 'btn sm', 'Everything about this run');
+  more.type = 'button';
+  more.addEventListener('click', () => showTab('run'));
+  act.append(more);
+  host.append(act);
+}
+
+/* The live view in the corner while a run is working, and back in the page
+   once it has ended — a finished run is something to read, not to watch. */
+function dockLive(snap) {
+  const panel = $('#progressPanel'); if (!panel) return;
+  const live = !!snap && RV.isLive(snap);
+  panel.classList.toggle('docked', live);
+  paintTabs();
+  if (!live) { panel.classList.remove('shut'); return; }
+  const head = panel.querySelector(':scope > .head');
+  if (head && !head.dataset.dockWired) {
+    head.dataset.dockWired = '1';
+    head.addEventListener('click', () => {
+      if (panel.classList.contains('docked')) panel.classList.toggle('shut');
+    });
+  }
 }
 
 /* The leading published protocols beside this recommendation: the field in
