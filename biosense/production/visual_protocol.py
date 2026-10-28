@@ -178,6 +178,8 @@ def _recipe_lines(stage):
     """One stage's lines for the recipe table, a gap marked as one."""
     out = []
     for line in stage['lines']:
+        # `text` is built from the short name: this page is one line per
+        # factor, and a lever's full rationale belongs in the bench copy.
         out.append((line['text'], bool(line['gap'])))
     return out or [(stage.get('empty_because')
                     or 'Nothing in this run describes this stage.', False)]

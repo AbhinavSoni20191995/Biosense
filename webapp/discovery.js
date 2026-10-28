@@ -2659,15 +2659,30 @@ function renderPlainPlan(p, snap) {
   host.append(el('p', 'dim', 'The control: the process as it runs now, and what every other '
     + 'arm is compared with.'));
   host.append(foldTable(['Stage', 'When', 'What goes in'], d.recipe.map(s => {
+    /* Closed, each line is one chip: the factor's name and its dose, cut to
+       one line. A lever the project does not carry yet arrives with its whole
+       rationale as its "name", and a paragraph in a chip is unreadable — so
+       the name is the name, and the rest is in the row beneath. */
     const what = el('div', 'ft-chips');
-    s.lines.forEach(l => what.append(el('span', 'chip' + (l.gap ? ' gap' : ''), l.text)));
+    s.lines.forEach(l => {
+      const c = el('span', 'chip ln' + (l.gap ? ' gap' : ''), l.text);
+      c.title = [l.label, l.description].filter(Boolean).join(' \u2014 ') || l.text;
+      what.append(c);
+    });
     if (!s.lines.length) what.append(el('span', 'dim', s.empty_because || 'nothing set'));
+    /* Open, each line is a row with room for what it is: the dose, when it
+       goes in, and the description the name could not hold. */
     const body = el('div', 'ft-body');
     s.lines.forEach(l => {
-      const row = kv(l.label || l.parameter_id || '', [
-        l.value == null ? (l.gap ? 'not decided yet' : 'no dose published')
-          : `${num(l.value)}${l.unit ? ' ' + l.unit : ''}`,
-        l.timing ? ` \u00b7 ${l.timing}` : '', l.why ? ` \u00b7 ${l.why}` : ''].join(''));
+      const v = el('div');
+      v.append(el('b', null, l.value == null
+        ? (l.gap ? 'not decided yet' : l.no_dose_published ? 'no dose published' : 'not set')
+        : `${num(l.value)}${l.unit ? ' ' + l.unit : ''}`));
+      if (l.letter) v.append(' ', el('span', 'tag', l.letter));
+      if (l.timing) v.append(el('div', 'dim', l.timing));
+      if (l.description) v.append(el('div', 'dim ln-desc', l.description));
+      if (l.why) v.append(el('div', 'dim ln-desc', l.why));
+      const row = kv(l.name || l.parameter_id || '', v);
       if (row) body.append(row);
     });
     return { cells: [el('b', null, s.label), s.window, what], detail: body,
@@ -4314,13 +4329,39 @@ function renderCompare(snap) {
   const panel = $('#comparePanel'); if (!panel) return;
   const s = snap.sota_comparison;
   const refs = (s && s.references) || [], comps = (s && s.comparisons) || [];
-  panel.hidden = !(refs.length || comps.length);
-  if (panel.hidden) return;
   const plan = snap.result && snap.result.protocol && snap.result.protocol.plain_plan;
-  const key = JSON.stringify([s, plan && plan.key_points, snap.run_id]);
+  /* No comparison yet: a finished real run with a protocol offers to make one.
+     It is a short run of its own — the literature agent is the cost — and
+     what it writes comes back to this run's page. */
+  const canAsk = !(refs.length || comps.length) && snap.result && snap.result.protocol
+    && snap.is_real && !RV.isLive(snap) && snap.status === 'done';
+  panel.hidden = !(refs.length || comps.length || canAsk);
+  if (panel.hidden) return;
+  const key = JSON.stringify([s, plan && plan.key_points, snap.run_id, canAsk]);
   if (key === compareSeen) return;
   compareSeen = key;
   const host = $('#compare'); host.textContent = '';
+  if (canAsk) {
+    $('#compareHead').textContent = 'not compared yet';
+    host.append(el('p', null, 'This run was not lined up against the leading published '
+      + 'protocols for this cell. Comparing means reading the literature again, so it is a '
+      + 'short run of its own: one literature task, one file, and the result appears here.'));
+    const btn = el('button', 'btn go', 'Compare with the field');
+    btn.type = 'button';
+    const msg = el('span', 'dim');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; msg.textContent = 'starting\u2026';
+      try {
+        const d = await post(`/api/discovery/${snap.run_id}/compare`);
+        if (d && d.run_id) watchRun(d.run_id);
+      } catch (e) { btn.disabled = false; msg.textContent = ''; fail(e); }
+    });
+    const row = el('div', 'rv-actions'); row.append(btn, ' ', msg);
+    host.append(row);
+    host.append(el('p', 'caveat', 'Counts as one real AI run on your account. The comparison '
+      + 'reports what the papers did and where this protocol differs, never a measured gain.'));
+    return;
+  }
   const st = s.standing || {};
   $('#compareHead').textContent = [STANDING_LABEL[st.verdict] || st.verdict || '',
     `${refs.length} published protocol${refs.length === 1 ? '' : 's'}`].filter(Boolean).join(' \u00b7 ');

@@ -72,6 +72,15 @@ it has started, and any per-account run limit an operator set. A password is
 never written anywhere, and a wrong password reads the same as an unknown
 account.
 
+### What counts as a run
+
+Every real AI run an account starts: a discovery run, a follow-up round, a
+continued run, and **"Compare with the field"** — the short run that adds the
+state-of-the-art comparison to an earlier run that has none. The last one
+sends one literature task and writes one file, but the literature agent is the
+cost, so it is counted like any other. The synthetic demonstration path is
+never counted.
+
 ### Runs per account, per day
 
 Each account may start **five real AI runs a day** — a rolling 24 hours, like

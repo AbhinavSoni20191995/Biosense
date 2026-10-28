@@ -237,3 +237,159 @@ class OlderRunTests(unittest.TestCase):
         self.assertEqual(['A0', 'A1', 'A3'], [a['arm_id'] for a in plan['arms']])
         # Nothing was rewritten on disk: the record is read, not migrated.
         self.assertNotIn('plain_plan', RS.state_path(d).read_text())
+
+
+class LongLabelTests(unittest.TestCase):
+    """A lever the project does not carry arrives with its rationale as its label.
+
+    The recipe is one line per factor, and a paragraph set as a pill is
+    unreadable — so the name is the name, and what it cannot hold is the
+    description, shown where there is room for it. Nothing is thrown away.
+    """
+
+    PARA = ('Activin A concentration across days 1-4 of mesoderm induction (ng/mL). The CERO '
+            'anchor protocol adds no activin A and no activin/nodal inhibitor in this window, '
+            'so the current value is effectively zero and unset rather than chosen. This is '
+            'not a parameter the project has registered.')
+
+    def test_a_paragraph_label_becomes_a_name_and_a_description(self):
+        name, described = PP.split_name(self.PARA)
+        self.assertEqual('Activin A concentration across days 1-4 of mesoderm induction', name)
+        self.assertTrue(described.startswith('The CERO anchor protocol adds no activin A'))
+        self.assertNotIn('ng/mL', described, 'the unit is its own field, not prose')
+
+    def test_a_short_label_is_left_exactly_as_it_is(self):
+        for label in ('IL-15', 'Feed interval', 'Agitation',
+                      'Aggregate size at handover to differentiation (um diameter)'):
+            name, described = PP.split_name(label)
+            self.assertIsNone(described, label)
+            self.assertLess(len(name), 60, label)
+        self.assertEqual('IL-15', PP.split_name('IL-15')[0])
+
+    def test_a_gloss_that_is_not_a_unit_is_kept_as_the_description(self):
+        name, described = PP.split_name(
+            'Day of IL-3 withdrawal relative to the start of GM-CSF in the maturation stage '
+            '(0 = withdrawn on the day GM-CSF begins; negative = withdrawn before). Not a '
+            'parameter this project has registered.')
+        self.assertEqual('Day of IL-3 withdrawal relative to the start of GM-CSF in the '
+                         'maturation stage', name)
+        self.assertIn('0 = withdrawn on the day GM-CSF begins', described)
+
+    def test_the_recipe_line_carries_both_and_its_text_is_the_short_one(self):
+        doc = plan()
+        doc['first_pass']['stages'][2]['inducers'].append(
+            {'parameter_id': 'activin_a', 'label': self.PARA, 'unit': 'ng/mL', 'value': 0,
+             'letter': 'NEW', 'provenance': 'candidate'})
+        line = next(l for s in PP.recipe(doc) for l in s['lines']
+                    if l['parameter_id'] == 'activin_a')
+        self.assertEqual('Activin A concentration across days 1-4 of mesoderm induction',
+                         line['name'])
+        self.assertEqual('Activin A concentration across days 1-4 of mesoderm induction 0 ng/mL',
+                         line['text'])
+        self.assertEqual(self.PARA, line['label'], 'the whole label is still carried')
+        self.assertTrue(line['description'])
+
+    def test_an_arms_change_names_the_lever_not_its_rationale(self):
+        doc = plan()
+        doc['first_pass']['stages'][2]['inducers'].append(
+            {'parameter_id': 'activin_a', 'label': self.PARA, 'unit': 'ng/mL', 'value': 0,
+             'letter': 'NEW', 'provenance': 'candidate'})
+        doc['round_plan']['arms'][1]['setpoints']['activin_a'] = 25
+        change = next(c for a in PP.changes(doc) if a['arm_id'] == 'A1'
+                      for c in a['changes'] if c['parameter_id'] == 'activin_a')
+        self.assertEqual('Activin A concentration across days 1-4 of mesoderm induction',
+                         change['label'])
+        self.assertNotIn('CERO anchor protocol', change['text'])
+
+
+class CompareRunTests(unittest.TestCase):
+    """Adding the comparison to a run that has none.
+
+    It is a run of its own, because the literature agent is the cost. What it
+    must not do is turn into a second discovery run: one literature task, one
+    file, and the file is handed back to the run it was asked for.
+    """
+
+    def _req(self, **over):
+        from biosense.production import discovery as DISC
+        req = DISC.build(project_id='ipsc_macrophage', objective='x' * 40,
+                         runtime_mode='local_real_ai', purpose='compare')
+        req.update(over)
+        return req
+
+    def test_a_compare_run_turns_the_comparison_on_and_nothing_else(self):
+        from biosense.production import discovery as DISC
+        self.assertIn('compare', DISC.PURPOSES)
+        self.assertEqual(['state_of_the_art'], self._req()['addons'])
+
+    def test_its_brief_compares_the_earlier_protocol_and_writes_one_file(self):
+        from biosense.production import discovery as DISC
+        req = self._req(continued_from={'kind': 'compare', 'run_id': 'abc123',
+                                        'run_dir': 'ai-20260901-abc123'})
+        brief = DISC.render_brief(req, loop_dir='runs/ai-x')
+        self.assertIn('adds the state-of-the-art comparison to an earlier run', brief)
+        self.assertIn('`abc123`', brief)
+        self.assertIn('runs/ai-x/protocol_summary.json', brief)
+        self.assertIn('runs/ai-x/sota_comparison.json', brief)
+        self.assertIn('do not write a new protocol', brief)
+        self.assertIn('literature-sota', brief)
+        self.assertIn('send no bioinformatics task', brief)
+        # Not a discovery run: it designs nothing of its own.
+        self.assertNotIn('literature-it1', brief)
+        self.assertNotIn('DISCOVERY EVIDENCE:', brief)
+
+    def test_a_discovery_run_still_reads_as_it_did(self):
+        from biosense.production import discovery as DISC
+        brief = DISC.render_brief(DISC.build(
+            project_id='ipsc_macrophage', objective='x' * 40,
+            runtime_mode='local_real_ai'), loop_dir='runs/ai-x')
+        self.assertIn('literature-it1', brief)
+        self.assertIn('literature-sota', brief, 'the add-on is on by default')
+        self.assertNotIn('adds the state-of-the-art comparison to an earlier run', brief)
+
+    def test_the_comparison_is_handed_back_and_the_parents_own_is_never_overwritten(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from biosense import contracts as K
+        from biosense.production import app as APP
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        child, parent = tmp / 'child', tmp / 'parent'
+        (child / 'literature' / 'sota').mkdir(parents=True)
+        parent.mkdir()
+        doc = {'kind': 'sota_comparison', 'references': [], 'comparisons': [],
+               'standing': {'verdict': 'variant_of_sota'}}
+        K.write_json_atomic(child / 'sota_comparison.json', doc)
+        (child / 'literature' / 'sota' / 'discover.json').write_text('{}')
+        self.assertTrue(APP.hand_back_comparison(child, parent))
+        self.assertEqual(doc['kind'], K.read_json(parent / 'sota_comparison.json')['kind'])
+        self.assertTrue((parent / 'literature' / 'sota' / 'discover.json').is_file())
+        self.assertTrue((child / 'sota_comparison.json').is_file(), 'copied, never moved')
+        # A second hand-back leaves what a person has already read alone.
+        self.assertFalse(APP.hand_back_comparison(child, parent))
+        # And nothing is handed back when there is nothing to hand back.
+        (child / 'sota_comparison.json').unlink()
+        self.assertFalse(APP.hand_back_comparison(child, tmp / 'other'))
+
+    def test_a_run_reads_back_a_comparison_written_after_it_ended(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from biosense import contracts as K
+        from biosense.production import run_store as RS
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        d = tmp / 'ai-20260901-parent'
+        d.mkdir()
+        RS.write_state(d, {'run_id': 'b' * 16, 'status': 'done', 'is_real': True,
+                           'runtime_mode': 'local_real_ai', 'owner': None,
+                           'project_id': 'p', 'objective': 'o', 'run_dir': d.name,
+                           'started_at': 1.0, 'finished_at': 2.0, 'result': {}})
+        self.assertIsNone(RS.restore(tmp, 'b' * 16).get('sota_comparison'))
+        K.write_json_atomic(d / 'sota_comparison.json', {
+            'kind': 'sota_comparison', 'cell_type': 'macrophage', 'references': [],
+            'comparisons': [], 'standing': {'verdict': 'variant_of_sota', 'summary': 's'},
+            'limitations': [], 'note': 'n'})
+        got = RS.restore(tmp, 'b' * 16)['sota_comparison']
+        self.assertEqual('variant_of_sota', got['standing']['verdict'])

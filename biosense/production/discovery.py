@@ -294,7 +294,8 @@ def build(*, project_id, objective, runtime_mode, research_context=None, dataset
     # discovery run unless the person turned it off (an empty list); a library
     # or reference run reads the field, not one process, and has none.
     if addons is None:
-        addons = list(DEFAULT_ADDONS) if purpose == 'discovery' else []
+        addons = (list(DEFAULT_ADDONS) if purpose == 'discovery'
+                  else ['state_of_the_art'] if purpose == 'compare' else [])
     addons = [str(a).strip().lower() for a in addons if str(a).strip()]
     bad = [a for a in addons if a not in ADDONS]
     if bad:
@@ -589,7 +590,11 @@ def privacy(req):
             'export_policy': 'private' if private else 'public_safe'}
 
 
-PURPOSES = ('discovery', 'process_reference', 'landscape')
+# `compare` is a run that adds the state-of-the-art comparison to an earlier
+# run that has none: seeded with that run's files, it sends one literature
+# task and writes one file, and the comparison is handed back to the run it
+# was asked for. It spends a run like any other, because the agent is the cost.
+PURPOSES = ('discovery', 'process_reference', 'landscape', 'compare')
 # A library run reads the field, not one process: four areas in parallel,
 # whatever the project's own stages are.
 LANDSCAPE_AREAS = (
@@ -931,20 +936,27 @@ def _sota_plan(req, project, loop_dir, budget, python, pdir):
     run. It adds one literature task and the steps that line the recommended
     protocol up against the leading published ways the cell is made.
     """
+    purpose = req.get('purpose') or 'discovery'
     if 'state_of_the_art' not in (req.get('addons') or ()) \
-            or (req.get('purpose') or 'discovery') != 'discovery':
+            or purpose not in ('discovery', 'compare'):
         return '', ''
     per_s = max(3, round(budget['searches'] * 0.4))
     per_t = max(2, round(budget['full_texts'] * 0.4))
-    lit = (f'; and, for the **state-of-the-art comparison** the person turned on, a '
-           f'literature task in the same response: `title: "literature-sota"`, `args:` '
-           f'starting `STATE OF THE ART:`, naming the target cell and the folder '
-           f'`{loop_dir}/literature/sota/`, about {per_s} searches and {per_t} full texts. '
-           f'It brings back the leading published protocols for making this cell — by route '
-           f'(directed differentiation, transcription-factor forward programming, '
-           f'transdifferentiation, or primary/adult isolation) — each with its reported '
-           f'yield, purity and timeline quoted from the source, and says which is the closest '
-           f'comparator to this process')
+    task = (f'`title: "literature-sota"`, `args:` '
+            f'starting `STATE OF THE ART:`, naming the target cell and the folder '
+            f'`{loop_dir}/literature/sota/`, about {per_s} searches and {per_t} full texts. '
+            f'It brings back the leading published protocols for making this cell — by route '
+            f'(directed differentiation, transcription-factor forward programming, '
+            f'transdifferentiation, or primary/adult isolation) — each with its reported '
+            f'yield, purity and timeline quoted from the source, and says which is the closest '
+            f'comparator to this process')
+    if purpose == 'compare':
+        # The only dispatch this run makes, said as a whole sentence.
+        lit = ('Send the literature agent one task with `sys_session_send` — `agent: '
+               '"literature"`, ' + task)
+    else:
+        lit = ('; and, for the **state-of-the-art comparison** the person turned on, a '
+               'literature task in the same response: ' + task)
     section = f"""## Add-on: state of the art comparison (on for this run)
 
 The person wants to know how the recommended protocol compares to how the field
@@ -991,6 +1003,27 @@ def render_brief(req, *, loop_dir, python='.venv/bin/python', projects_dir=None,
     lit_dispatch, lit_after = _literature_plan(req, project, loop_dir, budget)
     bio_dispatch, bio_after = _bioinformatics_plan(req, project, loop_dir, budget)
     purpose_section = ''
+    if req.get('purpose') == 'compare':
+        prev = req.get('continued_from') or {}
+        # One task, one file. The discovery dispatches are replaced, not added
+        # to: this run searches for nothing but the leading protocols.
+        lit_dispatch, lit_after = '', ''
+        bio_dispatch, bio_after = ('send no bioinformatics task: this run compares, it does '
+                                   'not analyse.'), ''
+        purpose_section = f"""## This run adds the state-of-the-art comparison to an earlier run
+
+A person asked how the protocol an earlier run recommended (run
+`{prev.get('run_id') or '?'}`) compares with the leading published ways this cell
+is made. That run's files were copied into this directory before you started:
+read `{loop_dir}/protocol_summary.json` (and `{loop_dir}/round_plan.json` where
+it exists) — **that protocol is the one to compare**. Do not search for a new
+hypothesis, do not write a new protocol, quantified hypothesis, round plan,
+bench setup or design past the apparatus, and do not re-read the literature
+for anything but the comparison. This run writes one file,
+`{loop_dir}/sota_comparison.json`, by the add-on steps below, and then ends.
+The comparison is handed back to the earlier run's page when you finish.
+
+"""
     if req.get('purpose') == 'process_reference':
         purpose_section = f"""## This run builds the process reference
 
@@ -1155,6 +1188,9 @@ survives a restart.
         dev_lit = ''
         spec_section, lit_after = lit_after, ''
     format_section = _format_section(req)
+    # The example retry title names the task this run actually sends, so a
+    # compare run is not told to retry a task it never dispatched.
+    retry_title = 'literature-sota' if req.get('purpose') == 'compare' else 'literature-it1'
     wanted = '\n'.join(
         f'- `{loop_dir}/{name}` — a `{kind}`: {why}' for name, kind, why in ARTIFACTS)
     # With no dataset named, the only tables in reach are the committed demo
@@ -1286,7 +1322,7 @@ on a question ends the run with nothing to show. So:
   `bulk.expression_comparison` reads).
 - **If a specialist fails or refuses**, read its reply for the reason. Send it
   once more, narrower (one gene, one parameter, a smaller budget), under a new
-  title such as `literature-it1-retry`. If that fails too, record the reason it
+  title such as `{retry_title}-retry`. If that fails too, record the reason it
   gave as a limitation and carry on with what you have. Do not do its job in
   your own session, and do not end the run because of it.
 

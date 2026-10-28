@@ -1,346 +1,347 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.org/biosense/discovery-request-v2.0",
-  "title": "DiscoveryRequest 2.0: what the person asked, as structure rather than a blob",
-  "description": "What a scientist fills in before pressing Run AI Discovery: the project, the objective, the biological scope, the data they are willing to bring, the process constraints they are under, and which runtime should answer. It exists so the fields are never concatenated into one uncontrolled text blob: the ResearchContext, the dataset references and the expert-knowledge references already have contracts of their own, and flattening them into prose would lose the strictness setting, the visibility of each source and the ability to say which field a context mismatch is in. runtime_mode is part of the request rather than a server setting, because a synthetic run and a real one are different claims about the same question and must never be the same recorded object.",
-  "type": "object",
-  "required": [
-    "schema_version",
-    "request_id",
-    "created_at",
-    "project_id",
-    "objective",
-    "runtime_mode"
-  ],
-  "additionalProperties": false,
-  "properties": {
-    "schema_version": {
-      "const": "2.0"
-    },
-    "request_id": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$"
-    },
-    "created_at": {
-      "type": "string"
-    },
-    "title": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "project_id": {
-      "type": "string",
-      "description": "The ProjectProfile this runs against. It decides which parameters exist, what their bounds are, which stages the process has and whether a simulator can say anything at all."
-    },
-    "objective": {
-      "type": "string",
-      "minLength": 10,
-      "maxLength": 4000,
-      "description": "The scientific goal, in the person's own words. Carried as a value from here to the wire: it is never interpolated into a command line, a shell string or an argv."
-    },
-    "research_context": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "description": "A ResearchContext document. Null means no scope was declared, which is not the same as 'open' and is recorded as such."
-    },
-    "dataset_ids": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Datasets the person is bringing, by registered id. A private id makes the whole run private; the ids travel, the bytes never do."
-    },
-    "expert_knowledge_ids": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Internal observations by knowledge_id. Expert knowledge may narrow a search range; it may never supply a cited protocol value, and any entry makes the run private."
-    },
-    "process_constraints": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "additionalProperties": false,
-      "description": "What the process cannot do, whatever the evidence says. A constraint is not a finding and is never reported as one.",
-      "properties": {
-        "notes": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "maxLength": 2000
-        },
-        "parameter_bounds": {
-          "type": "array",
-          "description": "Per-parameter limits this run must stay inside, by canonical parameter_id.",
-          "items": {
-            "type": "object",
-            "required": [
-              "parameter_id",
-              "source"
-            ],
-            "additionalProperties": false,
-            "properties": {
-              "parameter_id": {
-                "type": "string"
-              },
-              "minimum": {
-                "type": [
-                  "number",
-                  "null"
-                ]
-              },
-              "maximum": {
-                "type": [
-                  "number",
-                  "null"
-                ]
-              },
-              "source": {
-                "enum": [
-                  "process_design",
-                  "literature",
-                  "expert_knowledge",
-                  "prior_experiment",
-                  "equipment_limit",
-                  "safety_constraint",
-                  "model_validity",
-                  "design_choice"
-                ],
-                "description": "Where the limit comes from. A bound with no origin is a guess wearing the clothes of a constraint."
-              },
-              "basis": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "uncertainty": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "required": [
-        "kind",
-        "ref",
-        "statement"
-      ],
-      "additionalProperties": false,
-      "description": "The decision-blocking question, when the person already knows it. Null means the run has to identify one, which is a step it must then show.",
-      "properties": {
-        "kind": {
-          "enum": [
-            "hypothesis",
-            "evidence_gap",
-            "diagnosis"
-          ]
-        },
-        "ref": {
-          "type": "string"
-        },
-        "statement": {
-          "type": "string",
-          "minLength": 10
-        }
-      }
-    },
-    "control": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "description": "The current process, as simulator setpoints. Defaults come from the project; a control chosen to flatter a candidate is not a control."
-    },
-    "candidate_values": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "description": "Values the person wants tested, keyed by canonical parameter_id. Optional: the run proposes its own."
-    },
-    "runtime_mode": {
-      "enum": [
-        "synthetic_demo",
-        "local_real_ai",
-        "remote_real_ai"
-      ],
-      "description": "Which runtime answers. synthetic_demo is the deterministic path over committed fixtures and demonstrates what the system can express, never what any cell did. local_real_ai and remote_real_ai drive the discovery_loop agents through an Omnigent session and spend model credits. BioSense never substitutes one for another: if a real runtime is unavailable the request fails with the reason."
-    },
-    "requested_by": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "A label for who asked, when the deployment has one. Never a credential."
-    },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://example.org/biosense/discovery-request-v2.0",
+ "title": "DiscoveryRequest 2.0: what the person asked, as structure rather than a blob",
+ "description": "What a scientist fills in before pressing Run AI Discovery: the project, the objective, the biological scope, the data they are willing to bring, the process constraints they are under, and which runtime should answer. It exists so the fields are never concatenated into one uncontrolled text blob: the ResearchContext, the dataset references and the expert-knowledge references already have contracts of their own, and flattening them into prose would lose the strictness setting, the visibility of each source and the ability to say which field a context mismatch is in. runtime_mode is part of the request rather than a server setting, because a synthetic run and a real one are different claims about the same question and must never be the same recorded object.",
+ "type": "object",
+ "required": [
+  "schema_version",
+  "request_id",
+  "created_at",
+  "project_id",
+  "objective",
+  "runtime_mode"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "schema_version": {
+   "const": "2.0"
+  },
+  "request_id": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$"
+  },
+  "created_at": {
+   "type": "string"
+  },
+  "title": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "project_id": {
+   "type": "string",
+   "description": "The ProjectProfile this runs against. It decides which parameters exist, what their bounds are, which stages the process has and whether a simulator can say anything at all."
+  },
+  "objective": {
+   "type": "string",
+   "minLength": 10,
+   "maxLength": 4000,
+   "description": "The scientific goal, in the person's own words. Carried as a value from here to the wire: it is never interpolated into a command line, a shell string or an argv."
+  },
+  "research_context": {
+   "type": [
+    "object",
+    "null"
+   ],
+   "description": "A ResearchContext document. Null means no scope was declared, which is not the same as 'open' and is recorded as such."
+  },
+  "dataset_ids": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "description": "Datasets the person is bringing, by registered id. A private id makes the whole run private; the ids travel, the bytes never do."
+  },
+  "expert_knowledge_ids": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "description": "Internal observations by knowledge_id. Expert knowledge may narrow a search range; it may never supply a cited protocol value, and any entry makes the run private."
+  },
+  "process_constraints": {
+   "type": [
+    "object",
+    "null"
+   ],
+   "additionalProperties": false,
+   "description": "What the process cannot do, whatever the evidence says. A constraint is not a finding and is never reported as one.",
+   "properties": {
     "notes": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "maxLength": 2000
+     "type": [
+      "string",
+      "null"
+     ],
+     "maxLength": 2000
     },
-    "effort": {
-      "enum": [
-        "quick",
-        "standard",
-        "thorough"
-      ],
-      "description": "How much the specialists may spend: the search and full-text budgets and the minutes each is asked to stay within. A budget bounds the search, never the honesty of the answer."
-    },
-    "literature_mode": {
-      "enum": [
-        "single",
-        "by_stage",
-        "specialist"
-      ],
-      "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards \u2014 faster on the literature phase, more of the model allowance, and  the orchestrator must reconcile the stages. specialist: the staged mode \u2014 one agent maps how the cell develops and another maps every known way of producing it (not only from iPSC), the analyst reviews how each route fits the stated need, the orchestrator records a checked route selection, and only then are per-stage agents sent to research that route's parameters. It replaces single and by_stage for a run where the production route itself is in question; it costs more of the model allowance than either."
-    },
-    "bioinformatics_mode": {
-      "enum": [
-        "single",
-        "by_analysis",
-        "by_process"
-      ],
-      "description": "single: one bioinformatics agent (the default). by_analysis: one specialist per fixed kind of analysis (gene expression, cell phenotype, proteins and secretome, gene regulation), in parallel. by_process: one specialist per fixed part of the process (iPSC expansion, lineage commitment, differentiation and maturation, product quality at harvest), in parallel. The categories are fixed, not chosen per run; the orchestrator reconciles the specialists."
-    },
-    "addons": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "enum": [
-          "developmental_biology",
-          "state_of_the_art"
-        ]
-      },
-      "description": "Optional lenses every agent applies in this run, each on by default for a discovery run. developmental_biology: the literature agent maps each process stage to its in vivo counterpart (timing, signals and their windows, regulators, knockout and knockdown phenotypes); bioinformatics checks receptor-expression windows in developmental time courses and looks for public perturbation datasets; the analyst matches stages and reads perturbations; the orchestrator writes a checked developmental map and turns the levers development suggests, which the protocol searches did not find in use, into low-confidence candidate hypotheses. state_of_the_art: the literature agent finds the leading published protocols for making this cell, by route (directed differentiation, forward programming, transdifferentiation, primary isolation), each with its reported yield, purity and timeline; the orchestrator writes a checked comparison of the recommended protocol against them -- where it matches, differs or does something novel, with any difference carrying only an expected effect (a capped hypothesis, never a measured gain) and a standing of matches / variant / departs."
-    },
-    "purpose": {
-      "enum": [
-        "discovery",
-        "process_reference",
-        "landscape"
-      ],
-      "description": "discovery: a question about the process (the default). process_reference: collect cited, cell-type-independent suspension-culture setpoints into a draft an admin reviews and promotes into the server's process reference. landscape: build the server's cell production library \u2014 literature agents read the field across stages and formats, and the values they extract (each with its quote) are merged into the library every later run starts from."
-    },
-    "public_data": {
-      "type": "boolean",
-      "description": "Whether the agents may query public databases (Ensembl, UniProt, STRING, GEO) in this run. On by default for a real run; never for a synthetic demo."
-    },
-    "continued_from": {
-      "type": [
-        "object",
-        "null"
-      ],
+    "parameter_bounds": {
+     "type": "array",
+     "description": "Per-parameter limits this run must stay inside, by canonical parameter_id.",
+     "items": {
+      "type": "object",
       "required": [
-        "run_id",
-        "run_dir"
+       "parameter_id",
+       "source"
       ],
       "additionalProperties": false,
-      "description": "Set when this run picks up from an earlier one. kind 'continue': the earlier run ended before finishing and this run completes it. kind 'follow_up': the earlier run finished, a person ran its round plan (or other experiment) and reports the results; this run is the next round. Either way the earlier run's artifacts are copied into this run's directory before the agents start, and the brief says so.",
       "properties": {
-        "run_id": {
-          "type": "string",
-          "minLength": 4,
-          "maxLength": 64
-        },
-        "run_dir": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "status": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "maxLength": 32
-        },
-        "kind": {
-          "enum": [
-            "continue",
-            "follow_up"
-          ]
-        },
-        "round": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "minimum": 1,
-          "maximum": 100
-        },
-        "results": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "maxLength": 4000,
-          "description": "What the person measured, in their words. A person's report of this process: it can settle a direction and update a hypothesis; numbers in it are never retyped as a cited value."
-        },
-        "reported_by": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "maxLength": 200
-        },
-        "chain": {
-          "type": "array",
-          "maxItems": 50,
-          "description": "The connected runs this one follows, oldest first: the rounds of one line of work. Only these are read; other runs in the same project are independent.",
-          "items": {
-            "type": "object",
-            "required": [
-              "run_id",
-              "round"
-            ],
-            "additionalProperties": false,
-            "properties": {
-              "run_id": {
-                "type": "string",
-                "maxLength": 64
-              },
-              "run_dir": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "maxLength": 128
-              },
-              "round": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-              }
-            }
-          }
-        }
+       "parameter_id": {
+        "type": "string"
+       },
+       "minimum": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "maximum": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "source": {
+        "enum": [
+         "process_design",
+         "literature",
+         "expert_knowledge",
+         "prior_experiment",
+         "equipment_limit",
+         "safety_constraint",
+         "model_validity",
+         "design_choice"
+        ],
+        "description": "Where the limit comes from. A bound with no origin is a guess wearing the clothes of a constraint."
+       },
+       "basis": {
+        "type": [
+         "string",
+         "null"
+        ]
+       }
       }
-    },
-    "culture_format": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "enum": [
-        "six_well",
-        "cero",
-        "stirred_tank",
-        null
-      ],
-      "description": "Where this run's protocol is meant to be run: a 6-well plate, a CERO rotating tube, or a stirred-tank bioreactor. It changes which doses and settings the agents look for and what the protocol is laid out in. null means the project's own format."
+     }
     }
+   }
+  },
+  "uncertainty": {
+   "type": [
+    "object",
+    "null"
+   ],
+   "required": [
+    "kind",
+    "ref",
+    "statement"
+   ],
+   "additionalProperties": false,
+   "description": "The decision-blocking question, when the person already knows it. Null means the run has to identify one, which is a step it must then show.",
+   "properties": {
+    "kind": {
+     "enum": [
+      "hypothesis",
+      "evidence_gap",
+      "diagnosis"
+     ]
+    },
+    "ref": {
+     "type": "string"
+    },
+    "statement": {
+     "type": "string",
+     "minLength": 10
+    }
+   }
+  },
+  "control": {
+   "type": [
+    "object",
+    "null"
+   ],
+   "description": "The current process, as simulator setpoints. Defaults come from the project; a control chosen to flatter a candidate is not a control."
+  },
+  "candidate_values": {
+   "type": [
+    "object",
+    "null"
+   ],
+   "description": "Values the person wants tested, keyed by canonical parameter_id. Optional: the run proposes its own."
+  },
+  "runtime_mode": {
+   "enum": [
+    "synthetic_demo",
+    "local_real_ai",
+    "remote_real_ai"
+   ],
+   "description": "Which runtime answers. synthetic_demo is the deterministic path over committed fixtures and demonstrates what the system can express, never what any cell did. local_real_ai and remote_real_ai drive the discovery_loop agents through an Omnigent session and spend model credits. BioSense never substitutes one for another: if a real runtime is unavailable the request fails with the reason."
+  },
+  "requested_by": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "description": "A label for who asked, when the deployment has one. Never a credential."
+  },
+  "notes": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 2000
+  },
+  "effort": {
+   "enum": [
+    "quick",
+    "standard",
+    "thorough"
+   ],
+   "description": "How much the specialists may spend: the search and full-text budgets and the minutes each is asked to stay within. A budget bounds the search, never the honesty of the answer."
+  },
+  "literature_mode": {
+   "enum": [
+    "single",
+    "by_stage",
+    "specialist"
+   ],
+   "description": "single: one literature agent searches every lever (the default). by_stage: one literature agent per process stage, in parallel, merged afterwards \u2014 faster on the literature phase, more of the model allowance, and  the orchestrator must reconcile the stages. specialist: the staged mode \u2014 one agent maps how the cell develops and another maps every known way of producing it (not only from iPSC), the analyst reviews how each route fits the stated need, the orchestrator records a checked route selection, and only then are per-stage agents sent to research that route's parameters. It replaces single and by_stage for a run where the production route itself is in question; it costs more of the model allowance than either."
+  },
+  "bioinformatics_mode": {
+   "enum": [
+    "single",
+    "by_analysis",
+    "by_process"
+   ],
+   "description": "single: one bioinformatics agent (the default). by_analysis: one specialist per fixed kind of analysis (gene expression, cell phenotype, proteins and secretome, gene regulation), in parallel. by_process: one specialist per fixed part of the process (iPSC expansion, lineage commitment, differentiation and maturation, product quality at harvest), in parallel. The categories are fixed, not chosen per run; the orchestrator reconciles the specialists."
+  },
+  "addons": {
+   "type": "array",
+   "uniqueItems": true,
+   "items": {
+    "enum": [
+     "developmental_biology",
+     "state_of_the_art"
+    ]
+   },
+   "description": "Optional lenses every agent applies in this run, each on by default for a discovery run. developmental_biology: the literature agent maps each process stage to its in vivo counterpart (timing, signals and their windows, regulators, knockout and knockdown phenotypes); bioinformatics checks receptor-expression windows in developmental time courses and looks for public perturbation datasets; the analyst matches stages and reads perturbations; the orchestrator writes a checked developmental map and turns the levers development suggests, which the protocol searches did not find in use, into low-confidence candidate hypotheses. state_of_the_art: the literature agent finds the leading published protocols for making this cell, by route (directed differentiation, forward programming, transdifferentiation, primary isolation), each with its reported yield, purity and timeline; the orchestrator writes a checked comparison of the recommended protocol against them -- where it matches, differs or does something novel, with any difference carrying only an expected effect (a capped hypothesis, never a measured gain) and a standing of matches / variant / departs."
+  },
+  "purpose": {
+   "enum": [
+    "discovery",
+    "process_reference",
+    "landscape",
+    "compare"
+   ],
+   "description": "discovery: a question about the process (the default). process_reference: collect cited, cell-type-independent suspension-culture setpoints into a draft an admin reviews and promotes into the server's process reference. landscape: build the server's cell production library \u2014 literature agents read the field across stages and formats, and the values they extract (each with its quote) are merged into the library every later run starts from."
+  },
+  "public_data": {
+   "type": "boolean",
+   "description": "Whether the agents may query public databases (Ensembl, UniProt, STRING, GEO) in this run. On by default for a real run; never for a synthetic demo."
+  },
+  "continued_from": {
+   "type": [
+    "object",
+    "null"
+   ],
+   "required": [
+    "run_id",
+    "run_dir"
+   ],
+   "additionalProperties": false,
+   "description": "Set when this run picks up from an earlier one. kind 'continue': the earlier run ended before finishing and this run completes it. kind 'follow_up': the earlier run finished, a person ran its round plan (or other experiment) and reports the results; this run is the next round. Either way the earlier run's artifacts are copied into this run's directory before the agents start, and the brief says so.",
+   "properties": {
+    "run_id": {
+     "type": "string",
+     "minLength": 4,
+     "maxLength": 64
+    },
+    "run_dir": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "status": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "maxLength": 32
+    },
+    "kind": {
+     "enum": [
+      "continue",
+      "follow_up"
+     ]
+    },
+    "round": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 1,
+     "maximum": 100
+    },
+    "results": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "maxLength": 4000,
+     "description": "What the person measured, in their words. A person's report of this process: it can settle a direction and update a hypothesis; numbers in it are never retyped as a cited value."
+    },
+    "reported_by": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "maxLength": 200
+    },
+    "chain": {
+     "type": "array",
+     "maxItems": 50,
+     "description": "The connected runs this one follows, oldest first: the rounds of one line of work. Only these are read; other runs in the same project are independent.",
+     "items": {
+      "type": "object",
+      "required": [
+       "run_id",
+       "round"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "run_id": {
+        "type": "string",
+        "maxLength": 64
+       },
+       "run_dir": {
+        "type": [
+         "string",
+         "null"
+        ],
+        "maxLength": 128
+       },
+       "round": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+       }
+      }
+     }
+    }
+   }
+  },
+  "culture_format": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "enum": [
+    "six_well",
+    "cero",
+    "stirred_tank",
+    null
+   ],
+   "description": "Where this run's protocol is meant to be run: a 6-well plate, a CERO rotating tube, or a stirred-tank bioreactor. It changes which doses and settings the agents look for and what the protocol is laid out in. null means the project's own format."
   }
+ }
 }

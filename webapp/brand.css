@@ -818,6 +818,11 @@ section.card.cv-min > :not(.head):not(.cv-ctl):not(.cv-h){display:none !importan
    left out, because an absent line reads as "nothing needed here". */
 .chip.gap{border-color:color-mix(in srgb,var(--bad) 55%,transparent);color:var(--bad);
   border-style:dashed}
+/* A recipe line, closed: one line each. An agent writes a lever's whole
+   rationale into its label, and a paragraph set as a pill is unreadable — so
+   a chip is cut to one line here and the full text is in the open row. */
+.chip.ln{max-width:min(26em,100%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ln-desc{font-size:12.5px;line-height:1.5;margin-top:3px;max-width:62ch}
 @media (max-width:640px){
   .ft-kv{grid-template-columns:1fr;gap:2px}
   .ft-an th:nth-child(5),.ft-an td:nth-child(5){display:none}

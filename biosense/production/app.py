@@ -1271,6 +1271,35 @@ class DiscoveryRun:
             }
 
 
+def hand_back_comparison(run_dir, parent_dir):
+    """Give a "compare" run's comparison to the run it was asked for. True if it was.
+
+    Copied, never moved: the compare run keeps its own page. The parent's
+    existing comparison, if it somehow has one, is left alone — the button
+    that starts a compare run is offered only where there is none, and a file
+    a person already read is not overwritten behind them. The literature the
+    comparison cites comes along under literature/sota/ so its exports work.
+    """
+    src, dst = Path(run_dir), Path(parent_dir)
+    f = src / 'sota_comparison.json'
+    if not f.is_file() or not dst.is_dir() or (dst / 'sota_comparison.json').exists():
+        return False
+    try:
+        doc = K.read_json(f)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(doc, dict) or doc.get('kind') != 'sota_comparison':
+        return False
+    try:
+        if (src / 'literature' / 'sota').is_dir():
+            shutil.copytree(src / 'literature' / 'sota', dst / 'literature' / 'sota',
+                            dirs_exist_ok=True)
+        shutil.copy2(f, dst / 'sota_comparison.json')
+    except OSError:
+        return False
+    return True
+
+
 class DiscoveryRegistry:
     """Discovery runs in this process, and the caps that bound them."""
 
@@ -1480,6 +1509,16 @@ class DiscoveryRegistry:
                 self._settle(run)
                 final = DRUN.finish(run.request, run.out_dir, runtime_mode=run.runtime_mode,
                                     session=run.session, projects_dir=run.projects_dir)
+                if (run.request.get('continued_from') or {}).get('kind') == 'compare':
+                    given = hand_back_comparison(run.out_dir, self.runs_dir
+                                                 / str(run.request['continued_from'].get('run_dir') or ''))
+                    run.add({'kind': 'note', 'stage': None,
+                             'simple': ('The comparison was handed back to the run it was asked '
+                                        'for; open that run to read it beside its protocol.'
+                                        if given else
+                                        'No comparison was written, so nothing was handed back '
+                                        'to the earlier run.'),
+                             'technical': f'hand_back_comparison -> {given}'})
                 # A real run that wrote nothing is the most confusing outcome
                 # this product can produce. It says what happened instead of
                 # leaving an empty hypothesis panel.
@@ -2009,6 +2048,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r'/api/discovery/([^/]+)/results', path)
             if m:
                 return self._record_results(m.group(1), self._body(MAX_BODY_DISCOVERY))
+            m = re.fullmatch(r'/api/discovery/([^/]+)/compare', path)
+            if m:
+                return self._continue_ended(m.group(1), self._identity(), compare=True)
             m = re.fullmatch(r'/api/discovery/([^/]+)/follow-up', path)
             if m:
                 return self._continue_ended(m.group(1), self._identity(),
@@ -3227,7 +3269,7 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             QUESTION_GATE.release()
 
-    def _continue_ended(self, rid, identity, follow_up=None):
+    def _continue_ended(self, rid, identity, follow_up=None, compare=False):
         """A fresh run that picks up where an ended one left off.
 
         The old run's artifacts are copied into the new run's directory and the
@@ -3239,6 +3281,11 @@ class Handler(BaseHTTPRequestHandler):
         With *follow_up* ({results, dataset_ids}) it is the next round instead:
         the earlier run finished, a person ran its round plan, and this run
         reads their results against the predictions and rules that run fixed.
+
+        With *compare* it is a short run that adds the state-of-the-art
+        comparison to a run that has none: seeded with that run's files, it
+        sends one literature task, writes one file, and hands the comparison
+        back to the run it was asked for. It spends a run like any other.
         """
         owner = identity.owner
         old = self.discovery.get(rid, owner=owner)
@@ -3270,6 +3317,13 @@ class Handler(BaseHTTPRequestHandler):
             # The library is shared by every run on this server, so only an
             # operator continues a build of it — the same rule as starting one.
             self._require_operator('building the cell production library')
+        if compare:
+            if (prior.get('purpose') or 'discovery') != 'discovery':
+                return self._send(409, {'error': 'a comparison is added to a discovery run: this '
+                                                 'run recommended no protocol to compare'})
+            if not (Path(old_dir) / 'protocol_summary.json').is_file():
+                return self._send(409, {'error': 'that run wrote no protocol summary, so there '
+                                                 'is nothing to compare with the field'})
         # The continuation is the same validated request with a new identity
         # and the continuation named, so the brief can say what this run is.
         cont = {'run_id': rid, 'run_dir': Path(old_dir).name, 'status': old_status}
@@ -3310,6 +3364,8 @@ class Handler(BaseHTTPRequestHandler):
             cont.update(kind='follow_up', round=before.get('round'),
                         results=before.get('results'), reported_by=before.get('reported_by'),
                         chain=before.get('chain') or [])
+        elif compare:
+            cont['kind'] = 'compare'
         else:
             cont['kind'] = 'continue'
         req = dict(prior,
@@ -3318,6 +3374,11 @@ class Handler(BaseHTTPRequestHandler):
                    requested_by=owner if identity.authenticated else None,
                    dataset_ids=datasets,
                    continued_from={k: v for k, v in cont.items() if v is not None})
+        if compare:
+            req.update(purpose='compare', addons=['state_of_the_art'],
+                       title=('Compare with the field: ' + str(prior.get('title') or
+                                                               prior.get('objective') or ''))[:120]
+                       if (prior.get('title') or prior.get('objective')) else None)
         try:
             K.require_valid('discovery_request', req)
         except K.ContractError as e:

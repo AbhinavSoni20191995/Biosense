@@ -237,9 +237,73 @@ def _same(a, b):
         return str(a) == str(b)
 
 
-def item_text(item, value):
+# A name long enough to be a sentence is a sentence. An agent proposing a
+# lever the project does not carry writes its whole rationale into the label
+# ("Activin A concentration across days 1-4 of mesoderm induction (ng/mL). The
+# CERO anchor protocol adds no activin A ... not a parameter this project has
+# registered."), and a line of the recipe is a name and a dose, not a
+# paragraph. So the name is cut at the first sentence and capped; everything
+# after it is the description, shown where there is room for it.
+NAME_MAX = 80
+
+
+def _is_unit(text):
+    """Whether a parenthetical is only the unit: '(ng/mL)', '(%)', '(um diameter)'.
+
+    A gloss that explains the lever is kept as its description; a unit is
+    already a field of its own, so repeating it reads as noise.
+    """
+    t = str(text or '').strip()
+    if not t or len(t) > 18 or '.' in t:
+        return False
+    if FP.is_factor(t) or FP._is_physical(t):
+        return True
+    return bool(re.fullmatch(r'[A-Za-z%µ°]+(?:\s?/\s?[A-Za-z%µ°]+)?(?:\s[a-z]+)?', t)
+                and ' ' not in t.strip())
+
+
+def split_name(label):
+    """A long label is a name and a description. Return both; drop nothing.
+
+    An agent proposing a lever the project does not carry writes its whole
+    rationale into the label, so the name is taken in this order: the first
+    sentence, then up to any parenthetical gloss (which is where the unit and
+    the "(0 = withdrawn on the day...)" asides live), then the status note
+    `first_pass` already knows how to strip, then a word-boundary cap. What
+    the name does not take is the description, and the caller shows it where a
+    paragraph fits.
+    """
+    whole = str(label or '').strip()
+    if not whole:
+        return '', None
+    head, rest = whole, ''
+    m = re.search(r'(?<=[a-z0-9)\]])\.\s+(?=[A-Z(])', head)
+    if m:
+        head, rest = head[:m.start()].strip(), head[m.end():].strip()
+    # A parenthetical past the first few words is a gloss, not part of the
+    # name. A gloss that is only the unit is dropped rather than described:
+    # the unit is its own field and prints beside the value.
+    paren = head.find(' (')
+    if paren > 12:
+        close = head.find(')', paren)
+        inside = head[paren + 2:close if close != -1 else len(head)].strip()
+        after = head[close + 1:].strip() if close != -1 else ''
+        gloss = '' if _is_unit(inside) else inside
+        rest = '. '.join(x for x in (gloss, after.strip(' ,;:-–—'), rest) if x).strip()
+        head = head[:paren].strip()
+    head = (FP.split_label(head)[0] or head).strip()
+    if len(head) > NAME_MAX:
+        cut = head.rfind(' ', 0, NAME_MAX)
+        cut = cut if cut > NAME_MAX // 2 else NAME_MAX
+        rest = (head[cut:].strip() + ('. ' + rest if rest else '')).strip()
+        head = head[:cut].rstrip(' ,;:') + '…'
+    rest = str(rest or '').strip(' ,;:-–—.').strip()
+    return head, (rest or None)
+
+
+def item_text(item, value, name=None):
     """'IL-15 10 ng/mL', or what is missing, said as what it is."""
-    label = item.get('label') or item.get('parameter_id') or ''
+    label = name if name is not None else (item.get('label') or item.get('parameter_id') or '')
     unit = f' {item["unit"]}' if item.get('unit') else ''
     if value is None:
         if item.get('provenance') == 'gap':
@@ -275,14 +339,16 @@ def recipe(protocol):
             for lever, at in placed.items():
                 if at == (s['stage_id'], n) and lever in csp:
                     value, letter = csp[lever], 'D'
+            name, described = split_name(item.get('label') or item.get('parameter_id'))
             lines.append({
                 'parameter_id': item.get('parameter_id'), 'label': item.get('label'),
+                'name': name, 'description': described,
                 'unit': item.get('unit'), 'value': value, 'letter': letter,
                 'provenance': item.get('provenance'),
                 'gap': value is None and item.get('provenance') == 'gap',
                 'no_dose_published': value is None and bool(item.get('from_baseline')),
                 'timing': item.get('timing'), 'why': item.get('why'),
-                'text': item_text(item, value)})
+                'text': item_text(item, value, name)})
         out.append({'stage_id': s['stage_id'], 'label': s['label'],
                     'day_start': s['day_start'], 'days': s['days'],
                     'window': window(s), 'lines': lines,
@@ -353,7 +419,7 @@ def changes(protocol):
                 continue      # the control is the reference; it changes nothing
             stage = by_stage.get(at[0]) or {}
             unit = f' {line["unit"]}' if line.get('unit') else ''
-            label = line.get('label') or lever
+            label = line.get('name') or line.get('label') or lever
             rows.append({
                 'parameter_id': lever, 'label': label, 'unit': line.get('unit'),
                 'stage_id': at[0], 'stage_label': stage.get('label') or at[0],

@@ -486,6 +486,16 @@ def restore(runs_dir, run_id, *, after=-1):
     # And the design past the apparatus, which a person may ask for later.
     from ..evidence import breakthrough as BT
     snap['breakthrough_design'] = BT.load(d)
+    # And the state-of-the-art comparison, which a later run may hand back to
+    # this one ("Compare with the field") long after this record was written.
+    try:
+        sota = K.read_json(d / 'sota_comparison.json')
+    except (OSError, ValueError):
+        sota = None
+    if isinstance(sota, dict) and sota.get('kind') == 'sota_comparison':
+        snap['sota_comparison'] = {k: sota.get(k) for k in (
+            'cell_type', 'references', 'comparisons', 'standing', 'limitations', 'note',
+            'created_at', 'run_id')}
     # And the person's edits to the written protocol, for the same reason.
     from ..evidence import protocol_edits as PE
     pe = PE.load(d)
