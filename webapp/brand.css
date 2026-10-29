@@ -908,8 +908,6 @@ button{font-family:inherit}
 .fl-item.act-lower .fl-pill{stroke:var(--s2)} .fl-item.act-lower .fl-pill-t{fill:var(--s2);font-weight:600}
 .fl-item.act-gap .fl-pill{stroke:var(--bad)}
 .fl-item.new .fl-pill{stroke-dasharray:4 3;stroke:var(--s3)} .fl-item.new .fl-pill-t{fill:var(--s3)}
-/* Widened in place: one column, so the plan has the page's width and the rest
-   of the page is still there under it. */
 .rail-extra{display:flex;flex-direction:column;gap:2px;margin-top:18px}
 .rail-extra:empty{display:none}
 .rail-lab{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
@@ -964,8 +962,6 @@ button{font-family:inherit}
     width:auto}
 }
 
-body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
-
 /* ── The run as a piece of software: the finding, then tabs ──
    The finding is always on screen. Below it one section at a time, chosen
    from a tab bar: the highlighted tabs are what a person acts on, the small
@@ -992,10 +988,11 @@ body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}
   text-transform:uppercase;color:var(--ink-3);margin-right:4px}
 .tabs-more:empty{display:none}
 .cols > .stack > section.card.tab-off{display:none}
-/* Widen: any section may take the whole width; Escape narrows them all. */
-.head .widen{margin-left:auto;font-size:11px;padding:3px 9px;flex:none}
+/* Fold: any section can be put away to its title and opened again. */
+.head .fold-btn{margin-left:auto;font-size:11px;padding:3px 9px;flex:none}
 .cols > .stack > section.card > .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-section.card.wide{grid-column:1 / -1}
+.cols > .stack > section.card.folded > .head{margin-bottom:0}
+.cols > .stack > section.card.folded > .head ~ *{display:none}
 #protocolPanel.wide .flow-wrap{margin:14px 0 18px}
 #protocolPanel.wide .plan-stages{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 /* The comparison: the field in one table, this recommendation as its last row. */

@@ -23,25 +23,28 @@ class RerenderTests(unittest.TestCase):
         self.assertIn("$('#resultPanel').hidden = false; return;", fn)
 
 
-class WidenTests(unittest.TestCase):
-    def test_widening_keeps_the_rest_of_the_page(self):
-        fn = JS[JS.index('function toggleFocus'):JS.index('function wireWiden')]
-        self.assertIn("classList.toggle('wide', want)", fn)
-        # One column while any section is wide; nothing is hidden or covered.
-        self.assertIn("document.body.classList.toggle('plan-wide', any)", fn)
-        self.assertNotIn('has-focus', JS, 'the overlay is gone')
-        self.assertIn('body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}', CSS)
-        self.assertNotIn('#protocolPanel.focus', CSS)
-        self.assertIn("'Widen'", JS)
+class FoldTests(unittest.TestCase):
+    """The page is one column, so "Widen" had nothing to do and was in the way;
+    what a person wanted was to put a section away and open it again."""
 
-    def test_every_section_can_be_widened_not_only_the_parameters(self):
-        """The one box that could take the page's width was the parameters;
-        a person reading the round or the comparison wanted the same."""
-        fn = JS[JS.index('function wireWiden'):JS.index('const TABS')]
+    def test_widen_is_gone(self):
+        for piece in ("'Widen'", 'toggleFocus', 'narrowAll', 'plan-wide'):
+            self.assertNotIn(piece, JS, piece)
+        for piece in ('body.plan-wide', '.head .widen', 'section.card.wide'):
+            self.assertNotIn(piece, CSS, piece)
+
+    def test_every_section_folds_to_its_title_and_opens_again(self):
+        fn = JS[JS.index('function wireFolds'):JS.index('const TABS')]
         self.assertIn("section.card[data-tab], #plainPanel", fn)
-        self.assertIn("'btn sm widen'", fn)
-        self.assertIn("if (e.key === 'Escape') narrowAll()", JS)
-        self.assertIn('section.card.wide{grid-column:1 / -1}', CSS)
+        self.assertIn("'btn sm fold-btn'", fn)
+        self.assertIn('.cols > .stack > section.card.folded > .head ~ *{display:none}', CSS)
+        # Remembered here, and nothing breaks without storage.
+        self.assertIn("localStorage.getItem(FOLD_KEY)", JS)
+        self.assertIn("catch (_) { return {}; }", JS)
+
+    def test_choosing_a_tab_opens_a_folded_section(self):
+        fn = JS[JS.index('function showTab'):JS.index('function renderRunTop')]
+        self.assertIn('if (sec) unfold(sec);', fn)
 
 
 HTML = (K.ROOT / 'webapp' / 'console.html').read_text()

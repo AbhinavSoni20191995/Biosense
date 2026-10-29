@@ -108,7 +108,7 @@ async function post(path, body) {
 }
 
 async function boot() {
-  wireWiden();
+  wireFolds();
   const newRun = document.querySelector('.rail-new');
   if (newRun) newRun.addEventListener('click', e => { e.preventDefault(); openStartForm(); });
   BS.onChange(renderRecents);
@@ -4253,27 +4253,6 @@ function addInducer(p, stageId, stages) {
   return b;
 }
 
-/* The plan across the full width of the page. Not an overlay: the two-column
-   layout becomes one column, so the plan gets the whole width and everything
-   else is still there, below it. */
-/* Any section may take the whole width: the page drops to one column while
-   one is wide, and Escape narrows them all. The control sits in every
-   section's title bar, added once at boot (`wireWiden`), so the parameters
-   are no longer the one box that could be read at full width. */
-function toggleFocus(panel, on) {
-  if (typeof panel === 'boolean' || panel == null) { on = panel; panel = $('#protocolPanel'); }
-  if (!panel) return;
-  const want = on == null ? !panel.classList.contains('wide') : !!on;
-  panel.classList.toggle('wide', want);
-  const any = !!document.querySelector('section.card.wide');
-  document.body.classList.toggle('plan-wide', any);
-  const btn = panel.querySelector('.head .widen');
-  if (btn) btn.textContent = want ? 'Narrow' : 'Widen';
-  if (want) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-function narrowAll() {
-  $$('section.card.wide').forEach(p => toggleFocus(p, false));
-}
 /* "New run" in the rail opens the form, wherever the page had got to. */
 function openStartForm() {
   const form = $('#startPanel'); if (!form) return;
@@ -4285,18 +4264,45 @@ function openStartForm() {
   if (obj) setTimeout(() => obj.focus(), 320);
 }
 
-function wireWiden() {
+/* Every section can be folded to its title and opened again. The page is one
+   column, so "Widen" had nothing left to do; what a person reading one part of
+   a run wants is to put the rest away. The state is this browser's, per
+   section, and the page works without storage. Choosing a section from the
+   tab bar opens it: a tab that led to a bare title would read as empty. */
+const FOLD_KEY = 'bs-section-folds';
+function foldedSections() {
+  try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (_) { return {}; }
+}
+function setFolded(panel, folded) {
+  panel.classList.toggle('folded', folded);
+  const b = panel.querySelector(':scope > .head .fold-btn');
+  if (b) {
+    b.textContent = folded ? 'Show' : 'Hide';
+    b.title = folded ? 'Open this section' : 'Fold this section to its title';
+    b.setAttribute('aria-expanded', String(!folded));
+  }
+  if (!panel.id) return;
+  const saved = foldedSections();
+  if (folded) saved[panel.id] = true; else delete saved[panel.id];
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify(saved)); } catch (_) {}
+}
+function unfold(panel) {
+  if (panel && panel.classList.contains('folded')) setFolded(panel, false);
+}
+function wireFolds() {
+  const saved = foldedSections();
   $$('.cols > .stack > section.card[data-tab], #plainPanel').forEach(panel => {
     const head = panel.querySelector(':scope > .head');
-    if (!head || head.querySelector('.widen')) return;
-    const b = el('button', 'btn sm widen', 'Widen');
+    if (!head || head.querySelector('.fold-btn')) return;
+    const b = el('button', 'btn sm fold-btn', 'Hide');
     b.type = 'button';
-    b.title = 'Give this section the full width of the page; Escape narrows it again';
-    b.addEventListener('click', e => { e.stopPropagation(); toggleFocus(panel); });
+    b.addEventListener('click', e => {
+      e.stopPropagation(); setFolded(panel, !panel.classList.contains('folded'));
+    });
     head.append(b);
+    setFolded(panel, !!(panel.id && saved[panel.id]));
   });
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') narrowAll(); });
 
 /* ── The run as a piece of software: the finding on top, then tabs ──
    The highlighted tabs are what a person acts on; the small ones are the
@@ -4432,6 +4438,7 @@ function showTab(key, scroll) {
   renderTabs(state.run || {});
   const t = TABS.find(x => x.key === key);
   const sec = t && tabNode(t);
+  if (sec) unfold(sec);
   if (sec && scroll !== false) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 

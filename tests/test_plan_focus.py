@@ -43,16 +43,17 @@ class FlowTests(unittest.TestCase):
         self.assertIn('vessel(', flow, 'a bioreactor, not a box')
         self.assertNotIn('innerHTML', flow)
 
-    def test_the_plan_can_take_the_page_s_width_without_hiding_it(self):
-        """Widened in place. An overlay made the plan the only thing on screen;
-        what was wanted was the plan at full width with the rest still there."""
+    def test_the_plan_is_not_an_overlay_and_folds_like_any_section(self):
+        """An overlay made the plan the only thing on screen, then "Widen" gave
+        it the page's width; the page is one column now, so neither remains.
+        The plan folds to its title like every other section."""
         js = (K.ROOT / 'webapp' / 'discovery.js').read_text()
-        self.assertIn('function toggleFocus', js)
-        self.assertIn("e.key === 'Escape'", js[js.index('function toggleFocus'):])
-        self.assertIn("'Widen'", js)
+        self.assertNotIn('has-focus', js)
+        self.assertNotIn("'Widen'", js)
+        self.assertIn('#plainPanel', js[js.index('function wireFolds'):])
         css = (K.ROOT / 'webapp' / 'brand.css').read_text()
-        self.assertIn('body.plan-wide .cols{grid-template-columns:minmax(0,1fr)}', css)
         self.assertNotIn('#protocolPanel.focus', css)
+        self.assertNotIn('body.plan-wide', css)
         self.assertIn('.fl-tank', css)
 
 
